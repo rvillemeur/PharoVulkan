@@ -10,22 +10,30 @@ Class {
 	#package : 'BaselineOfPharoVulkan'
 }
 
-{ #category : 'baselines' }
+{ #category : 'baseline' }
 BaselineOfPharoVulkan >> baseline: spec [
-    <baseline>
-    spec for: #common do: [
-        spec
-            package: 'PharoVulkan-Generator';
-            package: 'PharoVulkan-Bindings'
-                with: [ spec requires: #('PharoVulkan-Generator') ];
-            package: 'PharoVulkan-SPIRV';
-            package: 'PharoVulkan-Tests-Bindings'
-                with: [ spec requires: #('PharoVulkan-Bindings') ];
-            package: 'PharoVulkan-Tests-SPIRV'
-                with: [ spec requires: #('PharoVulkan-SPIRV') ].
-        spec
-            group: 'default'
-                with: #('PharoVulkan-Generator' 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV');
-            group: 'tests'
-                with: #('default' 'PharoVulkan-Tests-Bindings' 'PharoVulkan-Tests-SPIRV') ]
+	<baseline>
+	spec for: #common do: [
+		spec
+			package: 'PharoVulkan-Generator';
+			package: 'PharoVulkan-Bindings'
+				with: [ spec requires: #('PharoVulkan-Generator') ];
+			package: 'PharoVulkan-SPIRV';
+			package: 'PharoVulkan-Core'
+				with: [ spec requires: #('PharoVulkan-Bindings') ];
+			package: 'PharoVulkan-Compute'
+				with: [ spec requires: #('PharoVulkan-Core') ];
+			package: 'PharoVulkan-Tests-Bindings'
+				with: [ spec requires: #('PharoVulkan-Bindings') ];
+			package: 'PharoVulkan-Tests-SPIRV'
+				with: [ spec requires: #('PharoVulkan-SPIRV') ];
+			package: 'PharoVulkan-Tests-Core'
+				with: [ spec requires: #('PharoVulkan-Core') ];
+			package: 'PharoVulkan-Tests-Compute'
+				with: [ spec requires: #('PharoVulkan-Compute') ].
+		spec
+			group: 'default'
+				with: #('PharoVulkan-Generator' 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' 'PharoVulkan-Core' 'PharoVulkan-Compute');
+			group: 'tests'
+				with: #('default' 'PharoVulkan-Tests-Bindings' 'PharoVulkan-Tests-SPIRV' 'PharoVulkan-Tests-Core' 'PharoVulkan-Tests-Compute') ]
 ]
