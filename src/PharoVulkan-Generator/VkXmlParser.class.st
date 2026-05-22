@@ -31,7 +31,7 @@ VkXmlParser >> parseCommands [
     cmdsEl children do: [ :cmdEl |
         | desc nameEl typeEl |
         cmdEl tag = 'command' ifTrue: [
-            desc := VkCommandDesc new.
+            desc := VkCommandDescriptor new.
             (cmdEl at: 'successcodes' ifAbsent: [ nil ]) ifNotNil: [ :ss |
                 desc successCodes: (ss substrings: ',') ].
             (cmdEl at: 'errorcodes' ifAbsent: [ nil ]) ifNotNil: [ :es |
@@ -43,7 +43,7 @@ VkXmlParser >> parseCommands [
                 nameEl children detect: [ :c | c tag = 'name' ] ifFound: [ :n |
                     desc name: n text asString ].
                 desc params: (self parseParamsFrom: cmdEl) ].
-            desc name ifNotNil: [ commands add: desc ] ] ]
+            desc name ifNotNil: [ commands at: desc name put: desc ] ] ]
 ]
 
 { #category : 'parsing' }

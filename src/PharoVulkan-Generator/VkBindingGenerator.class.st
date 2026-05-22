@@ -54,28 +54,31 @@ VkBindingGenerator >> ffiCallSourceFor: cmdDesc selector: sel [
 
 { #category : 'generating' }
 VkBindingGenerator >> ffiTypeFor: aMemberDescriptor [
-    "Map a Vulkan C type to a uFFI type symbol."
     | t |
     t := aMemberDescriptor type.
-    aMemberDescriptor isPointer ifTrue: [^'pointer'].
-    t = 'uint8_t'  ifTrue: [^'uint8'].
-    t = 'uint16_t' ifTrue: [^'uint16'].
-    t = 'uint32_t' ifTrue: [^'uint32'].
-    t = 'uint64_t' ifTrue: [^'uint64'].
-    t = 'int8_t'   ifTrue: [^'int8'].
-    t = 'int16_t'  ifTrue: [^'int16'].
-    t = 'int32_t'  ifTrue: [^'int32'].
-    t = 'int64_t'  ifTrue: [^'int64'].
-    t = 'float'    ifTrue: [^'float'].
-    t = 'double'   ifTrue: [^'double'].
-    t = 'size_t'   ifTrue: [^'ulong'].
-    t = 'VkBool32' ifTrue: [^'uint32'].
-    t = 'VkFlags'  ifTrue: [^'uint32'].
-    t = 'VkFlags64' ifTrue: [^'uint64'].
-    t = 'VkDeviceSize' ifTrue: [^'uint64'].
-    t = 'char'     ifTrue: [^'uint8'].
-    "Nested structs and unrecognised types — embed as pointer for safety"
-    ^'pointer'
+    aMemberDescriptor isPointer ifTrue: [ ^ 'pointer' ].
+    (t = 'uint8_t')  ifTrue: [ ^ 'uint8' ].
+    (t = 'uint16_t') ifTrue: [ ^ 'uint16' ].
+    (t = 'uint32_t') ifTrue: [ ^ 'uint32' ].
+    (t = 'uint64_t') ifTrue: [ ^ 'uint64' ].
+    (t = 'int8_t')   ifTrue: [ ^ 'int8' ].
+    (t = 'int16_t')  ifTrue: [ ^ 'int16' ].
+    (t = 'int32_t')  ifTrue: [ ^ 'int32' ].
+    (t = 'int64_t')  ifTrue: [ ^ 'int64' ].
+    (t = 'float')    ifTrue: [ ^ 'float' ].
+    (t = 'double')   ifTrue: [ ^ 'double' ].
+    (t = 'size_t')   ifTrue: [ ^ 'ulong' ].
+    (t = 'VkBool32')      ifTrue: [ ^ 'uint32' ].
+    (t = 'VkFlags')       ifTrue: [ ^ 'uint32' ].
+    (t = 'VkFlags64')     ifTrue: [ ^ 'uint64' ].
+    (t = 'VkDeviceSize')  ifTrue: [ ^ 'uint64' ].
+    (t = 'VkDeviceAddress') ifTrue: [ ^ 'uint64' ].
+    (t = 'char')          ifTrue: [ ^ 'uint8' ].
+    (t beginsWith: 'Vk') ifTrue: [
+        (#('Flags' 'FlagBits' 'Type' 'Mode' 'Result')
+            anySatisfy: [ :suf | t endsWith: suf ])
+            ifTrue: [ ^ 'uint32' ] ].
+    ^ 'pointer'
 ]
 
 { #category : 'generating' }
