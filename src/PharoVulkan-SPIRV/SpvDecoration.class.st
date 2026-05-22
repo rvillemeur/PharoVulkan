@@ -34,5 +34,10 @@ SpvDecoration class >> location [         ^ 30
 ]
 
 { #category : 'constants' }
+SpvDecoration class >> offset [
+	^ 35
+]
+
+{ #category : 'constants' }
 SpvDecoration class >> relaxedPrecision [ ^ 0
 ]

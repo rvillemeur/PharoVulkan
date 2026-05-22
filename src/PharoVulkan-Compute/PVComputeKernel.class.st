@@ -78,7 +78,8 @@ PVComputeKernel >> prepare [
 	descriptorSetLayout create.
 	pipelineLayout := VkPipelineLayout on: context device setLayouts: (Array with: descriptorSetLayout).
 	pipeline := VkComputePipeline on: shaderModule layout: pipelineLayout device: context device.
-	descriptorPool := VkDescriptorPool on: context device maxSets: 1.
+	"Pool needs descriptorCount = total bindings across all sets"
+	descriptorPool := VkDescriptorPool on: context device maxSets: buffers size.
 	descriptorSet := descriptorPool allocateSet: descriptorSetLayout.
 	buffers doWithIndex: [:buf :i |
 		descriptorSet updateStorageBuffer: buf atBinding: i - 1].

@@ -22,8 +22,8 @@ SpvTypeRegistry class >> on: aModule [
 
 { #category : 'accessing' }
 SpvTypeRegistry >> allTypes [
-    "Ordered collection of all registered types for serialization."
-    ^ types values
+	"Sort by SPIR-V id — types are created after their dependencies, so id order = topological order."
+	^ types values asSortedCollection: [:a :b | a id <= b id]
 ]
 
 { #category : 'type-factories' }

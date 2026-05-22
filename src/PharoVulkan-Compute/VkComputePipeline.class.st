@@ -26,12 +26,12 @@ VkComputePipeline class >> on: aShaderModule layout: aPipelineLayout device: aDe
 
 { #category : 'lifecycle' }
 VkComputePipeline >> create [
-	"VkComputePipelineCreateInfo 96 bytes: sType=29, stage inline at byte 25, VK_SHADER_STAGE_COMPUTE_BIT=32"
+	"VkComputePipelineCreateInfo 96 bytes: sType=29, stage inline at byte 25"
 	| nameBuf info pipelineBuf result |
 	nameBuf := ExternalAddress allocate: entryPoint size + 1.
 	[
-		1 to: entryPoint size do: [:i | nameBuf uint8At: i put: (entryPoint at: i) asciiValue].
-		nameBuf uint8At: entryPoint size + 1 put: 0.
+		1 to: entryPoint size do: [:i | nameBuf byteAt: i put: (entryPoint at: i) asciiValue].
+		nameBuf byteAt: entryPoint size + 1 put: 0.
 		info := ExternalAddress allocate: 96.
 		[
 			info unsignedLongAt: 1 put: 29.

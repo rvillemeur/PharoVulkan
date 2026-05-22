@@ -13,6 +13,11 @@ Class {
 	#package : 'PharoVulkan-Bindings'
 }
 
+{ #category : 'ffi' }
+VkResult class >> asExternalTypeOn: aFFICallout [
+	^ FFIInt32 asExternalTypeOn: aFFICallout
+]
+
 { #category : 'result-codes' }
 VkResult class >> nameForCode: anInteger [
     "Returns a human-readable name for the given Vulkan result code."

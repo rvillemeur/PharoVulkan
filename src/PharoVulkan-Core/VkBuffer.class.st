@@ -20,15 +20,13 @@ VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
 
 { #category : 'lifecycle' }
 VkBuffer >> allocate [
-	"VkBufferCreateInfo offsets (64-bit ABI, 56 bytes):"
-	"  1:sType 9:pNext 17:flags [pad 21-24] 25:size(u64) 33:usage(u32)"
-	"  37:sharingMode 41:queueCount [pad 45-48] 49:pQueueIndices"
+	"VkBufferCreateInfo: 1:sType 9:pNext 17:flags [pad] 25:size(u64) 33:usage 37:sharing 41:qCount [pad] 49:pQueues"
 	| info bufBuf result memReqs memTypeIndex allocInfo memBuf |
 	info := ExternalAddress allocate: 56.
 	[ info unsignedLongAt: 1 put: 12.
 	  info pointerAt: 9 put: ExternalAddress null.
 	  info unsignedLongAt: 17 put: 0.
-	  info uint64At: 25 put: size.
+	  info unsignedLongLongAt: 25 put: size.
 	  info unsignedLongAt: 33 put: usage.
 	  info unsignedLongAt: 37 put: 0.
 	  info unsignedLongAt: 41 put: 0.
@@ -47,7 +45,7 @@ VkBuffer >> allocate [
 	  allocInfo := ExternalAddress allocate: 32.
 	  [ allocInfo unsignedLongAt: 1 put: 5.
 	    allocInfo pointerAt: 9 put: ExternalAddress null.
-	    allocInfo uint64At: 17 put: (memReqs uint64At: 1).
+	    allocInfo unsignedLongLongAt: 17 put: (memReqs unsignedLongLongAt: 1).
 	    allocInfo unsignedLongAt: 25 put: memTypeIndex.
 	    memBuf := ExternalAddress allocate: 8.
 	    [ result := Vk allocateMemory: device handle allocateInfo: allocInfo allocator: ExternalAddress null memory: memBuf.
@@ -60,22 +58,22 @@ VkBuffer >> allocate [
 	Vk checkResult: result
 ]
 
-{ #category : 'copying' }
+{ #category : 'accessing' }
 VkBuffer >> copyFromByteArray: aByteArray [
-    | ptr |
-    ptr := self map.
-    1 to: aByteArray size do: [ :i | ptr basicAt: i put: (aByteArray at: i) ].
-    self unmap
+	| ptr |
+	ptr := self map.
+	1 to: aByteArray size do: [:i | ptr byteAt: i put: (aByteArray at: i)].
+	self unmap
 ]
 
-{ #category : 'copying' }
+{ #category : 'accessing' }
 VkBuffer >> copyToByteArray [
-    | ptr result |
-    result := ByteArray new: size.
-    ptr := self map.
-    1 to: size do: [ :i | result at: i put: (ptr basicAt: i) ].
-    self unmap.
-    ^ result
+	| ptr result |
+	result := ByteArray new: size.
+	ptr := self map.
+	1 to: size do: [:i | result at: i put: (ptr byteAt: i)].
+	self unmap.
+	^ result
 ]
 
 { #category : 'lifecycle' }

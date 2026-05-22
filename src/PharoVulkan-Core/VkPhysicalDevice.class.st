@@ -22,23 +22,23 @@ VkPhysicalDevice >> fetchMemoryProperties [
     Vk getPhysicalDeviceMemoryProperties: handle memoryProperties: memoryProperties
 ]
 
-{ #category : 'initialization' }
+{ #category : 'accessing' }
 VkPhysicalDevice >> fetchQueueFamilyProperties [
-    | countBuf count propsBuf propSize |
-    "VkQueueFamilyProperties size = 24 bytes"
-    propSize := 24.
-    countBuf := ExternalAddress allocate: 4.
-    [ Vk getQueueFamilyProperties: handle count: countBuf props: ExternalAddress null.
-      count := countBuf unsignedLongAt: 1.
-      propsBuf := ExternalAddress allocate: count * propSize.
-      [ Vk getQueueFamilyProperties: handle count: countBuf props: propsBuf.
-        queueFamilyProps := (1 to: count) collect: [ :i |
-            | base flags |
-            base := (i - 1) * propSize.
-            flags := propsBuf unsignedLongAt: base + 1.
-            flags ] "return queueFlags for each family"
-      ] ensure: [ propsBuf free ]
-    ] ensure: [ countBuf free ]
+	| countBuf count propsBuf propSize |
+	propSize := 24.
+	countBuf := ExternalAddress allocate: 4.
+	[
+		Vk primGetQueueFamilyProperties: handle count: countBuf props: ExternalAddress null.
+		count := countBuf unsignedLongAt: 1.
+		propsBuf := ExternalAddress allocate: count * propSize.
+		[
+			Vk primGetQueueFamilyProperties: handle count: countBuf props: propsBuf.
+			queueFamilyProps := (1 to: count) collect: [:i |
+				| base |
+				base := (i - 1) * propSize.
+				propsBuf unsignedLongAt: base + 1]
+		] ensure: [ propsBuf free ]
+	] ensure: [ countBuf free ]
 ]
 
 { #category : 'querying' }

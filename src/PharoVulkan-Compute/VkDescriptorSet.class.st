@@ -38,14 +38,13 @@ VkDescriptorSet >> pool: aPool [
 
 { #category : 'updating' }
 VkDescriptorSet >> updateStorageBuffer: aBuffer atBinding: bindingIndex [
-	"VkDescriptorBufferInfo 24 bytes + VkWriteDescriptorSet 64 bytes, sType=35"
-	"VK_DESCRIPTOR_TYPE_STORAGE_BUFFER=7, VK_WHOLE_SIZE=0xFFFFFFFFFFFFFFFF"
+	"VkDescriptorBufferInfo 24 bytes + VkWriteDescriptorSet 64 bytes sType=35"
 	| bufInfo write |
 	bufInfo := ExternalAddress allocate: 24.
 	[
 		bufInfo pointerAt: 1 put: aBuffer handle getHandle.
-		bufInfo uint64At: 9 put: 0.
-		bufInfo uint64At: 17 put: 16rFFFFFFFFFFFFFFFF.
+		bufInfo unsignedLongLongAt: 9 put: 0.
+		bufInfo unsignedLongLongAt: 17 put: 16rFFFFFFFFFFFFFFFF.
 		write := ExternalAddress allocate: 64.
 		[
 			write unsignedLongAt: 1 put: 35.

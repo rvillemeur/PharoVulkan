@@ -25,8 +25,10 @@ PVComputeTest >> buildVectorAddSpirv [
 	pStruct := types pointerType: SpvStorageClass storageBuffer type: struct.
 	pF32Buf := types pointerType: SpvStorageClass storageBuffer type: f32.
 	pUvec3 := types pointerType: SpvStorageClass input type: uvec3.
+	"Block on struct, ArrayStride on rta, Offset=0 on member 0"
 	b addDecoration: struct id decoration: SpvDecoration block literals: #().
-	b addMemberDecoration: struct id member: 0 decoration: SpvDecoration arrayStride literals: { 4 }.
+	b addDecoration: rta id decoration: SpvDecoration arrayStride literals: { 4 }.
+	b addMemberDecoration: struct id member: 0 decoration: SpvDecoration offset literals: { 0 }.
 	bufA := b addGlobalVariable: pStruct storageClass: SpvStorageClass storageBuffer.
 	bufB := b addGlobalVariable: pStruct storageClass: SpvStorageClass storageBuffer.
 	bufR := b addGlobalVariable: pStruct storageClass: SpvStorageClass storageBuffer.
