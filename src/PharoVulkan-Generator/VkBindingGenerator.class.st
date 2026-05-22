@@ -148,10 +148,10 @@ VkBindingGenerator >> generateEnum: enumDesc [
             enumClass comment: 'Generated Vulkan enum: ' , className.
             newClassCount := newClassCount + 1 ]
         ifTrue: [ enumClass := Smalltalk at: className asSymbol ].
-    enumDesc constants do: [ :kv |
+    enumDesc values associationsDo: [ :assoc |
         | sel val src |
-        sel := self selectorFrom: kv key.
-        val := kv value.
+        sel := self selectorFrom: assoc key.
+        val := assoc value.
         src := sel , (String with: Character cr) , '    ^ ' , val printString.
         (enumClass respondsTo: sel asSymbol) ifFalse: [
             enumClass class compile: src classified: 'constants' ] ]

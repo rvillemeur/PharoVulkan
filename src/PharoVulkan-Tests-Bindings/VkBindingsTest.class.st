@@ -34,9 +34,9 @@ VkBindingsTest >> testGeneratorIsIdempotent [
     "Idempotency: generating an existing enum creates no new class."
     | gen desc before after |
     gen := VkBindingGenerator new.
-    desc := VkEnumDesc new.
+    desc := VkEnumDescriptor new.
     desc name: 'VkResult'.
-    desc constants: OrderedCollection new.
+    desc values: OrderedCollection new.
     before := Smalltalk allClasses size.
     gen generateEnum: desc.
     after := Smalltalk allClasses size.
