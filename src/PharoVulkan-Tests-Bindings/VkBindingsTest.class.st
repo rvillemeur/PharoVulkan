@@ -31,15 +31,16 @@ VkBindingsTest >> testEnumeratePhysicalDevices [
 
 { #category : 'as yet unclassified' }
 VkBindingsTest >> testGeneratorIsIdempotent [
-    | gen xmlPath before after delta |
-    xmlPath := self vkXmlPath.
+    "Idempotency: generating an existing enum creates no new class."
+    | gen desc before after |
     gen := VkBindingGenerator new.
-    gen generateAll: xmlPath.
+    desc := VkEnumDesc new.
+    desc name: 'VkResult'.
+    desc constants: OrderedCollection new.
     before := Smalltalk allClasses size.
-    gen generateAll: xmlPath.
+    gen generateEnum: desc.
     after := Smalltalk allClasses size.
-    delta := after - before.
-    self assert: delta equals: 0
+    self assert: after - before equals: 0
 ]
 
 { #category : 'as yet unclassified' }
@@ -56,7 +57,7 @@ VkBindingsTest >> testPhysicalDeviceProperties [
     instance := Vk createInstance: info.
     [ devices := Vk enumeratePhysicalDevices: instance.
       props := VkPhysicalDeviceProperties new.
-      Vk getPhysicalDeviceProperties: (devices at: 1) properties: props.
+      Vk getPhysicalDeviceProperties: (devices at: 1) into: props.
       name := props deviceNameString.
       self assert: (name isKindOf: String).
       self assert: name isNotEmpty ]

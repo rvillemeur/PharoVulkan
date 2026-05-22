@@ -13,13 +13,11 @@ Class {
 { #category : 'as yet unclassified' }
 VkHandle class >> finalizeResourceData: handle [
     "Vulkan handles are driver-owned. Do not free."
-    
 ]
 
 { #category : 'as yet unclassified' }
 VkHandle >> finalize [
     "no-op — Vulkan handles are destroyed via vkDestroy* API only"
-    
 ]
 
 { #category : 'testing' }

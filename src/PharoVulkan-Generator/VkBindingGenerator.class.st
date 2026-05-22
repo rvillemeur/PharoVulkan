@@ -107,6 +107,16 @@ VkBindingGenerator >> generateAll [
     self generateCommands
 ]
 
+{ #category : 'as yet unclassified' }
+VkBindingGenerator >> generateAll: aFilePath [
+    | p |
+    p := VkXmlParser new.
+    p parseFile: aFilePath.
+    self parser: p.
+    newClassCount := 0.
+    self generateAll
+]
+
 { #category : 'generating' }
 VkBindingGenerator >> generateCommands [
     "Add class-side ffiCall: stub methods to Vk for each parsed command.
@@ -126,7 +136,7 @@ VkBindingGenerator >> generateEnum: enumDesc [
     | className enumClass |
     className := enumDesc name.
     (className isNil or: [ className isEmpty ]) ifTrue: [ ^ self ].
-    (className first isUppercase) ifFalse: [ ^ self ].
+    className first isUppercase ifFalse: [ ^ self ].
     (className allSatisfy: [ :c | c isAlphaNumeric or: [ c = $_ ] ]) ifFalse: [ ^ self ].
     (Smalltalk includesKey: className asSymbol)
         ifFalse: [
@@ -142,8 +152,7 @@ VkBindingGenerator >> generateEnum: enumDesc [
         | sel val src |
         sel := self selectorFrom: kv key.
         val := kv value.
-        src := sel , '
-    ^ ' , val printString.
+        src := sel , (String with: Character cr) , '    ^ ' , val printString.
         (enumClass respondsTo: sel asSymbol) ifFalse: [
             enumClass class compile: src classified: 'constants' ] ]
 ]
@@ -211,7 +220,6 @@ VkBindingGenerator >> selectorFrom: aCommandName [
     | parts camel first |
     parts := aCommandName substrings: '_'.
     parts size < 2 ifTrue: [ ^ aCommandName ].
-    "drop vk prefix (first part)"
     first := (parts at: 2) asLowercase.
     camel := WriteStream on: String new.
     camel nextPutAll: first.
