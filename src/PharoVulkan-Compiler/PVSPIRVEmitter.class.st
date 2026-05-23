@@ -20,6 +20,73 @@ PVSPIRVEmitter class >> compileKernel: regOps typeMap: typeMap annotation: ann s
 	^ em module serialize
 ]
 
+{ #category : 'compilation' }
+PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap selectorTable: st [
+	| em mod paramTempDefs preheaderSim headerSim latchSim exitSim phiVarIndices preInitRegs latchResultRegs phiInitSpvIds phiLatchSpvIds phiSpvIds funcType paramTypes retType spvFunc preBlk hdrBlk latchBlk exitBlk condSpvId retSpvId phiType |
+	em := self new initialize.
+	em annotation: ann.
+	mod := em module.
+	mod addCapability: 1.
+	mod setAddressingModel: 0 memoryModel: 1.
+	paramTempDefs := Dictionary new.
+	ann params doWithIndex: [ :p :i |
+		| pId |
+		pId := mod newId.
+		em regMap at: i put: pId.
+		paramTempDefs at: i - 1 put: i.
+		typeMap at: i put: p type ].
+	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: paramTempDefs startingNextReg: ann params size + 1.
+	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim second startingNextReg: preheaderSim fourth.
+	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim second startingNextReg: headerSim fourth.
+	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim second startingNextReg: latchSim fourth.
+	phiVarIndices := OrderedCollection new.
+	preInitRegs := Dictionary new.
+	latchResultRegs := Dictionary new.
+	preheaderSim second keysAndValuesDo: [ :k :preReg |
+		| latchReg |
+		latchReg := latchSim second at: k ifAbsent: [ preReg ].
+		latchReg ~= preReg ifTrue: [
+			phiVarIndices add: k.
+			preInitRegs at: k put: preReg.
+			latchResultRegs at: k put: latchReg ] ].
+	phiVarIndices do: [ :k | typeMap at: (preInitRegs at: k) put: ann params first type ].
+	retType := em spvTypeFor: ann params first type.
+	paramTypes := ann params collect: [ :p | em spvTypeFor: p type ].
+	funcType := mod typeRegistry functionType: retType paramTypes: paramTypes asArray.
+	spvFunc := SpvFunction new id: mod newId; returnType: retType; functionType: funcType; module: mod; initialize; yourself.
+	ann params doWithIndex: [ :p :i |
+		spvFunc parameters add: (SpvInstruction opcode: SpvOpcode opFunctionParameter resultType: (em spvTypeFor: p type) id resultId: (em regMap at: i) operands: #()) ].
+	preBlk := spvFunc addBlock.
+	hdrBlk := spvFunc addBlock.
+	latchBlk := spvFunc addBlock.
+	exitBlk := spvFunc addBlock.
+	em emitRegOps: preheaderSim first typeMap: typeMap selectorTable: st block: preBlk.
+	phiInitSpvIds := Dictionary new.
+	phiVarIndices do: [ :k | phiInitSpvIds at: k put: (em spvIdFor: (preInitRegs at: k)) ].
+	preBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { hdrBlk id }).
+	phiSpvIds := Dictionary new.
+	phiVarIndices do: [ :k |
+		| phiId |
+		phiId := mod newId.
+		phiSpvIds at: k put: phiId.
+		em regMap at: (preInitRegs at: k) put: phiId ].
+	em emitRegOps: headerSim first typeMap: typeMap selectorTable: st block: hdrBlk.
+	condSpvId := em spvIdFor: headerSim third.
+	hdrBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoopMerge resultType: nil resultId: nil operands: { exitBlk id. latchBlk id. 0 }).
+	hdrBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. latchBlk id. exitBlk id }).
+	em emitRegOps: latchSim first typeMap: typeMap selectorTable: st block: latchBlk.
+	phiLatchSpvIds := Dictionary new.
+	phiVarIndices do: [ :k | phiLatchSpvIds at: k put: (em spvIdFor: (latchResultRegs at: k)) ].
+	latchBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { hdrBlk id }).
+	phiType := em spvTypeFor: ann params first type.
+	phiVarIndices do: [ :k |
+		hdrBlk prependInstruction: (SpvInstruction opcode: SpvOpcode opPhi resultType: phiType id resultId: (phiSpvIds at: k) operands: { (phiInitSpvIds at: k). preBlk id. (phiLatchSpvIds at: k). latchBlk id }) ].
+	retSpvId := em spvIdFor: exitSim third.
+	exitBlk terminate: (SpvInstruction opcode: SpvOpcode opReturnValue resultType: nil resultId: nil operands: { retSpvId }).
+	mod addFunction: spvFunc.
+	^ mod serialize
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeMap selectorTable: st [
 	| em mod paramTempDefs condSim condRegOps condNextReg condReg condRegMapSave trueSim trueRegOps trueResultReg trueResultSpvId falseSim falseRegOps falseResultSpvId funcType paramTypes retType spvFunc entryBlk trueBlkSpv falseBlkSpv mergeBlkSpv condSpvId phiId phiType |

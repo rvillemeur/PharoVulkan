@@ -5,6 +5,17 @@ Class {
 	#package : 'PharoVulkan-Compiler'
 }
 
+{ #category : 'examples' }
+PVKernelExamples >> accumulateUpTo: n [
+	<gpu>
+	<param: #i32 named: #n>
+	| sum i |
+	sum := 0.
+	i := 1.
+	[ i <= n ] whileTrue: [ sum := sum + i. i := i + 1 ].
+	^ sum
+]
+
 { #category : 'kernels' }
 PVKernelExamples >> addFloat: a to: b [
 	<gpu>

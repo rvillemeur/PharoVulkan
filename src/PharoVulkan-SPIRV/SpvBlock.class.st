@@ -54,6 +54,11 @@ SpvBlock >> isTerminated [  ^ terminator notNil
 ]
 
 { #category : 'building' }
+SpvBlock >> prependInstruction: anInstruction [
+	instructions addFirst: anInstruction
+]
+
+{ #category : 'building' }
 SpvBlock >> terminate: anInstruction [
     "Set the terminator. Raises if block is already terminated."
     self isTerminated ifTrue: [ Error signal: 'Block already has a terminator' ].
