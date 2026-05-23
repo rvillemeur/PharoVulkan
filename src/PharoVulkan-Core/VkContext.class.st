@@ -112,11 +112,39 @@ VkContext >> fetchComputeQueue [
 
 { #category : 'initialization' }
 VkContext >> initializeCompute [
-    instance := Vk createInstance: VkInstanceCreateInfo new.
-    self selectPhysicalDevice.
-    self createLogicalDevice.
-    self fetchComputeQueue.
-    ^ self
+	"Create instance with Vulkan 1.3 API version so device dispatch table includes vkQueueSubmit2."
+	| appInfo info buf result |
+	appInfo := ExternalAddress allocate: 48.
+	[
+		appInfo unsignedLongAt: 1 put: 0.
+		appInfo pointerAt: 9 put: ExternalAddress null.
+		appInfo pointerAt: 17 put: ExternalAddress null.
+		appInfo unsignedLongAt: 25 put: 0.
+		appInfo pointerAt: 33 put: ExternalAddress null.
+		appInfo unsignedLongAt: 41 put: 0.
+		appInfo unsignedLongAt: 45 put: 4206592.
+		info := ExternalAddress allocate: 64.
+		[
+			info unsignedLongAt: 1 put: 1.
+			info pointerAt: 9 put: ExternalAddress null.
+			info unsignedLongAt: 17 put: 0.
+			info pointerAt: 25 put: appInfo.
+			info unsignedLongAt: 33 put: 0.
+			info pointerAt: 41 put: ExternalAddress null.
+			info unsignedLongAt: 49 put: 0.
+			info pointerAt: 57 put: ExternalAddress null.
+			buf := ExternalAddress allocate: 8.
+			[
+				result := Vk primCreateInstance: info allocator: ExternalAddress null instanceOut: buf.
+				Vk checkResult: result.
+				instance := VkInstance_H fromHandle: (buf pointerAt: 1)
+			] ensure: [ buf free ]
+		] ensure: [ info free ]
+	] ensure: [ appInfo free ].
+	self selectPhysicalDevice.
+	self createLogicalDevice.
+	self fetchComputeQueue.
+	^ self
 ]
 
 { #category : 'accessing' }
