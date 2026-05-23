@@ -78,8 +78,12 @@ VkBuffer >> copyToByteArray [
 
 { #category : 'lifecycle' }
 VkBuffer >> destroy [
-    memory ifNotNil: [ Vk freeMemory: device handle memory: memory allocator: ExternalAddress null. memory := nil ].
-    handle ifNotNil: [ Vk destroyBuffer: device handle buffer: handle allocator: ExternalAddress null. handle := nil ]
+    handle ifNotNil: [
+        Vk destroyBuffer: device handle buffer: handle allocator: ExternalAddress null.
+        handle := nil ].
+    memory ifNotNil: [
+        Vk freeMemory: device handle memory: memory allocator: ExternalAddress null.
+        memory := nil ]
 ]
 
 { #category : 'accessing' }

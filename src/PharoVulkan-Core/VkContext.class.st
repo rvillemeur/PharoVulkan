@@ -87,9 +87,10 @@ VkContext >> createLogicalDevice [
 
 { #category : 'lifecycle' }
 VkContext >> destroy [
-    device ifNotNil: [ device destroy ].
+    device ifNotNil: [ device destroy. device := nil ].
     instance ifNotNil: [
-        Vk destroyInstance: instance allocator: ExternalAddress null ]
+        Vk destroyInstance: instance allocator: ExternalAddress null.
+        instance := nil ]
 ]
 
 { #category : 'accessing' }
