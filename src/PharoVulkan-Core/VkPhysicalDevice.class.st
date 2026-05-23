@@ -50,6 +50,17 @@ VkPhysicalDevice >> findComputeQueueFamily [
 ]
 
 { #category : 'querying' }
+VkPhysicalDevice >> findGraphicsQueueFamily [
+    "VK_QUEUE_GRAPHICS_BIT=1, VK_QUEUE_COMPUTE_BIT=2. Prefer a family with both."
+    queueFamilyProps doWithIndex: [ :flags :i |
+        ((flags bitAnd: 3) = 3) ifTrue: [ ^ i - 1 ] ].
+    "Fall back: graphics only"
+    queueFamilyProps doWithIndex: [ :flags :i |
+        ((flags bitAnd: 1) ~= 0) ifTrue: [ ^ i - 1 ] ].
+    ^ nil
+]
+
+{ #category : 'querying' }
 VkPhysicalDevice >> findMemoryType: typeFilter properties: requiredFlags [
     "memoryTypes array starts at offset 4 in VkPhysicalDeviceMemoryProperties,"
     "each VkMemoryType = 8 bytes: propertyFlags(4) + heapIndex(4)"
