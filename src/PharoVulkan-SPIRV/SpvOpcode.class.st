@@ -166,6 +166,11 @@ SpvOpcode class >> opMemberDecorate [      ^ 72
 SpvOpcode class >> opMemoryModel [         ^ 14
 ]
 
+{ #category : 'opcodes' }
+SpvOpcode class >> opPhi [
+	^ 245
+]
+
 { #category : 'control-flow' }
 SpvOpcode class >> opReturn [              ^ 253
 ]
