@@ -16,13 +16,12 @@ VkCommandBuffer class >> on: aHandle pool: aPool [
 
 { #category : 'recording' }
 VkCommandBuffer >> begin [
-    "VkCommandBufferBeginInfo: sType=42, pNext=null, flags=1 (ONE_TIME_SUBMIT)"
     | info result |
     info := ExternalAddress allocate: 32.
     [ info unsignedLongAt: 1 put: 42.
       info pointerAt: 9 put: ExternalAddress null.
-      info unsignedLongAt: 17 put: 1.  "ONE_TIME_SUBMIT"
-      info pointerAt: 21 put: ExternalAddress null.
+      info unsignedLongAt: 17 put: 1.
+      info pointerAt: 25 put: ExternalAddress null.
       result := Vk beginCommandBuffer: handle beginInfo: info.
       Vk checkResult: result
     ] ensure: [ info free ]

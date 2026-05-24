@@ -163,31 +163,28 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
     ] ensure: [ caps free ]
 ]
 
-{ #category : 'operations' }
+{ #category : 'rendering' }
 VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
     | semBuf presentInfo result |
     semBuf := ExternalAddress allocate: 8.
-    [
-        semBuf pointerAt: 1 put: semaphore.
-        presentInfo := ExternalAddress allocate: 64.
-        [
-            | idxBuf swapBuf |
-            idxBuf := ExternalAddress allocate: 4.
-            swapBuf := ExternalAddress allocate: 8.
-            [
-                idxBuf unsignedLongAt: 1 put: imageIndex.
-                swapBuf pointerAt: 1 put: handle.
-                presentInfo unsignedLongAt: 1  put: 1000001001.  "VK_STRUCTURE_TYPE_PRESENT_INFO_KHR"
-                presentInfo pointerAt:   9  put: ExternalAddress null.
-                presentInfo unsignedLongAt: 17 put: 1.  "waitSemaphoreCount"
-                presentInfo pointerAt:   25 put: semBuf.
-                presentInfo unsignedLongAt: 33 put: 1.  "swapchainCount"
-                presentInfo pointerAt:   41 put: swapBuf.
-                presentInfo pointerAt:   49 put: idxBuf.
-                presentInfo pointerAt:   57 put: ExternalAddress null.  "pResults"
-                result := Vk queuePresentKHR: aVkQueue handle pPresentInfo: presentInfo.
-                Vk checkResult: result
-            ] ensure: [ idxBuf free. swapBuf free ]
-        ] ensure: [ presentInfo free ]
+    [ semBuf pointerAt: 1 put: semaphore getHandle.
+      presentInfo := ExternalAddress allocate: 64.
+      [ | idxBuf swapBuf |
+        idxBuf := ExternalAddress allocate: 4.
+        swapBuf := ExternalAddress allocate: 8.
+        [ idxBuf unsignedLongAt: 1 put: imageIndex.
+          swapBuf pointerAt: 1 put: handle getHandle.
+          presentInfo unsignedLongAt: 1  put: 1000001001.
+          presentInfo pointerAt:   9  put: ExternalAddress null.
+          presentInfo unsignedLongAt: 17 put: 1.
+          presentInfo pointerAt:   25 put: semBuf.
+          presentInfo unsignedLongAt: 33 put: 1.
+          presentInfo pointerAt:   41 put: swapBuf.
+          presentInfo pointerAt:   49 put: idxBuf.
+          presentInfo pointerAt:   57 put: ExternalAddress null.
+          result := Vk queuePresentKHR: aVkQueue handle pPresentInfo: presentInfo.
+          Vk checkResult: result
+        ] ensure: [ idxBuf free. swapBuf free ]
+      ] ensure: [ presentInfo free ]
     ] ensure: [ semBuf free ]
 ]
