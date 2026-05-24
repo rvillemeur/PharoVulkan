@@ -111,7 +111,7 @@ VkBindingGenerator >> generateAll [
     self generateCommands
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'generating' }
 VkBindingGenerator >> generateAll: aFilePath [
     | p |
     p := VkXmlParser new.
@@ -135,7 +135,7 @@ VkBindingGenerator >> generateCommands [
                 classified: 'generated-api']]
 ]
 
-{ #category : 'generation' }
+{ #category : 'generating' }
 VkBindingGenerator >> generateEnum: enumDesc [
     | className enumClass |
     className := enumDesc name.
