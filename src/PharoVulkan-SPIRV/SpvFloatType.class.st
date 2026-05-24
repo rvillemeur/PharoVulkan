@@ -20,7 +20,7 @@ SpvFloatType >> instruction [
         operands: { width }
 ]
 
-{ #category : 'accessing' }
+{ #category : 'abstract' }
 SpvFloatType >> key [ ^ Array with: #float with: width
 ]
 

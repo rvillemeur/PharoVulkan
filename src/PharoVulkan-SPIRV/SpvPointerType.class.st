@@ -29,7 +29,7 @@ SpvPointerType >> instruction [
         operands: { storageClass. baseType id }
 ]
 
-{ #category : 'accessing' }
+{ #category : 'abstract' }
 SpvPointerType >> key [ ^ Array with: #pointer with: storageClass with: baseType id
 ]
 

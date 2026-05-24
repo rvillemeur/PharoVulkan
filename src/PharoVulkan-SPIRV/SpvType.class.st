@@ -27,7 +27,9 @@ SpvType >> instruction [ ^ self subclassResponsibility
 ]
 
 { #category : 'abstract' }
-SpvType >> key [    ^ self subclassResponsibility
+SpvType >> key [
+
+	^ self subclassResponsibility
 ]
 
 { #category : 'accessing' }

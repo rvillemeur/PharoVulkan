@@ -11,3 +11,13 @@ Class {
 	#category : 'PharoVulkan-SPIRV',
 	#package : 'PharoVulkan-SPIRV'
 }
+
+{ #category : 'as yet unclassified' }
+SpvArrayType >> instruction [
+	^ self shouldBeImplemented
+]
+
+{ #category : 'as yet unclassified' }
+SpvArrayType >> key [
+	^ self shouldBeImplemented
+]

@@ -9,7 +9,8 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'parser',
-		'targetEnvironment'
+		'targetEnvironment',
+		'newClassCount'
 	],
 	#category : 'PharoVulkan-Generator',
 	#package : 'PharoVulkan-Generator'
@@ -134,20 +135,17 @@ VkBindingGenerator >> generateCommands [
                 classified: 'generated-api']]
 ]
 
-{ #category : 'generating' }
+{ #category : 'generation' }
 VkBindingGenerator >> generateEnum: enumDesc [
     | className enumClass |
     className := enumDesc name.
     (className isNil or: [ className isEmpty ]) ifTrue: [ ^ self ].
     className first isUppercase ifFalse: [ ^ self ].
     (className allSatisfy: [ :c | c isAlphaNumeric or: [ c = $_ ] ]) ifFalse: [ ^ self ].
-    (Smalltalk includesKey: className asSymbol)
+    (Smalltalk globals includesKey: className asSymbol)
         ifFalse: [
-            enumClass := Object subclass: className asSymbol
-                instanceVariableNames: ''
-                classVariableNames: ''
-                poolDictionaries: ''
-                category: 'PharoVulkan-Bindings'.
+            enumClass := Object << className asSymbol
+                package: 'PharoVulkan-Bindings'.
             enumClass comment: 'Generated Vulkan enum: ' , className.
             newClassCount := newClassCount + 1 ]
         ifTrue: [ enumClass := Smalltalk at: className asSymbol ].

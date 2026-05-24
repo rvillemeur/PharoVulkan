@@ -13,6 +13,6 @@ SpvVoidType >> instruction [
     ^ SpvInstruction opcode: SpvOpcode opTypeVoid resultType: nil resultId: id operands: #()
 ]
 
-{ #category : 'accessing' }
+{ #category : 'abstract' }
 SpvVoidType >> key [ ^ #void
 ]

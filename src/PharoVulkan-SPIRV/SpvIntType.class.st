@@ -21,7 +21,7 @@ SpvIntType >> instruction [
         operands: { width. (signed ifTrue: [1] ifFalse: [0]) }
 ]
 
-{ #category : 'accessing' }
+{ #category : 'abstract' }
 SpvIntType >> key [ ^ Array with: #int with: width with: signed
 ]
 

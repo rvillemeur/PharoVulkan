@@ -37,6 +37,6 @@ SpvVectorType >> instruction [
         operands: { componentType id. count }
 ]
 
-{ #category : 'accessing' }
+{ #category : 'abstract' }
 SpvVectorType >> key [ ^ Array with: #vector with: componentType id with: count
 ]
