@@ -402,7 +402,7 @@ PVSPIRVEmitter >> emitSelection: selNode typeMap: typeMap selectorTable: st func
 	^ nil
 ]
 
-{ #category : 'initialize-release' }
+{ #category : 'initialization' }
 PVSPIRVEmitter >> initialize [
 	super initialize.
 	regMap := Dictionary new

@@ -38,7 +38,7 @@ SpvIRStore >> pointer [ ^ pointer
 SpvIRStore >> pointer: p [ pointer := p
 ]
 
-{ #category : 'accessing' }
+{ #category : 'evaluating' }
 SpvIRStore >> value [ ^ value
 ]
 

@@ -10,7 +10,7 @@ Class {
 	#package : 'BaselineOfPharoVulkan'
 }
 
-{ #category : 'baseline' }
+{ #category : 'baselines' }
 BaselineOfPharoVulkan >> baseline: spec [
 	<baseline>
 	spec for: #common do: [

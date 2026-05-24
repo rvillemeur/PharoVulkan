@@ -27,7 +27,7 @@ SpvIRReturnValue >> emitInto: blk idMap: map module: m [
 SpvIRReturnValue >> hasResult [ ^ false
 ]
 
-{ #category : 'accessing' }
+{ #category : 'evaluating' }
 SpvIRReturnValue >> value [ ^ value
 ]
 

@@ -56,7 +56,7 @@ SpvOpcode class >> opConvertSToF [
 	^ 111
 ]
 
-{ #category : 'conversion' }
+{ #category : 'converting' }
 SpvOpcode class >> opConvertUToF [         ^ 112
 ]
 

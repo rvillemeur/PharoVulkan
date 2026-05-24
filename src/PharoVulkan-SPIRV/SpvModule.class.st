@@ -114,12 +114,12 @@ SpvModule >> globalVariables [ ^ globalVariables
 
 { #category : 'building' }
 SpvModule >> importExtInstSet: aName [
-    "Import an extended instruction set (e.g. GLSL.std.450). Returns its result id."
-    ^ extInstSets at: aName ifAbsent: [
-        | id |
-        id := self newId.
-        extInstSets at: aName put: id.
-        id ]
+	"Import an extended instruction set (e.g. GLSL.std.450). Returns its result id."
+
+	^ extInstSets at: aName ifAbsentPut: [
+			  | id |
+			  id := self newId.
+			  id ]
 ]
 
 { #category : 'initialization' }
