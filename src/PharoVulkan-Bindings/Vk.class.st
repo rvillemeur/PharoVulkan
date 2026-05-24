@@ -333,6 +333,12 @@ Vk class >> queueWaitIdle: queue [
     ^ self ffiCall: #( VkResult vkQueueWaitIdle ( VkQueue_H queue ) )
 ]
 
+{ #category : 'commands' }
+Vk class >> resetCommandPool: deviceHandle commandPool: poolHandle flags: flags [
+    <primitive: #primitiveNativeCall>
+    ^ self ffiCall: #(int vkResetCommandPool (void* deviceHandle, void* poolHandle, uint32 flags)) library: VkLibrary
+]
+
 { #category : 'generated-api' }
 Vk class >> unmapMemory: device memory: memory [
     ^ self ffiCall: #( void vkUnmapMemory (

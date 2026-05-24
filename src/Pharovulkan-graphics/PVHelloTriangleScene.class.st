@@ -17,7 +17,8 @@ Class {
 		'imageAvailable',
 		'renderFinished',
 		'inFlightFence',
-		'vertexBuffer'
+		'vertexBuffer',
+		'commandBuffer'
 	],
 	#category : 'Pharovulkan-graphics-example',
 	#package : 'Pharovulkan-graphics',
@@ -256,7 +257,6 @@ PVHelloTriangleScene >> inFlightFence [ ^ inFlightFence
 
 { #category : 'initialization' }
 PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow [
-
 	| ext |
 	ctx := aVkContext.
 	surface := VkSurface
@@ -269,15 +269,16 @@ PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow 
 		              createColorPassDevice: ctx device
 		              format: swapchain format.
 	framebuffers := swapchain imageViews collect: [ :view |
-			                VkFramebuffer
-				                on: ctx device
-				                renderPass: renderPass
-				                imageView: view
-				                width: ext x
-				                height: ext y ].
+		                VkFramebuffer
+			                on: ctx device
+			                renderPass: renderPass
+			                imageView: view
+			                width: ext x
+			                height: ext y ].
 	commandPool := VkCommandPool
 		               on: ctx device
 		               queueFamilyIndex: ctx computeQueueFamily.
+	commandBuffer := commandPool allocateBuffer.
 	vertexShaderModule := VkShaderModule
 		                      fromBytes: self buildVertexShader
 		                      device: ctx device.
@@ -319,16 +320,15 @@ PVHelloTriangleScene >> renderFinished [ ^ renderFinished
 
 { #category : 'rendering' }
 PVHelloTriangleScene >> renderFrame [
-
-	| imageIndex cb ext |
+	| imageIndex ext |
 	inFlightFence waitTimeout: 16rFFFFFFFFFFFFFFFF.
 	inFlightFence reset.
 	imageIndex := swapchain
 		              acquireNextImage: imageAvailable handle
 		              fence: ExternalAddress null.
 	ext := swapchain extent.
-	cb := commandPool allocateBuffer.
-	cb do: [ :c |
+	commandPool reset.
+	commandBuffer do: [ :c |
 			c
 				beginRenderPass: renderPass
 				framebuffer: (framebuffers at: imageIndex + 1)
@@ -339,7 +339,7 @@ PVHelloTriangleScene >> renderFrame [
 			c bindVertexBuffer: vertexBuffer.
 			c draw: 3 ].
 	ctx computeQueue
-		submitGraphics: cb
+		submitGraphics: commandBuffer
 		waitSemaphore: imageAvailable
 		signalSemaphore: renderFinished
 		fence: inFlightFence.

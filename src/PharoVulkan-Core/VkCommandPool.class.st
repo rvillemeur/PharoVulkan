@@ -68,7 +68,9 @@ VkCommandPool >> allocateBuffer [
 
 { #category : 'lifecycle' }
 VkCommandPool >> destroy [
-    Vk destroyCommandPool: device handle commandPool: handle allocator: ExternalAddress null
+    handle ifNil: [ ^ self ].
+    Vk destroyCommandPool: device handle commandPool: handle allocator: ExternalAddress null.
+    handle := nil
 ]
 
 { #category : 'accessing' }
@@ -79,4 +81,9 @@ VkCommandPool >> handle [
 { #category : 'initialization' }
 VkCommandPool >> initializeWith: aHandle device: aDevice queueFamilyIndex: idx [
     handle := aHandle. device := aDevice. queueFamilyIndex := idx
+]
+
+{ #category : 'operations' }
+VkCommandPool >> reset [
+    Vk resetCommandPool: device handle commandPool: handle flags: 0
 ]
