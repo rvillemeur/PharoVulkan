@@ -75,57 +75,66 @@ VkContext >> computeQueueFamily [
 VkContext >> createGraphicsDevice [
     | queueInfo sync2Feat extNameBytes extName extPtrBuf deviceInfo devBuf result devHandle |
     queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
-    sync2Feat := ExternalAddress allocate: 24.
-    sync2Feat unsignedLongAt: 1 put: VkStructureType physicalDeviceSynchronization2Features.
-    sync2Feat pointerAt: 9 put: ExternalAddress null.
-    sync2Feat unsignedLongAt: 17 put: 1.
-    extNameBytes := 'VK_KHR_swapchain' asByteArray copyWith: 0.
-    extName := ExternalAddress allocate: extNameBytes size.
-    [ 1 to: extNameBytes size do: [:i | extName byteAt: i put: (extNameBytes at: i)].
-      extPtrBuf := ExternalAddress allocate: 8.
-      [ extPtrBuf pointerAt: 1 put: extName.
-        deviceInfo := ExternalAddress allocate: 72.
-        [ deviceInfo unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
-          deviceInfo pointerAt: 9 put: sync2Feat.
-          deviceInfo unsignedLongAt: 17 put: 0.
-          deviceInfo unsignedLongAt: 21 put: 1.
-          deviceInfo pointerAt: 25 put: queueInfo.
-          deviceInfo unsignedLongAt: 33 put: 0.
-          deviceInfo pointerAt: 41 put: ExternalAddress null.
-          deviceInfo unsignedLongAt: 49 put: 1.
-          deviceInfo pointerAt: 57 put: extPtrBuf.
-          deviceInfo pointerAt: 65 put: ExternalAddress null.
-          devBuf := ExternalAddress allocate: 8.
-          [ result := Vk createDevice: physicalDevice handle createInfo: deviceInfo allocator: ExternalAddress null deviceOut: devBuf.
-            Vk checkResult: result.
-            devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-            device := VkDevice on: devHandle physicalDevice: physicalDevice context: self
-          ] ensure: [ devBuf free ]
-        ] ensure: [ deviceInfo free ]
-      ] ensure: [ extPtrBuf free ]
-    ] ensure: [ extName free ]
+    [ sync2Feat := ExternalAddress allocate: 24.
+      [ sync2Feat unsignedLongAt: 1 put: VkStructureType physicalDeviceSynchronization2Features.
+        sync2Feat pointerAt: 9 put: ExternalAddress null.
+        sync2Feat unsignedLongAt: 17 put: 1.
+        extNameBytes := 'VK_KHR_swapchain' asByteArray copyWith: 0.
+        extName := ExternalAddress allocate: extNameBytes size.
+        [ 1 to: extNameBytes size do: [:i | extName byteAt: i put: (extNameBytes at: i)].
+          extPtrBuf := ExternalAddress allocate: 8.
+          [ extPtrBuf pointerAt: 1 put: extName.
+            deviceInfo := ExternalAddress allocate: 72.
+            [ deviceInfo unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
+              deviceInfo pointerAt: 9 put: sync2Feat.
+              deviceInfo unsignedLongAt: 17 put: 0.
+              deviceInfo unsignedLongAt: 21 put: 1.
+              deviceInfo pointerAt: 25 put: queueInfo.
+              deviceInfo unsignedLongAt: 33 put: 0.
+              deviceInfo pointerAt: 41 put: ExternalAddress null.
+              deviceInfo unsignedLongAt: 49 put: 1.
+              deviceInfo pointerAt: 57 put: extPtrBuf.
+              deviceInfo pointerAt: 65 put: ExternalAddress null.
+              devBuf := ExternalAddress allocate: 8.
+              [ result := Vk createDevice: physicalDevice handle createInfo: deviceInfo allocator: ExternalAddress null deviceOut: devBuf.
+                Vk checkResult: result.
+                devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+                device := VkDevice on: devHandle physicalDevice: physicalDevice context: self
+              ] ensure: [ devBuf free ]
+            ] ensure: [ deviceInfo free ]
+          ] ensure: [ extPtrBuf free ]
+        ] ensure: [ extName free ]
+      ] ensure: [ sync2Feat free ].
+      (queueInfo pointerAt: 33) free
+    ] ensure: [ queueInfo free ]
 ]
 
 { #category : 'initialization' }
 VkContext >> createLogicalDevice [
     | queueInfo deviceInfo devBuf result devHandle |
-    "Build VkDeviceQueueCreateInfo (sType=2, familyIdx, queueCount=1, pPriorities)"
     queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
-    deviceInfo := self buildDeviceCreateInfo: queueInfo.
-    devBuf := ExternalAddress allocate: 8.
-    [ result := Vk createDevice: physicalDevice handle
-        createInfo: deviceInfo
-        allocator: ExternalAddress null
-        deviceOut: devBuf.
-      Vk checkResult: result.
-      devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-      device := VkDevice on: devHandle physicalDevice: physicalDevice context: self.
-    ] ensure: [ devBuf free ]
+    [ deviceInfo := self buildDeviceCreateInfo: queueInfo.
+      [ devBuf := ExternalAddress allocate: 8.
+        [ result := Vk createDevice: physicalDevice handle
+            createInfo: deviceInfo
+            allocator: ExternalAddress null
+            deviceOut: devBuf.
+          Vk checkResult: result.
+          devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+          device := VkDevice on: devHandle physicalDevice: physicalDevice context: self
+        ] ensure: [ devBuf free ].
+        (deviceInfo pointerAt: 9) free
+      ] ensure: [ deviceInfo free ].
+      (queueInfo pointerAt: 33) free
+    ] ensure: [ queueInfo free ]
 ]
 
 { #category : 'lifecycle' }
 VkContext >> destroy [
-    device ifNotNil: [ device destroy. device := nil ].
+    device ifNotNil: [
+        Vk deviceWaitIdle: device handle.
+        device destroy.
+        device := nil ].
     instance ifNotNil: [
         Vk destroyInstance: instance allocator: ExternalAddress null.
         instance := nil ]

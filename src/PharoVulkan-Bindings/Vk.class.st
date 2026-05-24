@@ -197,6 +197,11 @@ Vk class >> destroyShaderModule: device shaderModule: shaderModule allocator: pA
         VkDevice_H device, VkShaderModule_H shaderModule, void* pAllocator ) )
 ]
 
+{ #category : 'commands' }
+Vk class >> deviceWaitIdle: device [
+    ^ self ffiCall: #( int vkDeviceWaitIdle ( VkDevice_H device ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> endCommandBuffer: commandBuffer [
     ^ self ffiCall: #( VkResult vkEndCommandBuffer (
