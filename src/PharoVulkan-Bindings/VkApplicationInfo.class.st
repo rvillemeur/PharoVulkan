@@ -84,7 +84,8 @@ VkApplicationInfo >> pApplicationName [
 { #category : 'accessing - structure variables' }
 VkApplicationInfo >> pApplicationName: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PAPPLICATIONNAME put: anObject getHandle.
+
+	handle pointerAt: OFFSET_PAPPLICATIONNAME put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }
@@ -96,7 +97,8 @@ VkApplicationInfo >> pEngineName [
 { #category : 'accessing - structure variables' }
 VkApplicationInfo >> pEngineName: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PENGINENAME put: anObject getHandle.
+
+	handle pointerAt: OFFSET_PENGINENAME put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }
@@ -108,7 +110,8 @@ VkApplicationInfo >> pNext [
 { #category : 'accessing - structure variables' }
 VkApplicationInfo >> pNext: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PNEXT put: anObject getHandle.
+
+	handle pointerAt: OFFSET_PNEXT put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }

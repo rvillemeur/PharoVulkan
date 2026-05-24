@@ -168,18 +168,43 @@ PVHelloTriangleScene >> commandPool [ ^ commandPool
 
 { #category : 'lifecycle' }
 PVHelloTriangleScene >> destroy [
-    inFlightFence ifNotNil: [ inFlightFence destroy. inFlightFence := nil ].
-    renderFinished ifNotNil: [ renderFinished destroy. renderFinished := nil ].
-    imageAvailable ifNotNil: [ imageAvailable destroy. imageAvailable := nil ].
-    vertexBuffer ifNotNil: [ vertexBuffer destroy. vertexBuffer := nil ].
-    pipeline ifNotNil: [ pipeline destroy. pipeline := nil ].
-    fragmentShaderModule ifNotNil: [ fragmentShaderModule destroy. fragmentShaderModule := nil ].
-    vertexShaderModule ifNotNil: [ vertexShaderModule destroy. vertexShaderModule := nil ].
-    commandPool ifNotNil: [ commandPool destroy. commandPool := nil ].
-    framebuffers ifNotNil: [ framebuffers do: [:fb | fb destroy]. framebuffers := nil ].
-    renderPass ifNotNil: [ renderPass destroy. renderPass := nil ].
-    swapchain ifNotNil: [ swapchain destroy. swapchain := nil ].
-    surface ifNotNil: [ surface destroy. surface := nil ].
+
+	inFlightFence ifNotNil: [
+			inFlightFence destroy.
+			inFlightFence := nil ].
+	renderFinished ifNotNil: [
+			renderFinished destroy.
+			renderFinished := nil ].
+	imageAvailable ifNotNil: [
+			imageAvailable destroy.
+			imageAvailable := nil ].
+	vertexBuffer ifNotNil: [
+			vertexBuffer destroy.
+			vertexBuffer := nil ].
+	pipeline ifNotNil: [
+			pipeline destroy.
+			pipeline := nil ].
+	fragmentShaderModule ifNotNil: [
+			fragmentShaderModule destroy.
+			fragmentShaderModule := nil ].
+	vertexShaderModule ifNotNil: [
+			vertexShaderModule destroy.
+			vertexShaderModule := nil ].
+	commandPool ifNotNil: [
+			commandPool destroy.
+			commandPool := nil ].
+	framebuffers ifNotNil: [
+			framebuffers do: [ :fb | fb destroy ].
+			framebuffers := nil ].
+	renderPass ifNotNil: [
+			renderPass destroy.
+			renderPass := nil ].
+	swapchain ifNotNil: [
+			swapchain destroy.
+			swapchain := nil ].
+	surface ifNotNil: [
+			surface destroy.
+			surface := nil ]
 ]
 
 { #category : 'accessing' }
@@ -196,24 +221,46 @@ PVHelloTriangleScene >> inFlightFence [ ^ inFlightFence
 
 { #category : 'initialization' }
 PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow [
-    | ext |
-    ctx := aVkContext.
-    surface := VkSurface fromWindow: aBackendWindow instance: ctx instance physicalDevice: ctx physicalDevice.
-    ext := aBackendWindow vulkanDrawableExtent.
-    swapchain := VkSwapchain on: ctx device surface: surface extent: ext.
-    renderPass := VkRenderPass createColorPassDevice: ctx device format: swapchain format.
-    framebuffers := swapchain imageViews collect: [:view |
-        VkFramebuffer on: ctx device renderPass: renderPass imageView: view width: ext x height: ext y].
-    commandPool := VkCommandPool on: ctx device queueFamilyIndex: ctx computeQueueFamily.
-    vertexShaderModule := VkShaderModule fromBytes: self buildVertexShader device: ctx device.
-    fragmentShaderModule := VkShaderModule fromBytes: self buildFragmentShader device: ctx device.
-    pipeline := VkGraphicsPipeline createDevice: ctx device renderPass: renderPass vertexModule: vertexShaderModule fragmentModule: fragmentShaderModule extent: ext.
-    vertexBuffer := VkBuffer on: ctx device size: 60 usage: 128.
-    vertexBuffer allocate.
-    vertexBuffer copyFromByteArray: self buildVertexData.
-    imageAvailable := VkSemaphoreWrapper createDevice: ctx device.
-    renderFinished := VkSemaphoreWrapper createDevice: ctx device.
-    inFlightFence := VkFenceWrapper createSignaledDevice: ctx device.
+
+	| ext |
+	ctx := aVkContext.
+	surface := VkSurface
+		           fromWindow: aBackendWindow
+		           instance: ctx instance
+		           physicalDevice: ctx physicalDevice.
+	ext := aBackendWindow vulkanDrawableExtent.
+	swapchain := VkSwapchain on: ctx device surface: surface extent: ext.
+	renderPass := VkRenderPass
+		              createColorPassDevice: ctx device
+		              format: swapchain format.
+	framebuffers := swapchain imageViews collect: [ :view |
+			                VkFramebuffer
+				                on: ctx device
+				                renderPass: renderPass
+				                imageView: view
+				                width: ext x
+				                height: ext y ].
+	commandPool := VkCommandPool
+		               on: ctx device
+		               queueFamilyIndex: ctx computeQueueFamily.
+	vertexShaderModule := VkShaderModule
+		                      fromBytes: self buildVertexShader
+		                      device: ctx device.
+	fragmentShaderModule := VkShaderModule
+		                        fromBytes: self buildFragmentShader
+		                        device: ctx device.
+	pipeline := VkGraphicsPipeline
+		            createDevice: ctx device
+		            renderPass: renderPass
+		            vertexModule: vertexShaderModule
+		            fragmentModule: fragmentShaderModule
+		            extent: ext.
+	vertexBuffer := VkBuffer on: ctx device size: 60 usage: 128.
+	vertexBuffer allocate.
+	vertexBuffer copyFromByteArray: self buildVertexData.
+	imageAvailable := VkSemaphoreWrapper createDevice: ctx device.
+	renderFinished := VkSemaphoreWrapper createDevice: ctx device.
+	inFlightFence := VkFenceWrapper createSignaledDevice: ctx device
 ]
 
 { #category : 'accessing' }
@@ -222,12 +269,13 @@ PVHelloTriangleScene >> pipeline [ ^ pipeline
 
 { #category : 'private' }
 PVHelloTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
-    | bits |
-    bits := aFloat asIEEE32BitWord.
-    aByteArray at: offset put: (bits bitAnd: 16rFF).
-    aByteArray at: offset + 1 put: ((bits >> 8) bitAnd: 16rFF).
-    aByteArray at: offset + 2 put: ((bits >> 16) bitAnd: 16rFF).
-    aByteArray at: offset + 3 put: ((bits >> 24) bitAnd: 16rFF).
+
+	| bits |
+	bits := aFloat asIEEE32BitWord.
+	aByteArray at: offset put: (bits bitAnd: 16rFF).
+	aByteArray at: offset + 1 put: (bits >> 8 bitAnd: 16rFF).
+	aByteArray at: offset + 2 put: (bits >> 16 bitAnd: 16rFF).
+	aByteArray at: offset + 3 put: (bits >> 24 bitAnd: 16rFF)
 ]
 
 { #category : 'accessing' }
@@ -236,21 +284,34 @@ PVHelloTriangleScene >> renderFinished [ ^ renderFinished
 
 { #category : 'rendering' }
 PVHelloTriangleScene >> renderFrame [
-    | imageIndex cb ext |
-    inFlightFence waitTimeout: 16rFFFFFFFFFFFFFFFF.
-    inFlightFence reset.
-    imageIndex := swapchain acquireNextImage: imageAvailable handle fence: ExternalAddress null.
-    ext := swapchain extent.
-    cb := commandPool allocateBuffer.
-    cb do: [:c |
-        c beginRenderPass: renderPass framebuffer: (framebuffers at: imageIndex + 1) extent: ext.
-        c bindGraphicsPipeline: pipeline.
-        c setViewport: ext.
-        c setScissor: ext.
-        c bindVertexBuffer: vertexBuffer.
-        c draw: 3].
-    ctx computeQueue submitGraphics: cb waitSemaphore: imageAvailable signalSemaphore: renderFinished fence: inFlightFence.
-    swapchain present: imageIndex queue: ctx computeQueue waitSemaphore: renderFinished handle.
+
+	| imageIndex cb ext |
+	inFlightFence waitTimeout: 16rFFFFFFFFFFFFFFFF.
+	inFlightFence reset.
+	imageIndex := swapchain
+		              acquireNextImage: imageAvailable handle
+		              fence: ExternalAddress null.
+	ext := swapchain extent.
+	cb := commandPool allocateBuffer.
+	cb do: [ :c |
+			c
+				beginRenderPass: renderPass
+				framebuffer: (framebuffers at: imageIndex + 1)
+				extent: ext.
+			c bindGraphicsPipeline: pipeline.
+			c setViewport: ext.
+			c setScissor: ext.
+			c bindVertexBuffer: vertexBuffer.
+			c draw: 3 ].
+	ctx computeQueue
+		submitGraphics: cb
+		waitSemaphore: imageAvailable
+		signalSemaphore: renderFinished
+		fence: inFlightFence.
+	swapchain
+		present: imageIndex
+		queue: ctx computeQueue
+		waitSemaphore: renderFinished handle
 ]
 
 { #category : 'accessing' }

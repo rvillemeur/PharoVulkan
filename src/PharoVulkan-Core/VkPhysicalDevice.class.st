@@ -6,7 +6,6 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'handle',
-		'properties',
 		'queueFamilyProps',
 		'memoryProperties'
 	],

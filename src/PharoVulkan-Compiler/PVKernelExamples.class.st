@@ -45,7 +45,8 @@ PVKernelExamples >> mulFloat: a by: b [
 
 { #category : 'kernels' }
 PVKernelExamples >> relu: x [
+
 	<gpu>
 	<param: #f32 named: #x>
-	^ x < 0.0 ifTrue: [ 0.0 ] ifFalse: [ x ]
+	^ x max: 0.0
 ]

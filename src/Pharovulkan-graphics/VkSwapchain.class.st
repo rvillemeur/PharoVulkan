@@ -25,14 +25,19 @@ VkSwapchain class >> on: aVkDevice surface: aVkSurface extent: aPoint [
 
 { #category : 'operations' }
 VkSwapchain >> acquireNextImage: semaphore fence: fence [
-    | idxBuf result |
-    idxBuf := ExternalAddress allocate: 4.
-    [
-        result := Vk acquireNextImageKHR: device handle swapchain: handle
-            timeout: 16rFFFFFFFFFFFFFFFF semaphore: semaphore fence: fence pImageIndex: idxBuf.
-        Vk checkResult: result.
-        ^ idxBuf unsignedLongAt: 1
-    ] ensure: [ idxBuf free ]
+
+	| idxBuf result |
+	idxBuf := ExternalAddress allocate: 4.
+	^ [
+		  result := Vk
+			            acquireNextImageKHR: device handle
+			            swapchain: handle
+			            timeout: 18446744073709551615
+			            semaphore: semaphore
+			            fence: fence
+			            pImageIndex: idxBuf.
+		  Vk checkResult: result.
+		  idxBuf unsignedLongAt: 1 ] ensure: [ idxBuf free ]
 ]
 
 { #category : 'initialization' }
@@ -108,67 +113,109 @@ VkSwapchain >> images [
 
 { #category : 'initialization' }
 VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
-    | caps formatBuf countBuf result fmtCount swapInfo outBuf imgCountBuf imgBuf |
-    device := aVkDevice. surface := aVkSurface. extent := aPoint.
-    caps := ExternalAddress allocate: 52.
-    [ aVkSurface queryCapabilitiesInto: caps.
-      countBuf := ExternalAddress allocate: 4.
-      [ result := Vk getPhysicalDeviceSurfaceFormatsKHR: aVkSurface physicalDevice handle
-            surface: aVkSurface handle pSurfaceFormatCount: countBuf pSurfaceFormats: ExternalAddress null.
-        Vk checkResult: result.
-        fmtCount := countBuf unsignedLongAt: 1.
-        formatBuf := ExternalAddress allocate: fmtCount * 8.
-        [ result := Vk getPhysicalDeviceSurfaceFormatsKHR: aVkSurface physicalDevice handle
-              surface: aVkSurface handle pSurfaceFormatCount: countBuf pSurfaceFormats: formatBuf.
-          Vk checkResult: result.
-          format := formatBuf unsignedLongAt: 1.
-          1 to: fmtCount do: [:i |
-              (formatBuf unsignedLongAt: (i - 1) * 8 + 1) = VkFormat b8g8r8a8Unorm ifTrue: [ format := VkFormat b8g8r8a8Unorm ]]
-        ] ensure: [ formatBuf free ]
-      ] ensure: [ countBuf free ].
-      imageCount := (caps unsignedLongAt: 1) + 1.
-      (caps unsignedLongAt: 5) > 0 ifTrue: [ imageCount := imageCount min: (caps unsignedLongAt: 5) ].
-      "VkSwapchainCreateInfoKHR (104 bytes):
+
+	| caps formatBuf countBuf result fmtCount swapInfo outBuf imgCountBuf imgBuf |
+	device := aVkDevice.
+	surface := aVkSurface.
+	extent := aPoint.
+	caps := ExternalAddress allocate: 52.
+	[
+		aVkSurface queryCapabilitiesInto: caps.
+		countBuf := ExternalAddress allocate: 4.
+		[
+			result := Vk
+				          getPhysicalDeviceSurfaceFormatsKHR:
+				          aVkSurface physicalDevice handle
+				          surface: aVkSurface handle
+				          pSurfaceFormatCount: countBuf
+				          pSurfaceFormats: ExternalAddress null.
+			Vk checkResult: result.
+			fmtCount := countBuf unsignedLongAt: 1.
+			formatBuf := ExternalAddress allocate: fmtCount * 8.
+			[
+				result := Vk
+					          getPhysicalDeviceSurfaceFormatsKHR:
+					          aVkSurface physicalDevice handle
+					          surface: aVkSurface handle
+					          pSurfaceFormatCount: countBuf
+					          pSurfaceFormats: formatBuf.
+				Vk checkResult: result.
+				format := formatBuf unsignedLongAt: 1.
+				1 to: fmtCount do: [ :i |
+						(formatBuf unsignedLongAt: i - 1 * 8 + 1)
+						= VkFormat b8g8r8a8Unorm ifTrue: [
+							format := VkFormat b8g8r8a8Unorm ] ] ] ensure: [
+				formatBuf free ] ] ensure: [ countBuf free ].
+		imageCount := (caps unsignedLongAt: 1) + 1.
+		(caps unsignedLongAt: 5) > 0 ifTrue: [
+			imageCount := imageCount min: (caps unsignedLongAt: 5) ].
+		"VkSwapchainCreateInfoKHR (104 bytes):
        0:sType 8:pNext 16:flags 24:surface(ptr) 32:minImageCount 36:imageFormat 40:imageColorSpace 44:imageExtent.width 48:imageExtent.height 52:imageArrayLayers 56:imageUsage 60:imageSharingMode 64:queueFamilyIndexCount 72:pQueueFamilyIndices(ptr) 80:preTransform 84:compositeAlpha 88:presentMode 92:clipped 96:oldSwapchain(ptr)
        VkSurfaceCapabilitiesKHR: 0:minImageCount 4:maxImageCount ... 40:currentTransform ..."
-      swapInfo := ExternalAddress allocate: 104.
-      [ swapInfo unsignedLongAt: 1  put: VkStructureType swapchainCreateInfoKHR.
-        swapInfo pointerAt: 9  put: ExternalAddress null.
-        swapInfo unsignedLongAt: 17 put: 0.
-        swapInfo pointerAt: 25 put: aVkSurface handle getHandle.
-        swapInfo unsignedLongAt: 33 put: imageCount.
-        swapInfo unsignedLongAt: 37 put: format.
-        swapInfo unsignedLongAt: 41 put: 0.
-        swapInfo unsignedLongAt: 45 put: aPoint x.
-        swapInfo unsignedLongAt: 49 put: aPoint y.
-        swapInfo unsignedLongAt: 53 put: 1.
-        swapInfo unsignedLongAt: 57 put: VkImageUsage colorAttachmentBit.
-        swapInfo unsignedLongAt: 61 put: VkRenderConfig sharingModeExclusive.
-        swapInfo unsignedLongAt: 65 put: 0.
-        swapInfo pointerAt: 73 put: ExternalAddress null.
-        swapInfo unsignedLongAt: 81 put: (caps unsignedLongAt: 41).
-        swapInfo unsignedLongAt: 85 put: VkRenderConfig compositeAlphaOpaqueBit.
-        swapInfo unsignedLongAt: 89 put: VkRenderConfig presentModeFifo.
-        swapInfo unsignedLongAt: 93 put: 1.
-        swapInfo pointerAt: 97 put: ExternalAddress null.
-        outBuf := ExternalAddress allocate: 8.
-        [ result := Vk createSwapchainKHR: device handle createInfo: swapInfo allocator: ExternalAddress null swapchain: outBuf.
-          Vk checkResult: result.
-          handle := VkSwapchainKHR_H fromHandle: (outBuf pointerAt: 1)
-        ] ensure: [ outBuf free ]
-      ] ensure: [ swapInfo free ].
-      imgCountBuf := ExternalAddress allocate: 4.
-      [ result := Vk getSwapchainImagesKHR: device handle swapchain: handle pSwapchainImageCount: imgCountBuf pSwapchainImages: ExternalAddress null.
-        Vk checkResult: result.
-        imageCount := imgCountBuf unsignedLongAt: 1.
-        imgBuf := ExternalAddress allocate: imageCount * 8.
-        [ result := Vk getSwapchainImagesKHR: device handle swapchain: handle pSwapchainImageCount: imgCountBuf pSwapchainImages: imgBuf.
-          Vk checkResult: result.
-          images := (1 to: imageCount) collect: [:i | VkImage_H fromHandle: (imgBuf pointerAt: (i - 1) * 8 + 1)]
-        ] ensure: [ imgBuf free ]
-      ] ensure: [ imgCountBuf free ].
-      self createImageViews
-    ] ensure: [ caps free ]
+		swapInfo := ExternalAddress allocate: 104.
+		handle := [
+			          swapInfo
+				          unsignedLongAt: 1
+				          put: VkStructureType swapchainCreateInfoKHR.
+			          swapInfo pointerAt: 9 put: ExternalAddress null.
+			          swapInfo unsignedLongAt: 17 put: 0.
+			          swapInfo pointerAt: 25 put: aVkSurface handle getHandle.
+			          swapInfo unsignedLongAt: 33 put: imageCount.
+			          swapInfo unsignedLongAt: 37 put: format.
+			          swapInfo unsignedLongAt: 41 put: 0.
+			          swapInfo unsignedLongAt: 45 put: aPoint x.
+			          swapInfo unsignedLongAt: 49 put: aPoint y.
+			          swapInfo unsignedLongAt: 53 put: 1.
+			          swapInfo
+				          unsignedLongAt: 57
+				          put: VkImageUsage colorAttachmentBit.
+			          swapInfo
+				          unsignedLongAt: 61
+				          put: VkRenderConfig sharingModeExclusive.
+			          swapInfo unsignedLongAt: 65 put: 0.
+			          swapInfo pointerAt: 73 put: ExternalAddress null.
+			          swapInfo
+				          unsignedLongAt: 81
+				          put: (caps unsignedLongAt: 41).
+			          swapInfo
+				          unsignedLongAt: 85
+				          put: VkRenderConfig compositeAlphaOpaqueBit.
+			          swapInfo
+				          unsignedLongAt: 89
+				          put: VkRenderConfig presentModeFifo.
+			          swapInfo unsignedLongAt: 93 put: 1.
+			          swapInfo pointerAt: 97 put: ExternalAddress null.
+			          outBuf := ExternalAddress allocate: 8.
+			          [
+				          result := Vk
+					                    createSwapchainKHR: device handle
+					                    createInfo: swapInfo
+					                    allocator: ExternalAddress null
+					                    swapchain: outBuf.
+				          Vk checkResult: result.
+				          VkSwapchainKHR_H fromHandle: (outBuf pointerAt: 1) ]
+				          ensure: [ outBuf free ] ] ensure: [ swapInfo free ].
+		imgCountBuf := ExternalAddress allocate: 4.
+		images := [
+			          result := Vk
+				                    getSwapchainImagesKHR: device handle
+				                    swapchain: handle
+				                    pSwapchainImageCount: imgCountBuf
+				                    pSwapchainImages: ExternalAddress null.
+			          Vk checkResult: result.
+			          imageCount := imgCountBuf unsignedLongAt: 1.
+			          imgBuf := ExternalAddress allocate: imageCount * 8.
+			          [
+				          result := Vk
+					                    getSwapchainImagesKHR: device handle
+					                    swapchain: handle
+					                    pSwapchainImageCount: imgCountBuf
+					                    pSwapchainImages: imgBuf.
+				          Vk checkResult: result.
+				          (1 to: imageCount) collect: [ :i |
+					          VkImage_H fromHandle: (imgBuf pointerAt: i - 1 * 8 + 1) ] ]
+				          ensure: [ imgBuf free ] ] ensure: [ imgCountBuf free ].
+		self createImageViews ] ensure: [ caps free ]
 ]
 
 { #category : 'rendering' }

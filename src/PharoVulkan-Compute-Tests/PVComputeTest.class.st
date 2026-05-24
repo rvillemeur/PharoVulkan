@@ -103,8 +103,9 @@ PVComputeTest >> setUp [
 
 { #category : 'running' }
 PVComputeTest >> tearDown [
+
 	ctx destroy.
-	super tearDown.
+	super tearDown
 ]
 
 { #category : 'tests' }

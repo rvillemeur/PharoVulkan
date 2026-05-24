@@ -44,20 +44,28 @@ VkFenceWrapper >> handle [
 
 { #category : 'initialization' }
 VkFenceWrapper >> initializeDevice: aVkDevice flags: flagsValue [
-    "VkFenceCreateInfo (24 bytes):
+	"VkFenceCreateInfo (24 bytes):
      0:sType  8:pNext  16:flags"
-    | info fenceBuf result |
-    device := aVkDevice.
-    info := ExternalAddress allocate: 24.
-    [ info unsignedLongAt: 1 put: VkStructureType fenceCreateInfo.
-      info pointerAt: 9 put: ExternalAddress null.
-      info unsignedLongAt: 17 put: flagsValue.
-      fenceBuf := ExternalAddress allocate: 8.
-      [ result := Vk createFence: aVkDevice handle createInfo: info allocator: ExternalAddress null pFence: fenceBuf.
-        Vk checkResult: result.
-        handle := VkFence_H fromHandle: (fenceBuf pointerAt: 1)
-      ] ensure: [ fenceBuf free ]
-    ] ensure: [ info free ]
+
+	| info fenceBuf result |
+	device := aVkDevice.
+	info := ExternalAddress allocate: 24.
+	handle := [
+		          info
+			          unsignedLongAt: 1
+			          put: VkStructureType fenceCreateInfo.
+		          info pointerAt: 9 put: ExternalAddress null.
+		          info unsignedLongAt: 17 put: flagsValue.
+		          fenceBuf := ExternalAddress allocate: 8.
+		          [
+			          result := Vk
+				                    createFence: aVkDevice handle
+				                    createInfo: info
+				                    allocator: ExternalAddress null
+				                    pFence: fenceBuf.
+			          Vk checkResult: result.
+			          VkFence_H fromHandle: (fenceBuf pointerAt: 1) ] ensure: [
+			          fenceBuf free ] ] ensure: [ info free ]
 ]
 
 { #category : 'operations' }

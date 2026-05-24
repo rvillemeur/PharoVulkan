@@ -110,33 +110,32 @@ SpvEmitterTest >> testEmitterIdempotent [
 
 { #category : 'tests' }
 SpvEmitterTest >> testVectorAddEmitted [
-    | spirv ctx n aData bData aBytes bBytes a b r kernel result |
-    spirv := self buildVectorAddModule.
-    SpvValidator new validate: spirv.
-    n := 64.
-    aData := (1 to: n) asArray collect: [:i | i asFloat].
-    bData := (1 to: n) asArray collect: [:i | i asFloat].
-    aBytes := self floatArrayToBytes: aData.
-    bBytes := self floatArrayToBytes: bData.
-    ctx := VkContext computeContext.
-    [
-        a := ctx device allocateBuffer: n * 4 usage: 32.
-        b := ctx device allocateBuffer: n * 4 usage: 32.
-        r := ctx device allocateBuffer: n * 4 usage: 32.
-        a copyFromByteArray: aBytes.
-        b copyFromByteArray: bBytes.
-        kernel := PVComputeKernel on: ctx spirv: spirv.
-        kernel buffers: (Array with: a with: b with: r).
-        kernel prepare.
-        kernel dispatch: 1 y: 1 z: 1.
-        result := self bytesToFloats: (r copyToByteArray)
-    ] ensure: [
-        kernel ifNotNil: [ kernel destroy ].
-        a ifNotNil: [ a destroy ].
-        b ifNotNil: [ b destroy ].
-        r ifNotNil: [ r destroy ].
-        ctx destroy
-    ].
-    1 to: n do: [:i |
-        self assert: ((result at: i) - (i * 2.0)) abs < 0.001]
+
+	| spirv ctx n aData bData aBytes bBytes a b r kernel result |
+	spirv := self buildVectorAddModule.
+	SpvValidator new validate: spirv.
+	n := 64.
+	aData := (1 to: n) asArray collect: [ :i | i asFloat ].
+	bData := (1 to: n) asArray collect: [ :i | i asFloat ].
+	aBytes := self floatArrayToBytes: aData.
+	bBytes := self floatArrayToBytes: bData.
+	ctx := VkContext computeContext.
+	result := [
+		          a := ctx device allocateBuffer: n * 4 usage: 32.
+		          b := ctx device allocateBuffer: n * 4 usage: 32.
+		          r := ctx device allocateBuffer: n * 4 usage: 32.
+		          a copyFromByteArray: aBytes.
+		          b copyFromByteArray: bBytes.
+		          kernel := PVComputeKernel on: ctx spirv: spirv.
+		          kernel buffers: (Array with: a with: b with: r).
+		          kernel prepare.
+		          kernel dispatch: 1 y: 1 z: 1.
+		          self bytesToFloats: r copyToByteArray ] ensure: [
+			          kernel ifNotNil: [ kernel destroy ].
+			          a ifNotNil: [ a destroy ].
+			          b ifNotNil: [ b destroy ].
+			          r ifNotNil: [ r destroy ].
+			          ctx destroy ].
+	1 to: n do: [ :i |
+	self assert: ((result at: i) - (i * 2.0)) abs < 0.001 ]
 ]

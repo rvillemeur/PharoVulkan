@@ -40,8 +40,7 @@ SpvBuilderGenerator >> methodSourceFor: anSpvInstructionDescriptor selector: sel
 	hasResult := ops anySatisfy: [ :op | op kind = 'IdResult' ].
 	params := ops select: [ :op |
 			          op quantifier = #required and: [
-				          (op kind = 'IdResultType' or: [ op kind = 'IdResult' ])
-					          not ] ].
+				          (#( 'IdResultType' 'IdResult' ) includes: op kind) not ] ].
 	buf := WriteStream on: String new.
 	buf nextPutAll: selector.
 	params do: [ :op |
@@ -57,22 +56,29 @@ SpvBuilderGenerator >> methodSourceFor: anSpvInstructionDescriptor selector: sel
 	buf nextPutAll: (String with: Character cr).
 	buf nextPutAll: '    | instr'.
 	hasResult ifTrue: [ buf nextPutAll: ' resultId' ].
-	buf nextPutAll: ' |' , (String with: Character cr).
+	buf
+		nextPutAll: ' |';
+		nextPutAll: (String with: Character cr).
 	hasResult ifTrue: [
-			buf nextPutAll:
-				'    resultId := module newId.' , (String with: Character cr) ].
-	buf nextPutAll:
-		'    instr := SpvInstruction new' , (String with: Character cr).
-	buf nextPutAll:
-		'        opcode: SpvOpcode ' , anSpvInstructionDescriptor opname
-		, ';' , (String with: Character cr).
+			buf
+				nextPutAll: '    resultId := module newId.';
+				nextPutAll: (String with: Character cr) ].
+	buf
+		nextPutAll: '    instr := SpvInstruction new';
+		nextPutAll: (String with: Character cr).
+	buf
+		nextPutAll:
+			'        opcode: SpvOpcode ' , anSpvInstructionDescriptor opname
+			, ';';
+		nextPutAll: (String with: Character cr).
 	hasResultType ifTrue: [
 			buf
 				nextPutAll: '        resultType: aIdResultType;';
 				nextPutAll: (String with: Character cr) ].
 	hasResult ifTrue: [
-			buf nextPutAll:
-				'        resultId: resultId;' , (String with: Character cr) ].
+			buf
+				nextPutAll: '        resultId: resultId;';
+				nextPutAll: (String with: Character cr) ].
 	buf nextPutAll: '        operands: {'.
 	params do: [ :op |
 			| pname |
@@ -82,11 +88,14 @@ SpvBuilderGenerator >> methodSourceFor: anSpvInstructionDescriptor selector: sel
 						         , (op kind copyFrom: 2 to: op kind size) ]
 				         ifNotNil: [ :n |
 				         n first asLowercase asString , (n copyFrom: 2 to: n size) ].
-			buf nextPutAll: 'a' , pname first asUppercase asString
-				, (pname copyFrom: 2 to: pname size) , '. ' ].
+			buf
+				nextPutAll: 'a' , pname first asUppercase asString
+					, (pname copyFrom: 2 to: pname size);
+				nextPutAll: '. ' ].
 	buf nextPutAll: '};' , (String with: Character cr).
-	buf nextPutAll: '    self currentBlock addInstruction: instr.'
-		, (String with: Character cr).
+	buf
+		nextPutAll: '    self currentBlock addInstruction: instr.';
+		nextPutAll: (String with: Character cr).
 	hasResult ifTrue: [ buf nextPutAll: '    ^ resultId' ].
 	^ buf contents
 ]

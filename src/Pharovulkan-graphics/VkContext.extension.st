@@ -2,12 +2,19 @@ Extension { #name : 'VkContext' }
 
 { #category : '*pharovulkan-graphics' }
 VkContext >> fetchGraphicsQueue [
-    | buf |
-    buf := ExternalAddress allocate: 8.
-    [
-        Vk getDeviceQueue: device handle queueFamilyIndex: computeQueueFamily queueIndex: 0 queue: buf.
-        computeQueue := VkQueue on: (VkQueue_H fromHandle: (buf pointerAt: 1)) familyIndex: computeQueueFamily
-    ] ensure: [ buf free ]
+
+	| buf |
+	buf := ExternalAddress allocate: 8.
+	computeQueue := [
+		                Vk
+			                getDeviceQueue: device handle
+			                queueFamilyIndex: computeQueueFamily
+			                queueIndex: 0
+			                queue: buf.
+		                VkQueue
+			                on: (VkQueue_H fromHandle: (buf pointerAt: 1))
+			                familyIndex: computeQueueFamily ] ensure: [
+		                buf free ]
 ]
 
 { #category : '*pharovulkan-graphics' }

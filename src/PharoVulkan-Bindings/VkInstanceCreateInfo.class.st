@@ -91,7 +91,8 @@ VkInstanceCreateInfo >> pApplicationInfo [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> pApplicationInfo: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PAPPLICATIONINFO put: anObject getHandle.
+
+	handle pointerAt: OFFSET_PAPPLICATIONINFO put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }
@@ -103,7 +104,8 @@ VkInstanceCreateInfo >> pNext [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> pNext: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PNEXT put: anObject getHandle.
+
+	handle pointerAt: OFFSET_PNEXT put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }
@@ -115,7 +117,10 @@ VkInstanceCreateInfo >> ppEnabledExtensionNames [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> ppEnabledExtensionNames: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PPENABLEDEXTENSIONNAMES put: anObject getHandle.
+
+	handle
+		pointerAt: OFFSET_PPENABLEDEXTENSIONNAMES
+		put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }
@@ -127,7 +132,8 @@ VkInstanceCreateInfo >> ppEnabledLayerNames [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> ppEnabledLayerNames: anObject [
 	"This method was automatically generated"
-	handle pointerAt: OFFSET_PPENABLEDLAYERNAMES put: anObject getHandle.
+
+	handle pointerAt: OFFSET_PPENABLEDLAYERNAMES put: anObject getHandle
 ]
 
 { #category : 'accessing - structure variables' }

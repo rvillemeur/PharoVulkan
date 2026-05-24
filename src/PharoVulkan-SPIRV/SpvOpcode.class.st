@@ -50,8 +50,10 @@ SpvOpcode class >> opConstantNull [        ^ 46
 SpvOpcode class >> opConstantTrue [        ^ 41
 ]
 
-{ #category : 'conversion' }
-SpvOpcode class >> opConvertSToF [         ^ 111
+{ #category : 'converting' }
+SpvOpcode class >> opConvertSToF [
+
+	^ 111
 ]
 
 { #category : 'conversion' }

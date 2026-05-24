@@ -51,13 +51,25 @@ PVComputeKernel >> context: aContext [
 
 { #category : 'lifecycle' }
 PVComputeKernel >> destroy [
-	"Destroy in reverse order"
-	commandPool isNil ifFalse: [ commandPool destroy. commandPool := nil ].
-	descriptorPool isNil ifFalse: [ descriptorPool destroy. descriptorPool := nil ].
-	pipeline isNil ifFalse: [ pipeline destroy. pipeline := nil ].
-	pipelineLayout isNil ifFalse: [ pipelineLayout destroy. pipelineLayout := nil ].
-	descriptorSetLayout isNil ifFalse: [ descriptorSetLayout destroy. descriptorSetLayout := nil ].
-	shaderModule isNil ifFalse: [ shaderModule destroy. shaderModule := nil ]
+
+	commandPool ifNotNil: [
+			commandPool destroy.
+			commandPool := nil ].
+	descriptorPool ifNotNil: [
+			descriptorPool destroy.
+			descriptorPool := nil ].
+	pipeline ifNotNil: [
+			pipeline destroy.
+			pipeline := nil ].
+	pipelineLayout ifNotNil: [
+			pipelineLayout destroy.
+			pipelineLayout := nil ].
+	descriptorSetLayout ifNotNil: [
+			descriptorSetLayout destroy.
+			descriptorSetLayout := nil ].
+	shaderModule ifNil: [ ^ self ].
+	shaderModule destroy.
+	shaderModule := nil
 ]
 
 { #category : 'operations' }

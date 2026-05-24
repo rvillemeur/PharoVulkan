@@ -53,11 +53,13 @@ OSSDL2VulkanBackendWindow >> sdl2WindowHandle [
 
 { #category : 'surface' }
 OSSDL2VulkanBackendWindow >> vulkanDrawableExtent [
-    | pw ph |
-    pw := ExternalAddress allocate: 4.
-    ph := ExternalAddress allocate: 4.
-    [
-        SDL2Vulkan getDrawableSize: sdl2Window getHandle w: pw h: ph.
-        ^ (pw signedLongAt: 1) @ (ph signedLongAt: 1)
-    ] ensure: [ pw free. ph free ]
+
+	| pw ph |
+	pw := ExternalAddress allocate: 4.
+	ph := ExternalAddress allocate: 4.
+	^ [
+		  SDL2Vulkan getDrawableSize: sdl2Window getHandle w: pw h: ph.
+		  (pw signedLongAt: 1) @ (ph signedLongAt: 1) ] ensure: [
+			  pw free.
+			  ph free ]
 ]
