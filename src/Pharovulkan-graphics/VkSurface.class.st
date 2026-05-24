@@ -23,9 +23,11 @@ VkSurface class >> fromWindow: aVulkanBackendWindow instance: aVkInstance physic
 
 { #category : 'lifecycle' }
 VkSurface >> destroy [
-    handle ifNotNil: [
-        Vk destroySurfaceKHR: instance surface: handle allocator: ExternalAddress null.
-        handle := nil ]
+	handle ifNotNil: [
+		Vk destroySurfaceKHR: instance surface: handle allocator: ExternalAddress null.
+		handle invalidate.
+		handle := nil ]
+
 ]
 
 { #category : 'accessing' }

@@ -68,9 +68,11 @@ VkCommandPool >> allocateBuffer [
 
 { #category : 'lifecycle' }
 VkCommandPool >> destroy [
-    handle ifNil: [ ^ self ].
-    Vk destroyCommandPool: device handle commandPool: handle allocator: ExternalAddress null.
-    handle := nil
+	handle ifNil: [ ^ self ].
+	Vk destroyCommandPool: device handle commandPool: handle allocator: ExternalAddress null.
+	handle invalidate.
+	handle := nil
+
 ]
 
 { #category : 'accessing' }

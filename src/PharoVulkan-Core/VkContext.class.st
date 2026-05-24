@@ -131,13 +131,22 @@ VkContext >> createLogicalDevice [
 
 { #category : 'lifecycle' }
 VkContext >> destroy [
-    device ifNotNil: [
-        Vk deviceWaitIdle: device handle.
-        device destroy.
-        device := nil ].
-    instance ifNotNil: [
-        Vk destroyInstance: instance allocator: ExternalAddress null.
-        instance := nil ]
+	device ifNotNil: [
+		Vk deviceWaitIdle: device handle.
+		device destroy.
+		device := nil ].
+	instance ifNotNil: [
+		Vk destroyInstance: instance allocator: ExternalAddress null.
+		instance invalidate.
+		instance := nil ].
+	computeQueue ifNotNil: [
+		computeQueue handle invalidate.
+		computeQueue := nil ].
+	physicalDevice ifNotNil: [
+		physicalDevice handle invalidate.
+		physicalDevice := nil ].
+	computeQueueFamily := nil
+
 ]
 
 { #category : 'accessing' }

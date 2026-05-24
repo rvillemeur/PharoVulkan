@@ -53,9 +53,11 @@ VkDevice >> createShaderModule: spirvBytes [
 
 { #category : 'lifecycle' }
 VkDevice >> destroy [
-    handle ifNotNil: [
-        Vk destroyDevice: handle allocator: ExternalAddress null.
-        handle := nil ]
+	handle ifNotNil: [
+		Vk destroyDevice: handle allocator: ExternalAddress null.
+		handle invalidate.
+		handle := nil ]
+
 ]
 
 { #category : 'accessing' }

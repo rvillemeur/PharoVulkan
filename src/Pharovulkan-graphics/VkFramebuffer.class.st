@@ -19,9 +19,11 @@ VkFramebuffer class >> on: aVkDevice renderPass: aRenderPass imageView: anImageV
 
 { #category : 'lifecycle' }
 VkFramebuffer >> destroy [
-    handle ifNotNil: [
-        Vk destroyFramebuffer: device handle framebuffer: handle allocator: ExternalAddress null.
-        handle := nil ]
+	handle ifNotNil: [
+		Vk destroyFramebuffer: device handle framebuffer: handle allocator: ExternalAddress null.
+		handle invalidate.
+		handle := nil ]
+
 ]
 
 { #category : 'accessing' }

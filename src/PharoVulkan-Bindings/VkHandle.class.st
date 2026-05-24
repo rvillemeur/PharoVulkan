@@ -10,6 +10,19 @@ Class {
 	#package : 'PharoVulkan-Bindings'
 }
 
+{ #category : 'lifecycle' }
+VkHandle >> finalize [
+	"Vulkan resources are destroyed explicitly via their destroy chain; GC must never free them."
+
+]
+
+{ #category : 'lifecycle' }
+VkHandle >> invalidate [
+	"Nil the internal ExternalAddress so GC finalization cannot call free() on a stale Vulkan handle."
+	handle := nil
+
+]
+
 { #category : 'testing' }
 VkHandle >> isNull [
     "True when this handle is null — creation failed or not yet initialised."
@@ -18,10 +31,10 @@ VkHandle >> isNull [
 
 { #category : 'printing' }
 VkHandle >> printOn: aStream [
-
 	aStream
 		nextPutAll: self class name;
 		nextPutAll: '(0x';
-		nextPutAll: (handle ifNil: [ '0' ] ifNotNil: [ handle printOn:aStream ]);
+		nextPutAll: (handle ifNil: [ '0' ] ifNotNil: [ handle printString ]);
 		nextPut: $)
+
 ]

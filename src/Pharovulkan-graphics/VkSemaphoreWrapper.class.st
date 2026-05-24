@@ -22,9 +22,11 @@ VkSemaphoreWrapper class >> createDevice: aVkDevice [
 
 { #category : 'lifecycle' }
 VkSemaphoreWrapper >> destroy [
-    handle ifNotNil: [
-        Vk destroySemaphore: device handle semaphore: handle allocator: ExternalAddress null.
-        handle := nil ]
+	handle ifNotNil: [
+		Vk destroySemaphore: device handle semaphore: handle allocator: ExternalAddress null.
+		handle invalidate.
+		handle := nil ]
+
 ]
 
 { #category : 'accessing' }

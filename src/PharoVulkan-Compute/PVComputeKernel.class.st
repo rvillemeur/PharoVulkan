@@ -51,25 +51,28 @@ PVComputeKernel >> context: aContext [
 
 { #category : 'lifecycle' }
 PVComputeKernel >> destroy [
-
 	commandPool ifNotNil: [
-			commandPool destroy.
-			commandPool := nil ].
+		commandPool destroy.
+		commandPool := nil ].
 	descriptorPool ifNotNil: [
-			descriptorPool destroy.
-			descriptorPool := nil ].
+		descriptorPool destroy.
+		descriptorPool := nil ].
+	descriptorSet ifNotNil: [
+		descriptorSet handle invalidate.
+		descriptorSet := nil ].
 	pipeline ifNotNil: [
-			pipeline destroy.
-			pipeline := nil ].
+		pipeline destroy.
+		pipeline := nil ].
 	pipelineLayout ifNotNil: [
-			pipelineLayout destroy.
-			pipelineLayout := nil ].
+		pipelineLayout destroy.
+		pipelineLayout := nil ].
 	descriptorSetLayout ifNotNil: [
-			descriptorSetLayout destroy.
-			descriptorSetLayout := nil ].
+		descriptorSetLayout destroy.
+		descriptorSetLayout := nil ].
 	shaderModule ifNil: [ ^ self ].
 	shaderModule destroy.
 	shaderModule := nil
+
 ]
 
 { #category : 'operations' }

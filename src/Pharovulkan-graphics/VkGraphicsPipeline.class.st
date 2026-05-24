@@ -23,10 +23,12 @@ VkGraphicsPipeline class >> createDevice: aVkDevice renderPass: aRenderPass vert
 
 { #category : 'lifecycle' }
 VkGraphicsPipeline >> destroy [
-    handle ifNotNil: [
-        Vk destroyPipeline: device handle pipeline: handle allocator: ExternalAddress null.
-        handle := nil ].
-    layout ifNotNil: [ layout destroy. layout := nil ]
+	handle ifNotNil: [
+		Vk destroyPipeline: device handle pipeline: handle allocator: ExternalAddress null.
+		handle invalidate.
+		handle := nil ].
+	layout ifNotNil: [ layout destroy. layout := nil ]
+
 ]
 
 { #category : 'accessing' }
