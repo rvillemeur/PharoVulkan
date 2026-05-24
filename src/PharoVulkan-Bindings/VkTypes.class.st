@@ -18,7 +18,7 @@ Class {
 	#package : 'PharoVulkan-Bindings'
 }
 
-{ #category : 'initialization' }
+{ #category : 'class initialization' }
 VkTypes class >> initialize [
     "Initialise fixed-size array type constants used by Vulkan struct field declarations."
     Uint8_16  := FFIArray ofType: #uint8 size: 16.
