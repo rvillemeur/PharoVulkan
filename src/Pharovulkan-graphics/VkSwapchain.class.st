@@ -37,11 +37,13 @@ VkSwapchain >> acquireNextImage: semaphore fence: fence [
 
 { #category : 'initialization' }
 VkSwapchain >> createImageViews [
+    "VkImageViewCreateInfo (80 bytes):
+     0:sType  8:pNext  16:flags  24:image  32:viewType  36:format  40:components(r,g,b,a)  56:subresourceRange(aspectMask,baseMipLevel,levelCount,baseArrayLayer,layerCount)"
     | viewInfo outBuf result |
     imageViews := OrderedCollection new.
     images do: [ :img |
         viewInfo := ExternalAddress allocate: 80.
-        [ viewInfo unsignedLongAt: 1  put: 15.
+        [ viewInfo unsignedLongAt: 1  put: VkStructureType imageViewCreateInfo.
           viewInfo pointerAt:   9  put: ExternalAddress null.
           viewInfo unsignedLongAt: 17 put: 0.
           viewInfo pointerAt:   25 put: img getHandle.
@@ -126,8 +128,11 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
       ] ensure: [ countBuf free ].
       imageCount := (caps unsignedLongAt: 1) + 1.
       (caps unsignedLongAt: 5) > 0 ifTrue: [ imageCount := imageCount min: (caps unsignedLongAt: 5) ].
+      "VkSwapchainCreateInfoKHR (104 bytes):
+       0:sType 8:pNext 16:flags 20:surface(ptr) 28:minImageCount 32:imageFormat 36:imageColorSpace 40:imageExtent.width 44:imageExtent.height 48:imageArrayLayers 52:imageUsage 56:imageSharingMode 60:queueFamilyIndexCount 64:pQueueFamilyIndices(ptr) 72:preTransform 76:compositeAlpha 80:presentMode 84:clipped 88:oldSwapchain(ptr)
+       VkSurfaceCapabilitiesKHR: 0:minImageCount 4:maxImageCount ... 40:currentTransform ..."
       swapInfo := ExternalAddress allocate: 104.
-      [ swapInfo unsignedLongAt: 1  put: 1000001000.
+      [ swapInfo unsignedLongAt: 1  put: VkStructureType swapchainCreateInfoKHR.
         swapInfo pointerAt: 9  put: ExternalAddress null.
         swapInfo unsignedLongAt: 17 put: 0.
         swapInfo pointerAt: 25 put: aVkSurface handle getHandle.
@@ -168,6 +173,8 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
 
 { #category : 'rendering' }
 VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
+    "VkPresentInfoKHR (64 bytes):
+     0:sType  8:pNext  16:waitSemaphoreCount  20:pWaitSemaphores(ptr)  28:swapchainCount  32:pSwapchains(ptr)  40:pImageIndices(ptr)  48:pResults(ptr)"
     | semBuf presentInfo result |
     semBuf := ExternalAddress allocate: 8.
     [ semBuf pointerAt: 1 put: semaphore getHandle.
@@ -177,7 +184,7 @@ VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
         swapBuf := ExternalAddress allocate: 8.
         [ idxBuf unsignedLongAt: 1 put: imageIndex.
           swapBuf pointerAt: 1 put: handle getHandle.
-          presentInfo unsignedLongAt: 1  put: 1000001001.
+          presentInfo unsignedLongAt: 1  put: VkStructureType presentInfoKHR.
           presentInfo pointerAt:   9  put: ExternalAddress null.
           presentInfo unsignedLongAt: 17 put: 1.
           presentInfo pointerAt:   25 put: semBuf.

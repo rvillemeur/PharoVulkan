@@ -31,12 +31,14 @@ VkFramebuffer >> handle [
 
 { #category : 'initialization' }
 VkFramebuffer >> initializeDevice: aVkDevice renderPass: aRenderPass imageView: anImageView width: w height: h [
+    "VkFramebufferCreateInfo (64 bytes):
+     0:sType  8:pNext  16:flags  24:renderPass  32:attachmentCount  40:pAttachments  48:width  52:height  56:layers"
     | ivBuf fbInfo outBuf result |
     device := aVkDevice.
     ivBuf := ExternalAddress allocate: 8.
     [ ivBuf pointerAt: 1 put: anImageView getHandle.
       fbInfo := ExternalAddress allocate: 64.
-      [ fbInfo unsignedLongAt: 1  put: 37.
+      [ fbInfo unsignedLongAt: 1  put: VkStructureType framebufferCreateInfo.
         fbInfo pointerAt:   9  put: ExternalAddress null.
         fbInfo unsignedLongAt: 17 put: 0.
         fbInfo pointerAt:   25 put: aRenderPass handle getHandle.

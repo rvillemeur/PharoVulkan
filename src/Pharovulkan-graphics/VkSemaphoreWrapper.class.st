@@ -34,10 +34,12 @@ VkSemaphoreWrapper >> handle [
 
 { #category : 'initialization' }
 VkSemaphoreWrapper >> initializeDevice: aVkDevice [
+    "VkSemaphoreCreateInfo (24 bytes):
+     0:sType  8:pNext  16:flags"
     | info semBuf result |
     device := aVkDevice.
     info := ExternalAddress allocate: 24.
-    [ info unsignedLongAt: 1 put: 9.
+    [ info unsignedLongAt: 1 put: VkStructureType semaphoreCreateInfo.
       info pointerAt: 9 put: ExternalAddress null.
       info unsignedLongAt: 17 put: 0.
       semBuf := ExternalAddress allocate: 8.

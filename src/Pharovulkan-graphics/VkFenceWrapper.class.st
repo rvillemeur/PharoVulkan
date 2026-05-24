@@ -44,10 +44,12 @@ VkFenceWrapper >> handle [
 
 { #category : 'initialization' }
 VkFenceWrapper >> initializeDevice: aVkDevice flags: flagsValue [
+    "VkFenceCreateInfo (24 bytes):
+     0:sType  8:pNext  16:flags"
     | info fenceBuf result |
     device := aVkDevice.
     info := ExternalAddress allocate: 24.
-    [ info unsignedLongAt: 1 put: 8.
+    [ info unsignedLongAt: 1 put: VkStructureType fenceCreateInfo.
       info pointerAt: 9 put: ExternalAddress null.
       info unsignedLongAt: 17 put: flagsValue.
       fenceBuf := ExternalAddress allocate: 8.

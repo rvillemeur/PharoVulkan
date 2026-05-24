@@ -19,9 +19,11 @@ VkCommandBuffer class >> on: aHandle pool: aPool [
 
 { #category : 'recording' }
 VkCommandBuffer >> begin [
+    "VkCommandBufferBeginInfo (32 bytes):
+     0:sType  8:pNext  16:flags  24:pInheritanceInfo"
     | info result |
     info := ExternalAddress allocate: 32.
-    [ info unsignedLongAt: 1 put: 42.
+    [ info unsignedLongAt: 1 put: VkStructureType commandBufferBeginInfo.
       info pointerAt: 9 put: ExternalAddress null.
       info unsignedLongAt: 17 put: 1.
       info pointerAt: 25 put: ExternalAddress null.

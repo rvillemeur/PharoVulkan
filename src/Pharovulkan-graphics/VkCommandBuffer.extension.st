@@ -2,6 +2,9 @@ Extension { #name : 'VkCommandBuffer' }
 
 { #category : '*pharovulkan-graphics' }
 VkCommandBuffer >> beginRenderPass: aRenderPass framebuffer: aFramebuffer extent: aPoint [
+    "VkClearValue (16 bytes): 4 floats for colour (r, g, b, a).
+     VkRenderPassBeginInfo (64 bytes):
+     0:sType  8:pNext  16:renderPass  24:framebuffer  32:renderArea.offset.x  36:renderArea.offset.y  40:renderArea.extent.width  44:renderArea.extent.height  48:clearValueCount  56:pClearValues(ptr)"
     | info clearVal |
     clearVal := ExternalAddress allocate: 16.
     [ clearVal floatAt: 1 put: 0.0.
@@ -9,7 +12,7 @@ VkCommandBuffer >> beginRenderPass: aRenderPass framebuffer: aFramebuffer extent
       clearVal floatAt: 9 put: 0.0.
       clearVal floatAt: 13 put: 1.0.
       info := ExternalAddress allocate: 64.
-      [ info unsignedLongAt: 1 put: 43.
+      [ info unsignedLongAt: 1 put: VkStructureType renderPassBeginInfo.
         info pointerAt: 9 put: ExternalAddress null.
         info pointerAt: 17 put: aRenderPass handle getHandle.
         info pointerAt: 25 put: aFramebuffer handle getHandle.
@@ -53,6 +56,7 @@ VkCommandBuffer >> endRenderPass [
 
 { #category : '*pharovulkan-graphics' }
 VkCommandBuffer >> setScissor: aPoint [
+    "VkRect2D (16 bytes): 0:offset.x  4:offset.y  8:extent.width  12:extent.height"
     | sc |
     sc := ExternalAddress allocate: 16.
     [ sc unsignedLongAt: 1 put: 0.
@@ -65,6 +69,7 @@ VkCommandBuffer >> setScissor: aPoint [
 
 { #category : '*pharovulkan-graphics' }
 VkCommandBuffer >> setViewport: aPoint [
+    "VkViewport (24 bytes): 0:x  4:y  8:width  12:height  16:minDepth  20:maxDepth"
     | vp |
     vp := ExternalAddress allocate: 24.
     [ vp floatAt: 1 put: 0.0.
