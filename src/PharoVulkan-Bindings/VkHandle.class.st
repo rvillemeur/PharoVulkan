@@ -10,11 +10,6 @@ Class {
 	#package : 'PharoVulkan-Bindings'
 }
 
-{ #category : 'as yet unclassified' }
-VkHandle class >> finalizeResourceData: handle [
-    "Vulkan handles are driver-owned. Do not free."
-]
-
 { #category : 'testing' }
 VkHandle >> isNull [
     "True when this handle is null — creation failed or not yet initialised."

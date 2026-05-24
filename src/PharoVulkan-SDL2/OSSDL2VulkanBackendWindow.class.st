@@ -20,19 +20,30 @@ OSSDL2VulkanBackendWindow >> createVulkanSurface: aVkInstance [
     ] ensure: [ pSurface free ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'accessing' }
 OSSDL2VulkanBackendWindow >> requiredInstanceExtensions [
-    | pCount result count names |
-    pCount := ExternalAddress allocate: 4.
-    [ result := SDL2Vulkan getInstanceExtensions: sdl2Window getHandle count: pCount names: ExternalAddress null.
-      result = 0 ifTrue: [ Error signal: 'SDL_Vulkan_GetInstanceExtensions (count) failed' ].
-      count := pCount unsignedLongAt: 1.
-      names := ExternalAddress allocate: count * 8.
-      [ result := SDL2Vulkan getInstanceExtensions: sdl2Window getHandle count: pCount names: names.
-        result = 0 ifTrue: [ Error signal: 'SDL_Vulkan_GetInstanceExtensions (names) failed' ].
-        ^ (1 to: count) collect: [:i | (names pointerAt: (i - 1) * 8 + 1) readString asString]
-      ] ensure: [ names free ]
-    ] ensure: [ pCount free ]
+
+	| pCount result count names |
+	pCount := ExternalAddress allocate: 4.
+	^ [
+		  result := SDL2Vulkan
+			            getInstanceExtensions: sdl2Window getHandle
+			            count: pCount
+			            names: ExternalAddress null.
+		  result = 0 ifTrue: [
+			  Error signal: 'SDL_Vulkan_GetInstanceExtensions (count) failed' ].
+		  count := pCount unsignedLongAt: 1.
+		  names := ExternalAddress allocate: count * 8.
+		  [
+			  result := SDL2Vulkan
+				            getInstanceExtensions: sdl2Window getHandle
+				            count: pCount
+				            names: names.
+			  result = 0 ifTrue: [
+				  Error signal: 'SDL_Vulkan_GetInstanceExtensions (names) failed' ].
+			  (1 to: count) collect: [ :i |
+				  (names pointerAt: i - 1 * 8 + 1) readString asString ] ]
+			  ensure: [ names free ] ] ensure: [ pCount free ]
 ]
 
 { #category : 'accessing' }

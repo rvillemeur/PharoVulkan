@@ -34,21 +34,24 @@ PVXmlParser >> currentElement [
 
 { #category : 'parsing' }
 PVXmlParser >> parseAttributes [
-    | dict |
-    dict := Dictionary new.
-    [self skipWhitespace.
-     stream atEnd or: [stream peek = $> or: [stream peek = $/]]] whileFalse: [
-        | key val |
-        key := self readName.
-        key isEmpty ifFalse: [
-            self skipWhitespace.
-            (stream atEnd not and: [stream peek = $=]) ifTrue: [
-                stream next.
-                self skipWhitespace.
-                val := self readAttributeValue]
-            ifFalse: [val := key].
-            dict at: key put: val]].
-    ^ dict
+
+	| dict |
+	dict := Dictionary new.
+	[
+		self skipWhitespace.
+		stream atEnd or: [ #( $> $/ ) includes: stream peek ] ] whileFalse: [
+			| key val |
+			key := self readName.
+			key isEmpty ifFalse: [
+					self skipWhitespace.
+					(stream atEnd not and: [ stream peek = $= ])
+						ifTrue: [
+								stream next.
+								self skipWhitespace.
+								val := self readAttributeValue ]
+						ifFalse: [ val := key ].
+					dict at: key put: val ] ].
+	^ dict
 ]
 
 { #category : 'parsing' }
@@ -217,14 +220,16 @@ PVXmlParser >> readEntityInto: buf [
 
 { #category : 'parsing' }
 PVXmlParser >> readName [
-    | buf |
-    buf := WriteStream on: String new.
-    [| c |
-     stream atEnd or: [
-         c := stream peek.
-         c isSeparator or: [c = $= or: [c = $/ or: [c = $> or: [c = $< ]]]]]] whileFalse: [
-        buf nextPut: stream next].
-    ^ buf contents
+
+	| buf |
+	buf := WriteStream on: String new.
+	[
+		| c |
+		stream atEnd or: [
+				c := stream peek.
+				c isSeparator or: [ c = $= or: [ #( $/ $> $< ) includes: c ] ] ] ]
+		whileFalse: [ buf nextPut: stream next ].
+	^ buf contents
 ]
 
 { #category : 'private' }
