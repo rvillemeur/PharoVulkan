@@ -51,8 +51,9 @@ SpvBuilderGenerator >> methodSourceFor: anSpvInstructionDescriptor selector: sel
 						         , (op kind copyFrom: 2 to: op kind size) ]
 				         ifNotNil: [ :n |
 				         n first asLowercase asString , (n copyFrom: 2 to: n size) ].
-			buf nextPutAll: ' a' , pname first asUppercase asString
-				, (pname copyFrom: 2 to: pname size) ].
+			buf
+				nextPutAll: ' a' , pname first asUppercase asString;
+				nextPutAll: (pname copyFrom: 2 to: pname size) ].
 	buf nextPutAll: (String with: Character cr).
 	buf nextPutAll: '    | instr'.
 	hasResult ifTrue: [ buf nextPutAll: ' resultId' ].

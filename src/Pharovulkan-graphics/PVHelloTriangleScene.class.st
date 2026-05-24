@@ -257,46 +257,46 @@ PVHelloTriangleScene >> inFlightFence [ ^ inFlightFence
 
 { #category : 'initialization' }
 PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow [
+
 	| ext |
 	ctx := aVkContext.
 	surface := VkSurface
-		fromWindow: aBackendWindow
-		instance: ctx instance
-		physicalDevice: ctx physicalDevice.
+		           fromWindow: aBackendWindow
+		           instance: ctx instance
+		           physicalDevice: ctx physicalDevice.
 	ext := aBackendWindow vulkanDrawableExtent.
 	swapchain := VkSwapchain on: ctx device surface: surface extent: ext.
 	renderPass := VkRenderPass
-		createColorPassDevice: ctx device
-		format: swapchain format.
+		              createColorPassDevice: ctx device
+		              format: swapchain format.
 	framebuffers := swapchain imageViews collect: [ :view |
-		VkFramebuffer
-			on: ctx device
-			renderPass: renderPass
-			imageView: view
-			width: ext x
-			height: ext y ].
+			                VkFramebuffer
+				                on: ctx device
+				                renderPass: renderPass
+				                imageView: view
+				                width: ext x
+				                height: ext y ].
 	commandPool := VkCommandPool
-		on: ctx device
-		queueFamilyIndex: ctx computeQueueFamily.
+		               on: ctx device
+		               queueFamilyIndex: ctx computeQueueFamily.
 	commandBuffer := commandPool allocateBuffer.
 	vertexShaderModule := VkShaderModule
-		fromBytes: self buildVertexShader
-		device: ctx device.
+		                      fromBytes: self buildVertexShader
+		                      device: ctx device.
 	fragmentShaderModule := VkShaderModule
-		fromBytes: self buildFragmentShader
-		device: ctx device.
+		                        fromBytes: self buildFragmentShader
+		                        device: ctx device.
 	pipeline := VkGraphicsPipeline
-		createDevice: ctx device
-		renderPass: renderPass
-		vertexModule: vertexShaderModule
-		fragmentModule: fragmentShaderModule
-		extent: ext.
+		            createDevice: ctx device
+		            renderPass: renderPass
+		            vertexModule: vertexShaderModule
+		            fragmentModule: fragmentShaderModule
+		            extent: ext.
 	vertexBuffer := VkBuffer on: ctx device size: 60 usage: 128.
 	vertexBuffer copyFromByteArray: self buildVertexData.
 	imageAvailable := VkSemaphoreWrapper createDevice: ctx device.
 	renderFinished := VkSemaphoreWrapper createDevice: ctx device.
 	inFlightFence := VkFenceWrapper createSignaledDevice: ctx device
-
 ]
 
 { #category : 'accessing' }
@@ -354,7 +354,7 @@ PVHelloTriangleScene >> renderPass [ ^ renderPass
 ]
 
 { #category : 'see class side' }
-PVHelloTriangleScene >> seeClassSide [ 
+PVHelloTriangleScene >> seeClassSide [
 ]
 
 { #category : 'accessing' }

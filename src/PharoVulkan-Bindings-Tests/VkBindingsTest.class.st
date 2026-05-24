@@ -33,16 +33,17 @@ VkBindingsTest >> testEnumeratePhysicalDevices [
 
 { #category : 'tests' }
 VkBindingsTest >> testGeneratorIsIdempotent [
-    "Idempotency: generating an existing enum creates no new class."
-    | gen desc before after |
-    gen := VkBindingGenerator new.
-    desc := VkEnumDescriptor new.
-    desc name: 'VkResult'.
-    desc values: OrderedCollection new.
-    before := Smalltalk allClasses size.
-    gen generateEnum: desc.
-    after := Smalltalk allClasses size.
-    self assert: after - before equals: 0
+	"Idempotency: generating an existing enum creates no new class."
+
+	| gen desc before after |
+	gen := VkBindingGenerator new.
+	desc := VkEnumDescriptor new.
+	desc name: 'VkResult'.
+	desc values: OrderedCollection new.
+	before := Smalltalk globals allClasses size.
+	gen generateEnum: desc.
+	after := Smalltalk globals allClasses size.
+	self assert: after - before equals: 0
 ]
 
 { #category : 'tests' }

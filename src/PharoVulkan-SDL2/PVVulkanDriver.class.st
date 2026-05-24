@@ -10,7 +10,8 @@ Class {
 
 { #category : 'driver management' }
 PVVulkanDriver class >> install [
-    OSWindowDriver driverClass: self.
+
+	OSWindowDriver driverClass: self
 ]
 
 { #category : 'driver management' }

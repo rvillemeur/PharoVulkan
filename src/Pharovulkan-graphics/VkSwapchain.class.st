@@ -73,19 +73,25 @@ VkSwapchain >> createImageViews [
 
 { #category : 'lifecycle' }
 VkSwapchain >> destroy [
-	imageViews ifNotNil: [
-		imageViews do: [:iv |
-			Vk destroyImageView: device handle imageView: iv allocator: ExternalAddress null.
-			iv invalidate].
-		imageViews := nil ].
-	handle ifNotNil: [
-		Vk destroySwapchainKHR: device handle swapchain: handle allocator: ExternalAddress null.
-		handle invalidate.
-		handle := nil ].
-	images ifNotNil: [
-		images do: [:img | img invalidate].
-		images := nil ]
 
+	imageViews ifNotNil: [
+			imageViews do: [ :iv |
+					Vk
+						destroyImageView: device handle
+						imageView: iv
+						allocator: ExternalAddress null.
+					iv invalidate ].
+			imageViews := nil ].
+	handle ifNotNil: [
+			Vk
+				destroySwapchainKHR: device handle
+				swapchain: handle
+				allocator: ExternalAddress null.
+			handle invalidate.
+			handle := nil ].
+	images ifNotNil: [
+			images do: [ :img | img invalidate ].
+			images := nil ]
 ]
 
 { #category : 'accessing' }

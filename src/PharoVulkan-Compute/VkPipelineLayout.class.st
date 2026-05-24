@@ -54,11 +54,14 @@ VkPipelineLayout >> create [
 
 { #category : 'lifecycle' }
 VkPipelineLayout >> destroy [
-	handle ifNotNil: [
-		Vk destroyPipelineLayout: device handle pipelineLayout: handle allocator: ExternalAddress null.
-		handle invalidate.
-		handle := nil ]
 
+	handle ifNotNil: [
+			Vk
+				destroyPipelineLayout: device handle
+				pipelineLayout: handle
+				allocator: ExternalAddress null.
+			handle invalidate.
+			handle := nil ]
 ]
 
 { #category : 'accessing' }

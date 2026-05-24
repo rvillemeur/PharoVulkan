@@ -64,11 +64,14 @@ VkDescriptorSetLayout >> create [
 
 { #category : 'lifecycle' }
 VkDescriptorSetLayout >> destroy [
-	handle ifNotNil: [
-		Vk destroyDescriptorSetLayout: device handle descriptorSetLayout: handle allocator: ExternalAddress null.
-		handle invalidate.
-		handle := nil ]
 
+	handle ifNotNil: [
+			Vk
+				destroyDescriptorSetLayout: device handle
+				descriptorSetLayout: handle
+				allocator: ExternalAddress null.
+			handle invalidate.
+			handle := nil ]
 ]
 
 { #category : 'accessing' }

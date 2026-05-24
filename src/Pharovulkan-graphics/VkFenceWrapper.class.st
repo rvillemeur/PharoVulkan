@@ -32,11 +32,14 @@ VkFenceWrapper class >> createSignaledDevice: aVkDevice [
 
 { #category : 'lifecycle' }
 VkFenceWrapper >> destroy [
-	handle ifNotNil: [
-		Vk destroyFence: device handle fence: handle allocator: ExternalAddress null.
-		handle invalidate.
-		handle := nil ]
 
+	handle ifNotNil: [
+			Vk
+				destroyFence: device handle
+				fence: handle
+				allocator: ExternalAddress null.
+			handle invalidate.
+			handle := nil ]
 ]
 
 { #category : 'accessing' }

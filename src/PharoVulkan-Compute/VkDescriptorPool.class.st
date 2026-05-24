@@ -86,11 +86,14 @@ VkDescriptorPool >> create: maxSets [
 
 { #category : 'lifecycle' }
 VkDescriptorPool >> destroy [
+
 	handle isNil ifTrue: [ ^ self ].
-	Vk destroyDescriptorPool: device handle descriptorPool: handle allocator: ExternalAddress null.
+	Vk
+		destroyDescriptorPool: device handle
+		descriptorPool: handle
+		allocator: ExternalAddress null.
 	handle invalidate.
 	handle := nil
-
 ]
 
 { #category : 'accessing' }

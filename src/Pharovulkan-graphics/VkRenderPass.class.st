@@ -19,11 +19,14 @@ VkRenderPass class >> createColorPassDevice: aVkDevice format: colorFormat [
 
 { #category : 'lifecycle' }
 VkRenderPass >> destroy [
-	handle ifNotNil: [
-		Vk destroyRenderPass: device handle renderPass: handle allocator: ExternalAddress null.
-		handle invalidate.
-		handle := nil ]
 
+	handle ifNotNil: [
+			Vk
+				destroyRenderPass: device handle
+				renderPass: handle
+				allocator: ExternalAddress null.
+			handle invalidate.
+			handle := nil ]
 ]
 
 { #category : 'accessing' }

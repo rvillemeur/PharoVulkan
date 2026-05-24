@@ -73,11 +73,14 @@ VkComputePipeline >> create [
 
 { #category : 'lifecycle' }
 VkComputePipeline >> destroy [
+
 	handle isNil ifTrue: [ ^ self ].
-	Vk destroyPipeline: device handle pipeline: handle allocator: ExternalAddress null.
+	Vk
+		destroyPipeline: device handle
+		pipeline: handle
+		allocator: ExternalAddress null.
 	handle invalidate.
 	handle := nil
-
 ]
 
 { #category : 'accessing' }

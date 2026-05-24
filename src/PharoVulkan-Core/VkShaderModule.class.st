@@ -19,11 +19,14 @@ VkShaderModule class >> fromBytes: spirvBytes device: aDevice [
 
 { #category : 'lifecycle' }
 VkShaderModule >> destroy [
-	handle ifNotNil: [
-		Vk destroyShaderModule: device handle shaderModule: handle allocator: ExternalAddress null.
-		handle invalidate.
-		handle := nil ]
 
+	handle ifNotNil: [
+			Vk
+				destroyShaderModule: device handle
+				shaderModule: handle
+				allocator: ExternalAddress null.
+			handle invalidate.
+			handle := nil ]
 ]
 
 { #category : 'accessing' }
