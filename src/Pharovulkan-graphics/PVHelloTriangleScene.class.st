@@ -159,6 +159,10 @@ PVHelloTriangleScene >> buildVertexShader [
     ^ mod serialize
 ]
 
+{ #category : 'accessing' }
+PVHelloTriangleScene >> commandPool [ ^ commandPool
+]
+
 { #category : 'lifecycle' }
 PVHelloTriangleScene >> destroy [
     inFlightFence ifNotNil: [ inFlightFence destroy. inFlightFence := nil ].
@@ -173,6 +177,18 @@ PVHelloTriangleScene >> destroy [
     renderPass ifNotNil: [ renderPass destroy. renderPass := nil ].
     swapchain ifNotNil: [ swapchain destroy. swapchain := nil ].
     surface ifNotNil: [ surface destroy. surface := nil ].
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> framebuffers [ ^ framebuffers
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> imageAvailable [ ^ imageAvailable
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> inFlightFence [ ^ inFlightFence
 ]
 
 { #category : 'initialization' }
@@ -197,6 +213,10 @@ PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow 
     inFlightFence := VkFenceWrapper createSignaledDevice: ctx device.
 ]
 
+{ #category : 'accessing' }
+PVHelloTriangleScene >> pipeline [ ^ pipeline
+]
+
 { #category : 'private' }
 PVHelloTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
     | bits |
@@ -205,6 +225,10 @@ PVHelloTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
     aByteArray at: offset + 1 put: ((bits >> 8) bitAnd: 16rFF).
     aByteArray at: offset + 2 put: ((bits >> 16) bitAnd: 16rFF).
     aByteArray at: offset + 3 put: ((bits >> 24) bitAnd: 16rFF).
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> renderFinished [ ^ renderFinished
 ]
 
 { #category : 'rendering' }
@@ -224,4 +248,16 @@ PVHelloTriangleScene >> renderFrame [
         c draw: 3].
     ctx computeQueue submitGraphics: cb waitSemaphore: imageAvailable signalSemaphore: renderFinished fence: inFlightFence.
     swapchain present: imageIndex queue: ctx computeQueue waitSemaphore: renderFinished handle.
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> renderPass [ ^ renderPass
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> swapchain [ ^ swapchain
+]
+
+{ #category : 'accessing' }
+PVHelloTriangleScene >> vertexBuffer [ ^ vertexBuffer
 ]

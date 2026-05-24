@@ -32,7 +32,7 @@ VkQueue >> submitGraphics: aCommandBuffer waitSemaphore: aWaitSemaphore signalSe
             submitInfo pointerAt: 41 put: cbInfo.
             submitInfo unsignedLongAt: 49 put: 1.
             submitInfo pointerAt: 57 put: signalInfo.
-            Vk checkResult: (Vk queueSubmit2KHR: handle submitCount: 1 pSubmits: submitInfo fence: aFence handle getHandle)
+            Vk checkResult: (Vk queueSubmit2: handle submitCount: 1 submits: submitInfo fence: aFence handle getHandle)
           ] ensure: [ submitInfo free ]
         ] ensure: [ cbInfo free ]
       ] ensure: [ signalInfo free ]

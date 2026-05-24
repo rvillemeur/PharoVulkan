@@ -26,7 +26,7 @@ VkCommandBuffer >> beginRenderPass: aRenderPass framebuffer: aFramebuffer extent
 
 { #category : '*pharovulkan-graphics' }
 VkCommandBuffer >> bindGraphicsPipeline: aPipeline [
-    Vk cmdBindPipeline: handle pipelineBindPoint: 0 pipeline: aPipeline handle getHandle
+    Vk cmdBindPipeline: handle pipelineBindPoint: 0 pipeline: aPipeline handle
 ]
 
 { #category : '*pharovulkan-graphics' }
