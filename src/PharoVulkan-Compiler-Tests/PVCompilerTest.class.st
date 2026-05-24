@@ -53,20 +53,23 @@ PVCompilerTest >> testDecodesJumps [
 
 { #category : 'tests' }
 PVCompilerTest >> testLoopKernelCompiles [
+
 	| bytes |
-	bytes := PVKernelCompiler compile: (PVKernelExamples >> #accumulateUpTo:).
-	self assert: (bytes copyFrom: 1 to: 4) = #[3 2 35 7]
+	bytes := PVKernelCompiler compile:
+		         PVKernelExamples >> #accumulateUpTo:.
+	self assert: (bytes copyFrom: 1 to: 4) equals: #[ 3 2 35 7 ]
 ]
 
 { #category : 'tests' }
 PVCompilerTest >> testRecognizesLoop [
+
 	| method ops blocks node |
 	method := PVKernelExamples >> #accumulateUpTo:.
 	ops := PVBytecodeDecoder decode: method.
 	blocks := PVCFGBuilder buildBytecodeBlocks: ops.
 	node := PVStructuredCFGRecognizer recognizeFrom: blocks.
 	self assert: (node isKindOf: PVLoopNode).
-	self assert: node bodyBlocks size = 1.
+	self assert: node bodyBlocks size equals: 1.
 	self assert: node exitBlock notNil
 ]
 
@@ -84,6 +87,7 @@ PVCompilerTest >> testRecognizesSelection [
 
 { #category : 'tests' }
 PVCompilerTest >> testSSAConstructorNoPhisForStraightLine [
+
 	| m bytecodeOps regOps cfg ssaCFG |
 	m := (Smalltalk at: #PVKernelExamples) >> #addFloat:to:.
 	bytecodeOps := PVBytecodeDecoder decode: m.
@@ -91,7 +95,7 @@ PVCompilerTest >> testSSAConstructorNoPhisForStraightLine [
 	cfg := PVCFGBuilder buildFrom: regOps.
 	ssaCFG := PVSSAConstructor construct: cfg.
 	"Straight-line: SSA is identity, same object"
-	self assert: ssaCFG == cfg
+	self assert: ssaCFG identicalTo: cfg
 ]
 
 { #category : 'tests' }

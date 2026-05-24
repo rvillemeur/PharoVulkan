@@ -29,12 +29,16 @@ VkCoreTest >> floatArrayToBytes: anArray [
 
 { #category : 'running' }
 VkCoreTest >> setUp [
+
+	super setUp.
 	ctx := VkContext computeContext
 ]
 
 { #category : 'running' }
 VkCoreTest >> tearDown [
-	ctx destroy
+
+	ctx destroy.
+	super tearDown
 ]
 
 { #category : 'tests' }

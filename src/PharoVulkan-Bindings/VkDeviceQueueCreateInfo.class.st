@@ -13,10 +13,3 @@ Class {
 VkDeviceQueueCreateInfo class >> fieldsDesc [
     ^ #((#sType #pointer) (#queueFamilyIndex #uint32) )
 ]
-
-{ #category : 'initialization' }
-VkDeviceQueueCreateInfo >> initialize [
-
-	super initialize.
-	self defineFields
-]

@@ -101,10 +101,11 @@ SpvEmitterTest >> floatArrayToBytes: floats [
 
 { #category : 'tests' }
 SpvEmitterTest >> testEmitterIdempotent [
+
 	| bytes1 bytes2 |
 	bytes1 := self buildVectorAddModule.
 	bytes2 := self buildVectorAddModule.
-	self assert: bytes1 = bytes2
+	self assert: bytes1 equals: bytes2
 ]
 
 { #category : 'tests' }

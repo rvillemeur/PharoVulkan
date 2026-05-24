@@ -36,6 +36,7 @@ PVBytecodeDecoder >> doPop [
 
 { #category : 'initialization' }
 PVBytecodeDecoder >> initialize [
+	super initialize .
 	ops := OrderedCollection new.
 	currentPc := 0.
 	startPc := 0

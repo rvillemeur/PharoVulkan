@@ -13,10 +13,3 @@ Class {
 VkTestStruct class >> fieldsDesc [
     ^ #((#x #float) )
 ]
-
-{ #category : 'initialization' }
-VkTestStruct >> initialize [
-
-	super initialize.
-	self defineFields
-]

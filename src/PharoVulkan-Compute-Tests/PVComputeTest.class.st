@@ -96,12 +96,15 @@ PVComputeTest >> floatArrayToBytes: anArray [
 
 { #category : 'running' }
 PVComputeTest >> setUp [
+
+	super setUp.
 	ctx := VkContext computeContext
 ]
 
 { #category : 'running' }
 PVComputeTest >> tearDown [
-	ctx destroy
+	ctx destroy.
+	super tearDown.
 ]
 
 { #category : 'tests' }

@@ -118,11 +118,14 @@ SpvBuilderTest >> testTypeDeduplication [
 
 { #category : 'tests' }
 SpvBuilderTest >> testTypeIdsAreUnique [
-    "Different types must get different ids."
-    | m reg |
-    m := SpvModule new.
-    reg := m typeRegistry.
-    self deny: (reg floatType: 32) id = (reg intType: 32 signed: true) id
+	"Different types must get different ids."
+
+	| m reg |
+	m := SpvModule new.
+	reg := m typeRegistry.
+	self
+		deny: (reg floatType: 32) id
+		equals: (reg intType: 32 signed: true) id
 ]
 
 { #category : 'tests' }
