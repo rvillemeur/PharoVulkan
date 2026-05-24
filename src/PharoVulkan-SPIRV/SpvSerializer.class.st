@@ -178,7 +178,7 @@ SpvSerializer >> emitTypesConstantsGlobals [
 { #category : 'private' }
 SpvSerializer >> encodeString: aString [
     "Encode a null-terminated string as an array of 32-bit words, padded to 4 bytes."
-    | bytes padded wordCount result byteStream |
+    | bytes wordCount result byteStream |
     bytes := aString utf8Encoded.
     wordCount := (bytes size + 1 + 3) // 4.
     result := Array new: wordCount withAll: 0.

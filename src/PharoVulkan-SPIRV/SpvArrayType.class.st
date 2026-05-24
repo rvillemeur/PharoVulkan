@@ -5,8 +5,7 @@ Class {
 	#name : 'SpvArrayType',
 	#superclass : 'SpvType',
 	#instVars : [
-		'elementType',
-		'lengthId'
+		'elementType'
 	],
 	#category : 'PharoVulkan-SPIRV',
 	#package : 'PharoVulkan-SPIRV'

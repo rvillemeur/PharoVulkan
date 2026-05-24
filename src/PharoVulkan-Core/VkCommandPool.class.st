@@ -20,25 +20,30 @@ VkCommandPool class >> on: aHandle device: aDevice queueFamilyIndex: idx [
 
 { #category : 'instance creation' }
 VkCommandPool class >> on: aDevice queueFamilyIndex: idx [
-    "VkCommandPoolCreateInfo (24 bytes):
+	"VkCommandPoolCreateInfo (24 bytes):
      0:sType  8:pNext  16:flags  20:queueFamilyIndex"
-    | info poolBuf result |
-    info := ExternalAddress allocate: 24.
-    [
-        info unsignedLongAt: 1 put: VkStructureType commandPoolCreateInfo.
-        info pointerAt: 9 put: ExternalAddress null.
-        info unsignedLongAt: 17 put: 1.
-        info unsignedLongAt: 21 put: idx.
-        poolBuf := ExternalAddress allocate: 8.
-        [
-            result := Vk createCommandPool: aDevice handle createInfo: info allocator: ExternalAddress null poolOut: poolBuf.
-            Vk checkResult: result.
-            ^ self new
-                initializeWith: (VkCommandPool_H fromHandle: (poolBuf pointerAt: 1))
-                device: aDevice
-                queueFamilyIndex: idx
-        ] ensure: [ poolBuf free ]
-    ] ensure: [ info free ]
+
+	| info poolBuf result |
+	info := ExternalAddress allocate: 24.
+	^ [
+		  info unsignedLongAt: 1 put: VkStructureType commandPoolCreateInfo.
+		  info pointerAt: 9 put: ExternalAddress null.
+		  info unsignedLongAt: 17 put: 1.
+		  info unsignedLongAt: 21 put: idx.
+		  poolBuf := ExternalAddress allocate: 8.
+		  [
+			  result := Vk
+				            createCommandPool: aDevice handle
+				            createInfo: info
+				            allocator: ExternalAddress null
+				            poolOut: poolBuf.
+			  Vk checkResult: result.
+			  self new
+				  initializeWith:
+				  (VkCommandPool_H fromHandle: (poolBuf pointerAt: 1))
+				  device: aDevice
+				  queueFamilyIndex: idx ] ensure: [ poolBuf free ] ] ensure: [
+		  info free ]
 ]
 
 { #category : 'allocating' }

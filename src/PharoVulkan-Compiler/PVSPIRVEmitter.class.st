@@ -313,44 +313,50 @@ PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: typeMap selectorTable: st 
 
 { #category : 'emitting' }
 PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
+
 	| opc |
 	op opcode = #const ifTrue: [
-		| constId |
-		op literal isFloat
-			ifTrue: [ constId := module constantPool constantFloat32: op literal asFloat ]
-			ifFalse: [ constId := module constantPool constantInt32: op literal ].
-		regMap at: op result put: constId.
-		^ self ].
+			| constId |
+			constId := op literal isFloat
+				           ifTrue: [
+				           module constantPool constantFloat32: op literal asFloat ]
+				           ifFalse: [
+				           module constantPool constantInt32: op literal ].
+			regMap at: op result put: constId.
+			^ self ].
 	op opcode = #move ifTrue: [
-		regMap at: op result put: (self spvIdFor: op inputs first).
-		^ self ].
+			regMap at: op result put: (self spvIdFor: op inputs first).
+			^ self ].
 	op opcode = #send ifTrue: [
-		| mapping resultTypeId recvId resultId instr |
-		mapping := st at: op literal receiverType: (typeMap at: op inputs first).
-		mapping ifNil: [ PVTypeError signal: 'No mapping for ' , op literal ].
-		opc := self opcodeFor: mapping spirvOp.
-		resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
-		recvId := self spvIdFor: op inputs first.
-		resultId := module newId.
-		regMap at: op result put: resultId.
-		instr := SpvInstruction
-			opcode: opc
-			resultType: resultTypeId
-			resultId: resultId
-			operands: (op inputs collect: [ :r | self spvIdFor: r ]).
-		blk addInstruction: instr.
-		^ self ].
+			| mapping resultTypeId recvId resultId instr |
+			mapping := st
+				           at: op literal
+				           receiverType: (typeMap at: op inputs first).
+			mapping ifNil: [
+				PVTypeError signal: 'No mapping for ' , op literal ].
+			opc := self opcodeFor: mapping spirvOp.
+			resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
+			recvId := self spvIdFor: op inputs first.
+			resultId := module newId.
+			regMap at: op result put: resultId.
+			instr := SpvInstruction
+				         opcode: opc
+				         resultType: resultTypeId
+				         resultId: resultId
+				         operands: (op inputs collect: [ :r | self spvIdFor: r ]).
+			blk addInstruction: instr.
+			^ self ].
 	op opcode = #return ifTrue: [
-		blk terminate: (SpvInstruction
-			opcode: SpvOpcode opReturnValue
-			resultType: nil
-			resultId: nil
-			operands: { self spvIdFor: op inputs first }).
-		^ self ].
-	op opcode = #returnSelf ifTrue: [
-		blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()).
-		^ self ].
-	"#self, #pop, #storeTemp with no result: skip"
+			blk terminate: (SpvInstruction
+					 opcode: SpvOpcode opReturnValue
+					 resultType: nil
+					 resultId: nil
+					 operands: { (self spvIdFor: op inputs first) }).
+			^ self ].
+	op opcode = #returnSelf ifFalse: [ ^ self ].
+	blk terminate:
+		(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )).
+	^ self
 ]
 
 { #category : 'emitting structured' }

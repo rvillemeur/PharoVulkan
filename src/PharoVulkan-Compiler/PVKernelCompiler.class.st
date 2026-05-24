@@ -29,7 +29,7 @@ PVKernelCompiler >> annotation: ann [
 
 { #category : 'compilation' }
 PVKernelCompiler >> compile [
-	| ann bytecodeOps blocks structNode regOps cfg ssaCFG st typeMap typeInf |
+	| bytecodeOps blocks structNode regOps cfg ssaCFG st typeMap typeInf |
 	annotation := PVTypeAnnotation fromMethod: method.
 	annotation isGPU ifFalse: [ PVTypeError signal: 'Method is not annotated with <gpu>' ].
 	bytecodeOps := PVBytecodeDecoder decode: method.

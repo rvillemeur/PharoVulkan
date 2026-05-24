@@ -68,6 +68,7 @@ PVStructuredCFGRecognizer >> recognizeLoopAt: headerBlk preheader: preBlk [
 
 { #category : 'recognizing' }
 PVStructuredCFGRecognizer >> recognizeSelectionAt: blk [
+
 	| term trueBlk falseBlk merge |
 	term := blk terminator.
 	(term notNil and: [ term opcode = #jumpIf ]) ifFalse: [ ^ nil ].
@@ -76,8 +77,14 @@ PVStructuredCFGRecognizer >> recognizeSelectionAt: blk [
 	falseBlk := blk successors last.
 	trueBlk successors isEmpty ifTrue: [ ^ nil ].
 	merge := trueBlk successors first.
-	(falseBlk successors isEmpty not and: [ falseBlk successors first == merge ]) ifFalse: [
-		(falseBlk isFallThrough and: [ falseBlk successors first == merge ]) ifFalse: [ ^ nil ] ].
+	(falseBlk successors isNotEmpty and: [
+		 falseBlk successors first == merge ]) ifFalse: [
+			(falseBlk isFallThrough and: [ falseBlk successors first == merge ])
+				ifFalse: [ ^ nil ] ].
 	^ PVSelectionNode new
-		condBlock: blk; trueBlocks: { trueBlk }; falseBlocks: { falseBlk }; mergeBlock: merge; yourself
+		  condBlock: blk;
+		  trueBlocks: { trueBlk };
+		  falseBlocks: { falseBlk };
+		  mergeBlock: merge;
+		  yourself
 ]

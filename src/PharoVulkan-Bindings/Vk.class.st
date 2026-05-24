@@ -111,14 +111,18 @@ Vk class >> createDevice: physDevice createInfo: pCreateInfo allocator: pAllocat
 
 { #category : 'instance-management' }
 Vk class >> createInstance: aVkInstanceCreateInfo [
-    | buf result instance |
-    buf := ExternalAddress allocate: 8.
-    [ result := self primCreateInstance: aVkInstanceCreateInfo
-        allocator: ExternalAddress null instanceOut: buf.
-      self checkResult: result.
-      instance := VkInstance_H fromHandle: (buf pointerAt: 1)
-    ] ensure: [ buf free ].
-    ^ instance
+
+	| buf result instance |
+	buf := ExternalAddress allocate: 8.
+	instance := [
+		            result := self
+			                      primCreateInstance: aVkInstanceCreateInfo
+			                      allocator: ExternalAddress null
+			                      instanceOut: buf.
+		            self checkResult: result.
+		            VkInstance_H fromHandle: (buf pointerAt: 1) ] ensure: [
+		            buf free ].
+	^ instance
 ]
 
 { #category : 'generated-api' }
@@ -170,7 +174,7 @@ Vk class >> destroyInstance: aVkInstance_H [
         void* null ) )
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'ffi-calls' }
 Vk class >> destroyInstance: aVkInstance_H allocator: pAllocator [
     ^ self ffiCall: #( void vkDestroyInstance (VkInstance_H aVkInstance_H, void* pAllocator) )
 ]
