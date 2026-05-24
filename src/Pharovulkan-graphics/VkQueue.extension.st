@@ -14,14 +14,14 @@ VkQueue >> submitGraphics: aCommandBuffer waitSemaphore: aWaitSemaphore signalSe
       waitInfo pointerAt: 9 put: ExternalAddress null.
       waitInfo pointerAt: 17 put: aWaitSemaphore handle getHandle.
       waitInfo unsignedLongLongAt: 25 put: 0.
-      waitInfo unsignedLongLongAt: 33 put: 1024.
+      waitInfo unsignedLongLongAt: 33 put: VkPipelineStage2 colorAttachmentOutputBit.
       waitInfo unsignedLongAt: 41 put: 0.
       signalInfo := ExternalAddress allocate: 48.
       [ signalInfo unsignedLongAt: 1 put: VkStructureType semaphoreSubmitInfo.
         signalInfo pointerAt: 9 put: ExternalAddress null.
         signalInfo pointerAt: 17 put: aSignalSemaphore handle getHandle.
         signalInfo unsignedLongLongAt: 25 put: 0.
-        signalInfo unsignedLongLongAt: 33 put: 1024.
+        signalInfo unsignedLongLongAt: 33 put: VkPipelineStage2 colorAttachmentOutputBit.
         signalInfo unsignedLongAt: 41 put: 0.
         cbInfo := ExternalAddress allocate: 32.
         [ cbInfo unsignedLongAt: 1 put: VkStructureType commandBufferSubmitInfo.

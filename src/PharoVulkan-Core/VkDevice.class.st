@@ -25,12 +25,12 @@ VkDevice >> allocateBuffer: byteSize usage: usageFlags [
 
 { #category : 'factory' }
 VkDevice >> createCommandPool: queueFamilyIndex [
-    "VkCommandPoolCreateInfo: sType=39, pNext=null, flags=1 (TRANSIENT), queueFamilyIndex"
+    "VkCommandPoolCreateInfo: sType, pNext=null, flags=1 (RESET_COMMAND_BUFFER_BIT), queueFamilyIndex"
     | info poolBuf result poolHandle |
     info := ExternalAddress allocate: 24.
-    [ info unsignedLongAt: 1 put: 39.         "sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO"
+    [ info unsignedLongAt: 1 put: VkStructureType commandPoolCreateInfo.
       info pointerAt: 9 put: ExternalAddress null.
-      info unsignedLongAt: 17 put: 1.         "flags = RESET_COMMAND_BUFFER_BIT"
+      info unsignedLongAt: 17 put: 1.
       info unsignedLongAt: 21 put: queueFamilyIndex.
       poolBuf := ExternalAddress allocate: 8.
       [ result := Vk createCommandPool: handle createInfo: info allocator: ExternalAddress null poolOut: poolBuf.

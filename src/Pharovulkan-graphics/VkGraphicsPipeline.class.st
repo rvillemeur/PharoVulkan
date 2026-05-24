@@ -76,14 +76,14 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
         stagesBuf unsignedLongAt: 1  put: VkStructureType pipelineShaderStageCreateInfo.
         stagesBuf pointerAt:   9  put: ExternalAddress null.
         stagesBuf unsignedLongAt: 17 put: 0.
-        stagesBuf unsignedLongAt: 21 put: 1.
+        stagesBuf unsignedLongAt: 21 put: VkShaderStage vertexBit.
         stagesBuf pointerAt:   25 put: aVertexModule handle getHandle.
         stagesBuf pointerAt:   33 put: nameBuf.
         stagesBuf pointerAt:   41 put: ExternalAddress null.
         stagesBuf unsignedLongAt: 49 put: VkStructureType pipelineShaderStageCreateInfo.
         stagesBuf pointerAt:   57 put: ExternalAddress null.
         stagesBuf unsignedLongAt: 65 put: 0.
-        stagesBuf unsignedLongAt: 69 put: 16.
+        stagesBuf unsignedLongAt: 69 put: VkShaderStage fragmentBit.
         stagesBuf pointerAt:   73 put: aFragmentModule handle getHandle.
         stagesBuf pointerAt:   81 put: nameBuf.
         stagesBuf pointerAt:   89 put: ExternalAddress null.
@@ -92,11 +92,11 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
         bindDesc unsignedLongAt: 9 put: 0.
         attrDesc unsignedLongAt: 1  put: 0.
         attrDesc unsignedLongAt: 5  put: 0.
-        attrDesc unsignedLongAt: 9  put: 103.
+        attrDesc unsignedLongAt: 9  put: VkFormat r32g32Sfloat.
         attrDesc unsignedLongAt: 13 put: 0.
         attrDesc unsignedLongAt: 17 put: 1.
         attrDesc unsignedLongAt: 21 put: 0.
-        attrDesc unsignedLongAt: 25 put: 106.
+        attrDesc unsignedLongAt: 25 put: VkFormat r32g32b32Sfloat.
         attrDesc unsignedLongAt: 29 put: 8.
         vertInput unsignedLongAt: 1  put: VkStructureType pipelineVertexInputStateCreateInfo.
         vertInput pointerAt:   9  put: ExternalAddress null.
@@ -108,7 +108,7 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
         inputAssembly unsignedLongAt: 1  put: VkStructureType pipelineInputAssemblyStateCreateInfo.
         inputAssembly pointerAt:   9  put: ExternalAddress null.
         inputAssembly unsignedLongAt: 17 put: 0.
-        inputAssembly unsignedLongAt: 21 put: 3.
+        inputAssembly unsignedLongAt: 21 put: VkRenderConfig primitiveTopologyTriangleList.
         inputAssembly unsignedLongAt: 25 put: 0.
         viewportState unsignedLongAt: 1  put: VkStructureType pipelineViewportStateCreateInfo.
         viewportState pointerAt:   9  put: ExternalAddress null.
@@ -133,7 +133,7 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
         sampleState unsignedLongAt: 1  put: VkStructureType pipelineMultisampleStateCreateInfo.
         sampleState pointerAt:   9  put: ExternalAddress null.
         sampleState unsignedLongAt: 17 put: 0.
-        sampleState unsignedLongAt: 21 put: 1.
+        sampleState unsignedLongAt: 21 put: VkRenderConfig sampleCount1Bit.
         sampleState unsignedLongAt: 25 put: 0.
         sampleState unsignedLongAt: 29 put: 1065353216.
         sampleState pointerAt:   33 put: ExternalAddress null.
@@ -146,7 +146,7 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
         blendAttach unsignedLongAt: 17 put: 0.
         blendAttach unsignedLongAt: 21 put: 0.
         blendAttach unsignedLongAt: 25 put: 0.
-        blendAttach unsignedLongAt: 29 put: 15.
+        blendAttach unsignedLongAt: 29 put: VkRenderConfig colorWriteMaskRGBA.
         blendState unsignedLongAt: 1  put: VkStructureType pipelineColorBlendStateCreateInfo.
         blendState pointerAt:   9  put: ExternalAddress null.
         blendState unsignedLongAt: 17 put: 0.

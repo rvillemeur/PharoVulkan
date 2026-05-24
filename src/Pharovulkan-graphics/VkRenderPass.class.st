@@ -41,17 +41,17 @@ VkRenderPass >> initializeDevice: aVkDevice format: colorFormat [
     [
         attachDesc unsignedLongAt: 1  put: 0.
         attachDesc unsignedLongAt: 5  put: colorFormat.
-        attachDesc unsignedLongAt: 9  put: 1.
-        attachDesc unsignedLongAt: 13 put: 1.
-        attachDesc unsignedLongAt: 17 put: 0.
-        attachDesc unsignedLongAt: 21 put: 2.
-        attachDesc unsignedLongAt: 25 put: 1.
-        attachDesc unsignedLongAt: 29 put: 0.
-        attachDesc unsignedLongAt: 33 put: 1000001002.
+        attachDesc unsignedLongAt: 9  put: VkRenderConfig sampleCount1Bit.
+        attachDesc unsignedLongAt: 13 put: VkAttachmentOp loadClear.
+        attachDesc unsignedLongAt: 17 put: VkAttachmentOp storeStore.
+        attachDesc unsignedLongAt: 21 put: VkAttachmentOp loadDontCare.
+        attachDesc unsignedLongAt: 25 put: VkAttachmentOp storeDiscard.
+        attachDesc unsignedLongAt: 29 put: VkImageLayout undefined.
+        attachDesc unsignedLongAt: 33 put: VkImageLayout presentSrcKHR.
         attachRef := ExternalAddress allocate: 8.
         [
             attachRef unsignedLongAt: 1 put: 0.
-            attachRef unsignedLongAt: 5 put: 2.
+            attachRef unsignedLongAt: 5 put: VkImageLayout colorAttachmentOptimal.
             subpassDesc := ExternalAddress allocate: 72.
             [
                 subpassDesc unsignedLongAt: 1  put: 0.

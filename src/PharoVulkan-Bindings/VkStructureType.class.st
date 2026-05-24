@@ -45,6 +45,11 @@ VkStructureType class >> descriptorPoolCreateInfo [  ^ 33
 ]
 
 { #category : 'structure-types' }
+VkStructureType class >> descriptorSetAllocateInfo [
+    ^ 34
+]
+
+{ #category : 'structure-types' }
 VkStructureType class >> descriptorSetLayoutCreateInfo [
     ^ 32
 ]

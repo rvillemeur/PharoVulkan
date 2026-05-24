@@ -47,13 +47,13 @@ VkSwapchain >> createImageViews [
           viewInfo pointerAt:   9  put: ExternalAddress null.
           viewInfo unsignedLongAt: 17 put: 0.
           viewInfo pointerAt:   25 put: img getHandle.
-          viewInfo unsignedLongAt: 33 put: 1.
+          viewInfo unsignedLongAt: 33 put: VkRenderConfig imageViewType2D.
           viewInfo unsignedLongAt: 37 put: format.
           viewInfo unsignedLongAt: 41 put: 0.
           viewInfo unsignedLongAt: 45 put: 0.
           viewInfo unsignedLongAt: 49 put: 0.
           viewInfo unsignedLongAt: 53 put: 0.
-          viewInfo unsignedLongAt: 57 put: 1.
+          viewInfo unsignedLongAt: 57 put: VkRenderConfig imageAspectColorBit.
           viewInfo unsignedLongAt: 61 put: 0.
           viewInfo unsignedLongAt: 65 put: 1.
           viewInfo unsignedLongAt: 69 put: 0.
@@ -123,13 +123,13 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
           Vk checkResult: result.
           format := formatBuf unsignedLongAt: 1.
           1 to: fmtCount do: [:i |
-              (formatBuf unsignedLongAt: (i - 1) * 8 + 1) = 44 ifTrue: [ format := 44 ]]
+              (formatBuf unsignedLongAt: (i - 1) * 8 + 1) = VkFormat b8g8r8a8Unorm ifTrue: [ format := VkFormat b8g8r8a8Unorm ]]
         ] ensure: [ formatBuf free ]
       ] ensure: [ countBuf free ].
       imageCount := (caps unsignedLongAt: 1) + 1.
       (caps unsignedLongAt: 5) > 0 ifTrue: [ imageCount := imageCount min: (caps unsignedLongAt: 5) ].
       "VkSwapchainCreateInfoKHR (104 bytes):
-       0:sType 8:pNext 16:flags 20:surface(ptr) 28:minImageCount 32:imageFormat 36:imageColorSpace 40:imageExtent.width 44:imageExtent.height 48:imageArrayLayers 52:imageUsage 56:imageSharingMode 60:queueFamilyIndexCount 64:pQueueFamilyIndices(ptr) 72:preTransform 76:compositeAlpha 80:presentMode 84:clipped 88:oldSwapchain(ptr)
+       0:sType 8:pNext 16:flags 24:surface(ptr) 32:minImageCount 36:imageFormat 40:imageColorSpace 44:imageExtent.width 48:imageExtent.height 52:imageArrayLayers 56:imageUsage 60:imageSharingMode 64:queueFamilyIndexCount 72:pQueueFamilyIndices(ptr) 80:preTransform 84:compositeAlpha 88:presentMode 92:clipped 96:oldSwapchain(ptr)
        VkSurfaceCapabilitiesKHR: 0:minImageCount 4:maxImageCount ... 40:currentTransform ..."
       swapInfo := ExternalAddress allocate: 104.
       [ swapInfo unsignedLongAt: 1  put: VkStructureType swapchainCreateInfoKHR.
@@ -142,13 +142,13 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
         swapInfo unsignedLongAt: 45 put: aPoint x.
         swapInfo unsignedLongAt: 49 put: aPoint y.
         swapInfo unsignedLongAt: 53 put: 1.
-        swapInfo unsignedLongAt: 57 put: 16.
-        swapInfo unsignedLongAt: 61 put: 0.
+        swapInfo unsignedLongAt: 57 put: VkImageUsage colorAttachmentBit.
+        swapInfo unsignedLongAt: 61 put: VkRenderConfig sharingModeExclusive.
         swapInfo unsignedLongAt: 65 put: 0.
         swapInfo pointerAt: 73 put: ExternalAddress null.
         swapInfo unsignedLongAt: 81 put: (caps unsignedLongAt: 41).
-        swapInfo unsignedLongAt: 85 put: 1.
-        swapInfo unsignedLongAt: 89 put: 2.
+        swapInfo unsignedLongAt: 85 put: VkRenderConfig compositeAlphaOpaqueBit.
+        swapInfo unsignedLongAt: 89 put: VkRenderConfig presentModeFifo.
         swapInfo unsignedLongAt: 93 put: 1.
         swapInfo pointerAt: 97 put: ExternalAddress null.
         outBuf := ExternalAddress allocate: 8.
