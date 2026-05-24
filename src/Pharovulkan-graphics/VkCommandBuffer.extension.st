@@ -2,29 +2,26 @@ Extension { #name : 'VkCommandBuffer' }
 
 { #category : '*pharovulkan-graphics' }
 VkCommandBuffer >> beginRenderPass: aRenderPass framebuffer: aFramebuffer extent: aPoint [
-    | info clearVal clearColor |
-    clearColor := ExternalAddress allocate: 16.
-    [ clearColor floatAt: 1 put: 0.0.
-      clearColor floatAt: 5 put: 0.0.
-      clearColor floatAt: 9 put: 0.0.
-      clearColor floatAt: 13 put: 1.0.
-      clearVal := ExternalAddress allocate: 16.
-      [ clearVal copyFrom: clearColor to: 16.
-        info := ExternalAddress allocate: 64.
-        [ info unsignedLongAt: 1 put: 43.
-          info pointerAt: 9 put: ExternalAddress null.
-          info pointerAt: 17 put: aRenderPass handle getHandle.
-          info pointerAt: 25 put: aFramebuffer handle getHandle.
-          info unsignedLongAt: 33 put: 0.
-          info unsignedLongAt: 37 put: 0.
-          info unsignedLongAt: 41 put: aPoint x.
-          info unsignedLongAt: 45 put: aPoint y.
-          info unsignedLongAt: 49 put: 1.
-          info pointerAt: 57 put: clearVal.
-          Vk cmdBeginRenderPass: handle renderPassBegin: info contents: 0
-        ] ensure: [ info free ]
-      ] ensure: [ clearVal free ]
-    ] ensure: [ clearColor free ]
+    | info clearVal |
+    clearVal := ExternalAddress allocate: 16.
+    [ clearVal floatAt: 1 put: 0.0.
+      clearVal floatAt: 5 put: 0.0.
+      clearVal floatAt: 9 put: 0.0.
+      clearVal floatAt: 13 put: 1.0.
+      info := ExternalAddress allocate: 64.
+      [ info unsignedLongAt: 1 put: 43.
+        info pointerAt: 9 put: ExternalAddress null.
+        info pointerAt: 17 put: aRenderPass handle getHandle.
+        info pointerAt: 25 put: aFramebuffer handle getHandle.
+        info unsignedLongAt: 33 put: 0.
+        info unsignedLongAt: 37 put: 0.
+        info unsignedLongAt: 41 put: aPoint x.
+        info unsignedLongAt: 45 put: aPoint y.
+        info unsignedLongAt: 49 put: 1.
+        info pointerAt: 57 put: clearVal.
+        Vk cmdBeginRenderPass: handle pRenderPassBegin: info contents: 0
+      ] ensure: [ info free ]
+    ] ensure: [ clearVal free ]
 ]
 
 { #category : '*pharovulkan-graphics' }

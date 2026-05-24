@@ -177,13 +177,10 @@ PVHelloTriangleScene >> destroy [
 
 { #category : 'initialization' }
 PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow [
-    | ext capsBuf |
+    | ext |
     ctx := aVkContext.
     surface := VkSurface fromWindow: aBackendWindow instance: ctx instance physicalDevice: ctx physicalDevice.
-    capsBuf := ExternalAddress allocate: 52.
-    [ surface queryCapabilitiesInto: capsBuf.
-      ext := (capsBuf unsignedLongAt: 9) @ (capsBuf unsignedLongAt: 13)
-    ] ensure: [ capsBuf free ].
+    ext := aBackendWindow vulkanDrawableExtent.
     swapchain := VkSwapchain on: ctx device surface: surface extent: ext.
     renderPass := VkRenderPass createColorPassDevice: ctx device format: swapchain format.
     framebuffers := swapchain imageViews collect: [:view |

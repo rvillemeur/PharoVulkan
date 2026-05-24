@@ -69,6 +69,41 @@ VkContext >> computeQueueFamily [
 ]
 
 { #category : 'initialization' }
+VkContext >> createGraphicsDevice [
+    | queueInfo sync2Feat extNameBytes extName extPtrBuf deviceInfo devBuf result devHandle |
+    queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
+    sync2Feat := ExternalAddress allocate: 24.
+    sync2Feat unsignedLongAt: 1 put: 1000314007.
+    sync2Feat pointerAt: 9 put: ExternalAddress null.
+    sync2Feat unsignedLongAt: 17 put: 1.
+    extNameBytes := 'VK_KHR_swapchain' asByteArray copyWith: 0.
+    extName := ExternalAddress allocate: extNameBytes size.
+    [ 1 to: extNameBytes size do: [:i | extName byteAt: i put: (extNameBytes at: i)].
+      extPtrBuf := ExternalAddress allocate: 8.
+      [ extPtrBuf pointerAt: 1 put: extName.
+        deviceInfo := ExternalAddress allocate: 72.
+        [ deviceInfo unsignedLongAt: 1 put: 3.
+          deviceInfo pointerAt: 9 put: sync2Feat.
+          deviceInfo unsignedLongAt: 17 put: 0.
+          deviceInfo unsignedLongAt: 21 put: 1.
+          deviceInfo pointerAt: 25 put: queueInfo.
+          deviceInfo unsignedLongAt: 33 put: 0.
+          deviceInfo pointerAt: 41 put: ExternalAddress null.
+          deviceInfo unsignedLongAt: 49 put: 1.
+          deviceInfo pointerAt: 57 put: extPtrBuf.
+          deviceInfo pointerAt: 65 put: ExternalAddress null.
+          devBuf := ExternalAddress allocate: 8.
+          [ result := Vk createDevice: physicalDevice handle createInfo: deviceInfo allocator: ExternalAddress null deviceOut: devBuf.
+            Vk checkResult: result.
+            devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+            device := VkDevice on: devHandle physicalDevice: physicalDevice context: self
+          ] ensure: [ devBuf free ]
+        ] ensure: [ deviceInfo free ]
+      ] ensure: [ extPtrBuf free ]
+    ] ensure: [ extName free ]
+]
+
+{ #category : 'initialization' }
 VkContext >> createLogicalDevice [
     | queueInfo deviceInfo devBuf result devHandle |
     "Build VkDeviceQueueCreateInfo (sType=2, familyIdx, queueCount=1, pPriorities)"
@@ -146,6 +181,48 @@ VkContext >> initializeCompute [
 	self createLogicalDevice.
 	self fetchComputeQueue.
 	^ self
+]
+
+{ #category : 'initialization' }
+VkContext >> initializeGraphicsWithExtensions: extNames [
+    | appInfo info extPtrs extArray buf result |
+    appInfo := ExternalAddress allocate: 48.
+    [ appInfo unsignedLongAt: 1 put: 0.
+      appInfo pointerAt: 9 put: ExternalAddress null.
+      appInfo pointerAt: 17 put: ExternalAddress null.
+      appInfo unsignedLongAt: 25 put: 0.
+      appInfo pointerAt: 33 put: ExternalAddress null.
+      appInfo unsignedLongAt: 41 put: 0.
+      appInfo unsignedLongAt: 45 put: 4206592.
+      info := ExternalAddress allocate: 64.
+      [ extPtrs := extNames collect: [:n |
+            | bytes p |
+            bytes := n asByteArray copyWith: 0.
+            p := ExternalAddress allocate: bytes size.
+            1 to: bytes size do: [:i | p byteAt: i put: (bytes at: i)].
+            p].
+        extArray := ExternalAddress allocate: extNames size * 8.
+        [ extPtrs doWithIndex: [:p :i | extArray pointerAt: (i - 1) * 8 + 1 put: p].
+          info unsignedLongAt: 1 put: 1.
+          info pointerAt: 9 put: ExternalAddress null.
+          info unsignedLongAt: 17 put: 0.
+          info pointerAt: 25 put: appInfo.
+          info unsignedLongAt: 33 put: 0.
+          info pointerAt: 41 put: ExternalAddress null.
+          info unsignedLongAt: 49 put: extNames size.
+          info pointerAt: 57 put: extArray.
+          buf := ExternalAddress allocate: 8.
+          [ result := Vk primCreateInstance: info allocator: ExternalAddress null instanceOut: buf.
+            Vk checkResult: result.
+            instance := VkInstance_H fromHandle: (buf pointerAt: 1)
+          ] ensure: [ buf free ]
+        ] ensure: [ extArray free. extPtrs do: [:p | p free] ]
+      ] ensure: [ info free ]
+    ] ensure: [ appInfo free ].
+    self selectGraphicsPhysicalDevice.
+    self createGraphicsDevice.
+    self fetchGraphicsQueue.
+    ^ self
 ]
 
 { #category : 'accessing' }
