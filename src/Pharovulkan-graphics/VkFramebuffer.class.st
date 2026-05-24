@@ -1,3 +1,6 @@
+"
+Vulkan framebuffer. Wraps a VkFramebuffer_H binding one image view to a render pass for a specific extent. Created per swapchain image. Key method: initializeDevice:renderPass:imageView:width:height:.
+"
 Class {
 	#name : 'VkFramebuffer',
 	#superclass : 'Object',

@@ -1,3 +1,6 @@
+"
+Decodes Sista bytecode from a CompiledMethod into a flat list of PVBytecodeOp records, each with opcode, operands, stack effect, and PC. Stage 2 of the compiler pipeline.
+"
 Class {
 	#name : 'PVBytecodeDecoder',
 	#superclass : 'InstructionClient',

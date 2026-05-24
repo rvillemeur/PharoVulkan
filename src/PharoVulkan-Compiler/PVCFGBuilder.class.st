@@ -1,3 +1,6 @@
+"
+Builds the control-flow graph from a flat list of PVBytecodeOp instructions. Identifies basic block boundaries at jump targets, wires successor edges, and returns an array of PVBytecodeBlock. Stage 4 of the pipeline.
+"
 Class {
 	#name : 'PVCFGBuilder',
 	#superclass : 'Object',

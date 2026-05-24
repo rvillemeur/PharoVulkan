@@ -1,3 +1,6 @@
+"
+OSWindowAttributes subclass carrying a vulkanAttributes slot. Set on the OSWindow before opening to signal that a Vulkan surface should be created by the backend.
+"
 Class {
 	#name : 'PVWindowAttributes',
 	#superclass : 'OSWindowAttributes',

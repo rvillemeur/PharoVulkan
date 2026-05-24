@@ -1,3 +1,6 @@
+"
+Loads SPIR-V bytecode into a VkShaderModule_H on the device. Key method: fromBytes:device:. Must be destroyed explicitly with destroy after pipeline creation.
+"
 Class {
 	#name : 'VkShaderModule',
 	#superclass : 'Object',

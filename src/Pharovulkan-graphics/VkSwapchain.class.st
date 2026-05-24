@@ -1,3 +1,6 @@
+"
+Vulkan swapchain. Manages the queue of presentable images for a surface, creates image views, acquires images, and presents frames. Key methods: acquireNextImage:fence:, present:queue:waitSemaphore:.
+"
 Class {
 	#name : 'VkSwapchain',
 	#superclass : 'Object',

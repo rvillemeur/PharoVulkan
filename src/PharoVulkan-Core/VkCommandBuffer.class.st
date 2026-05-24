@@ -1,3 +1,6 @@
+"
+Wrapper around a VkCommandBuffer_H. Records Vulkan commands inside a do: block. Key methods: do:, begin, end, dispatch:y:z:, bindComputePipeline:, bindDescriptorSets:pipelineLayout:, draw:.
+"
 Class {
 	#name : 'VkCommandBuffer',
 	#superclass : 'Object',

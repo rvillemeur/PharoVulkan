@@ -1,3 +1,6 @@
+"
+Vulkan descriptor set. Binds storage buffers to shader binding slots via vkUpdateDescriptorSets. Key method: bindBuffers: to configure buffer descriptors before dispatch.
+"
 Class {
 	#name : 'VkDescriptorSet',
 	#superclass : 'Object',

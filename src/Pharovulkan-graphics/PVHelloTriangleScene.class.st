@@ -1,3 +1,6 @@
+"
+Renders a coloured triangle using Vulkan graphics. Owns the full graphics resource chain: surface, swapchain, render pass, framebuffers, graphics pipeline, vertex buffer, semaphores, and fence. Key methods: prepare:backendWindow:, renderFrame, destroy.
+"
 Class {
 	#name : 'PVHelloTriangleScene',
 	#superclass : 'Object',

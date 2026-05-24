@@ -1,3 +1,6 @@
+"
+Vulkan compute pipeline. Wraps a VkPipeline_H created from a SPIR-V compute shader module and a VkPipelineLayout. Key method: createDevice:shaderModule:layout:.
+"
 Class {
 	#name : 'VkComputePipeline',
 	#superclass : 'Object',

@@ -1,3 +1,6 @@
+"
+SSA phi node. Holds a result register id and a list of (value, predecessor-block) pairs. Prepended to a block's instruction list by PVSSAConstructor and consumed by PVSPIRVEmitter to emit OpPhi.
+"
 Class {
 	#name : 'PVPhiNode',
 	#superclass : 'Object',

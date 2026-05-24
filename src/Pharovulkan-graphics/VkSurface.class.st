@@ -1,3 +1,6 @@
+"
+Vulkan presentation surface. Creates a VkSurfaceKHR via SDL_Vulkan_CreateSurface and queries physical device surface support. Key method: fromWindow:instance:physicalDevice:.
+"
 Class {
 	#name : 'VkSurface',
 	#superclass : 'Object',

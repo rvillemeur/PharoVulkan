@@ -1,3 +1,6 @@
+"
+SDL2 backend window subclass that adds Vulkan surface support. Overrides createSurface to call SDL_Vulkan_CreateSurface, provides requiredInstanceExtensions from SDL, and returns the drawable extent for Wayland-safe swapchain sizing.
+"
 Class {
 	#name : 'OSSDL2VulkanBackendWindow',
 	#superclass : 'OSSDL2BackendWindow',

@@ -1,3 +1,6 @@
+"
+Top-level Vulkan context. Owns the VkInstance, selects a physical device and queue family, creates a logical VkDevice, and retrieves the queue. Key methods: computeContextForExtensions:, graphicsContextForExtensions:, destroy.
+"
 Class {
 	#name : 'VkContext',
 	#superclass : 'Object',

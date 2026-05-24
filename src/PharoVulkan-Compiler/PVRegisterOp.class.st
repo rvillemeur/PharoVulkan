@@ -1,3 +1,6 @@
+"
+One instruction in the register IR. Stores an opcode symbol, input register ids, output register id, and optional literal. Produced by PVStackSimulator from decoded bytecodes.
+"
 Class {
 	#name : 'PVRegisterOp',
 	#superclass : 'Object',

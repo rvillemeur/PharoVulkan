@@ -1,3 +1,6 @@
+"
+Simulates a single bytecode block in isolation during SSA construction. Executes PVRegisterOp instructions symbolically, returning a record of register definitions and the stack top. Used by PVSPIRVEmitter.
+"
 Class {
 	#name : 'PVBlockSimulator',
 	#superclass : 'Object',

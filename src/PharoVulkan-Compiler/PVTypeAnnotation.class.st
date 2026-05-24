@@ -1,3 +1,6 @@
+"
+Parsed representation of a <gpu> or type pragma on a kernel method. Carries the execution model and any extra type constraints needed by PVTypeInferencer.
+"
 Class {
 	#name : 'PVTypeAnnotation',
 	#superclass : 'Object',

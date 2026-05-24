@@ -1,3 +1,6 @@
+"
+Maps a (selector, receiverType, argTypes) triple to a SPIR-V opcode or emit strategy. One entry in the PVSelectorTable dispatch table.
+"
 Class {
 	#name : 'PVSelectorMapping',
 	#superclass : 'Object',

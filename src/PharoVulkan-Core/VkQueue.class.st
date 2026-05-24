@@ -1,3 +1,6 @@
+"
+Wrapper around a VkQueue_H with its queue family index. Submits compute dispatches (submitCompute:) and graphics frames (submitGraphics:waitSemaphore:signalSemaphore:fence:). Also performs waitIdle and present.
+"
 Class {
 	#name : 'VkQueue',
 	#superclass : 'Object',

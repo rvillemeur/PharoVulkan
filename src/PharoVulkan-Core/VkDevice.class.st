@@ -1,3 +1,6 @@
+"
+Wrapper around a VkDevice_H logical device handle. Provides access to the associated VkPhysicalDevice and owning VkContext. Passed to all resource constructors.
+"
 Class {
 	#name : 'VkDevice',
 	#superclass : 'Object',

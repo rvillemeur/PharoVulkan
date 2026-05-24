@@ -1,3 +1,6 @@
+"
+SUnit test suite for core Vulkan lifecycle: VkContext creation, physical device selection, queue retrieval, buffer allocation/mapping, and command pool/buffer allocation.
+"
 Class {
 	#name : 'VkCoreTest',
 	#superclass : 'TestCase',

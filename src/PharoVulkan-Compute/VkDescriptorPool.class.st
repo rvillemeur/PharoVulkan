@@ -1,3 +1,6 @@
+"
+Vulkan descriptor pool. Allocates a fixed number of storage-buffer descriptor sets for compute pipelines. Key methods: initializeDevice:maxSets:, allocateSet:.
+"
 Class {
 	#name : 'VkDescriptorPool',
 	#superclass : 'Object',

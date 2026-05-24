@@ -1,3 +1,6 @@
+"
+Vulkan descriptor set layout. Declares the storage-buffer binding schema used by compute shaders. Key method: initializeDevice:bindingCount:.
+"
 Class {
 	#name : 'VkDescriptorSetLayout',
 	#superclass : 'Object',

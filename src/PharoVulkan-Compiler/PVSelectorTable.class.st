@@ -1,3 +1,6 @@
+"
+Dispatch table mapping Pharo message sends to SPIR-V operations. Covers i32 and f32 arithmetic (+, -, *, //, \\, <, <=) and comparison ops. Used by PVTypeInferencer at stage 6.
+"
 Class {
 	#name : 'PVSelectorTable',
 	#superclass : 'Object',

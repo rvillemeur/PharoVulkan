@@ -1,3 +1,6 @@
+"
+Vulkan render pass. Defines one colour attachment with CLEAR/STORE ops and PRESENT_SRC_KHR final layout. Key method: createColorPassDevice:format:.
+"
 Class {
 	#name : 'VkRenderPass',
 	#superclass : 'Object',

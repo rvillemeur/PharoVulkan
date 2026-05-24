@@ -1,3 +1,6 @@
+"
+Constructs SSA form using the Braun et al. on-the-fly algorithm. Inserts phi nodes at join points without a separate dominance pass. Stage 5 of the pipeline.
+"
 Class {
 	#name : 'PVSSAConstructor',
 	#superclass : 'Object',

@@ -1,3 +1,6 @@
+"
+SUnit test suite for the graphics path. Verifies shader SPIR-V construction (buildVertexShader, buildFragmentShader) and vertex data layout. Integration rendering is exercised via PVHelloTriangleScene.
+"
 Class {
 	#name : 'PVGraphicsTest',
 	#superclass : 'TestCase',

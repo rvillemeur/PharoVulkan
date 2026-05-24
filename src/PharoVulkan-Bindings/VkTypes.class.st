@@ -1,3 +1,6 @@
+"
+SharedPool of FFIArray type constants for fixed-size Vulkan struct fields (Uint8_16, Uint8_32, Uint8_64, etc.). Initialized at class load; imported by VkStructure subclasses with array-typed members.
+"
 Class {
 	#name : 'VkTypes',
 	#superclass : 'SharedPool',

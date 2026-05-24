@@ -1,3 +1,6 @@
+"
+Recognizes structured control-flow patterns (ifTrue:ifFalse:, whileTrue:) in the CFG and wraps them in PVSelectionNode or PVLoopNode. Signals an error on unrecognised shapes. Stage 7 of the pipeline.
+"
 Class {
 	#name : 'PVStructuredCFGRecognizer',
 	#superclass : 'Object',

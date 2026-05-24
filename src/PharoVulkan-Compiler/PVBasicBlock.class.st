@@ -1,3 +1,6 @@
+"
+A basic block in the compiler register IR. Holds a sequence of PVRegisterOp instructions with a single entry and one or two successors (fall-through or conditional branch). Built by PVCFGBuilder.
+"
 Class {
 	#name : 'PVBasicBlock',
 	#superclass : 'Object',

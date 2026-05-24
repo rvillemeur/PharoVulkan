@@ -1,3 +1,6 @@
+"
+OSWindow driver subclass that registers the Vulkan-capable SDL2 backend. Returned as the preferred driver when Vulkan rendering is requested via OSVulkanAttributes.
+"
 Class {
 	#name : 'PVVulkanDriver',
 	#superclass : 'OSSDL2Driver',

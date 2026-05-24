@@ -1,3 +1,6 @@
+"
+SUnit test suite for the compute pipeline. Verifies end-to-end GPU dispatch: buffer allocation, descriptor binding, pipeline creation, and result readback against a CPU reference.
+"
 Class {
 	#name : 'PVComputeTest',
 	#superclass : 'TestCase',

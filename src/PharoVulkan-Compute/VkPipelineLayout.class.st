@@ -1,3 +1,6 @@
+"
+Vulkan pipeline layout. Combines descriptor set layouts and optional push constant ranges into a VkPipelineLayout_H used when creating pipelines. Key method: initializeOn:setLayouts:.
+"
 Class {
 	#name : 'VkPipelineLayout',
 	#superclass : 'Object',

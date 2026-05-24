@@ -1,3 +1,6 @@
+"
+Vulkan command pool. Owns the memory from which VkCommandBuffer objects are allocated for a given queue family. Key methods: allocateBuffer, destroy.
+"
 Class {
 	#name : 'VkCommandPool',
 	#superclass : 'Object',

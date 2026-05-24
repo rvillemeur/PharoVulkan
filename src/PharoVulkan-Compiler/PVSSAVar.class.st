@@ -1,3 +1,6 @@
+"
+An SSA variable entry in the Braun constructor: a register id paired with the block where it was defined. Used internally by PVSSAConstructor to track reaching definitions.
+"
 Class {
 	#name : 'PVSSAVar',
 	#superclass : 'Object',

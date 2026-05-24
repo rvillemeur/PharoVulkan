@@ -1,3 +1,6 @@
+"
+A contiguous range of Sista bytecodes forming one CFG block. Holds start PC, end PC, successor PCs, and the list of decoded PVBytecodeOp instructions. Produced by PVCFGBuilder.
+"
 Class {
 	#name : 'PVBytecodeBlock',
 	#superclass : 'Object',

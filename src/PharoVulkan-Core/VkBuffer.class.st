@@ -1,3 +1,6 @@
+"
+Vulkan buffer resource. Allocates a VkBuffer + VkDeviceMemory pair on the device, maps/unmaps host-visible memory, and tracks size and usage flags. Key methods: allocate, copyFromByteArray:, map, unmap, destroy.
+"
 Class {
 	#name : 'VkBuffer',
 	#superclass : 'Object',

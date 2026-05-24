@@ -1,3 +1,6 @@
+"
+Orchestrates all 9 compiler stages: bytecode decode → stack simulation → CFG build → SSA construction → type inference → structured-CFG recognition → SPIR-V emit → validation. Entry point: compile:forDevice:.
+"
 Class {
 	#name : 'PVKernelCompiler',
 	#superclass : 'Object',

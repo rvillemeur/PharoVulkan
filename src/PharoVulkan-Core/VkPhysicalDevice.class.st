@@ -1,3 +1,6 @@
+"
+Wrapper around a VkPhysicalDevice_H. Queries queue family properties, locates compute or graphics+compute queue families, and selects memory type indices for allocations. Key methods: findComputeQueueFamily, findGraphicsQueueFamily, findMemoryType:properties:.
+"
 Class {
 	#name : 'VkPhysicalDevice',
 	#superclass : 'Object',

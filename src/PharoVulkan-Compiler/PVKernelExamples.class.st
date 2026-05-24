@@ -1,3 +1,6 @@
+"
+Example GPU kernels used for integration testing and demonstration. Each method carries <gpu> and <param:> pragmas and exercises a specific compiler feature (arithmetic, control flow, etc.).
+"
 Class {
 	#name : 'PVKernelExamples',
 	#superclass : 'Object',

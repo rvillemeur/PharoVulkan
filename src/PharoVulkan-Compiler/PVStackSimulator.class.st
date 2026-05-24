@@ -1,3 +1,6 @@
+"
+Simulates the Sista stack machine symbolically to convert stack-based bytecode ops into register IR (PVRegisterOp). Assigns virtual register ids to each stack slot. Stage 3 of the pipeline.
+"
 Class {
 	#name : 'PVStackSimulator',
 	#superclass : 'Object',

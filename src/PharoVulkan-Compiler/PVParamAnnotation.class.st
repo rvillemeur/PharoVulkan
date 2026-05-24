@@ -1,3 +1,6 @@
+"
+Parsed representation of a <param: #type named: #name> pragma. Carries the SPIR-V type symbol and parameter name. Extracted from a CompiledMethod by PVKernelCompiler at compile time.
+"
 Class {
 	#name : 'PVParamAnnotation',
 	#superclass : 'Object',

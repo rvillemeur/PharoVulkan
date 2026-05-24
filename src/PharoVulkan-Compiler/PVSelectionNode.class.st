@@ -1,3 +1,6 @@
+"
+Structured CFG node representing an ifTrue:ifFalse: selection. Holds the condition block, true branch, false branch, and merge block. Produced by PVStructuredCFGRecognizer; consumed by PVSPIRVEmitter to emit OpSelectionMerge.
+"
 Class {
 	#name : 'PVSelectionNode',
 	#superclass : 'Object',

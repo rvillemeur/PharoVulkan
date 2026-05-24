@@ -1,3 +1,6 @@
+"
+End-to-end compute kernel runner. Compiles a Pharo method annotated with <gpu> to SPIR-V, creates a VkComputePipeline, dispatches on the GPU, and reads back results.
+"
 Class {
 	#name : 'PVComputeKernel',
 	#superclass : 'Object',

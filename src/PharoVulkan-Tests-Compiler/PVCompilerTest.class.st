@@ -1,3 +1,6 @@
+"
+SUnit test suite for the Pharo→SPIR-V compiler pipeline. Covers each stage: bytecode decode, stack simulation, CFG build, SSA construction, type inference, structured-CFG recognition, and SPIR-V emission. All 12 tests must pass.
+"
 Class {
 	#name : 'PVCompilerTest',
 	#superclass : 'TestCase',

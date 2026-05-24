@@ -1,3 +1,6 @@
+"
+One decoded Sista bytecode instruction. Stores the opcode symbol, operands, stack effect (delta), and source PC. Produced by PVBytecodeDecoder; consumed by PVStackSimulator and PVCFGBuilder.
+"
 Class {
 	#name : 'PVBytecodeOp',
 	#superclass : 'Object',

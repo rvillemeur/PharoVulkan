@@ -1,3 +1,6 @@
+"
+Emits a SPIR-V module from the typed SSA IR. Handles straight-line code, ifTrue:ifFalse: (compileSelection:), and whileTrue: (compileLoop:). Stage 8 of the compiler pipeline. Entry point: emitModule:.
+"
 Class {
 	#name : 'PVSPIRVEmitter',
 	#superclass : 'SpvModuleEmitter',

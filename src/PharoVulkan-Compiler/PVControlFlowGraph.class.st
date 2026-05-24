@@ -1,3 +1,6 @@
+"
+Container for the compiler CFG: an ordered collection of PVBasicBlock nodes with wired successor/predecessor edges. Produced by PVCFGBuilder after register-IR construction.
+"
 Class {
 	#name : 'PVControlFlowGraph',
 	#superclass : 'Object',

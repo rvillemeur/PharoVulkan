@@ -1,3 +1,6 @@
+"
+Infers SPIR-V types for each SSA register and resolves message sends to SPIR-V operations via PVSelectorTable. Stage 6 of the pipeline.
+"
 Class {
 	#name : 'PVTypeInferencer',
 	#superclass : 'Object',

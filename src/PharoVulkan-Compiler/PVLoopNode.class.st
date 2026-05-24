@@ -1,3 +1,6 @@
+"
+Structured CFG node representing a whileTrue: loop. Holds the header block, body blocks, and merge block. Produced by PVStructuredCFGRecognizer; consumed by PVSPIRVEmitter to emit OpLoopMerge.
+"
 Class {
 	#name : 'PVLoopNode',
 	#superclass : 'Object',
