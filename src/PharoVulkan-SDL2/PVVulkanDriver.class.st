@@ -10,12 +10,12 @@ Class {
 
 { #category : 'driver management' }
 PVVulkanDriver class >> install [
-    OSWindowDriver setDefault: self new
+    OSWindowDriver driverClass: self.
 ]
 
 { #category : 'driver management' }
 PVVulkanDriver class >> uninstall [
-    OSWindowDriver setDefault: OSSDL2Driver new
+    OSWindowDriver driverClass: OSSDL2Driver
 ]
 
 { #category : 'window creation' }

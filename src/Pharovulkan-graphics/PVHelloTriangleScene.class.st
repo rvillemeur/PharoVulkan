@@ -19,13 +19,48 @@ Class {
 		'inFlightFence',
 		'vertexBuffer'
 	],
-	#category : 'Pharovulkan-graphics',
-	#package : 'Pharovulkan-graphics'
+	#category : 'Pharovulkan-graphics-example',
+	#package : 'Pharovulkan-graphics',
+	#tag : 'example'
 }
 
 { #category : 'instance creation' }
 PVHelloTriangleScene class >> prepare: aVkContext backendWindow: aBackendWindow [
     ^ self new initializeCtx: aVkContext backendWindow: aBackendWindow
+]
+
+{ #category : 'examples' }
+PVHelloTriangleScene class >> renderTriangle [
+	"Open window"
+
+	<sampleInstance>
+	| attrs win backendWin ctx scene |
+	PVVulkanDriver install.
+	attrs := PVWindowAttributes newVulkan.
+	attrs
+		title: 'Hello Triangle';
+		extent: 800 @ 600;
+		windowCentered: true.
+	win := OSWindow createWithAttributes: attrs.
+	backendWin := win backendWindow.
+
+	"Create context + scene"
+	ctx := VkContext graphicsContextForExtensions:
+		       backendWin requiredInstanceExtensions.
+	scene := PVHelloTriangleScene prepare: ctx backendWindow: backendWin.
+
+	"Render loop"
+	1 to: 300 do: [ :i | scene renderFrame ].
+
+	"Tear down"
+	ctx computeQueue waitIdle.
+	scene destroy.
+	ctx destroy.
+	win destroy.
+
+	"Restore default driver"
+	PVVulkanDriver uninstall.
+	^ scene
 ]
 
 { #category : 'private' }
@@ -316,6 +351,10 @@ PVHelloTriangleScene >> renderFrame [
 
 { #category : 'accessing' }
 PVHelloTriangleScene >> renderPass [ ^ renderPass
+]
+
+{ #category : 'see class side' }
+PVHelloTriangleScene >> seeClassSide [ 
 ]
 
 { #category : 'accessing' }
