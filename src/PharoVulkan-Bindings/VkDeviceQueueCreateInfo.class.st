@@ -16,5 +16,7 @@ VkDeviceQueueCreateInfo class >> fieldsDesc [
 
 { #category : 'initialization' }
 VkDeviceQueueCreateInfo >> initialize [
-    self defineFields
+
+	super initialize.
+	self defineFields
 ]

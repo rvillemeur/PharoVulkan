@@ -41,8 +41,9 @@ SpvBlock >> id: x [         id := x
 
 { #category : 'initialization' }
 SpvBlock >> initialize [
-    instructions := OrderedCollection new.
-    terminator := nil
+
+	super initialize.
+	instructions := OrderedCollection new
 ]
 
 { #category : 'accessing' }

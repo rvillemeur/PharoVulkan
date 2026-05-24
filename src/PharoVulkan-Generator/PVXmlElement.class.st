@@ -22,7 +22,7 @@ PVXmlElement >> at: key [
     ^ attributes at: key ifAbsent: [nil]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'accessing' }
 PVXmlElement >> at: key ifAbsent: aBlock [
     ^ attributes at: key ifAbsent: aBlock
 ]
@@ -49,9 +49,11 @@ PVXmlElement >> firstChildNamed: aTag [
 
 { #category : 'initialization' }
 PVXmlElement >> initialize [
-    attributes := Dictionary new.
-    children := OrderedCollection new.
-    text := '' 
+
+	super initialize.
+	attributes := Dictionary new.
+	children := OrderedCollection new.
+	text := ''
 ]
 
 { #category : 'accessing' }

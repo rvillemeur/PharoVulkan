@@ -48,7 +48,10 @@ SpvTypeRegistry >> functionType: aReturnType paramTypes: aParamArray [
 ]
 
 { #category : 'initialization' }
-SpvTypeRegistry >> initialize [ types := Dictionary new
+SpvTypeRegistry >> initialize [
+
+	super initialize.
+	types := Dictionary new
 ]
 
 { #category : 'type-factories' }

@@ -16,5 +16,7 @@ VkTestStruct class >> fieldsDesc [
 
 { #category : 'initialization' }
 VkTestStruct >> initialize [
-    self defineFields
+
+	super initialize.
+	self defineFields
 ]

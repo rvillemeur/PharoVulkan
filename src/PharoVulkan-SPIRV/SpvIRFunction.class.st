@@ -43,6 +43,8 @@ SpvIRFunction >> blocks [ ^ blocks
 
 { #category : 'initialization' }
 SpvIRFunction >> initialize [
+
+	super initialize.
 	parameterTypes := OrderedCollection new.
 	parameters := OrderedCollection new.
 	blocks := OrderedCollection new

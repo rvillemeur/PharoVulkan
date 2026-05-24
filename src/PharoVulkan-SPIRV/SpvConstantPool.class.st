@@ -77,7 +77,10 @@ SpvConstantPool >> constantUInt32: anInteger [
 ]
 
 { #category : 'initialization' }
-SpvConstantPool >> initialize [  constants := Dictionary new
+SpvConstantPool >> initialize [
+
+	super initialize.
+	constants := Dictionary new
 ]
 
 { #category : 'accessing' }

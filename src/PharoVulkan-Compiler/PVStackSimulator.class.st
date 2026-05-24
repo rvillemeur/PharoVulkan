@@ -19,8 +19,9 @@ PVStackSimulator class >> simulate: aBytecodeOpArray [
 	^ self new initialize simulate: aBytecodeOpArray
 ]
 
-{ #category : 'initialize-release' }
+{ #category : 'initialization' }
 PVStackSimulator >> initialize [
+super initialize .
 	stack := OrderedCollection new.
 	nextReg := 0.
 	tempDefs := Dictionary new.

@@ -25,8 +25,10 @@ PVBytecodeBlock >> id: n [
 	id := n
 ]
 
-{ #category : 'initialize-release' }
+{ #category : 'initialization' }
 PVBytecodeBlock >> initialize [
+
+	super initialize.
 	ops := OrderedCollection new.
 	successors := OrderedCollection new.
 	predecessors := OrderedCollection new

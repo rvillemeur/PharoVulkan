@@ -81,6 +81,7 @@ SpvModuleEmitter >> globalRef: anId type: aType [
 
 { #category : 'initialization' }
 SpvModuleEmitter >> initialize [
+super initialize.
 	module := SpvModule new initialize.
 	idMap := Dictionary new
 ]

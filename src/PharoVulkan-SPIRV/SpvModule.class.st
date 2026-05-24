@@ -124,19 +124,21 @@ SpvModule >> importExtInstSet: aName [
 
 { #category : 'initialization' }
 SpvModule >> initialize [
-    nextId := 1.
-    capabilities := OrderedCollection new.
-    extensions := OrderedCollection new.
-    extInstSets := Dictionary new.
-    addressingModel := 0.  "Logical"
-    memoryModel := 1.       "GLSL450"
-    entryPoints := OrderedCollection new.
-    executionModes := OrderedCollection new.
-    decorations := OrderedCollection new.
-    globalVariables := OrderedCollection new.
-    functions := OrderedCollection new.
-    typeRegistry := SpvTypeRegistry on: self.
-    constantPool := SpvConstantPool on: self
+
+	super initialize.
+	nextId := 1.
+	capabilities := OrderedCollection new.
+	extensions := OrderedCollection new.
+	extInstSets := Dictionary new.
+	addressingModel := 0. "Logical"
+	memoryModel := 1. "GLSL450"
+	entryPoints := OrderedCollection new.
+	executionModes := OrderedCollection new.
+	decorations := OrderedCollection new.
+	globalVariables := OrderedCollection new.
+	functions := OrderedCollection new.
+	typeRegistry := SpvTypeRegistry on: self.
+	constantPool := SpvConstantPool on: self
 ]
 
 { #category : 'accessing' }

@@ -34,7 +34,7 @@ PVBytecodeDecoder >> doPop [
 	ops add: (PVBytecodeOp pc: startPc opcode: #pop operands: #() stackEffect: -1)
 ]
 
-{ #category : 'initialize-release' }
+{ #category : 'initialization' }
 PVBytecodeDecoder >> initialize [
 	ops := OrderedCollection new.
 	currentPc := 0.

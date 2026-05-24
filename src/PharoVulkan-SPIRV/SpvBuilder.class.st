@@ -163,8 +163,9 @@ SpvBuilder >> importGLSL [
 
 { #category : 'initialization' }
 SpvBuilder >> initialize [
-    module := SpvModule new.
-    currentBlock := nil
+
+	super initialize.
+	module := SpvModule new
 ]
 
 { #category : 'accessing' }

@@ -31,8 +31,10 @@ PVSelectorTable >> at: selector receiverType: recvType put: mapping [
 	table at: selector , ':' , recvType asString put: mapping
 ]
 
-{ #category : 'initialize-release' }
+{ #category : 'initialization' }
 PVSelectorTable >> initialize [
+
+	super initialize.
 	table := Dictionary new
 ]
 

@@ -16,12 +16,6 @@ PVWindowAttributes class >> newVulkan [
     ^ self new vulkanAttributes: OSVulkanAttributes new; yourself
 ]
 
-{ #category : 'initialize-release' }
-PVWindowAttributes >> initialize [
-    super initialize.
-    vulkanAttributes := nil
-]
-
 { #category : 'accessing' }
 PVWindowAttributes >> vulkanAttributes [
     ^ vulkanAttributes

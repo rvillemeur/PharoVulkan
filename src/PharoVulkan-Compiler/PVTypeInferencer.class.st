@@ -59,8 +59,10 @@ PVTypeInferencer >> inferOp: op selectorTable: st [
 		^ self ]
 ]
 
-{ #category : 'initialize-release' }
+{ #category : 'initialization' }
 PVTypeInferencer >> initialize [
+
+	super initialize.
 	typeMap := Dictionary new
 ]
 

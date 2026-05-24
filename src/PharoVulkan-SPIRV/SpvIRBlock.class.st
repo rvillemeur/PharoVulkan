@@ -29,6 +29,8 @@ SpvIRBlock >> id: n [ id := n
 
 { #category : 'initialization' }
 SpvIRBlock >> initialize [
+
+	super initialize.
 	nodes := OrderedCollection new
 ]
 

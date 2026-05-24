@@ -77,8 +77,10 @@ SpvFunction >> id: x [           id := x
 
 { #category : 'initialization' }
 SpvFunction >> initialize [
-    parameters := OrderedCollection new.
-    blocks := OrderedCollection new
+
+	super initialize.
+	parameters := OrderedCollection new.
+	blocks := OrderedCollection new
 ]
 
 { #category : 'accessing' }
