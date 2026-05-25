@@ -9,9 +9,9 @@ Class {
 		'currentPc',
 		'startPc'
 	],
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'decoding' }

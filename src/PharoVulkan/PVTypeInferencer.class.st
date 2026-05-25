@@ -8,9 +8,9 @@ Class {
 		'annotation',
 		'typeMap'
 	],
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'instance creation' }

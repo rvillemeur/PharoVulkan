@@ -10,9 +10,9 @@ Class {
 		'tempDefs',
 		'regOps'
 	],
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'simulating' }

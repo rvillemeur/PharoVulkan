@@ -8,9 +8,9 @@ Class {
 		'blocks',
 		'blockMap'
 	],
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'recognizing' }

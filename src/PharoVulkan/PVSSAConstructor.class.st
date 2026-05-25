@@ -4,9 +4,9 @@ Constructs SSA form using the Braun et al. on-the-fly algorithm. Inserts phi nod
 Class {
 	#name : 'PVSSAConstructor',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'constructing' }

@@ -243,18 +243,6 @@ PVHelloTriangleScene >> destroy [
 			surface := nil ]
 ]
 
-{ #category : 'accessing' }
-PVHelloTriangleScene >> framebuffers [ ^ framebuffers
-]
-
-{ #category : 'accessing' }
-PVHelloTriangleScene >> imageAvailable [ ^ imageAvailable
-]
-
-{ #category : 'accessing' }
-PVHelloTriangleScene >> inFlightFence [ ^ inFlightFence
-]
-
 { #category : 'initialization' }
 PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow [
 
@@ -314,10 +302,6 @@ PVHelloTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
 	aByteArray at: offset + 3 put: (bits >> 24 bitAnd: 16rFF)
 ]
 
-{ #category : 'accessing' }
-PVHelloTriangleScene >> renderFinished [ ^ renderFinished
-]
-
 { #category : 'rendering' }
 PVHelloTriangleScene >> renderFrame [
 	| imageIndex ext |
@@ -359,8 +343,4 @@ PVHelloTriangleScene >> seeClassSide [
 
 { #category : 'accessing' }
 PVHelloTriangleScene >> swapchain [ ^ swapchain
-]
-
-{ #category : 'accessing' }
-PVHelloTriangleScene >> vertexBuffer [ ^ vertexBuffer
 ]

@@ -4,9 +4,9 @@ Builds the control-flow graph from a flat list of PVBytecodeOp instructions. Ide
 Class {
 	#name : 'PVCFGBuilder',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'building' }

@@ -1,5 +1,16 @@
 "
-Orchestrates all 9 compiler stages: bytecode decode → stack simulation → CFG build → SSA construction → type inference → structured-CFG recognition → SPIR-V emit → validation. Entry point: compile:forDevice:.
+Orchestrates all 9 compiler stages: 
+1. bytecode decode 
+2. stack simulation 
+3. CFG build 
+4. SSA construction 
+5. type inference 
+6. structured-CFG recognition 
+7. SPIR-V emit 
+8.  validation. 
+
+
+Entry point: compile:forDevice:.
 "
 Class {
 	#name : 'PVKernelCompiler',
@@ -8,9 +19,9 @@ Class {
 		'method',
 		'annotation'
 	],
-	#category : 'PharoVulkan-Compiler',
+	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
-	#tag : 'Compiler'
+	#tag : 'Compiler-Pipeline'
 }
 
 { #category : 'compiling' }
