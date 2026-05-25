@@ -9,7 +9,7 @@ Class {
 	#package : 'PharoVulkan-Bindings'
 }
 
-{ #category : 'fields' }
+{ #category : 'field definition' }
 VkDeviceQueueCreateInfo class >> fieldsDesc [
     ^ #((#sType #pointer) (#queueFamilyIndex #uint32) )
 ]

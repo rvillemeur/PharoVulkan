@@ -39,7 +39,7 @@ PVXmlParser >> parseAttributes [
 	dict := Dictionary new.
 	[
 		self skipWhitespace.
-		stream atEnd or: [ #( $> $/ ) includes: stream peek ] ] whileFalse: [
+		stream atEnd or: [ #($> $/ ) includes: stream peek ] ] whileFalse: [
 			| key val |
 			key := self readName.
 			key isEmpty ifFalse: [
