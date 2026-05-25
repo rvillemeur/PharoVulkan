@@ -8,9 +8,9 @@ Class {
 	#instVars : [
 		'result'
 	],
-	#category : 'PharoVulkan-Bindings',
+	#category : 'PharoVulkan-Exceptions',
 	#package : 'PharoVulkan',
-	#tag : 'Bindings'
+	#tag : 'Exceptions'
 }
 
 { #category : 'accessing' }

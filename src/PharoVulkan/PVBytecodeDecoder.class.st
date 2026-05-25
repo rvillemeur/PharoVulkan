@@ -17,7 +17,7 @@ Class {
 { #category : 'decoding' }
 PVBytecodeDecoder class >> decode: aCompiledMethod [
 	| client stream |
-	client := self new initialize.
+	client := self new.
 	stream := InstructionStream on: aCompiledMethod.
 	client currentPc: stream pc.
 	[ stream atEnd ] whileFalse: [

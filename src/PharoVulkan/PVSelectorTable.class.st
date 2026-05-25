@@ -14,7 +14,7 @@ Class {
 
 { #category : 'instance creation' }
 PVSelectorTable class >> standard [
-	^ self new initialize initializeStandardMappings; yourself
+	^ self new initializeStandardMappings; yourself
 ]
 
 { #category : 'lookup' }

@@ -17,7 +17,7 @@ Class {
 
 { #category : 'simulating' }
 PVStackSimulator class >> simulate: aBytecodeOpArray [
-	^ self new initialize simulate: aBytecodeOpArray
+	^ self new simulate: aBytecodeOpArray
 ]
 
 { #category : 'initialization' }

@@ -16,7 +16,7 @@ Class {
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileKernel: regOps typeMap: typeMap annotation: ann selectorTable: st name: funcName [
 	| em |
-	em := self new initialize.
+	em := self new.
 	em annotation: ann.
 	em module addCapability: 1.    "Shader"
 	em module setAddressingModel: 0 memoryModel: 1.    "Logical GLSL450"
@@ -27,7 +27,7 @@ PVSPIRVEmitter class >> compileKernel: regOps typeMap: typeMap annotation: ann s
 { #category : 'compilation' }
 PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap selectorTable: st [
 	| em mod paramTempDefs preheaderSim headerSim latchSim exitSim phiVarIndices preInitRegs latchResultRegs phiInitSpvIds phiLatchSpvIds phiSpvIds funcType paramTypes retType spvFunc preBlk hdrBlk latchBlk exitBlk condSpvId retSpvId phiType |
-	em := self new initialize.
+	em := self new.
 	em annotation: ann.
 	mod := em module.
 	mod addCapability: 1.

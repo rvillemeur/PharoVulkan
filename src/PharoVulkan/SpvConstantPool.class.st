@@ -16,7 +16,7 @@ Class {
 
 { #category : 'instance creation' }
 SpvConstantPool class >> on: aModule [
-    ^ self new module: aModule; initialize; yourself
+    ^ self new module: aModule; yourself
 ]
 
 { #category : 'accessing' }

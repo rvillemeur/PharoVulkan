@@ -15,7 +15,7 @@ Class {
 
 { #category : 'instance creation' }
 PVTypeInferencer class >> annotation: ann inferAll: regOps selectorTable: st [
-	^ self new initialize annotation: ann; inferAll: regOps selectorTable: st; yourself
+	^ self new annotation: ann; inferAll: regOps selectorTable: st; yourself
 ]
 
 { #category : 'accessing' }

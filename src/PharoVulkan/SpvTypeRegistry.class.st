@@ -18,7 +18,7 @@ Class {
 
 { #category : 'instance creation' }
 SpvTypeRegistry class >> on: aModule [
-    ^ self new module: aModule; initialize; yourself
+    ^ self new module: aModule; yourself
 ]
 
 { #category : 'accessing' }

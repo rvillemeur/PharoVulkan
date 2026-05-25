@@ -13,11 +13,6 @@ Class {
 	#tag : 'SPIRV'
 }
 
-{ #category : 'instance creation' }
-SpvModuleEmitter class >> new [
-	^ super new initialize
-]
-
 { #category : 'private' }
 SpvModuleEmitter >> assignIds: anIRFunction [
 	"Pass 1: assign result ids to all parameters, block labels, and result-producing nodes."

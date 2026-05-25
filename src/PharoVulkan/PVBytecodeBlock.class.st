@@ -90,9 +90,10 @@ PVBytecodeBlock >> successors: c [
 
 { #category : 'accessing' }
 PVBytecodeBlock >> terminator [
+
 	| last |
 	ops isEmpty ifTrue: [ ^ nil ].
 	last := ops last.
-	^ (#(#jump #jumpIf #returnTop #returnSelf) includes: last opcode)
-		ifTrue: [ last ] ifFalse: [ nil ]
+	^ (#( #jump #jumpIf #returnTop #returnSelf ) includes: last opcode)
+		  ifTrue: [ last ]
 ]

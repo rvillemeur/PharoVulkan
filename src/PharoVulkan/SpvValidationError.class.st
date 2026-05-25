@@ -9,9 +9,9 @@ Class {
 	#instVars : [
 		'validatorOutput'
 	],
-	#category : 'PharoVulkan-SPIRV',
+	#category : 'PharoVulkan-Exceptions',
 	#package : 'PharoVulkan',
-	#tag : 'SPIRV'
+	#tag : 'Exceptions'
 }
 
 { #category : 'accessing' }

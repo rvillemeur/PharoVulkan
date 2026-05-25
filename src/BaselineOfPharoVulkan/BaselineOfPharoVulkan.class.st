@@ -6,8 +6,9 @@ Load tests group to also include the test packages.
 Class {
 	#name : 'BaselineOfPharoVulkan',
 	#superclass : 'BaselineOf',
-	#category : 'BaselineOfPharoVulkan',
-	#package : 'BaselineOfPharoVulkan'
+	#category : 'BaselineOfPharoVulkan-Base',
+	#package : 'BaselineOfPharoVulkan',
+	#tag : 'Base'
 }
 
 { #category : 'baselines' }

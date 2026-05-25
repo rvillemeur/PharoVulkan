@@ -26,7 +26,6 @@ SpvFunction class >> on: aModule returnType: rt functionType: ft [
         id: aModule newId;
         returnType: rt;
         functionType: ft;
-        initialize;
         yourself
 ]
 

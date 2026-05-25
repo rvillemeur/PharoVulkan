@@ -58,7 +58,6 @@ PVCompilerTest >> testLoopKernelCompiles [
 	| bytes |
 	bytes := PVKernelCompiler compile:
 		         PVKernelExamples >> #accumulateUpTo:.
-	self halt. 
 	self assert: (bytes copyFrom: 1 to: 4) equals: #[ 3 2 35 7 ]
 ]
 

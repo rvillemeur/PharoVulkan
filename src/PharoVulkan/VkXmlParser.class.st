@@ -49,28 +49,36 @@ VkXmlParser >> parseCommands [
 
 { #category : 'parsing' }
 VkXmlParser >> parseEnums [
-    "Iterate top-level <enums> nodes and build VkEnumDescriptor objects."
-    (xml childrenNamed: 'enums') do: [:enumsNode |
-        | desc name enumType |
-        name := enumsNode at: 'name'.
-        name isNil ifFalse: [
-            enumType := enumsNode at: 'type'.
-            desc := VkEnumDescriptor new.
-            desc name: name.
-            desc type: (enumType isNil ifTrue: [#enum] ifFalse: [enumType asSymbol]).
-            desc values: Dictionary new.
-            (enumsNode childrenNamed: 'enum') do: [:eNode |
-                | valName valStr val |
-                valName := eNode at: 'name'.
-                valStr  := eNode at: 'value'.
-                valStr isNil ifTrue: [valStr := eNode at: 'bitpos'].
-                valStr isNil ifFalse: [
-                    val := [valStr isNil ifTrue: [0] ifFalse: [
-                        (valStr beginsWith: '0x')
-                            ifTrue: [Integer readFrom: (valStr copyFrom: 3 to: valStr size) radix: 16]
-                            ifFalse: [valStr asInteger]]] on: Error do: [:e | 0].
-                    valName isNil ifFalse: [desc values at: valName put: val]]].
-            enums at: name put: desc]]
+	"Iterate top-level <enums> nodes and build VkEnumDescriptor objects."
+
+	(xml childrenNamed: 'enums') do: [ :enumsNode |
+			| desc name enumType |
+			name := enumsNode at: 'name'.
+			name ifNotNil: [
+					enumType := enumsNode at: 'type'.
+					desc := VkEnumDescriptor new.
+					desc name: name.
+					desc type:
+						(enumType ifNil: [ #enum ] ifNotNil: [ enumType asSymbol ]).
+					desc values: Dictionary new.
+					(enumsNode childrenNamed: 'enum') do: [ :eNode |
+							| valName valStr val |
+							valName := eNode at: 'name'.
+							valStr := eNode at: 'value'.
+							valStr ifNil: [ valStr := eNode at: 'bitpos' ].
+							valStr ifNotNil: [
+									val := [
+										       valStr ifNil: [ 0 ] ifNotNil: [
+												       (valStr beginsWith: '0x')
+													       ifTrue: [
+													       Integer
+														       readFrom: (valStr copyFrom: 3 to: valStr size)
+														       radix: 16 ]
+													       ifFalse: [ valStr asInteger ] ] ]
+										       on: Error
+										       do: [ :e | 0 ].
+									valName ifNotNil: [ desc values at: valName put: val ] ] ].
+					enums at: name put: desc ] ]
 ]
 
 { #category : 'parsing' }
@@ -92,7 +100,7 @@ VkXmlParser >> parseMembersFrom: typeEl [
     typeEl children do: [ :mNode |
         mNode tag = 'member' ifTrue: [
             | desc raw |
-            desc := VkMemberDesc new.
+            desc := VkMemberDescriptor new.
             mNode children detect: [ :c | c tag = 'name' ] ifFound: [ :n |
                 desc name: n text asString ].
             mNode children detect: [ :c | c tag = 'type' ] ifFound: [ :t |
@@ -111,7 +119,7 @@ VkXmlParser >> parseParamsFrom: cmdEl [
     cmdEl children do: [ :pNode |
         pNode tag = 'param' ifTrue: [
             | desc raw |
-            desc := VkMemberDesc new.
+            desc := VkMemberDescriptor new.
             pNode children detect: [ :c | c tag = 'name' ] ifFound: [ :n |
                 desc name: n text asString ].
             pNode children detect: [ :c | c tag = 'type' ] ifFound: [ :t |
