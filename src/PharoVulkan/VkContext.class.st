@@ -21,6 +21,12 @@ VkContext class >> computeContext [
     ^ self new initializeCompute
 ]
 
+{ #category : 'context' }
+VkContext class >> graphicsContextForExtensions: extNames [
+    "extNames: Array of String (from SDL_Vulkan_GetInstanceExtensions)."
+    ^ self new initializeGraphicsWithExtensions: extNames
+]
+
 { #category : 'private' }
 VkContext >> buildDeviceCreateInfo: queueInfoBuf [
     "VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType  8:pNext  16:synchronization2
@@ -172,6 +178,23 @@ VkContext >> fetchComputeQueue [
 		                buf free ]
 ]
 
+{ #category : 'fetching' }
+VkContext >> fetchGraphicsQueue [
+
+	| buf |
+	buf := ExternalAddress allocate: 8.
+	computeQueue := [
+		                Vk
+			                getDeviceQueue: device handle
+			                queueFamilyIndex: computeQueueFamily
+			                queueIndex: 0
+			                queue: buf.
+		                VkQueue
+			                on: (VkQueue_H fromHandle: (buf pointerAt: 1))
+			                familyIndex: computeQueueFamily ] ensure: [
+		                buf free ]
+]
+
 { #category : 'initialization' }
 VkContext >> initializeCompute [
 	"Create instance with Vulkan 1.3 API version so device dispatch table includes vkQueueSubmit2."
@@ -266,6 +289,21 @@ VkContext >> instance [
 { #category : 'accessing' }
 VkContext >> physicalDevice [
     ^ physicalDevice
+]
+
+{ #category : 'selection' }
+VkContext >> selectGraphicsPhysicalDevice [
+    | handles |
+    handles := Vk enumeratePhysicalDevices: instance.
+    handles isEmpty ifTrue: [ VkError signal: 'No Vulkan physical devices found' ].
+    handles do: [ :h |
+        | pd |
+        pd := VkPhysicalDevice on: h.
+        pd findGraphicsQueueFamily ifNotNil: [ :idx |
+            physicalDevice := pd.
+            computeQueueFamily := idx.
+            ^ self ] ].
+    VkError signal: 'No device with graphics+compute queue found'
 ]
 
 { #category : 'initialization' }

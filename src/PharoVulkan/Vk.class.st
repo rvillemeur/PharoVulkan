@@ -12,6 +12,17 @@ Class {
 	#tag : 'Graphics'
 }
 
+{ #category : 'PharoVulkan' }
+Vk class >> acquireNextImageKHR: device swapchain: swapchain timeout: timeout semaphore: semaphore fence: fence pImageIndex: pImageIndex [
+    ^ self ffiCall: #( int32 vkAcquireNextImageKHR (
+        VkDevice_H device,
+        VkSwapchainKHR_H swapchain,
+        uint64 timeout,
+        VkSemaphore_H semaphore,
+        VkFence_H fence,
+        void* pImageIndex ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> allocateCommandBuffers: device allocateInfo: pAllocateInfo commandBuffers: pCommandBuffers [
     ^ self ffiCall: #( VkResult vkAllocateCommandBuffers (
@@ -50,6 +61,14 @@ Vk class >> checkResult: anInteger [
     result isSuccess ifFalse: [ result signal ]
 ]
 
+{ #category : 'ffi-calls' }
+Vk class >> cmdBeginRenderPass: cmdBuf pRenderPassBegin: pBeginInfo contents: contents [
+    ^ self ffiCall: #( void vkCmdBeginRenderPass (
+        VkCommandBuffer_H cmdBuf,
+        void* pBeginInfo,
+        int32 contents ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> cmdBindDescriptorSets: cmdBuf pipelineBindPoint: bindPoint layout: layout firstSet: firstSet descriptorSetCount: count pDescriptorSets: pSets dynamicOffsetCount: dynCount pDynamicOffsets: dynOffsets [
     ^ self ffiCall: #( void vkCmdBindDescriptorSets (
@@ -64,10 +83,53 @@ Vk class >> cmdBindPipeline: cmdBuf pipelineBindPoint: bindPoint pipeline: pipel
         VkCommandBuffer_H cmdBuf, uint32 bindPoint, VkPipeline_H pipeline ) )
 ]
 
+{ #category : 'ffi' }
+Vk class >> cmdBindVertexBuffers: cmdBuf firstBinding: firstBinding bindingCount: count pBuffers: pBuffers pOffsets: pOffsets [
+    ^ self ffiCall: #( void vkCmdBindVertexBuffers (
+        VkCommandBuffer_H cmdBuf,
+        uint32 firstBinding,
+        uint32 count,
+        void* pBuffers,
+        void* pOffsets ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> cmdDispatch: cmdBuf groupCountX: x groupCountY: y groupCountZ: z [
     ^ self ffiCall: #( void vkCmdDispatch (
         VkCommandBuffer_H cmdBuf, uint32 x, uint32 y, uint32 z ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> cmdDraw: cmdBuf vertexCount: vertexCount instanceCount: instanceCount firstVertex: firstVertex firstInstance: firstInstance [
+    ^ self ffiCall: #( void vkCmdDraw (
+        VkCommandBuffer_H cmdBuf,
+        uint32 vertexCount,
+        uint32 instanceCount,
+        uint32 firstVertex,
+        uint32 firstInstance ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> cmdEndRenderPass: cmdBuf [
+    ^ self ffiCall: #( void vkCmdEndRenderPass ( VkCommandBuffer_H cmdBuf ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> cmdSetScissor: cmdBuf firstScissor: first scissorCount: count pScissors: pScissors [
+    ^ self ffiCall: #( void vkCmdSetScissor (
+        VkCommandBuffer_H cmdBuf,
+        uint32 first,
+        uint32 count,
+        void* pScissors ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> cmdSetViewport: cmdBuf firstViewport: first viewportCount: count pViewports: pViewports [
+    ^ self ffiCall: #( void vkCmdSetViewport (
+        VkCommandBuffer_H cmdBuf,
+        uint32 first,
+        uint32 count,
+        void* pViewports ) )
 ]
 
 { #category : 'generated-api' }
@@ -110,6 +172,44 @@ Vk class >> createDevice: physDevice createInfo: pCreateInfo allocator: pAllocat
         void* pDevice ) )
 ]
 
+{ #category : 'ffi' }
+Vk class >> createFence: device createInfo: pCreateInfo allocator: pAllocator pFence: pFence [
+    ^ self ffiCall: #( int32 vkCreateFence (
+        VkDevice_H device,
+        void* pCreateInfo,
+        void* pAllocator,
+        void* pFence ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> createFramebuffer: device createInfo: pCreateInfo allocator: pAllocator pFramebuffer: pFramebuffer [
+    ^ self ffiCall: #( int32 vkCreateFramebuffer (
+        VkDevice_H device,
+        void* pCreateInfo,
+        void* pAllocator,
+        void* pFramebuffer ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> createGraphicsPipelines: device pipelineCache: cache createInfoCount: count pCreateInfos: pInfos allocator: pAllocator pPipelines: pPipelines [
+    ^ self ffiCall: #( int32 vkCreateGraphicsPipelines (
+        VkDevice_H device,
+        void* cache,
+        uint32 count,
+        void* pInfos,
+        void* pAllocator,
+        void* pPipelines ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> createImageView: device createInfo: pCreateInfo allocator: pAllocator pView: pView [
+    ^ self ffiCall: #( int32 vkCreateImageView (
+        VkDevice_H device,
+        void* pCreateInfo,
+        void* pAllocator,
+        void* pView ) )
+]
+
 { #category : 'instance-management' }
 Vk class >> createInstance: aVkInstanceCreateInfo [
 
@@ -132,10 +232,37 @@ Vk class >> createPipelineLayout: device createInfo: pCreateInfo allocator: pAll
         VkDevice_H device, void* pCreateInfo, void* pAllocator, void* pLayout ) )
 ]
 
+{ #category : 'ffi' }
+Vk class >> createRenderPass: device createInfo: pCreateInfo allocator: pAllocator pRenderPass: pRenderPass [
+    ^ self ffiCall: #( int32 vkCreateRenderPass (
+        VkDevice_H device,
+        void* pCreateInfo,
+        void* pAllocator,
+        void* pRenderPass ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> createSemaphore: device createInfo: pCreateInfo allocator: pAllocator pSemaphore: pSemaphore [
+    ^ self ffiCall: #( int32 vkCreateSemaphore (
+        VkDevice_H device,
+        void* pCreateInfo,
+        void* pAllocator,
+        void* pSemaphore ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> createShaderModule: device createInfo: pCreateInfo allocator: pAllocator shaderModuleOut: pModule [
     ^ self ffiCall: #( VkResult vkCreateShaderModule (
         VkDevice_H device, void* pCreateInfo, void* pAllocator, void* pModule ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> createSwapchainKHR: device createInfo: pCreateInfo allocator: pAllocator swapchain: pSwapchain [
+    ^ self ffiCall: #( int32 vkCreateSwapchainKHR (
+        VkDevice_H device,
+        void* pCreateInfo,
+        void* pAllocator,
+        void* pSwapchain ) )
 ]
 
 { #category : 'generated-api' }
@@ -168,6 +295,30 @@ Vk class >> destroyDevice: device allocator: pAllocator [
         VkDevice_H device, void* pAllocator ) )
 ]
 
+{ #category : 'ffi' }
+Vk class >> destroyFence: device fence: fence allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroyFence (
+        VkDevice_H device,
+        VkFence_H fence,
+        void* pAllocator ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> destroyFramebuffer: device framebuffer: framebuffer allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroyFramebuffer (
+        VkDevice_H device,
+        VkFramebuffer_H framebuffer,
+        void* pAllocator ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> destroyImageView: device imageView: imageView allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroyImageView (
+        VkDevice_H device,
+        VkImageView_H imageView,
+        void* pAllocator ) )
+]
+
 { #category : 'ffi-primitives' }
 Vk class >> destroyInstance: aVkInstance_H [
     ^ self ffiCall: #( void vkDestroyInstance (
@@ -192,10 +343,42 @@ Vk class >> destroyPipelineLayout: device pipelineLayout: layout allocator: pAll
         VkDevice_H device, VkPipelineLayout_H layout, void* pAllocator ) )
 ]
 
+{ #category : 'ffi' }
+Vk class >> destroyRenderPass: device renderPass: renderPass allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroyRenderPass (
+        VkDevice_H device,
+        VkRenderPass_H renderPass,
+        void* pAllocator ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> destroySemaphore: device semaphore: semaphore allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroySemaphore (
+        VkDevice_H device,
+        VkSemaphore_H semaphore,
+        void* pAllocator ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> destroyShaderModule: device shaderModule: shaderModule allocator: pAllocator [
     ^ self ffiCall: #( void vkDestroyShaderModule (
         VkDevice_H device, VkShaderModule_H shaderModule, void* pAllocator ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> destroySurfaceKHR: instance surface: surface allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroySurfaceKHR (
+        VkInstance_H instance,
+        VkSurfaceKHR_H surface,
+        void* pAllocator ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> destroySwapchainKHR: device swapchain: swapchain allocator: pAllocator [
+    ^ self ffiCall: #( void vkDestroySwapchainKHR (
+        VkDevice_H device,
+        VkSwapchainKHR_H swapchain,
+        void* pAllocator ) )
 ]
 
 { #category : 'commands' }
@@ -276,6 +459,41 @@ Vk class >> getPhysicalDeviceProperties: aVkPhysicalDevice_H into: aVkPhysicalDe
         VkPhysicalDeviceProperties* aVkPhysicalDeviceProperties ) )
 ]
 
+{ #category : 'ffi' }
+Vk class >> getPhysicalDeviceSurfaceCapabilitiesKHR: physDev surface: surface pSurfaceCapabilities: pCaps [
+    ^ self ffiCall: #( int32 vkGetPhysicalDeviceSurfaceCapabilitiesKHR (
+        VkPhysicalDevice_H physDev,
+        VkSurfaceKHR_H surface,
+        void* pCaps ) )
+]
+
+{ #category : 'ffi-calls' }
+Vk class >> getPhysicalDeviceSurfaceFormatsKHR: physDev surface: surface pSurfaceFormatCount: pCount pSurfaceFormats: pFormats [
+    ^ self ffiCall: #( int32 vkGetPhysicalDeviceSurfaceFormatsKHR (
+        VkPhysicalDevice_H physDev,
+        VkSurfaceKHR_H surface,
+        void* pCount,
+        void* pFormats ) )
+]
+
+{ #category : 'ffi' }
+Vk class >> getPhysicalDeviceSurfacePresentModesKHR: physDev surface: surface pPresentModeCount: pCount pPresentModes: pModes [
+    ^ self ffiCall: #( int32 vkGetPhysicalDeviceSurfacePresentModesKHR (
+        VkPhysicalDevice_H physDev,
+        VkSurfaceKHR_H surface,
+        void* pCount,
+        void* pModes ) )
+]
+
+{ #category : 'ffi-calls' }
+Vk class >> getPhysicalDeviceSurfaceSupportKHR: physDev queueFamilyIndex: qfi surface: surface pSupported: pSupported [
+    ^ self ffiCall: #( int32 vkGetPhysicalDeviceSurfaceSupportKHR (
+        VkPhysicalDevice_H physDev,
+        uint32 qfi,
+        VkSurfaceKHR_H surface,
+        void* pSupported ) )
+]
+
 { #category : 'physical-device' }
 Vk class >> getQueueFamilyProperties: aVkPhysicalDevice_H [
     "Return an Array of VkQueueFamilyProperties for the given physical device."
@@ -294,6 +512,15 @@ Vk class >> getQueueFamilyProperties: aVkPhysicalDevice_H [
         result at: i put: (VkQueueFamilyProperties fromHandle:
             (propsBuf + ((i - 1) * stride)) autoRelease)].
     ^ result
+]
+
+{ #category : 'ffi' }
+Vk class >> getSwapchainImagesKHR: device swapchain: swapchain pSwapchainImageCount: pCount pSwapchainImages: pImages [
+    ^ self ffiCall: #( int32 vkGetSwapchainImagesKHR (
+        VkDevice_H device,
+        VkSwapchainKHR_H swapchain,
+        void* pCount,
+        void* pImages ) )
 ]
 
 { #category : 'generated-api' }
@@ -328,6 +555,13 @@ Vk class >> primGetQueueFamilyProperties: physDevice count: pCount props: pProps
         void* pProps ) )
 ]
 
+{ #category : 'ffi-calls' }
+Vk class >> queuePresentKHR: queue pPresentInfo: pPresentInfo [
+    ^ self ffiCall: #( int32 vkQueuePresentKHR (
+        VkQueue_H queue,
+        void* pPresentInfo ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> queueSubmit2: queue submitCount: count submits: pSubmits fence: fence [
     ^ self ffiCall: #( VkResult vkQueueSubmit2 (
@@ -345,6 +579,14 @@ Vk class >> resetCommandPool: deviceHandle commandPool: poolHandle flags: flags 
     ^ self ffiCall: #(int vkResetCommandPool (void* deviceHandle, void* poolHandle, uint32 flags)) library: VkLibrary
 ]
 
+{ #category : 'ffi-calls' }
+Vk class >> resetFences: device fenceCount: count pFences: pFences [
+    ^ self ffiCall: #( int32 vkResetFences (
+        VkDevice_H device,
+        uint32 count,
+        void* pFences ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> unmapMemory: device memory: memory [
     ^ self ffiCall: #( void vkUnmapMemory (
@@ -356,4 +598,14 @@ Vk class >> updateDescriptorSets: device descriptorWriteCount: writeCount pDescr
     ^ self ffiCall: #( void vkUpdateDescriptorSets (
         VkDevice_H device, uint32 writeCount, void* pWrites,
         uint32 copyCount, void* pCopies ) )
+]
+
+{ #category : 'ffi-calls' }
+Vk class >> waitForFences: device fenceCount: count pFences: pFences waitAll: waitAll timeout: timeout [
+    ^ self ffiCall: #( int32 vkWaitForFences (
+        VkDevice_H device,
+        uint32 count,
+        void* pFences,
+        uint32 waitAll,
+        uint64 timeout ) )
 ]
