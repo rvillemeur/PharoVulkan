@@ -76,6 +76,24 @@ PVCompilerTest >> testFragmentShaderCompiles [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testGlslTriFragmentCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testGlslTriVertexCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testLoopKernelCompiles [
 
 	| bytes |

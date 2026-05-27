@@ -1,3 +1,6 @@
+"
+SPIR-V matrix type (mat4 = vec4f x 4 columns). Used by PVSPIRVEmitter for mat4 type declarations.
+"
 Class {
 	#name : 'SpvMatrixType',
 	#superclass : 'SpvType',

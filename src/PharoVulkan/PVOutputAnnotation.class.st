@@ -1,3 +1,6 @@
+"
+Describes one output variable of a vertex or fragment shader. Created from <output:named:location:> or <output:named:builtin:> pragmas.
+"
 Class {
 	#name : 'PVOutputAnnotation',
 	#superclass : 'Object',

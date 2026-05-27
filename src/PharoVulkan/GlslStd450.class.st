@@ -1,3 +1,6 @@
+"
+GLSL.std.450 extended instruction set opcode constants. Used by PVSPIRVEmitter to emit normalize, length, mix, clamp, sqrt via OpExtInst.
+"
 Class {
 	#name : 'GlslStd450',
 	#superclass : 'Object',

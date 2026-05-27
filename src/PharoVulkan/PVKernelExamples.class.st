@@ -51,6 +51,28 @@ PVKernelExamples >> dotOfA: a b: b [
     out0 := a dot: b
 ]
 
+{ #category : 'shaders' }
+PVKernelExamples >> glslTriFragment: fragColor [
+<gpuFragment>
+<param: #vec3 named: #fragColor>
+<output: #vec4 named: #outColor location: 0>
+| white blended |
+white := 1.0 , 1.0 , 1.0.
+blended := fragColor mix: white factor: 0.5.
+out0 := blended x , blended y , blended z , 1.0
+]
+
+{ #category : 'shaders' }
+PVKernelExamples >> glslTriVertex: position color: color [
+<gpuVertex>
+<param: #vec2 named: #position>
+<param: #vec3 named: #color>
+<output: #vec4 named: #glPosition builtin: #position>
+<output: #vec3 named: #fragColor location: 0>
+out0 := position x , position y , 0.0 , 1.0.
+out1 := color normalize
+]
+
 { #category : 'kernels' }
 PVKernelExamples >> mulFloat: a by: b [
 	<gpu>
