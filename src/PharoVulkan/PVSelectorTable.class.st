@@ -38,13 +38,13 @@ PVSelectorTable >> initialize [
 	table := Dictionary new
 ]
 
-{ #category : 'initialization' }
+{ #category : 'private' }
 PVSelectorTable >> initializeGLSLMappings [
-    self at: 'normalize' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslNormalize resultType: #vec3).
-    self at: 'length' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslLength resultType: #f32).
-    self at: 'mix:factor:' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslFMix resultType: #vec3).
-    self at: 'clamp:min:max:' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslFClamp resultType: #f32).
-    self at: 'sqrt' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslSqrt resultType: #f32)
+self at: 'normalize' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslNormalize resultType: #vec3).
+self at: 'length' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslLength resultType: #f32).
+self at: 'mix:factor:' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslFMix resultType: #vec3).
+self at: 'clamp:to:' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslFClamp resultType: #f32).
+self at: 'sqrt' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslSqrt resultType: #f32)
 ]
 
 { #category : 'private' }

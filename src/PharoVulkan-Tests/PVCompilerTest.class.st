@@ -32,6 +32,15 @@ PVCompilerTest >> testCFGBuilderSingleBlock [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testClampCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #clampF32:lo:hi:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testDecoderHandlesInstVarAndDup [
 | ops opcodes |
 ops := PVBytecodeDecoder new.
@@ -100,6 +109,15 @@ PVCompilerTest >> testLoopKernelCompiles [
 	bytes := PVKernelCompiler compile:
 		         PVKernelExamples >> #accumulateUpTo:.
 	self assert: (bytes copyFrom: 1 to: 4) equals: #[ 3 2 35 7 ]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testMat4MulCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #mat4Mul:vec:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
 ]
 
 { #category : 'tests' }
@@ -176,6 +194,15 @@ self assert: (st at: 'at:put:' receiverType: #bufferOf_i32) spirvOp equals: #buf
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testSqrtCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #sqrtF32:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testStackSimulatorAssignsRegs [
 	| m bytecodeOps regOps sends |
 	m := (Smalltalk at: #PVKernelExamples) >> #addFloat:to:.
@@ -228,12 +255,39 @@ PVCompilerTest >> testTypeInferencerResolvesAdd [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testVec3AddCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #vec3Add:b:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testVec3DotCompiles [
     | bytes |
     bytes := PVKernelCompiler compile: (PVKernelExamples >> #dotOfA:b:).
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testVec3LengthCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #vec3Length:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testVec4WCompiles [
+| bytes |
+bytes := PVKernelCompiler compile: (PVKernelExamples >> #vec4W:).
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
 ]
 
 { #category : 'tests' }

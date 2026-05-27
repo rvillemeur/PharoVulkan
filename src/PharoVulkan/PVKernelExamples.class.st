@@ -42,6 +42,15 @@ PVKernelExamples >> addInt: a to: b [
 	^ a + b
 ]
 
+{ #category : 'kernels' }
+PVKernelExamples >> clampF32: x lo: lo hi: hi [
+<gpu>
+<param: #f32 named: #x>
+<param: #f32 named: #lo>
+<param: #f32 named: #hi>
+^ x clamp: lo to: hi
+]
+
 { #category : 'examples' }
 PVKernelExamples >> dotOfA: a b: b [
     <gpuVertex>
@@ -74,6 +83,14 @@ out1 := color normalize
 ]
 
 { #category : 'kernels' }
+PVKernelExamples >> mat4Mul: m vec: v [
+<gpu>
+<param: #mat4 named: #m>
+<param: #vec4 named: #v>
+^ m * v
+]
+
+{ #category : 'kernels' }
 PVKernelExamples >> mulFloat: a by: b [
 	<gpu>
 	<param: #f32 named: #a>
@@ -96,6 +113,13 @@ PVKernelExamples >> relu: x [
 	^ x < 0.0 ifTrue: [ 0.0 ] ifFalse: [ x ]
 ]
 
+{ #category : 'kernels' }
+PVKernelExamples >> sqrtF32: x [
+<gpu>
+<param: #f32 named: #x>
+^ x sqrt
+]
+
 { #category : 'examples' }
 PVKernelExamples >> triFragment: fragColor [
     <gpuFragment>
@@ -113,6 +137,28 @@ PVKernelExamples >> triVertex: position color: color [
     <output: #vec3 named: #fragColor location: 0>
     out0 := position x , position y , 0.0 , 1.0.
     out1 := color
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> vec3Add: a b: b [
+<gpu>
+<param: #vec3 named: #a>
+<param: #vec3 named: #b>
+^ a + b
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> vec3Length: v [
+<gpu>
+<param: #vec3 named: #v>
+^ v length
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> vec4W: v [
+<gpu>
+<param: #vec4 named: #v>
+^ v w
 ]
 
 { #category : 'kernels' }

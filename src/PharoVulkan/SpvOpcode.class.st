@@ -161,6 +161,14 @@ SpvOpcode class >> opLoad [                ^ 61
 SpvOpcode class >> opLoopMerge [           ^ 246
 ]
 
+{ #category : 'generated' }
+SpvOpcode class >> opMatrixTimesMatrix [ ^ 146
+]
+
+{ #category : 'generated' }
+SpvOpcode class >> opMatrixTimesVector [ ^ 144
+]
+
 { #category : 'annotations' }
 SpvOpcode class >> opMemberDecorate [      ^ 72
 ]
@@ -256,4 +264,8 @@ SpvOpcode class >> opUndef [               ^ 1
 
 { #category : 'memory' }
 SpvOpcode class >> opVariable [            ^ 59
+]
+
+{ #category : 'generated' }
+SpvOpcode class >> opVectorTimesMatrix [ ^ 142
 ]
