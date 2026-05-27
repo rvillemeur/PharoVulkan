@@ -32,6 +32,20 @@ PVCompilerTest >> testCFGBuilderSingleBlock [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testDecoderHandlesInstVarAndDup [
+| ops opcodes |
+ops := PVBytecodeDecoder new.
+ops initialize.
+ops doDup.
+ops pushReceiverVariable: 0.
+ops popIntoReceiverVariable: 1.
+opcodes := ops ops collect: [:o | o opcode].
+self assert: (opcodes includes: #dup).
+self assert: (opcodes includes: #pushInstVar).
+self assert: (opcodes includes: #popInstVar)
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testDecoderProducesOps [
 	| m ops |
 	m := (Smalltalk at: #PVKernelExamples) >> #addFloat:to:.
@@ -113,6 +127,19 @@ PVCompilerTest >> testSelectionKernelCompiles [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testSelectorTableComputeMappings [
+| st |
+st := PVSelectorTable standard.
+self assert: (st at: 'x' receiverType: #workItem) spirvOp equals: #workItemX.
+self assert: (st at: 'y' receiverType: #workItem) spirvOp equals: #workItemY.
+self assert: (st at: 'z' receiverType: #workItem) spirvOp equals: #workItemZ.
+self assert: (st at: 'at:' receiverType: #bufferOf_f32) spirvOp equals: #bufferLoad.
+self assert: (st at: 'at:put:' receiverType: #bufferOf_f32) spirvOp equals: #bufferStore.
+self assert: (st at: 'at:' receiverType: #bufferOf_i32) spirvOp equals: #bufferLoad.
+self assert: (st at: 'at:put:' receiverType: #bufferOf_i32) spirvOp equals: #bufferStore
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testStackSimulatorAssignsRegs [
 	| m bytecodeOps regOps sends |
 	m := (Smalltalk at: #PVKernelExamples) >> #addFloat:to:.
@@ -122,6 +149,17 @@ PVCompilerTest >> testStackSimulatorAssignsRegs [
 	self assert: sends size equals: 1.
 	self assert: sends first literal equals: #+.
 	self assert: sends first inputs size equals: 2
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testStackSimulatorParamCountPreseeds [
+| ops sim |
+sim := PVStackSimulator new.
+sim simulate: #() paramCount: 3.
+self assert: (sim tempDefs at: 0) equals: 1.
+self assert: (sim tempDefs at: 1) equals: 2.
+self assert: (sim tempDefs at: 2) equals: 3.
+self assert: sim nextReg equals: 3
 ]
 
 { #category : 'tests' }
