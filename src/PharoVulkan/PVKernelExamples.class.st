@@ -11,14 +11,12 @@ Class {
 
 { #category : 'examples' }
 PVKernelExamples >> accumulateUpTo: n [
+
 	<gpu>
 	<param: #i32 named: #n>
 	| sum |
 	sum := 0.
 	1 to: n do: [ :i | sum := sum + i ].
-	sum := sum + n.
-	"i := 1.
-	[ i <= n ] whileTrue: [ sum := sum + i. i := i + 1 ]."
 	^ sum
 ]
 
