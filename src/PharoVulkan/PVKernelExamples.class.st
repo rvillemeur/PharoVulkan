@@ -11,12 +11,14 @@ Class {
 
 { #category : 'examples' }
 PVKernelExamples >> accumulateUpTo: n [
-
 	<gpu>
 	<param: #i32 named: #n>
 	| sum |
 	sum := 0.
 	1 to: n do: [ :i | sum := sum + i ].
+	sum := sum + n.
+	"i := 1.
+	[ i <= n ] whileTrue: [ sum := sum + i. i := i + 1 ]."
 	^ sum
 ]
 
@@ -49,4 +51,16 @@ PVKernelExamples >> relu: x [
 	<gpu>
 	<param: #f32 named: #x>
 	^ x < 0.0 ifTrue: [ 0.0 ] ifFalse: [ x ]
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> vectorAdd: wi a: a b: b out: output [
+<gpu>
+<param: #workItem named: #wi>
+<param: #bufferOf_f32 named: #a>
+<param: #bufferOf_f32 named: #b>
+<param: #bufferOf_f32 named: #output>
+| idx |
+idx := wi x.
+output at: idx put: (a at: idx) + (b at: idx)
 ]

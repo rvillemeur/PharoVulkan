@@ -41,24 +41,40 @@ PVSelectorTable >> initialize [
 
 { #category : 'private' }
 PVSelectorTable >> initializeStandardMappings [
-	self at: '+' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f32).
-	self at: '-' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFSub resultType: #f32).
-	self at: '*' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFMul resultType: #f32).
-	self at: '/' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFDiv resultType: #f32).
-	self at: '<' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFOrdLessThan resultType: #bool).
-	self at: '<=' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFOrdLessThanEqual resultType: #bool).
-	self at: '+' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpIAdd resultType: #i32).
-	self at: '-' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpISub resultType: #i32).
-	self at: '*' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #i32).
-	self at: '//' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSDiv resultType: #i32).
-	self at: '\\\\' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSMod resultType: #i32).
-	self at: '<' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSLessThan resultType: #bool).
-	self at: '<=' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSLessThanEqual resultType: #bool).
-	self at: '+' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIAdd resultType: #u32).
-	self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #u32)
+self at: '+' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f32).
+self at: '-' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFSub resultType: #f32).
+self at: '*' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFMul resultType: #f32).
+self at: '/' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFDiv resultType: #f32).
+self at: '<' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFOrdLessThan resultType: #bool).
+self at: '<=' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFOrdLessThanEqual resultType: #bool).
+self at: '+' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpIAdd resultType: #i32).
+self at: '-' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpISub resultType: #i32).
+self at: '*' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #i32).
+self at: '//' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSDiv resultType: #i32).
+self at: '\\' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSMod resultType: #i32).
+self at: '<' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSLessThan resultType: #bool).
+self at: '<=' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSLessThanEqual resultType: #bool).
+self at: '+' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIAdd resultType: #u32).
+self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #u32).
+self at: 'x' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemX resultType: #u32).
+self at: 'y' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemY resultType: #u32).
+self at: 'z' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemZ resultType: #u32).
+self at: 'at:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #f32).
+self at: 'at:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #i32).
+self at: 'at:put:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void).
+self at: 'at:put:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void)
 ]
 
 { #category : 'accessing' }
 PVSelectorTable >> table [
 ^ table
+]
+
+{ #category : 'private' }
+PVSelectorTable >> testCompile [ ^ 42
+]
+
+{ #category : 'private' }
+PVSelectorTable >> testCompile2 [
+^ 42
 ]

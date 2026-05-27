@@ -152,3 +152,13 @@ PVCompilerTest >> testTypeInferencerResolvesAdd [
 	addOp := regOps detect: [ :op | op opcode = #send ].
 	self assert: (typeMap at: addOp result) equals: #f32
 ]
+
+{ #category : 'tests' }
+PVCompilerTest >> testVectorAddKernelCompiles [
+| m bytes |
+m := PVKernelExamples >> #vectorAdd:a:b:out:.
+bytes := PVKernelCompiler compile: m.
+self assert: bytes class equals: ByteArray.
+self deny: bytes isEmpty.
+self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]

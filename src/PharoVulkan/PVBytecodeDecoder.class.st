@@ -25,9 +25,21 @@ PVBytecodeDecoder class >> decode: aCompiledMethod [
 	^ client ops asArray
 ]
 
+{ #category : 'instruction client' }
+PVBytecodeDecoder >> blockReturnConstant: aValue [ ops add: (PVBytecodeOp pc: startPc opcode: #returnConst operands: { aValue } stackEffect: 0)
+]
+
+{ #category : 'instruction client' }
+PVBytecodeDecoder >> blockReturnTop [ ops add: (PVBytecodeOp pc: startPc opcode: #returnTop operands: #() stackEffect: -1)
+]
+
 { #category : 'accessing' }
 PVBytecodeDecoder >> currentPc: anInteger [
 	currentPc := anInteger
+]
+
+{ #category : 'instruction client' }
+PVBytecodeDecoder >> doDup [ ops add: (PVBytecodeOp pc: startPc opcode: #dup operands: #() stackEffect: 1)
 ]
 
 { #category : 'instruction client' }
@@ -58,6 +70,10 @@ PVBytecodeDecoder >> jump: offset if: cond [
 ]
 
 { #category : 'instruction client' }
+PVBytecodeDecoder >> methodReturnConstant: aValue [ ops add: (PVBytecodeOp pc: startPc opcode: #returnConst operands: { aValue } stackEffect: 0)
+]
+
+{ #category : 'instruction client' }
 PVBytecodeDecoder >> methodReturnReceiver [
 	ops add: (PVBytecodeOp pc: startPc opcode: #returnSelf operands: #() stackEffect: 0)
 ]
@@ -79,6 +95,10 @@ PVBytecodeDecoder >> pc: n [
 ]
 
 { #category : 'instruction client' }
+PVBytecodeDecoder >> popIntoReceiverVariable: anIndex [ ops add: (PVBytecodeOp pc: startPc opcode: #popInstVar operands: { anIndex } stackEffect: -1)
+]
+
+{ #category : 'instruction client' }
 PVBytecodeDecoder >> popIntoTemporaryVariable: anIndex [
 	ops add: (PVBytecodeOp pc: startPc opcode: #popTemp operands: { anIndex } stackEffect: -1)
 ]
@@ -94,6 +114,10 @@ PVBytecodeDecoder >> pushReceiver [
 ]
 
 { #category : 'instruction client' }
+PVBytecodeDecoder >> pushReceiverVariable: anIndex [ ops add: (PVBytecodeOp pc: startPc opcode: #pushInstVar operands: { anIndex } stackEffect: 1)
+]
+
+{ #category : 'instruction client' }
 PVBytecodeDecoder >> pushTemporaryVariable: anIndex [
 	ops add: (PVBytecodeOp pc: startPc opcode: #pushTemp operands: { anIndex } stackEffect: 1)
 ]
@@ -103,6 +127,10 @@ PVBytecodeDecoder >> send: selector super: isSuper numArgs: numArgs [
 	ops add: (PVBytecodeOp pc: startPc opcode: #send
 		operands: { selector. isSuper. numArgs }
 		stackEffect: 1 - numArgs)
+]
+
+{ #category : 'instruction client' }
+PVBytecodeDecoder >> storeIntoReceiverVariable: anIndex [ ops add: (PVBytecodeOp pc: startPc opcode: #storeInstVar operands: { anIndex } stackEffect: 0)
 ]
 
 { #category : 'instruction client' }
