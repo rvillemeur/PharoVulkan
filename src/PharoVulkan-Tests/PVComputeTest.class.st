@@ -135,3 +135,29 @@ PVComputeTest >> testVectorAdd [
 	] ensure: [
 		bufA destroy. bufB destroy. bufC destroy ]
 ]
+
+{ #category : 'tests' }
+PVComputeTest >> testVectorAddFromCompiledMethod [
+	"End-to-end: compile Pharo kernel, run on GPU, verify result."
+	| n bufA bufB bufC kernel result |
+	n := 64.
+	bufA := VkBuffer storageBuffer: n on: ctx device.
+	bufB := VkBuffer storageBuffer: n on: ctx device.
+	bufC := VkBuffer storageBuffer: n on: ctx device.
+	[
+		bufA putF32s: ((0 to: n - 1) asArray collect: [:i | i asFloat]).
+		bufB putF32s: ((0 to: n - 1) asArray collect: [:i | i asFloat]).
+		bufC putF32s: (Array new: n withAll: 0.0).
+		kernel := PVComputeKernel fromMethod: (PVKernelExamples >> #vectorAdd:a:b:out:) on: ctx.
+		kernel bindBuffer: bufA.
+		kernel bindBuffer: bufB.
+		kernel bindBuffer: bufC.
+		kernel prepare.
+		kernel dispatch: 1 y: 1 z: 1.
+		result := bufC getF32s.
+		0 to: n - 1 do: [:i |
+			self assert: (result at: i + 1) closeTo: i * 2.0].
+		kernel destroy
+	] ensure: [
+		bufA destroy. bufB destroy. bufC destroy ]
+]

@@ -24,6 +24,13 @@ Class {
 	#tag : 'Compute'
 }
 
+{ #category : 'factory' }
+PVComputeKernel class >> fromMethod: aCompiledMethod on: aContext [
+	| spirv |
+	spirv := PVKernelCompiler compile: aCompiledMethod.
+	^ self on: aContext spirv: spirv
+]
+
 { #category : 'instance creation' }
 PVComputeKernel class >> on: aContext spirv: bytes [
 	| k |

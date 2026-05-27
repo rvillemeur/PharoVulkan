@@ -22,6 +22,16 @@ VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
     ^ self new initializeDevice: aDevice size: byteSize usage: usageFlags
 ]
 
+{ #category : 'factory' }
+VkBuffer class >> storageBuffer: count on: aDevice [
+	^ self on: aDevice size: count * 4 usage: self storageBufferUsage
+]
+
+{ #category : 'constants' }
+VkBuffer class >> storageBufferUsage [
+	^ 32
+]
+
 { #category : 'lifecycle' }
 VkBuffer >> allocate [
     "VkBufferCreateInfo: 1:sType 9:pNext 17:flags [pad] 25:size(u64) 33:usage 37:sharing 41:qCount [pad] 49:pQueues"
@@ -100,6 +110,22 @@ VkBuffer >> destroy [
 ]
 
 { #category : 'accessing' }
+VkBuffer >> getF32s [
+	| bytes result |
+	bytes := self copyToByteArray.
+	result := Array new: bytes size // 4.
+	1 to: result size do: [:i |
+		| base word |
+		base := (i - 1) * 4 + 1.
+		word := (bytes at: base)
+			+ ((bytes at: base + 1) bitShift: 8)
+			+ ((bytes at: base + 2) bitShift: 16)
+			+ ((bytes at: base + 3) bitShift: 24).
+		result at: i put: (Float fromIEEE32Bit: word)].
+	^ result
+]
+
+{ #category : 'accessing' }
 VkBuffer >> handle [
     ^ handle
 ]
@@ -119,6 +145,21 @@ VkBuffer >> map [
       mappedPointer := ptrBuf pointerAt: 1.
       ^ mappedPointer
     ] ensure: [ ptrBuf free ]
+]
+
+{ #category : 'accessing' }
+VkBuffer >> putF32s: aFloatCollection [
+	| bytes |
+	bytes := ByteArray new: aFloatCollection size * 4.
+	aFloatCollection doWithIndex: [:f :i |
+		| word base |
+		word := f asFloat asIEEE32BitWord.
+		base := (i - 1) * 4 + 1.
+		bytes at: base     put: (word bitAnd: 16rFF).
+		bytes at: base + 1 put: ((word >> 8)  bitAnd: 16rFF).
+		bytes at: base + 2 put: ((word >> 16) bitAnd: 16rFF).
+		bytes at: base + 3 put: ((word >> 24) bitAnd: 16rFF)].
+	self copyFromByteArray: bytes
 ]
 
 { #category : 'accessing' }
