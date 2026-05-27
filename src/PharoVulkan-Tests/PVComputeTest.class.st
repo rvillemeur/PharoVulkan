@@ -115,9 +115,9 @@ PVComputeTest >> testVectorAdd [
 	| n spirv bufA bufB bufC kernel result |
 	n := 64.
 	spirv := self buildVectorAddSpirv.
-	bufA := VkBuffer on: ctx device size: n * 4 usage: 32.
-	bufB := VkBuffer on: ctx device size: n * 4 usage: 32.
-	bufC := VkBuffer on: ctx device size: n * 4 usage: 32.
+	bufA := VkBuffer storageBuffer: n on: ctx device.
+	bufB := VkBuffer storageBuffer: n on: ctx device.
+	bufC := VkBuffer storageBuffer: n on: ctx device.
 	[
 		bufA copyFromByteArray: (self floatArrayToBytes: ((0 to: n - 1) asArray collect: [:i | i asFloat])).
 		bufB copyFromByteArray: (self floatArrayToBytes: ((0 to: n - 1) asArray collect: [:i | i asFloat])).
