@@ -39,34 +39,47 @@ PVKernelCompiler >> annotation: ann [
 	annotation := ann
 ]
 
-{ #category : 'compilation' }
+{ #category : 'compiling' }
 PVKernelCompiler >> compile [
-| bytecodeOps blocks structNode regOps st typeMap typeInf isCompute |
-annotation := PVTypeAnnotation fromMethod: method.
-annotation isGPU ifFalse: [ PVTypeError signal: 'Method is not annotated with <gpu>' ].
-isCompute := annotation params anySatisfy: [ :p |
-    #(#workItem #bufferOf_f32 #bufferOf_i32) includes: p type ].
-bytecodeOps := PVBytecodeDecoder decode: method.
-regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
-st := PVSelectorTable standard.
-typeInf := PVTypeInferencer new initialize annotation: annotation.
-[ typeMap := typeInf inferAll: regOps selectorTable: st ]
-    on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
-isCompute ifTrue: [
-    ^ PVSPIRVEmitter compileComputeKernel: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
-blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
-blocks size = 1 ifTrue: [
-    | cfg ssaCFG |
-    cfg := PVCFGBuilder buildFrom: regOps.
-    ssaCFG := PVSSAConstructor construct: cfg.
-    ^ PVSPIRVEmitter compileKernel: regOps typeMap: typeMap annotation: annotation selectorTable: st name: method selector ].
-structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
-structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].
-(structNode isKindOf: PVSelectionNode) ifTrue: [
-    ^ PVSPIRVEmitter compileSelection: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
-(structNode isKindOf: PVLoopNode) ifTrue: [
-    ^ PVSPIRVEmitter compileLoop: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
-PVTypeError signal: 'Unrecognized control flow node: ' , structNode class name
+    | bytecodeOps blocks structNode regOps st typeMap typeInf isCompute |
+    annotation := PVTypeAnnotation fromMethod: method.
+    annotation isGPU ifFalse: [ PVTypeError signal: 'Method is not annotated with <gpu>, <gpuVertex>, or <gpuFragment>' ].
+    annotation isVertex ifTrue: [
+        bytecodeOps := PVBytecodeDecoder decode: method.
+        regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
+        st := PVSelectorTable standard.
+        typeInf := PVTypeInferencer new initialize annotation: annotation.
+        [ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
+        ^ PVSPIRVEmitter compileVertexShader: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
+    annotation isFragment ifTrue: [
+        bytecodeOps := PVBytecodeDecoder decode: method.
+        regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
+        st := PVSelectorTable standard.
+        typeInf := PVTypeInferencer new initialize annotation: annotation.
+        [ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
+        ^ PVSPIRVEmitter compileFragmentShader: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
+    isCompute := annotation params anySatisfy: [ :p |
+        #(#workItem #bufferOf_f32 #bufferOf_i32) includes: p type ].
+    bytecodeOps := PVBytecodeDecoder decode: method.
+    regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
+    st := PVSelectorTable standard.
+    typeInf := PVTypeInferencer new initialize annotation: annotation.
+    [ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
+    isCompute ifTrue: [
+        ^ PVSPIRVEmitter compileComputeKernel: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
+    blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
+    blocks size = 1 ifTrue: [
+        | cfg ssaCFG |
+        cfg := PVCFGBuilder buildFrom: regOps.
+        ssaCFG := PVSSAConstructor construct: cfg.
+        ^ PVSPIRVEmitter compileKernel: regOps typeMap: typeMap annotation: annotation selectorTable: st name: method selector ].
+    structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
+    structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].
+    (structNode isKindOf: PVSelectionNode) ifTrue: [
+        ^ PVSPIRVEmitter compileSelection: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
+    (structNode isKindOf: PVLoopNode) ifTrue: [
+        ^ PVSPIRVEmitter compileLoop: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
+    PVTypeError signal: 'Unrecognized control flow node: ' , structNode class name
 ]
 
 { #category : 'accessing' }

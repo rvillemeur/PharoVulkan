@@ -12,9 +12,8 @@ Class {
 	#tag : 'Compiler'
 }
 
-{ #category : 'instance creation' }
-PVSelectorTable class >> standard [
-	^ self new initializeStandardMappings; yourself
+{ #category : 'factory' }
+PVSelectorTable class >> standard [ ^ self new initializeStandardMappings; initializeVecMappings; initializeGLSLMappings; yourself
 ]
 
 { #category : 'lookup' }
@@ -37,6 +36,15 @@ PVSelectorTable >> initialize [
 
 	super initialize.
 	table := Dictionary new
+]
+
+{ #category : 'initialization' }
+PVSelectorTable >> initializeGLSLMappings [
+    self at: 'normalize' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslNormalize resultType: #vec3).
+    self at: 'length' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslLength resultType: #f32).
+    self at: 'mix:factor:' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslFMix resultType: #vec3).
+    self at: 'clamp:min:max:' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslFClamp resultType: #f32).
+    self at: 'sqrt' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslSqrt resultType: #f32)
 ]
 
 { #category : 'private' }
@@ -63,6 +71,30 @@ self at: 'at:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #buf
 self at: 'at:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #i32).
 self at: 'at:put:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void).
 self at: 'at:put:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void)
+]
+
+{ #category : 'initialization' }
+PVSelectorTable >> initializeVecMappings [
+    "Component-wise arithmetic on vec types"
+    #(#vec2 #vec3 #vec4) do: [:t |
+        self at: '+' receiverType: t put: (PVSelectorMapping spirvOp: #OpFAdd resultType: t).
+        self at: '-' receiverType: t put: (PVSelectorMapping spirvOp: #OpFSub resultType: t).
+        self at: '*' receiverType: t put: (PVSelectorMapping spirvOp: #OpFMul resultType: t)].
+    "Composite construction via , chaining"
+    self at: ',' receiverType: #f32  put: (PVSelectorMapping spirvOp: #compositeConstruct resultType: #vec2).
+    self at: ',' receiverType: #vec2 put: (PVSelectorMapping spirvOp: #compositeConstruct resultType: #vec3).
+    self at: ',' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #compositeConstruct resultType: #vec4).
+    "Component extraction x/y/z/w"
+    #(#vec2 #vec3 #vec4) do: [:t |
+        self at: 'x' receiverType: t put: (PVSelectorMapping spirvOp: #vecExtractX resultType: #f32).
+        self at: 'y' receiverType: t put: (PVSelectorMapping spirvOp: #vecExtractY resultType: #f32)].
+    #(#vec3 #vec4) do: [:t |
+        self at: 'z' receiverType: t put: (PVSelectorMapping spirvOp: #vecExtractZ resultType: #f32)].
+    self at: 'w' receiverType: #vec4 put: (PVSelectorMapping spirvOp: #vecExtractW resultType: #f32).
+    "Mat4 * vec4"
+    self at: '*' receiverType: #mat4 put: (PVSelectorMapping spirvOp: #OpMatrixTimesVector resultType: #vec4).
+    "Dot product"
+    self at: 'dot:' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #OpDot resultType: #f32)
 ]
 
 { #category : 'accessing' }

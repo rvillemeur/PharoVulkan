@@ -63,6 +63,14 @@ SpvTypeRegistry >> intType: width signed: isSigned [
         self register: (SpvIntType new width: width; signed: isSigned; yourself) ]
 ]
 
+{ #category : 'types' }
+SpvTypeRegistry >> matrixType: aColumnType columns: n [
+    | key |
+    key := Array with: #matrix with: aColumnType id with: n.
+    ^ types at: key ifAbsent: [
+        self register: (SpvMatrixType new columnType: aColumnType; columns: n; yourself) ]
+]
+
 { #category : 'accessing' }
 SpvTypeRegistry >> module: m [  module := m
 ]

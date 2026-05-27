@@ -6,7 +6,9 @@ Class {
 	#superclass : 'SpvModuleEmitter',
 	#instVars : [
 		'annotation',
-		'regMap'
+		'regMap',
+		'outputVarIds',
+		'isVoidMain'
 	],
 	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
@@ -77,6 +79,12 @@ mod addFunction: spvFunc.
 mod addEntryPoint: spvFunc executionModel: 5 name: 'main' interfaces: interfaces asArray.
 mod addExecutionMode: spvFunc mode: 17 literals: #(64 1 1).
 ^ mod serialize
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> compileFragmentShader: regOps annotation: ann typeMap: typeMap selectorTable: st [
+    ^ self compileShaderKernel: regOps annotation: ann typeMap: typeMap selectorTable: st
+        executionModel: SpvExecutionModel fragment
 ]
 
 { #category : 'compiling' }
@@ -220,6 +228,61 @@ PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeM
 		resultType: nil resultId: nil operands: { phiId }).
 	mod addFunction: spvFunc.
 	^ mod serialize
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> compileShaderKernel: regOps annotation: ann typeMap: typeMap selectorTable: st executionModel: execModel [
+    | em mod voidT voidFnT spvFunc blk interfaces location |
+    em := self new.
+    em annotation: ann.
+    mod := em module.
+    mod addCapability: 1.
+    mod setAddressingModel: 0 memoryModel: 1.
+    interfaces := OrderedCollection new.
+    location := 0.
+    ann params doWithIndex: [ :p :i |
+        | pType pPtrT gVar |
+        pType := em spvTypeFor: p type.
+        pPtrT := mod typeRegistry pointerType: SpvStorageClass input type: pType.
+        gVar := SpvGlobalVariable new id: mod newId; type: pPtrT; storageClass: SpvStorageClass input; yourself.
+        mod addGlobalVariable: gVar.
+        interfaces add: gVar.
+        mod addDecoration: gVar id decoration: SpvDecoration location literals: { location }.
+        location := location + 1.
+        em regMap at: i put: gVar id ].
+    ann outputs do: [ :o |
+        | oType oPtrT oVar |
+        oType := em spvTypeFor: o type.
+        oPtrT := mod typeRegistry pointerType: SpvStorageClass output type: oType.
+        oVar := SpvGlobalVariable new id: mod newId; type: oPtrT; storageClass: SpvStorageClass output; yourself.
+        mod addGlobalVariable: oVar.
+        interfaces add: oVar.
+        o builtIn notNil
+            ifTrue: [ mod addDecoration: oVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn perform: o builtIn } ]
+            ifFalse: [ mod addDecoration: oVar id decoration: SpvDecoration location literals: { o location } ].
+        em outputVarIds add: oVar id ].
+    voidT := mod typeRegistry voidType.
+    voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
+    spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+    blk := spvFunc addBlock.
+    em isVoidMain: true.
+    ann params doWithIndex: [ :p :i |
+        | pType loadId |
+        pType := em spvTypeFor: p type.
+        loadId := mod newId.
+        blk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { em regMap at: i }).
+        em regMap at: i put: loadId ].
+    regOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: blk ].
+    blk isTerminated ifFalse: [ blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
+    mod addFunction: spvFunc.
+    mod addEntryPoint: spvFunc executionModel: execModel name: 'main' interfaces: interfaces asArray.
+    ^ mod serialize
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> compileVertexShader: regOps annotation: ann typeMap: typeMap selectorTable: st [
+    ^ self compileShaderKernel: regOps annotation: ann typeMap: typeMap selectorTable: st
+        executionModel: SpvExecutionModel vertex
 ]
 
 { #category : 'compiling' }
@@ -384,6 +447,68 @@ PVSPIRVEmitter >> emitBytecodeBlock: blk typeMap: typeMap selectorTable: st bloc
 	^ lastResultReg
 ]
 
+{ #category : 'emit' }
+PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: typeMap block: blk [
+    | mapping resultType resultTypeId resultId |
+    mapping := (PVSelectorTable standard) at: op literal receiverType: (typeMap at: op inputs first).
+    resultType := self spvTypeFor: mapping resultTypeSymbol.
+    resultTypeId := resultType id.
+    resultId := module newId.
+    regMap at: op result put: resultId.
+    blk addInstruction: (SpvInstruction
+        opcode: SpvOpcode opCompositeConstruct
+        resultType: resultTypeId
+        resultId: resultId
+        operands: (op inputs collect: [:r | self spvIdFor: r]))
+]
+
+{ #category : 'emit' }
+PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: typeMap selectorTable: st block: blk [
+    | mapping resultType resultTypeId resultId |
+    mapping := st at: op literal receiverType: (typeMap at: op inputs first).
+    resultType := self spvTypeFor: mapping resultTypeSymbol.
+    resultTypeId := resultType id.
+    resultId := module newId.
+    regMap at: op result put: resultId.
+    blk addInstruction: (SpvInstruction
+        opcode: SpvOpcode opCompositeConstruct
+        resultType: resultTypeId
+        resultId: resultId
+        operands: (op inputs collect: [:r | self spvIdFor: r]))
+]
+
+{ #category : 'emit' }
+PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: typeMap block: blk [
+    | mapping resultType resultTypeId resultId setId |
+    mapping := (PVSelectorTable standard) at: op literal receiverType: (typeMap at: op inputs first).
+    resultType := self spvTypeFor: mapping resultTypeSymbol.
+    resultTypeId := resultType id.
+    resultId := module newId.
+    setId := self ensureGlslExtInstSet.
+    regMap at: op result put: resultId.
+    blk addInstruction: (SpvInstruction
+        opcode: SpvOpcode opExtInst
+        resultType: resultTypeId
+        resultId: resultId
+        operands: ({ setId. glslOp } , (op inputs collect: [:r | self spvIdFor: r])))
+]
+
+{ #category : 'emit' }
+PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: typeMap selectorTable: st block: blk [
+    | mapping resultType resultTypeId resultId setId |
+    mapping := st at: op literal receiverType: (typeMap at: op inputs first).
+    resultType := self spvTypeFor: mapping resultTypeSymbol.
+    resultTypeId := resultType id.
+    resultId := module newId.
+    setId := self ensureGlslExtInstSet.
+    regMap at: op result put: resultId.
+    blk addInstruction: (SpvInstruction
+        opcode: SpvOpcode opExtInst
+        resultType: resultTypeId
+        resultId: resultId
+        operands: ({ setId. glslOp } , (op inputs collect: [:r | self spvIdFor: r])))
+]
+
 { #category : 'emitting' }
 PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: typeMap selectorTable: st name: funcName [
 	| paramTypes retTypeSymbol retType funcType spvFunc blk |
@@ -427,54 +552,63 @@ PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: typeMap selectorTable: st 
 	^ spvFunc
 ]
 
-{ #category : 'emitting' }
+{ #category : 'emit' }
 PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
-| opc |
-op opcode = #const ifTrue: [
-    | constId |
-    constId := op literal isFloat
-        ifTrue: [ module constantPool constantFloat32: op literal asFloat ]
-        ifFalse: [ module constantPool constantInt32: op literal ].
-    regMap at: op result put: constId.
-    ^ self ].
-op opcode = #move ifTrue: [
-    regMap at: op result put: (self spvIdFor: op inputs first).
-    ^ self ].
-op opcode = #self ifTrue: [ ^ self ].
-op opcode = #send ifTrue: [
-    | mapping resultTypeId resultId instr |
-    mapping := st at: op literal receiverType: (typeMap at: op inputs first).
-    mapping ifNil: [ PVTypeError signal: 'No mapping for ' , op literal ].
-    mapping spirvOp = #bufferLoad ifTrue: [
-        self emitBufferLoad: op typeMap: typeMap block: blk. ^ self ].
-    mapping spirvOp = #bufferStore ifTrue: [
-        self emitBufferStore: op typeMap: typeMap block: blk. ^ self ].
-    mapping spirvOp = #workItemX ifTrue: [
-        self emitWorkItemComponent: 0 op: op block: blk. ^ self ].
-    mapping spirvOp = #workItemY ifTrue: [
-        self emitWorkItemComponent: 1 op: op block: blk. ^ self ].
-    mapping spirvOp = #workItemZ ifTrue: [
-        self emitWorkItemComponent: 2 op: op block: blk. ^ self ].
-    opc := self opcodeFor: mapping spirvOp.
-    resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
-    resultId := module newId.
-    regMap at: op result put: resultId.
-    instr := SpvInstruction
-        opcode: opc
-        resultType: resultTypeId
-        resultId: resultId
-        operands: (op inputs collect: [ :r | self spvIdFor: r ]).
-    blk addInstruction: instr.
-    ^ self ].
-op opcode = #return ifTrue: [
-    blk terminate: (SpvInstruction
-        opcode: SpvOpcode opReturnValue
-        resultType: nil
-        resultId: nil
-        operands: { (self spvIdFor: op inputs first) }).
-    ^ self ].
-op opcode = #returnSelf ifFalse: [ ^ self ].
-blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #())
+    | opc |
+    op opcode = #const ifTrue: [
+        | constId |
+        constId := op literal isFloat
+            ifTrue: [ module constantPool constantFloat32: op literal asFloat ]
+            ifFalse: [ module constantPool constantInt32: op literal ].
+        regMap at: op result put: constId.
+        ^ self ].
+    op opcode = #move ifTrue: [
+        regMap at: op result put: (self spvIdFor: op inputs first).
+        ^ self ].
+    op opcode = #self ifTrue: [ ^ self ].
+    op opcode = #storeInstVar ifTrue: [
+        blk addInstruction: (SpvInstruction opcode: SpvOpcode opStore operands:
+            { outputVarIds at: op literal + 1. self spvIdFor: op inputs first }).
+        ^ self ].
+    op opcode = #send ifTrue: [
+        | mapping resultTypeId resultId |
+        mapping := st at: op literal receiverType: (typeMap at: op inputs first).
+        mapping ifNil: [ PVTypeError signal: 'No mapping for ' , op literal ].
+        mapping spirvOp = #bufferLoad       ifTrue: [ self emitBufferLoad: op typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #bufferStore      ifTrue: [ self emitBufferStore: op typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #workItemX        ifTrue: [ self emitWorkItemComponent: 0 op: op block: blk. ^ self ].
+        mapping spirvOp = #workItemY        ifTrue: [ self emitWorkItemComponent: 1 op: op block: blk. ^ self ].
+        mapping spirvOp = #workItemZ        ifTrue: [ self emitWorkItemComponent: 2 op: op block: blk. ^ self ].
+        mapping spirvOp = #compositeConstruct ifTrue: [ self emitCompositeConstruct: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
+        mapping spirvOp = #vecExtractX      ifTrue: [ self emitVecExtract: 0 op: op block: blk. ^ self ].
+        mapping spirvOp = #vecExtractY      ifTrue: [ self emitVecExtract: 1 op: op block: blk. ^ self ].
+        mapping spirvOp = #vecExtractZ      ifTrue: [ self emitVecExtract: 2 op: op block: blk. ^ self ].
+        mapping spirvOp = #vecExtractW      ifTrue: [ self emitVecExtract: 3 op: op block: blk. ^ self ].
+        mapping spirvOp = #glslNormalize    ifTrue: [ self emitExtInst: GlslStd450 normalize  op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
+        mapping spirvOp = #glslLength       ifTrue: [ self emitExtInst: GlslStd450 length     op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
+        mapping spirvOp = #glslFMix         ifTrue: [ self emitExtInst: GlslStd450 fMix       op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
+        mapping spirvOp = #glslFClamp       ifTrue: [ self emitExtInst: GlslStd450 fClamp     op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
+        mapping spirvOp = #glslSqrt         ifTrue: [ self emitExtInst: GlslStd450 sqrt       op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
+        opc := self opcodeFor: mapping spirvOp.
+        resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
+        resultId := module newId.
+        regMap at: op result put: resultId.
+        blk addInstruction: (SpvInstruction opcode: opc resultType: resultTypeId resultId: resultId
+            operands: (op inputs collect: [:r | self spvIdFor: r])).
+        ^ self ].
+    op opcode = #return ifTrue: [
+        isVoidMain
+            ifTrue: [
+                outputVarIds isEmpty ifFalse: [
+                    blk addInstruction: (SpvInstruction opcode: SpvOpcode opStore operands:
+                        { outputVarIds first. self spvIdFor: op inputs first }) ].
+                blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ]
+            ifFalse: [
+                blk terminate: (SpvInstruction opcode: SpvOpcode opReturnValue resultType: nil resultId: nil
+                    operands: { self spvIdFor: op inputs first }) ].
+        ^ self ].
+    op opcode = #returnSelf ifFalse: [ ^ self ].
+    blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #())
 ]
 
 { #category : 'emitting structured' }
@@ -520,6 +654,19 @@ PVSPIRVEmitter >> emitSelection: selNode typeMap: typeMap selectorTable: st func
 	^ nil
 ]
 
+{ #category : 'emit' }
+PVSPIRVEmitter >> emitVecExtract: index op: op block: blk [
+    | resultTypeId resultId |
+    resultTypeId := (self spvTypeFor: #f32) id.
+    resultId := module newId.
+    regMap at: op result put: resultId.
+    blk addInstruction: (SpvInstruction
+        opcode: SpvOpcode opCompositeExtract
+        resultType: resultTypeId
+        resultId: resultId
+        operands: { (self spvIdFor: op inputs first). index })
+]
+
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> emitWorkItemComponent: compIdx op: op block: blk [
 | varId u32T v3u32T loadId resultId |
@@ -541,15 +688,39 @@ blk addInstruction: (SpvInstruction
     operands: { loadId. compIdx })
 ]
 
+{ #category : 'private' }
+PVSPIRVEmitter >> ensureGlslExtInstSet [
+    "Import GLSL.std.450 once; return its result id."
+    ^ module importExtInstSet: GlslStd450 instSetName
+]
+
 { #category : 'initialization' }
 PVSPIRVEmitter >> initialize [
-	super initialize.
-	regMap := Dictionary new
+    super initialize.
+    regMap := Dictionary new.
+    outputVarIds := OrderedCollection new.
+    isVoidMain := false
+]
+
+{ #category : 'accessing' }
+PVSPIRVEmitter >> isVoidMain [ ^ isVoidMain
+]
+
+{ #category : 'accessing' }
+PVSPIRVEmitter >> isVoidMain: x [ isVoidMain := x
 ]
 
 { #category : 'type mapping' }
 PVSPIRVEmitter >> opcodeFor: spirvOpSymbol [
 	^ SpvOpcode perform: spirvOpSymbol asString uncapitalized asSymbol
+]
+
+{ #category : 'accessing' }
+PVSPIRVEmitter >> outputVarIds [ ^ outputVarIds
+]
+
+{ #category : 'accessing' }
+PVSPIRVEmitter >> outputVarIds: x [ outputVarIds := x
 ]
 
 { #category : 'accessing' }
@@ -567,12 +738,19 @@ PVSPIRVEmitter >> spvIdFor: regId [
 	^ regMap at: regId ifAbsent: [ PVTypeError signal: 'No SpvId for register: ' , regId printString ]
 ]
 
-{ #category : 'type mapping' }
+{ #category : 'private' }
 PVSPIRVEmitter >> spvTypeFor: typeSymbol [
-	typeSymbol = #f32  ifTrue: [ ^ module typeRegistry floatType: 32 ].
-	typeSymbol = #i32  ifTrue: [ ^ module typeRegistry intType: 32 signed: true ].
-	typeSymbol = #u32  ifTrue: [ ^ module typeRegistry intType: 32 signed: false ].
-	typeSymbol = #bool ifTrue: [ ^ module typeRegistry boolType ].
-	typeSymbol = #void ifTrue: [ ^ module typeRegistry voidType ].
-	PVTypeError signal: 'Unknown type: ' , typeSymbol
+    typeSymbol = #f32  ifTrue: [ ^ module typeRegistry floatType: 32 ].
+    typeSymbol = #i32  ifTrue: [ ^ module typeRegistry intType: 32 signed: true ].
+    typeSymbol = #u32  ifTrue: [ ^ module typeRegistry intType: 32 signed: false ].
+    typeSymbol = #bool ifTrue: [ ^ module typeRegistry boolType ].
+    typeSymbol = #void ifTrue: [ ^ module typeRegistry voidType ].
+    typeSymbol = #vec2 ifTrue: [ ^ module typeRegistry vectorType: (module typeRegistry floatType: 32) count: 2 ].
+    typeSymbol = #vec3 ifTrue: [ ^ module typeRegistry vectorType: (module typeRegistry floatType: 32) count: 3 ].
+    typeSymbol = #vec4 ifTrue: [ ^ module typeRegistry vectorType: (module typeRegistry floatType: 32) count: 4 ].
+    typeSymbol = #bvec3 ifTrue: [ ^ module typeRegistry vectorType: module typeRegistry boolType count: 3 ].
+    typeSymbol = #mat4 ifTrue: [
+        | vec4T | vec4T := module typeRegistry vectorType: (module typeRegistry floatType: 32) count: 4.
+        ^ module typeRegistry matrixType: vec4T columns: 4 ].
+    PVTypeError signal: 'Unknown type: ' , typeSymbol
 ]

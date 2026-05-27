@@ -67,12 +67,30 @@ PVCompilerTest >> testDecodesJumps [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testFragmentShaderCompiles [
+    | bytes |
+    bytes := PVKernelCompiler compile: (PVKernelExamples >> #triFragment:).
+    self assert: bytes class equals: ByteArray.
+    self deny: bytes isEmpty.
+    self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testLoopKernelCompiles [
 
 	| bytes |
 	bytes := PVKernelCompiler compile:
 		         PVKernelExamples >> #accumulateUpTo:.
 	self assert: (bytes copyFrom: 1 to: 4) equals: #[ 3 2 35 7 ]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testNormalizeCompiles [
+    | bytes |
+    bytes := PVKernelCompiler compile: (PVKernelExamples >> #normalizeV:).
+    self assert: bytes class equals: ByteArray.
+    self deny: bytes isEmpty.
+    self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
 ]
 
 { #category : 'tests' }
@@ -192,6 +210,15 @@ PVCompilerTest >> testTypeInferencerResolvesAdd [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testVec3DotCompiles [
+    | bytes |
+    bytes := PVKernelCompiler compile: (PVKernelExamples >> #dotOfA:b:).
+    self assert: bytes class equals: ByteArray.
+    self deny: bytes isEmpty.
+    self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testVectorAddKernelCompiles [
 | m bytes |
 m := PVKernelExamples >> #vectorAdd:a:b:out:.
@@ -199,4 +226,13 @@ bytes := PVKernelCompiler compile: m.
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testVertexShaderCompiles [
+    | bytes |
+    bytes := PVKernelCompiler compile: (PVKernelExamples >> #triVertex:color:).
+    self assert: bytes class equals: ByteArray.
+    self deny: bytes isEmpty.
+    self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
 ]

@@ -6,25 +6,38 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'isGPU',
-		'params'
+		'params',
+		'shaderKind',
+		'outputs'
 	],
 	#category : 'PharoVulkan-Compiler',
 	#package : 'PharoVulkan',
 	#tag : 'Compiler'
 }
 
-{ #category : 'instance creation' }
+{ #category : 'factory' }
 PVTypeAnnotation class >> fromMethod: aCompiledMethod [
-	| ann |
-	ann := self new.
-	ann isGPU: false.
-	ann params: OrderedCollection new.
-	aCompiledMethod pragmas do: [ :p |
-		p keyword = #gpu ifTrue: [ ann isGPU: true ].
-		(p keyword beginsWith: 'param:named:') ifTrue: [
-			ann params add:
-				(PVParamAnnotation kind: #param type: (p argumentAt: 1) name: (p argumentAt: 2)) ] ].
-	^ ann
+    | ann |
+    ann := self new.
+    ann isGPU: false.
+    ann params: OrderedCollection new.
+    ann outputs: OrderedCollection new.
+    ann shaderKind: #compute.
+    aCompiledMethod pragmas do: [ :p |
+        p keyword = #gpu ifTrue: [ ann isGPU: true. ann shaderKind: #compute ].
+        p keyword = #gpuVertex ifTrue: [ ann isGPU: true. ann shaderKind: #vertex ].
+        p keyword = #gpuFragment ifTrue: [ ann isGPU: true. ann shaderKind: #fragment ].
+        (p keyword = 'param:named:') ifTrue: [
+            ann params add: (PVParamAnnotation kind: #param type: (p argumentAt: 1) name: (p argumentAt: 2)) ].
+        (p keyword = 'output:named:builtin:') ifTrue: [
+            ann outputs add: (PVOutputAnnotation type: (p argumentAt: 1) name: (p argumentAt: 2) builtIn: (p argumentAt: 3)) ].
+        (p keyword = 'output:named:location:') ifTrue: [
+            ann outputs add: (PVOutputAnnotation type: (p argumentAt: 1) name: (p argumentAt: 2) location: (p argumentAt: 3)) ] ].
+    ^ ann
+]
+
+{ #category : 'testing' }
+PVTypeAnnotation >> isFragment [ ^ shaderKind = #fragment
 ]
 
 { #category : 'accessing' }
@@ -35,6 +48,18 @@ PVTypeAnnotation >> isGPU [
 { #category : 'accessing' }
 PVTypeAnnotation >> isGPU: aBoolean [
 	isGPU := aBoolean
+]
+
+{ #category : 'testing' }
+PVTypeAnnotation >> isVertex [ ^ shaderKind = #vertex
+]
+
+{ #category : 'accessing' }
+PVTypeAnnotation >> outputs [ ^ outputs
+]
+
+{ #category : 'accessing' }
+PVTypeAnnotation >> outputs: x [ outputs := x
 ]
 
 { #category : 'accessing' }
@@ -55,4 +80,12 @@ PVTypeAnnotation >> params [
 { #category : 'accessing' }
 PVTypeAnnotation >> params: aCollection [
 	params := aCollection
+]
+
+{ #category : 'accessing' }
+PVTypeAnnotation >> shaderKind [ ^ shaderKind
+]
+
+{ #category : 'accessing' }
+PVTypeAnnotation >> shaderKind: x [ shaderKind := x
 ]
