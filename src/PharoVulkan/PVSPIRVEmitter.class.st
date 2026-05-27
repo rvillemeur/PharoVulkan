@@ -42,7 +42,7 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: paramTempDefs startingNextReg: ann params size + 1.
 	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim second startingNextReg: preheaderSim fourth.
 	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim second startingNextReg: headerSim fourth.
-	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim second startingNextReg: latchSim fourth.
+	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim second startingNextReg: latchSim fourth initialStack: (preheaderSim at: 5).
 	phiVarIndices := OrderedCollection new.
 	preInitRegs := Dictionary new.
 	latchResultRegs := Dictionary new.

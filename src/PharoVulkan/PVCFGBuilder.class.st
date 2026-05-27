@@ -31,14 +31,10 @@ PVCFGBuilder class >> buildBytecodeBlocks: bytecodeOps [
 			blk startPc: pc.
 			blockMap at: pc put: blk ].
 	"Assign each op to the block whose startPc is highest but <= op.pc"
-	blk ops addAll: (bytecodeOps collect: [ :op |
-				 | blkPc blk |
-				 blkPc := sorted
-					          detect: [ :pc | pc <= op pc ]
-					          ifNone: [ sorted first ].
-				 blkPc := (sorted select: [ :pc | pc <= op pc ]) last.
-				 blk := blockMap at: blkPc.
-				 op ]).
+	bytecodeOps do: [:op |
+		| blkPc |
+		blkPc := (sorted select: [:pc | pc <= op pc]) last.
+		(blockMap at: blkPc) ops add: op].
 	blocks := sorted collect: [ :pc | blockMap at: pc ].
 	"Wire successors and predecessors"
 	blocks doWithIndex: [ :blk :i |

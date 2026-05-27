@@ -58,5 +58,26 @@ PVBlockSimulator >> simulateBlock: aBlock initialTempDefs: tempDefs startingNext
 	^ { sim regOps asArray.
 	    sim tempDefs.
 	    (sim stack isEmpty ifFalse: [ sim stack last ]).
-	    sim nextReg }
+	    sim nextReg.
+	    sim stack copy }
+]
+
+{ #category : 'simulating' }
+PVBlockSimulator >> simulateBlock: aBlock initialTempDefs: tempDefs startingNextReg: startReg initialStack: stackList [
+	"Like simulateBlock:initialTempDefs:startingNextReg: but pre-seeds the stack.
+	 Needed for exit blocks that inherit stack residue from the loop preheader
+	 (e.g. to:do: leaves the start value on stack via storeTemp, exit block pops it)."
+	| sim |
+	sim := PVStackSimulator new initialize.
+	sim nextReg: startReg.
+	tempDefs keysAndValuesDo: [ :k :v | sim tempDefs at: k put: v ].
+	stackList do: [:r | sim stack addLast: r].
+	aBlock ops do: [ :op |
+		(#(#jump #jumpIf #returnTop #returnSelf) includes: op opcode) ifFalse: [
+			sim simulateOp: op ] ].
+	^ { sim regOps asArray.
+	    sim tempDefs.
+	    (sim stack isEmpty ifFalse: [ sim stack last ]).
+	    sim nextReg.
+	    sim stack copy }
 ]

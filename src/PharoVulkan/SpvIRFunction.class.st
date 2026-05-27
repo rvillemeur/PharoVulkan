@@ -18,7 +18,10 @@ Class {
 
 { #category : 'instance creation' }
 SpvIRFunction class >> name: aString returnType: aType [
-	^ self new; name: aString; returnType: aType; yourself
+	^ (self new)
+		name: aString;
+		returnType: aType;
+		yourself
 ]
 
 { #category : 'building' }
