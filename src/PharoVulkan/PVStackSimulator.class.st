@@ -8,7 +8,8 @@ Class {
 		'stack',
 		'nextReg',
 		'tempDefs',
-		'regOps'
+		'regOps',
+		'handlers'
 	],
 	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
@@ -27,11 +28,31 @@ PVStackSimulator class >> simulate: aBytecodeOpArray paramCount: n [
 
 { #category : 'initialization' }
 PVStackSimulator >> initialize [
-super initialize .
-	stack := OrderedCollection new.
-	nextReg := 0.
-	tempDefs := Dictionary new.
-	regOps := OrderedCollection new
+super initialize.
+stack := OrderedCollection new.
+nextReg := 0.
+tempDefs := Dictionary new.
+regOps := OrderedCollection new.
+self initializeHandlers
+]
+
+{ #category : 'initialization' }
+PVStackSimulator >> initializeHandlers [
+handlers := Dictionary new.
+handlers at: #dup put: [:op | stack addLast: stack last].
+handlers at: #pushTemp put: [:op | | r | r := tempDefs at: op operands first ifAbsent: [self newReg]. stack addLast: r].
+handlers at: #popTemp put: [:op | | r | r := stack removeLast. tempDefs at: op operands first put: r. regOps add: (PVRegisterOp pc: op pc opcode: #move result: r inputs: {r} literal: nil)].
+handlers at: #storeTemp put: [:op | tempDefs at: op operands first put: stack last].
+handlers at: #pushInstVar put: [:op | | r | r := self newReg. regOps add: (PVRegisterOp pc: op pc opcode: #instVar result: r inputs: #() literal: op operands first). stack addLast: r].
+handlers at: #storeInstVar put: [:op | regOps add: (PVRegisterOp pc: op pc opcode: #storeInstVar result: nil inputs: {stack last} literal: op operands first)].
+handlers at: #popInstVar put: [:op | | r | r := stack removeLast. regOps add: (PVRegisterOp pc: op pc opcode: #storeInstVar result: nil inputs: {r} literal: op operands first)].
+handlers at: #pushConst put: [:op | | r | r := self newReg. regOps add: (PVRegisterOp pc: op pc opcode: #const result: r inputs: #() literal: op operands first). stack addLast: r].
+handlers at: #returnConst put: [:op | | r | r := self newReg. regOps add: (PVRegisterOp pc: op pc opcode: #const result: r inputs: #() literal: op operands first). regOps add: (PVRegisterOp pc: op pc opcode: #return result: nil inputs: {r} literal: nil)].
+handlers at: #pushSelf put: [:op | | r | r := self newReg. regOps add: (PVRegisterOp pc: op pc opcode: #self result: r inputs: #() literal: nil). stack addLast: r].
+handlers at: #send put: [:op | | numArgs sel argRegs recvReg r ins | sel := op operands first. numArgs := op operands third. argRegs := (1 to: numArgs) collect: [:_ | stack removeLast]. recvReg := stack removeLast. r := self newReg. ins := {recvReg} , argRegs reversed asArray. regOps add: (PVRegisterOp pc: op pc opcode: #send result: r inputs: ins literal: sel). stack addLast: r].
+handlers at: #pop put: [:op | stack removeLast].
+handlers at: #returnTop put: [:op | regOps add: (PVRegisterOp pc: op pc opcode: #return result: nil inputs: {stack last} literal: nil)].
+handlers at: #returnSelf put: [:op | regOps add: (PVRegisterOp pc: op pc opcode: #returnSelf result: nil inputs: #() literal: nil)]
 ]
 
 { #category : 'private' }
@@ -71,72 +92,7 @@ aBytecodeOpArray do: [ :op | self simulateOp: op ].
 
 { #category : 'simulating' }
 PVStackSimulator >> simulateOp: op [
-| r ins |
-op opcode = #dup ifTrue: [
-    stack addLast: stack last.
-    ^ self ].
-op opcode = #pushTemp ifTrue: [
-    r := tempDefs at: (op operands first) ifAbsent: [ self newReg ].
-    stack addLast: r.
-    ^ self ].
-op opcode = #popTemp ifTrue: [
-    r := stack removeLast.
-    tempDefs at: (op operands first) put: r.
-    regOps add: (PVRegisterOp pc: op pc opcode: #move result: r inputs: { r } literal: nil).
-    ^ self ].
-op opcode = #storeTemp ifTrue: [
-    r := stack last.
-    tempDefs at: (op operands first) put: r.
-    ^ self ].
-op opcode = #pushInstVar ifTrue: [
-    r := self newReg.
-    regOps add: (PVRegisterOp pc: op pc opcode: #instVar result: r inputs: #() literal: op operands first).
-    stack addLast: r.
-    ^ self ].
-op opcode = #storeInstVar ifTrue: [
-    r := stack last.
-    regOps add: (PVRegisterOp pc: op pc opcode: #storeInstVar result: nil inputs: { r } literal: op operands first).
-    ^ self ].
-op opcode = #popInstVar ifTrue: [
-    r := stack removeLast.
-    regOps add: (PVRegisterOp pc: op pc opcode: #storeInstVar result: nil inputs: { r } literal: op operands first).
-    ^ self ].
-op opcode = #pushConst ifTrue: [
-    r := self newReg.
-    regOps add: (PVRegisterOp pc: op pc opcode: #const result: r inputs: #() literal: op operands first).
-    stack addLast: r.
-    ^ self ].
-op opcode = #returnConst ifTrue: [
-    r := self newReg.
-    regOps add: (PVRegisterOp pc: op pc opcode: #const result: r inputs: #() literal: op operands first).
-    regOps add: (PVRegisterOp pc: op pc opcode: #return result: nil inputs: { r } literal: nil).
-    ^ self ].
-op opcode = #pushSelf ifTrue: [
-    r := self newReg.
-    regOps add: (PVRegisterOp pc: op pc opcode: #self result: r inputs: #() literal: nil).
-    stack addLast: r.
-    ^ self ].
-op opcode = #send ifTrue: [
-    | numArgs sel argRegs recvReg |
-    sel := op operands first.
-    numArgs := op operands third.
-    argRegs := (1 to: numArgs) collect: [ :_ | stack removeLast ].
-    recvReg := stack removeLast.
-    r := self newReg.
-    ins := { recvReg } , argRegs reversed asArray.
-    regOps add: (PVRegisterOp pc: op pc opcode: #send result: r inputs: ins literal: sel).
-    stack addLast: r.
-    ^ self ].
-op opcode = #pop ifTrue: [
-    stack removeLast.
-    ^ self ].
-op opcode = #returnTop ifTrue: [
-    r := stack last.
-    regOps add: (PVRegisterOp pc: op pc opcode: #return result: nil inputs: { r } literal: nil).
-    ^ self ].
-op opcode = #returnSelf ifTrue: [
-    regOps add: (PVRegisterOp pc: op pc opcode: #returnSelf result: nil inputs: #() literal: nil).
-    ^ self ]
+(handlers at: op opcode ifAbsent: [nil]) ifNotNil: [:blk | blk value: op]
 ]
 
 { #category : 'accessing' }

@@ -69,12 +69,3 @@ self at: 'at:put:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: 
 PVSelectorTable >> table [
 ^ table
 ]
-
-{ #category : 'private' }
-PVSelectorTable >> testCompile [ ^ 42
-]
-
-{ #category : 'private' }
-PVSelectorTable >> testCompile2 [
-^ 42
-]
