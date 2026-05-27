@@ -85,6 +85,7 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 	phiType := em spvTypeFor: ann params first type.
 	phiVarIndices do: [ :k |
 		hdrBlk prependInstruction: (SpvInstruction opcode: SpvOpcode opPhi resultType: phiType id resultId: (phiSpvIds at: k) operands: { (phiInitSpvIds at: k). preBlk id. (phiLatchSpvIds at: k). latchBlk id }) ].
+	em emitRegOps: exitSim first typeMap: typeMap selectorTable: st block: exitBlk.
 	retSpvId := em spvIdFor: exitSim third.
 	exitBlk terminate: (SpvInstruction opcode: SpvOpcode opReturnValue resultType: nil resultId: nil operands: { retSpvId }).
 	mod addFunction: spvFunc.
