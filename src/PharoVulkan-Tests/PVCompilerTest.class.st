@@ -10,6 +10,13 @@ Class {
 }
 
 { #category : 'tests' }
+PVCompilerTest >> testAlphaClipFragmentCompiles [
+	| bytes |
+	bytes := PVKernelCompiler compile: (PVKernelExamples >> #alphaClip:threshold:).
+	self assert: ((bytes copyFrom: 1 to: 4) = #[3 2 35 7]) description: 'alphaClip:threshold: must start with SPIR-V magic number'
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testBytecodeBlockBuilderSplits [
 	| m ops blocks |
 	m := (Smalltalk at: #PVKernelExamples) >> #relu:.

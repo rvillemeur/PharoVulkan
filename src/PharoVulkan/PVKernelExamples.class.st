@@ -42,6 +42,17 @@ PVKernelExamples >> addInt: a to: b [
 	^ a + b
 ]
 
+{ #category : 'shaders' }
+PVKernelExamples >> alphaClip: color threshold: t [
+	<gpuFragment>
+	<param: #vec3 named: #color>
+	<param: #f32 named: #threshold>
+	<output: #vec4 named: #outColor location: 0>
+	(t < color length)
+		ifTrue: [out0 := color x , color y , color z , 1.0]
+		ifFalse: [out0 := 0.0 , 0.0 , 0.0 , 0.0]
+]
+
 { #category : 'kernels' }
 PVKernelExamples >> clampF32: x lo: lo hi: hi [
 <gpu>

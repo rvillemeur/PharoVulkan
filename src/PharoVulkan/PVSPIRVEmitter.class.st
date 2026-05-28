@@ -270,6 +270,80 @@ PVSPIRVEmitter class >> compileShaderKernel: regOps annotation: ann typeMap: typ
 ]
 
 { #category : 'compiling' }
+PVSPIRVEmitter class >> compileShaderKernelSelection: selNode annotation: ann typeMap: typeMap selectorTable: st executionModel: execModel [
+	| em mod voidT voidFnT spvFunc entryBlk interfaces location paramTempDefs condSim condRegOps condTempDefs condReg condNextReg trueSim trueRegOps falseSim falseRegOps trueSpvBlk falseSpvBlk mergeSpvBlk condSpvId condRegMapSave |
+	em := self new.
+	em annotation: ann.
+	mod := em module.
+	mod addCapability: 1.
+	mod setAddressingModel: 0 memoryModel: 1.
+	interfaces := OrderedCollection new.
+	location := 0.
+	paramTempDefs := Dictionary new.
+	ann params doWithIndex: [ :p :i |
+		| pType pPtrT gVar |
+		pType := em spvTypeFor: p type.
+		pPtrT := mod typeRegistry pointerType: SpvStorageClass input type: pType.
+		gVar := SpvGlobalVariable new id: mod newId; type: pPtrT; storageClass: SpvStorageClass input; yourself.
+		mod addGlobalVariable: gVar.
+		interfaces add: gVar.
+		mod addDecoration: gVar id decoration: SpvDecoration location literals: { location }.
+		location := location + 1.
+		em regMap at: i put: gVar id.
+		paramTempDefs at: i - 1 put: i ].
+	ann outputs do: [ :o |
+		| oType oPtrT oVar |
+		oType := em spvTypeFor: o type.
+		oPtrT := mod typeRegistry pointerType: SpvStorageClass output type: oType.
+		oVar := SpvGlobalVariable new id: mod newId; type: oPtrT; storageClass: SpvStorageClass output; yourself.
+		mod addGlobalVariable: oVar.
+		interfaces add: oVar.
+		o builtIn notNil
+			ifTrue: [ mod addDecoration: oVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn perform: o builtIn } ]
+			ifFalse: [ mod addDecoration: oVar id decoration: SpvDecoration location literals: { o location } ].
+		em outputVarIds add: oVar id ].
+	voidT := mod typeRegistry voidType.
+	voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
+	spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+	entryBlk := spvFunc addBlock.
+	em isVoidMain: true.
+	ann params doWithIndex: [ :p :i |
+		| pType loadId |
+		pType := em spvTypeFor: p type.
+		loadId := mod newId.
+		entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { em regMap at: i }).
+		em regMap at: i put: loadId ].
+	condSim := PVBlockSimulator new simulateBlock: selNode condBlock initialTempDefs: paramTempDefs startingNextReg: ann params size.
+	condRegOps := condSim first.
+	condTempDefs := condSim second.
+	condReg := condSim third.
+	condNextReg := condSim fourth.
+	condRegOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: entryBlk ].
+	condSpvId := em spvIdFor: condReg.
+	trueSpvBlk := spvFunc addBlock.
+	falseSpvBlk := spvFunc addBlock.
+	mergeSpvBlk := spvFunc addBlock.
+	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge resultType: nil resultId: nil operands: { mergeSpvBlk id. 0 }).
+	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. trueSpvBlk id. falseSpvBlk id }).
+	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
+	trueRegOps := trueSim first.
+	condRegMapSave := em regMap copy.
+	trueRegOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: trueSpvBlk ].
+	trueSpvBlk isTerminated ifFalse: [ trueSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
+	em regMap: condRegMapSave copy.
+	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
+	falseRegOps := falseSim first.
+	falseRegOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: falseSpvBlk ].
+	falseSpvBlk isTerminated ifFalse: [ falseSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
+	mergeSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()).
+	mod addFunction: spvFunc.
+	mod addEntryPoint: spvFunc executionModel: execModel name: 'main' interfaces: interfaces asArray.
+	execModel = SpvExecutionModel fragment ifTrue: [
+		mod addExecutionMode: spvFunc mode: SpvExecutionMode originUpperLeft literals: #() ].
+	^ mod serialize
+]
+
+{ #category : 'compiling' }
 PVSPIRVEmitter class >> compileVertexShader: regOps annotation: ann typeMap: typeMap selectorTable: st [
     ^ self compileShaderKernel: regOps annotation: ann typeMap: typeMap selectorTable: st
         executionModel: SpvExecutionModel vertex
