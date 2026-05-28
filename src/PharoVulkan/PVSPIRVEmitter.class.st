@@ -15,70 +15,58 @@ Class {
 	#tag : 'Compiler-Pipeline'
 }
 
-{ #category : 'compiling compute' }
+{ #category : 'compiling' }
 PVSPIRVEmitter class >> compileComputeKernel: regOps annotation: ann typeMap: typeMap selectorTable: st [
-| em mod u32T v3u32T pV3u32InT voidT voidFnT spvFunc blk interfaces binding |
-em := self new.
-em annotation: ann.
-mod := em module.
-mod addCapability: 1.
-mod setAddressingModel: 0 memoryModel: 1.
-u32T := mod typeRegistry intType: 32 signed: false.
-v3u32T := mod typeRegistry vectorType: u32T count: 3.
-pV3u32InT := mod typeRegistry pointerType: 1 type: v3u32T.
-interfaces := OrderedCollection new.
-binding := 0.
-ann params doWithIndex: [ :p :i |
-    p type = #workItem ifTrue: [
-        | gVar |
-        gVar := SpvGlobalVariable new
-            id: mod newId;
-            type: pV3u32InT;
-            storageClass: 1;
-            yourself.
-        mod addGlobalVariable: gVar.
-        interfaces add: gVar.
-        em regMap at: i put: gVar id.
-        mod addDecoration: gVar id decoration: 11 literals: { 28 }
-    ] ifFalse: [
-        | elemType rtaT structT pStructT bVar |
-        elemType := p type = #bufferOf_i32
-            ifTrue: [ mod typeRegistry intType: 32 signed: true ]
-            ifFalse: [ mod typeRegistry floatType: 32 ].
-        rtaT := mod typeRegistry runtimeArrayType: elemType.
-        structT := mod typeRegistry structType: { rtaT }.
-        pStructT := mod typeRegistry pointerType: 12 type: structT.
-        mod addDecoration: rtaT id decoration: 6 literals: { 4 }.
-        mod addDecoration: structT id decoration: 2 literals: #().
-        mod addMemberDecoration: structT id member: 0 decoration: 35 literals: { 0 }.
-        bVar := SpvGlobalVariable new
-            id: mod newId;
-            type: pStructT;
-            storageClass: 12;
-            yourself.
-        mod addGlobalVariable: bVar.
-        interfaces add: bVar.
-        em regMap at: i put: bVar id.
-        mod addDecoration: bVar id decoration: 33 literals: { binding }.
-        mod addDecoration: bVar id decoration: 34 literals: { 0 }.
-        binding := binding + 1 ] ].
-voidT := mod typeRegistry voidType.
-voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
-spvFunc := SpvFunction new
-    id: mod newId;
-    returnType: voidT;
-    functionType: voidFnT;
-    module: mod;
-    initialize;
-    yourself.
-blk := spvFunc addBlock.
-regOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: blk ].
-blk isTerminated ifFalse: [
-    blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
-mod addFunction: spvFunc.
-mod addEntryPoint: spvFunc executionModel: 5 name: 'main' interfaces: interfaces asArray.
-mod addExecutionMode: spvFunc mode: 17 literals: #(64 1 1).
-^ mod serialize
+	| em mod u32T v3u32T pV3u32InT voidT voidFnT spvFunc blk interfaces binding decoratedRtas |
+	em := self new.
+	em annotation: ann.
+	mod := em module.
+	mod addCapability: 1.
+	mod setAddressingModel: 0 memoryModel: 1.
+	u32T := mod typeRegistry intType: 32 signed: false.
+	v3u32T := mod typeRegistry vectorType: u32T count: 3.
+	pV3u32InT := mod typeRegistry pointerType: SpvStorageClass input type: v3u32T.
+	interfaces := OrderedCollection new.
+	decoratedRtas := Set new.
+	binding := 0.
+	ann params doWithIndex: [ :p :i |
+		p type = #workItem ifTrue: [
+			| gVar |
+			gVar := SpvGlobalVariable new id: mod newId; type: pV3u32InT; storageClass: SpvStorageClass input; yourself.
+			mod addGlobalVariable: gVar.
+			interfaces add: gVar.
+			em regMap at: i put: gVar id.
+			mod addDecoration: gVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn globalInvocationId }
+		] ifFalse: [
+			| elemType rtaT structT pStructT bVar |
+			elemType := p type = #bufferOf_i32
+				ifTrue: [ mod typeRegistry intType: 32 signed: true ]
+				ifFalse: [ mod typeRegistry floatType: 32 ].
+			rtaT := mod typeRegistry runtimeArrayType: elemType.
+			structT := mod typeRegistry structType: { rtaT }.
+			pStructT := mod typeRegistry pointerType: SpvStorageClass storageBuffer type: structT.
+			(decoratedRtas includes: rtaT id) ifFalse: [
+				mod addDecoration: rtaT id decoration: SpvDecoration arrayStride literals: { 4 }.
+				mod addDecoration: structT id decoration: SpvDecoration block literals: #().
+				mod addMemberDecoration: structT id member: 0 decoration: SpvDecoration offset literals: { 0 }.
+				decoratedRtas add: rtaT id ].
+			bVar := SpvGlobalVariable new id: mod newId; type: pStructT; storageClass: SpvStorageClass storageBuffer; yourself.
+			mod addGlobalVariable: bVar.
+			interfaces add: bVar.
+			em regMap at: i put: bVar id.
+			mod addDecoration: bVar id decoration: SpvDecoration descriptorSet literals: { 0 }.
+			mod addDecoration: bVar id decoration: SpvDecoration binding literals: { binding }.
+			binding := binding + 1 ] ].
+	voidT := mod typeRegistry voidType.
+	voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
+	spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+	blk := spvFunc addBlock.
+	regOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: blk ].
+	blk isTerminated ifFalse: [ blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
+	mod addFunction: spvFunc.
+	mod addEntryPoint: spvFunc executionModel: SpvExecutionModel glCompute name: 'main' interfaces: interfaces asArray.
+	mod addExecutionMode: spvFunc mode: SpvExecutionMode localSize literals: #(64 1 1).
+	^ mod serialize
 ]
 
 { #category : 'compiling' }
@@ -232,51 +220,53 @@ PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeM
 
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileShaderKernel: regOps annotation: ann typeMap: typeMap selectorTable: st executionModel: execModel [
-    | em mod voidT voidFnT spvFunc blk interfaces location |
-    em := self new.
-    em annotation: ann.
-    mod := em module.
-    mod addCapability: 1.
-    mod setAddressingModel: 0 memoryModel: 1.
-    interfaces := OrderedCollection new.
-    location := 0.
-    ann params doWithIndex: [ :p :i |
-        | pType pPtrT gVar |
-        pType := em spvTypeFor: p type.
-        pPtrT := mod typeRegistry pointerType: SpvStorageClass input type: pType.
-        gVar := SpvGlobalVariable new id: mod newId; type: pPtrT; storageClass: SpvStorageClass input; yourself.
-        mod addGlobalVariable: gVar.
-        interfaces add: gVar.
-        mod addDecoration: gVar id decoration: SpvDecoration location literals: { location }.
-        location := location + 1.
-        em regMap at: i put: gVar id ].
-    ann outputs do: [ :o |
-        | oType oPtrT oVar |
-        oType := em spvTypeFor: o type.
-        oPtrT := mod typeRegistry pointerType: SpvStorageClass output type: oType.
-        oVar := SpvGlobalVariable new id: mod newId; type: oPtrT; storageClass: SpvStorageClass output; yourself.
-        mod addGlobalVariable: oVar.
-        interfaces add: oVar.
-        o builtIn notNil
-            ifTrue: [ mod addDecoration: oVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn perform: o builtIn } ]
-            ifFalse: [ mod addDecoration: oVar id decoration: SpvDecoration location literals: { o location } ].
-        em outputVarIds add: oVar id ].
-    voidT := mod typeRegistry voidType.
-    voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
-    spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
-    blk := spvFunc addBlock.
-    em isVoidMain: true.
-    ann params doWithIndex: [ :p :i |
-        | pType loadId |
-        pType := em spvTypeFor: p type.
-        loadId := mod newId.
-        blk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { em regMap at: i }).
-        em regMap at: i put: loadId ].
-    regOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: blk ].
-    blk isTerminated ifFalse: [ blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
-    mod addFunction: spvFunc.
-    mod addEntryPoint: spvFunc executionModel: execModel name: 'main' interfaces: interfaces asArray.
-    ^ mod serialize
+	| em mod voidT voidFnT spvFunc blk interfaces location |
+	em := self new.
+	em annotation: ann.
+	mod := em module.
+	mod addCapability: 1.
+	mod setAddressingModel: 0 memoryModel: 1.
+	interfaces := OrderedCollection new.
+	location := 0.
+	ann params doWithIndex: [ :p :i |
+		| pType pPtrT gVar |
+		pType := em spvTypeFor: p type.
+		pPtrT := mod typeRegistry pointerType: SpvStorageClass input type: pType.
+		gVar := SpvGlobalVariable new id: mod newId; type: pPtrT; storageClass: SpvStorageClass input; yourself.
+		mod addGlobalVariable: gVar.
+		interfaces add: gVar.
+		mod addDecoration: gVar id decoration: SpvDecoration location literals: { location }.
+		location := location + 1.
+		em regMap at: i put: gVar id ].
+	ann outputs do: [ :o |
+		| oType oPtrT oVar |
+		oType := em spvTypeFor: o type.
+		oPtrT := mod typeRegistry pointerType: SpvStorageClass output type: oType.
+		oVar := SpvGlobalVariable new id: mod newId; type: oPtrT; storageClass: SpvStorageClass output; yourself.
+		mod addGlobalVariable: oVar.
+		interfaces add: oVar.
+		o builtIn notNil
+			ifTrue: [ mod addDecoration: oVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn perform: o builtIn } ]
+			ifFalse: [ mod addDecoration: oVar id decoration: SpvDecoration location literals: { o location } ].
+		em outputVarIds add: oVar id ].
+	voidT := mod typeRegistry voidType.
+	voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
+	spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+	blk := spvFunc addBlock.
+	em isVoidMain: true.
+	ann params doWithIndex: [ :p :i |
+		| pType loadId |
+		pType := em spvTypeFor: p type.
+		loadId := mod newId.
+		blk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { em regMap at: i }).
+		em regMap at: i put: loadId ].
+	regOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: blk ].
+	blk isTerminated ifFalse: [ blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
+	mod addFunction: spvFunc.
+	mod addEntryPoint: spvFunc executionModel: execModel name: 'main' interfaces: interfaces asArray.
+	execModel = SpvExecutionModel fragment ifTrue: [
+		mod addExecutionMode: spvFunc mode: SpvExecutionMode originUpperLeft literals: #() ].
+	^ mod serialize
 ]
 
 { #category : 'compiling' }
@@ -364,6 +354,19 @@ PVSPIRVEmitter >> annotation [
 { #category : 'accessing' }
 PVSPIRVEmitter >> annotation: ann [
 	annotation := ann
+]
+
+{ #category : 'emit' }
+PVSPIRVEmitter >> broadcastScalar: reg toVecType: vecTypeSymbol block: blk [
+	| count vecType scalarId broadcastId |
+	count := (#(#vec2 #vec3 #vec4) indexOf: vecTypeSymbol) + 1.
+	vecType := self spvTypeFor: vecTypeSymbol.
+	scalarId := self spvIdFor: reg.
+	broadcastId := module newId.
+	blk addInstruction: (SpvInstruction opcode: SpvOpcode opCompositeConstruct
+		resultType: vecType id resultId: broadcastId
+		operands: (Array new: count withAll: scalarId)).
+	^ broadcastId
 ]
 
 { #category : 'emitting compute' }
@@ -493,20 +496,28 @@ PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: typeMap block: blk [
         operands: ({ setId. glslOp } , (op inputs collect: [:r | self spvIdFor: r])))
 ]
 
-{ #category : 'emit' }
+{ #category : 'private' }
 PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: typeMap selectorTable: st block: blk [
-    | mapping resultType resultTypeId resultId setId |
-    mapping := st at: op literal receiverType: (typeMap at: op inputs first).
-    resultType := self spvTypeFor: mapping resultTypeSymbol.
-    resultTypeId := resultType id.
-    resultId := module newId.
-    setId := self ensureGlslExtInstSet.
-    regMap at: op result put: resultId.
-    blk addInstruction: (SpvInstruction
-        opcode: SpvOpcode opExtInst
-        resultType: resultTypeId
-        resultId: resultId
-        operands: ({ setId. glslOp } , (op inputs collect: [:r | self spvIdFor: r])))
+	| mapping resultType resultTypeId resultId setId operandIds |
+	mapping := st at: op literal receiverType: (typeMap at: op inputs first).
+	resultType := self spvTypeFor: mapping resultTypeSymbol.
+	resultTypeId := resultType id.
+	resultId := module newId.
+	setId := self ensureGlslExtInstSet.
+	regMap at: op result put: resultId.
+	operandIds := op inputs collect: [:r |
+		| inputType |
+		inputType := typeMap at: r ifAbsent: [nil].
+		(inputType notNil
+			and: [inputType ~= mapping resultTypeSymbol
+			and: [#(#vec2 #vec3 #vec4) includes: mapping resultTypeSymbol]])
+			ifTrue: [self broadcastScalar: r toVecType: mapping resultTypeSymbol block: blk]
+			ifFalse: [self spvIdFor: r]].
+	blk addInstruction: (SpvInstruction
+		opcode: SpvOpcode opExtInst
+		resultType: resultTypeId
+		resultId: resultId
+		operands: ({ setId. glslOp } , operandIds))
 ]
 
 { #category : 'emitting' }
