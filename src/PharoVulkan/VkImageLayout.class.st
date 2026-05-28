@@ -1,3 +1,6 @@
+"
+Named constants for VkImageLayout enum values used in render-pass attachment descriptions and image memory barriers. Key methods: undefined, colorAttachmentOptimal, presentSrcKHR.
+"
 Class {
 	#name : 'VkImageLayout',
 	#superclass : 'Object',

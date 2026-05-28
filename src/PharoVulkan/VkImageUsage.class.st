@@ -1,3 +1,6 @@
+"
+Named constants for VkImageUsageFlagBits bitmask values used when creating swapchain images and framebuffer attachments. Key method: colorAttachmentBit (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT = 16).
+"
 Class {
 	#name : 'VkImageUsage',
 	#superclass : 'Object',

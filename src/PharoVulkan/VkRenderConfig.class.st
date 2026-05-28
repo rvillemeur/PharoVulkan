@@ -1,3 +1,6 @@
+"
+Miscellaneous named constants for pipeline and swapchain configuration that do not belong to a more specific enum class. Covers color write mask, composite alpha, image aspect, image view type, present mode, primitive topology, sample count, and sharing mode.
+"
 Class {
 	#name : 'VkRenderConfig',
 	#superclass : 'Object',

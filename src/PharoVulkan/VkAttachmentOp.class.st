@@ -1,3 +1,6 @@
+"
+Named constants for VkAttachmentLoadOp and VkAttachmentStoreOp values used in render-pass attachment descriptions. Key methods: loadClear, loadDontCare, storeStore, storeDiscard.
+"
 Class {
 	#name : 'VkAttachmentOp',
 	#superclass : 'Object',

@@ -1,3 +1,6 @@
+"
+Named constants for VkShaderStageFlagBits bitmask values used in pipeline layout and shader module creation. Key methods: vertexBit (1), fragmentBit (16), computeBit (32).
+"
 Class {
 	#name : 'VkShaderStage',
 	#superclass : 'Object',
