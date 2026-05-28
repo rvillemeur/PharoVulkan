@@ -1674,6 +1674,49 @@ high-level API.
 
 ---
 
+## Phase 6.5 — Housekeeping and Foundation Strengthening
+
+These tasks were identified after Phase 6B (GLSL DSL) as high-value, low-risk
+improvements to do before entering the open-ended Phase 7.
+
+### 6.5-A  spirv-val integration (confidence)
+
+Pipe every compiled SPIR-V `ByteArray` through the `spirv-val` CLI tool in
+a dedicated test. Currently tests only check the 4-byte magic header — a
+malformed module would pass. `spirv-val` catches bad IDs, missing decorations,
+wrong instruction ordering, and structural violations.
+
+- Write `PVSpirvValidatorTest` that compiles each `PVKernelExamples` method
+  and shells out to `spirv-val --target-env vulkan1.3`.
+- Mark the test as skipped (not failed) when `spirv-val` is absent so the CI
+  does not break on minimal installs.
+- Fix any validation errors found.
+
+### 6.5-B  Parametric vertex input layout (flexibility)
+
+`VkGraphicsPipeline` hardcodes stride 20 (vec2 position + vec3 color).
+Any custom shader with a different vertex layout must subclass and re-implement
+the full pipeline creation.
+
+- Extract the vertex binding and attribute descriptions into overridable
+  methods: `vertexBindingDescriptions` and `vertexAttributeDescriptions`.
+- Keep the existing default (stride 20, location 0 = vec2, location 1 = vec3)
+  so all current tests and scenes pass unchanged.
+
+### 6.5-C  Control flow in fragment/vertex shaders (expressiveness)
+
+Selection (`ifTrue:ifFalse:`) and loops are currently only compiled in compute
+kernels (`<gpu>`). The compiler routes `<gpuVertex>` and `<gpuFragment>` to the
+straight-line emitter regardless of CFG shape.
+
+- Route vertex/fragment shaders through `PVStructuredCFGRecognizer` the same
+  way compute kernels with control flow are handled.
+- Add a `PVKernelExamples >> alphaClip: color threshold: t` fragment example
+  that uses `ifTrue:ifFalse:` to discard fragments below a threshold.
+- Add a corresponding `PVCompilerTest >> testAlphaClipFragmentCompiles` test.
+
+---
+
 ## Phase 7 — Cooperative Matrix + Performance
 
 **Goal**: AI-grade matmul using `VK_KHR_cooperative_matrix`, float16,
