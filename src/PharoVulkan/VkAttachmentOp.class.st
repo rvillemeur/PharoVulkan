@@ -1,8 +1,9 @@
 Class {
 	#name : 'VkAttachmentOp',
 	#superclass : 'Object',
-	#category : 'PharoVulkan',
-	#package : 'PharoVulkan'
+	#category : 'PharoVulkan-Constants',
+	#package : 'PharoVulkan',
+	#tag : 'Constants'
 }
 
 { #category : 'constants' }

@@ -8,3 +8,9 @@ Class {
 	#package : 'PharoVulkan',
 	#tag : 'Compiler'
 }
+
+{ #category : 'gpu-dsl' }
+PVVec3 >> mix: other factor: f [
+	"GPU DSL: maps to GLSL FMix. Not callable from Pharo; present to satisfy the linter."
+	^ self error: 'mix:factor: is a GPU DSL-only operation'
+]
