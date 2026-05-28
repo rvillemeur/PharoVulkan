@@ -10,13 +10,8 @@ Class {
 }
 
 { #category : 'examples' }
-PVGlslTriangleScene class >> example [
-<sampleInstance>
-^PVGlslTriangleScene renderTriangle
-]
-
-{ #category : 'examples' }
 PVGlslTriangleScene class >> renderTriangle [
+	<sampleInstance>
 	| attrs win backendWin ctx scene |
 	PVVulkanDriver install.
 	attrs := PVWindowAttributes newVulkan.
@@ -42,18 +37,4 @@ PVGlslTriangleScene >> buildFragmentShader [
 { #category : 'private' }
 PVGlslTriangleScene >> buildVertexShader [
 	^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:)
-]
-
-{ #category : 'as yet unclassified' }
-PVGlslTriangleScene >> fragmentShaderBytes [ 
-      ^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:)
-  
-]
-
-{ #category : 'as yet unclassified' }
-PVGlslTriangleScene >> vertexShaderBytes [ 
-      ^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:)
-  
-
-
 ]
