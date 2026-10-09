@@ -26,14 +26,6 @@ PVLoopNode >> bodyBlocks: b [
 ]
 
 { #category : 'accessing' }
-PVLoopNode >> coveredBlocks [
-	"Every bytecode block this node accounts for. See PVSelectionNode >> coveredBlocks."
-
-	^ ({ preheaderBlock. headerBlock } , bodyBlocks , { exitBlock }) reject: [ :each |
-		  each isNil ]
-]
-
-{ #category : 'accessing' }
 PVLoopNode >> exitBlock [
 ^ exitBlock
 ]
