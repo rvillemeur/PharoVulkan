@@ -1071,27 +1071,6 @@ PVSPIRVEmitter >> emitSelection: selNode typeMap: typeMap selectorTable: st func
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey in: ctx [
-	"One arm of the selection: its own work, then the branch to the merge block. The id of
-	 the value it produces is kept under armKey for the merge phi."
-
-	| sims blk |
-	sims := ctx at: #sims.
-	blk := ctx at: blockKey.
-	self
-		emitRegOps: (sims at: armKey) first
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
-	ctx at: armKey put: (self spvIdFor: (sims at: armKey) third).
-	blk terminate: (SpvInstruction
-			 opcode: SpvOpcode opBranch
-			 resultType: nil
-			 resultId: nil
-			 operands: { (ctx at: #mergeBlock) id })
-]
-
-{ #category : 'compiling' }
 PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey valueKey: valueKey in: ctx [
 	"One arm of the selection: its own work, then the branch to the merge block. The id of
 	 the value it produces is kept under valueKey for the merge phi."
