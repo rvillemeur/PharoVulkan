@@ -27,6 +27,30 @@ VkBuffer class >> byteMask [
 	^ 16rFF
 ]
 
+{ #category : 'constants' }
+VkBuffer class >> exampleByteSize [
+	"Four floats: small enough that every row of the capacity view reads at a glance."
+
+	^ 16
+]
+
+{ #category : 'examples' }
+VkBuffer class >> exampleStorageBufferOfFourFloats [
+	"One click: a buffer whose capacity rule can be read in the inspector. The size lives in
+	 the instance, so the object still answers after its handle and its context have gone."
+
+	<sampleInstance>
+	| context buffer |
+	context := VkContext computeContext.
+	^ [
+	  buffer := self
+		            on: context device
+		            size: self exampleByteSize
+		            usage: self storageBufferUsage.
+	  buffer destroy.
+	  buffer ] ensure: [ context destroy ]
+]
+
 { #category : 'factory' }
 VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
     ^ self new initializeDevice: aDevice size: byteSize usage: usageFlags
@@ -105,10 +129,26 @@ VkBuffer >> allocate [
 ]
 
 { #category : 'accessing' }
+VkBuffer >> capacityProbeCounts [
+	"Empty, the exact fit and one byte over: the three states the capacity rule distinguishes."
+
+	^ {
+		  0.
+		  size.
+		  size + 1 }
+]
+
+{ #category : 'accessing' }
 VkBuffer >> copyFromByteArray: aByteArray [
+	"Checked before the mapping is touched: the bytes go out through a raw pointer, so a
+	 collection longer than the buffer would land outside it rather than fail."
+
 	| ptr |
+	(self fitsByteCount: aByteArray size) ifFalse: [
+		SizeMismatch signal: aByteArray size printString , ' bytes do not fit a buffer of '
+			, size printString , ' bytes' ].
 	ptr := self map.
-	1 to: aByteArray size do: [:i | ptr byteAt: i put: (aByteArray at: i)].
+	1 to: aByteArray size do: [ :i | ptr byteAt: i put: (aByteArray at: i) ].
 	self unmap
 ]
 
@@ -151,6 +191,14 @@ VkBuffer >> elementsAs: anElementTypeSymbol [
 ]
 
 { #category : 'accessing' }
+VkBuffer >> fitsByteCount: aCount [
+	"The one capacity rule. The write and the inspector both ask it, so neither can drift from
+	 the other."
+
+	^ aCount <= size
+]
+
+{ #category : 'accessing' }
 VkBuffer >> getF16s [
 	| bytes result |
 	bytes := self copyToByteArray.
@@ -189,6 +237,21 @@ VkBuffer >> handle [
 VkBuffer >> initializeDevice: aDevice size: byteSize usage: usageFlags [
     device := aDevice. size := byteSize. usage := usageFlags.
     self allocate
+]
+
+{ #category : 'inspector' }
+VkBuffer >> inspectorCapacity: aBuilder [
+	"Each row asks the real capacity rule rather than restating it, so the table cannot say
+	 something a write would not do."
+
+	<inspectorPresentationOrder: 10 title: 'Capacity'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Bytes written' evaluated: [ :each |
+					   each printString ]);
+		  addColumn: (SpStringTableColumn title: 'Fits' evaluated: [ :each |
+					   (self fitsByteCount: each) printString ]);
+		  items: self capacityProbeCounts;
+		  yourself
 ]
 
 { #category : 'mapping' }

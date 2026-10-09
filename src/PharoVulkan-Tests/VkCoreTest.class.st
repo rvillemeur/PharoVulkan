@@ -43,6 +43,44 @@ VkCoreTest >> tearDown [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testBufferCapacityCheckAnswersWhatAWriteWouldDo [
+	"The inspector view and the write share one predicate. The fact to state is that the
+	 predicate and the write agree at the boundary, including the empty and exact cases."
+
+	| buf capacity |
+	capacity := 16.
+	buf := VkBuffer on: ctx device size: capacity usage: VkBuffer storageBufferUsage.
+	[
+	#( 0 8 16 ) do: [ :count |
+		self assert: (buf fitsByteCount: count).
+		buf copyFromByteArray: (ByteArray new: count) ].
+	self deny: (buf fitsByteCount: capacity + 1).
+	self
+		should: [ buf copyFromByteArray: (ByteArray new: capacity + 1) ]
+		raise: SizeMismatch ] ensure: [ buf destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testBufferRefusesMoreBytesThanItHolds [
+	"The bytes leave through a mapped raw pointer, so an oversized collection would write past
+	 the mapping instead of failing. The sizes must be compared before the first byte moves.
+	 An exact fit and an empty write are the degenerate cases that must still go through."
+
+	| buf capacity |
+	capacity := 16.
+	buf := VkBuffer on: ctx device size: capacity usage: VkBuffer storageBufferUsage.
+	[
+	self
+		should: [ buf copyFromByteArray: (ByteArray new: capacity + 1) ]
+		raise: SizeMismatch.
+	self
+		should: [ buf put: (1 to: capacity // 4 + 1) asArray as: #f32 ]
+		raise: SizeMismatch.
+	buf copyFromByteArray: (ByteArray new: capacity).
+	buf copyFromByteArray: (ByteArray new: 0) ] ensure: [ buf destroy ]
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testBufferRoundtrip [
 	"Write float data to HOST_VISIBLE buffer, read back, verify bytes match"
 	| buf data out |
