@@ -39,6 +39,14 @@ PVSelectorTable >> initialize [
 ]
 
 { #category : 'private' }
+PVSelectorTable >> initializeBufferMappings [
+self at: 'at:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #f32).
+self at: 'at:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #i32).
+self at: 'at:put:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void).
+self at: 'at:put:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void)
+]
+
+{ #category : 'private' }
 PVSelectorTable >> initializeGLSLMappings [
 self at: 'normalize' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslNormalize resultType: #vec3).
 self at: 'length' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslLength resultType: #f32).
@@ -48,7 +56,7 @@ self at: 'sqrt' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslSqrt re
 ]
 
 { #category : 'private' }
-PVSelectorTable >> initializeStandardMappings [
+PVSelectorTable >> initializeScalarMappings [
 self at: '+' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f32).
 self at: '-' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFSub resultType: #f32).
 self at: '*' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFMul resultType: #f32).
@@ -63,14 +71,14 @@ self at: '\\' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSMod result
 self at: '<' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSLessThan resultType: #bool).
 self at: '<=' receiverType: #i32 put: (PVSelectorMapping spirvOp: #OpSLessThanEqual resultType: #bool).
 self at: '+' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIAdd resultType: #u32).
-self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #u32).
-self at: 'x' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemX resultType: #u32).
-self at: 'y' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemY resultType: #u32).
-self at: 'z' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemZ resultType: #u32).
-self at: 'at:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #f32).
-self at: 'at:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #i32).
-self at: 'at:put:' receiverType: #bufferOf_f32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void).
-self at: 'at:put:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void)
+self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #u32)
+]
+
+{ #category : 'private' }
+PVSelectorTable >> initializeStandardMappings [
+	self initializeScalarMappings.
+	self initializeWorkItemMappings.
+	self initializeBufferMappings
 ]
 
 { #category : 'initialization' }
@@ -95,6 +103,15 @@ PVSelectorTable >> initializeVecMappings [
     self at: '*' receiverType: #mat4 put: (PVSelectorMapping spirvOp: #OpMatrixTimesVector resultType: #vec4).
     "Dot product"
     self at: 'dot:' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #OpDot resultType: #f32)
+]
+
+{ #category : 'private' }
+PVSelectorTable >> initializeWorkItemMappings [
+self at: 'x' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemX resultType: #u32).
+self at: 'y' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemY resultType: #u32).
+self at: 'z' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemZ resultType: #u32).
+"gridWidth is dispatch geometry, not an invocation index: groupCountX times localSizeX."
+self at: 'gridWidth' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemGridWidth resultType: #u32)
 ]
 
 { #category : 'accessing' }

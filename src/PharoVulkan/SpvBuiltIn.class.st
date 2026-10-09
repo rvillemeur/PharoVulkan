@@ -27,6 +27,16 @@ SpvBuiltIn class >> localInvocationIndex [ ^ 29
 ]
 
 { #category : 'constants' }
+SpvBuiltIn class >> numWorkgroups [
+	"BuiltIn NumWorkgroups from the SPIR-V BuiltIn enumeration, the neighbour of
+	 WorkgroupId 26 and GlobalInvocationId 28. A three-component unsigned vector in the
+	 Input storage class holding the group counts the dispatch was made with."
+
+	^ 24
+
+]
+
+{ #category : 'constants' }
 SpvBuiltIn class >> pointSize [           ^ 1
 ]
 

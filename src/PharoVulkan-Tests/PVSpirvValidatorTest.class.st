@@ -9,6 +9,34 @@ Class {
 	#tag : 'Compiler'
 }
 
+{ #category : 'tests' }
+PVSpirvValidatorTest >> testBuiltInsFromWordsNamesWhatTheKernelReads [
+	"The matmul reads its invocation index and the grid it was dispatched over; the loop
+	 kernel reads only the index."
+
+	self
+		assert: PVSpirvValidator exampleValidatorOnMatmulKernel builtInsFromWords asSet
+		equals: #( 'globalInvocationId' 'numWorkgroups' ) asSet.
+	self
+		assert: PVSpirvValidator exampleValidatorOnComputeLoopKernel builtInsFromWords asSet
+		equals: #( 'globalInvocationId' ) asSet
+]
+
+{ #category : 'tests' }
+PVSpirvValidatorTest >> testEntryPointReportOnAModuleWithoutAWorkgroup [
+	"A vertex shader declares no local size. The report must say so with an empty shape
+	 rather than failing or inventing the compute default."
+
+	| validator rows |
+	validator := PVSpirvValidator on:
+		             (PVKernelCompiler compile:
+			              PVKernelExamples >> #triVertex:color:).
+	self assert: validator localSizeFromWords equals: #( ).
+	rows := validator entryPointReport.
+	self assert: (rows collect: [ :each | each at: #setting ]) equals: #( 'Local size' 'Invocations per group' 'Built-ins read' ).
+	self assert: (rows first at: #value) equals: '#()'
+]
+
 { #category : 'tests - report' }
 PVSpirvValidatorTest >> testExamplesCoverBothVerdicts [
 	"The two one-click examples must stay on opposite sides of the verdict."
@@ -91,6 +119,18 @@ PVSpirvValidatorTest >> testInspectorValidationViewLeavesTheInspectedValidatorUn
 	self assert: (validator instVarNamed: 'exitCode') isNil
 		description: 'building the view must not cache a verdict on the inspected object'.
 	self assert: view items size equals: (PVSpirvValidator on: bytes) validationReport size
+]
+
+{ #category : 'tests' }
+PVSpirvValidatorTest >> testLocalSizeFromWordsReadsTheDeclaredWorkgroup [
+	"Decoded from the module, not asked of the annotation: this is what the driver sees."
+
+	self
+		assert: PVSpirvValidator exampleValidatorOnMatmulKernel localSizeFromWords
+		equals: #( 16 16 1 ).
+	self
+		assert: PVSpirvValidator exampleValidatorOnComputeLoopKernel localSizeFromWords
+		equals: PVTypeAnnotation defaultLocalSize
 ]
 
 { #category : 'tests - validating' }

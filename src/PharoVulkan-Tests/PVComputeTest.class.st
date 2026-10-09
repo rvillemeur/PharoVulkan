@@ -13,6 +13,19 @@ Class {
 }
 
 { #category : 'helpers' }
+PVComputeTest >> aAtRow: r col: c [
+	"Deliberately asymmetric input: a row-column swap in the kernel cannot pass unnoticed.
+	 Small magnitudes keep a 512-term float32 sum well inside tolerance."
+
+	^ ((r + (2 * c)) \\ 7) / 7.0
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> bAtRow: r col: c [
+	^ ((3 * r + c) \\ 5) / 5.0
+]
+
+{ #category : 'helpers' }
 PVComputeTest >> buildVectorAddSpirv [
 	| b types consts f32 u32 uvec3 pUvec3 rta struct pStruct pF32Buf
 	  mainFn entryBlock invIdGlobal bufA bufB bufR voidType
@@ -80,6 +93,33 @@ PVComputeTest >> bytesToFloats: bytes [
 	^ result
 ]
 
+{ #category : 'private' }
+PVComputeTest >> dispatchMatmulOn: buffers groups: groupCount [
+	"Bind the kernel's buffers in declaration order and answer the last one's contents: the
+	 kernel writes its result to its final parameter."
+
+	| kernel |
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #matmulF32:a:b:out:
+		          on: ctx.
+	^ [
+	  buffers do: [ :each | kernel bindBuffer: each ].
+	  kernel prepare.
+	  kernel dispatch: groupCount y: groupCount z: 1.
+	  buffers last getF32s ] ensure: [ kernel destroy ]
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> flatMatrixOfOrder: n with: aBlock [
+	"Row-major flattening, the layout the kernel indexes with row * n + col."
+
+	| m |
+	m := Array new: n * n.
+	0 to: n - 1 do: [ :r |
+		0 to: n - 1 do: [ :c | m at: r * n + c + 1 put: (aBlock value: r value: c) ] ].
+	^ m
+]
+
 { #category : 'helpers' }
 PVComputeTest >> floatArrayToBytes: anArray [
 	| bytes |
@@ -95,6 +135,40 @@ PVComputeTest >> floatArrayToBytes: anArray [
 	^ bytes
 ]
 
+{ #category : 'helpers' }
+PVComputeTest >> matmulSamplePositions [
+	"Fixed positions rather than random ones, so a failure reproduces. They include the
+	 corners, the first workgroup boundary (15, 16, 17) and the last row and column."
+
+	^ #( 0 1 15 16 17 255 256 510 511 )
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> referenceAtRow: r col: c order: n [
+	^ (0 to: n - 1) inject: 0.0 into: [ :acc :k |
+		  acc + ((self aAtRow: r col: k) * (self bAtRow: k col: c)) ]
+]
+
+{ #category : 'private' }
+PVComputeTest >> runMatmulOfOrder: n groups: groupCount [
+	"Dispatch the baseline matmul over a fresh pair of input matrices and answer the output
+	 buffer's contents. The grid has to cover the matrix exactly, since the kernel takes N
+	 from wi gridWidth."
+
+	| bufA bufB bufOut |
+	bufA := VkBuffer storageBuffer: n * n on: ctx device.
+	bufB := VkBuffer storageBuffer: n * n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n * n on: ctx device.
+	^ [
+	  bufA putF32s: (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ]).
+	  bufB putF32s: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ]).
+	  bufOut putF32s: (Array new: n * n withAll: 0.0).
+	  self dispatchMatmulOn: { bufA. bufB. bufOut } groups: groupCount ] ensure: [
+		  bufA destroy.
+		  bufB destroy.
+		  bufOut destroy ]
+]
+
 { #category : 'running' }
 PVComputeTest >> setUp [
 
@@ -107,6 +181,66 @@ PVComputeTest >> tearDown [
 
 	ctx destroy.
 	super tearDown
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkRejectsOrderThatTheGridCannotCover [
+	"The kernel reads N from the dispatch grid, so an order the workgroup does not divide
+	 has no grid that covers it. Silently rounding would benchmark the wrong matrix."
+
+	self
+		should: [ PVBenchmark on: ctx order: 100 repeats: 1 ]
+		raise: PVTypeError
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkReportRowsBeforeAnyRun [
+	"The inspector view is readable before the benchmark has run, and says so instead of
+	 showing a zero time."
+
+	| rows |
+	rows := (PVBenchmark on: ctx order: 64 repeats: 1) reportRows.
+	self assert: rows size equals: 1.
+	self assert: (rows first at: #value) equals: 'not run yet'
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkResultDerivesRateFromTime [
+	"2 N cubed floating point operations over the measured time. 512 cubed multiply-adds in
+	 100 ms is 2.68 GFLOP/s, and a result that cannot do this arithmetic is not a benchmark."
+
+	| result |
+	result := PVBenchmarkResult order: 512 milliseconds: 100 repeats: 1.
+	self assert: result floatingPointOperations equals: 2 * (512 * 512 * 512).
+	self
+		assert: result gigaflopsPerSecond
+		closeTo: 2 * (512 * 512 * 512) / 0.1 / 1e9
+		precision: 0.001
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkResultWithoutElapsedTimeHasNoRate [
+	"A dispatch too quick for the millisecond clock has no rate to report. Reporting one
+	 would mean dividing by zero, and reporting zero would be a lie."
+
+	| result |
+	result := PVBenchmarkResult order: 64 milliseconds: 0 repeats: 10.
+	self assert: result gigaflopsPerSecond isNil
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkRunsMatmulAndReportsTime [
+	"The baseline needs a number, not a claim. No speed assertion here: the point is that a
+	 run produces a time and a derived rate for the configuration it was asked for."
+
+	| result |
+	result := (PVBenchmark on: ctx order: 128 repeats: 3) run.
+	self assert: result order equals: 128.
+	self assert: result repeats equals: 3.
+	self assert: result milliseconds >= 0.
+	result milliseconds = 0
+		ifTrue: [ self assert: result gigaflopsPerSecond isNil ]
+		ifFalse: [ self assert: result gigaflopsPerSecond > 0 ]
 ]
 
 { #category : 'tests' }
@@ -163,6 +297,74 @@ PVComputeTest >> testComputeSelectionClampOnDevice [
 	kernel destroy ] ensure: [
 		bufIn destroy.
 		bufOut destroy ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testGridWidthFromDispatchOnDevice [
+	"wi gridWidth must answer groupCountX times localSizeX, read from the dispatch. Two
+	 dispatches of the same module with different group counts must sum different numbers
+	 of elements, which a constant baked at compile time could not do. The untouched tail
+	 also pins the <localSize: #( 8 1 1 )> pragma: a 64-wide local size would write every
+	 slot."
+
+	| n bufIn bufOut kernel result |
+	n := 64.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	bufIn putF32s: ((0 to: n - 1) asArray collect: [ :i | i asFloat ]).
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #sumFirstGridWidth:data:out:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: 2 y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: 16 do: [ :i | self assert: (result at: i) closeTo: 120.0 ].
+	17 to: n do: [ :i | self assert: (result at: i) closeTo: -1.0 ].
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	kernel dispatch: 4 y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: 32 do: [ :i | self assert: (result at: i) closeTo: 496.0 ].
+	33 to: n do: [ :i | self assert: (result at: i) closeTo: -1.0 ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testMatmulOrder16MatchesReference [
+	"One workgroup, every element checked against a CPU reference. 16 by 16 is small enough
+	 to compare in full, so this is the test that pins the index arithmetic."
+
+	| n result |
+	n := 16.
+	result := self runMatmulOfOrder: n groups: 1.
+	0 to: n - 1 do: [ :r |
+		0 to: n - 1 do: [ :c |
+			self
+				assert: (result at: r * n + c + 1)
+				closeTo: (self referenceAtRow: r col: c order: n)
+				precision: 0.001 ] ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testMatmulOrder512MatchesReferenceAtSampledPositions [
+	"The Phase 7 baseline size. A full CPU reference would be 512 cubed multiply-adds in
+	 Pharo, so the check is 81 sampled elements, each a complete 512-term dot product. The
+	 grid is 32 by 32 groups of 16 by 16, which is what makes wi gridWidth answer 512."
+
+	| n result |
+	n := 512.
+	result := self runMatmulOfOrder: n groups: n / 16.
+	self matmulSamplePositions do: [ :r |
+		self matmulSamplePositions do: [ :c |
+			self
+				assert: (result at: r * n + c + 1)
+				closeTo: (self referenceAtRow: r col: c order: n)
+				precision: 0.01 ] ]
 ]
 
 { #category : 'tests' }

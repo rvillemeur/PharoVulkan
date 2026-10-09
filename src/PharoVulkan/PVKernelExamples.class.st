@@ -118,6 +118,31 @@ PVKernelExamples >> mat4Mul: m vec: v [
 ]
 
 { #category : 'kernels' }
+PVKernelExamples >> matmulF32: wi a: a b: b out: output [
+	"Naive row-times-column matmul, one invocation per output element: the Phase 7
+	 baseline, with no tiling and no shared memory. The matrix order comes from the
+	 dispatch (wi gridWidth), so the grid must cover the matrix exactly: N / localSizeX
+	 groups along x and the same along y. Row-major storage throughout."
+
+	<gpu>
+	<localSize: #( 16 16 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #a>
+	<param: #bufferOf_f32 named: #b>
+	<param: #bufferOf_f32 named: #output>
+	| row col n k acc |
+	row := wi x.
+	col := wi y.
+	n := wi gridWidth.
+	acc := 0.0.
+	k := 0.
+	[ k < n ] whileTrue: [
+		acc := acc + ((a at: row * n + k) * (b at: k * n + col)).
+		k := k + 1 ].
+	output at: row * n + col put: acc
+]
+
+{ #category : 'kernels' }
 PVKernelExamples >> mulFloat: a by: b [
 	<gpu>
 	<param: #f32 named: #a>
@@ -163,6 +188,40 @@ PVKernelExamples >> sumFirst16: wi data: data out: output [
 		acc := acc + (data at: i).
 		i := i + 1 ].
 	output at: wi x put: acc
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> sumFirstGridWidth: wi data: data out: output [
+	"Sums as many elements as the dispatch grid is wide. The grid width is the only way a
+	 kernel can learn a problem size under the WorkItem-plus-buffers ABI, so this kernel
+	 is what proves wi gridWidth answers groupCountX times localSizeX."
+
+	<gpu>
+	<localSize: #( 8 1 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	| k acc n |
+	n := wi gridWidth.
+	acc := 0.0.
+	k := 0.
+	[ k < n ] whileTrue: [
+		acc := acc + (data at: k).
+		k := k + 1 ].
+	output at: wi x put: acc
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> taggedLocalSizeAdd: wi data: data out: output [
+	"Carries a non-default <localSize:> so a test can tell a pragma-driven local size from
+	 the default one. The numbers are deliberately unlike #( 64 1 1 )."
+
+	<gpu>
+	<localSize: #( 8 4 2 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	output at: wi x put: (data at: wi x) * 2.0
 ]
 
 { #category : 'examples' }

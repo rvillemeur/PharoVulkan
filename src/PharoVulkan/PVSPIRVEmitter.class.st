@@ -8,7 +8,8 @@ Class {
 		'annotation',
 		'regMap',
 		'outputVarIds',
-		'isVoidMain'
+		'isVoidMain',
+		'numWorkgroupsVar'
 	],
 	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
@@ -416,15 +417,6 @@ PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann sel
 		  #typeMap -> typeMap }
 ]
 
-{ #category : 'constants' }
-PVSPIRVEmitter class >> defaultLocalSize [
-	"The local size every compute entry point declares. One dimension of 64 matches the
-	 group size PVComputeTest dispatches with; a kernel that wants another shape has to
-	 carry it in its annotation, which this phase does not add."
-
-	^ #( 64 1 1 )
-]
-
 { #category : 'compiling' }
 PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTable: st typeMap: typeMap module: aModule [
 	| em paramTypes spvFunc entryBlk trueBlkSpv falseBlkSpv mergeBlkSpv condReg trueReg falseReg condSpvId phiId phiType retType funcType condSimResult condTempDefs |
@@ -494,6 +486,14 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 		resultType: nil resultId: nil operands: { phiId }).
 	aModule addFunction: spvFunc.
 	^ aModule serialize
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> gridWidthComponent [
+	"x component of the NumWorkgroups vector."
+
+	^ 0
+
 ]
 
 { #category : 'compiling' }
@@ -820,6 +820,36 @@ PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: typeMap selectorTable: st 
 ]
 
 { #category : 'emitting' }
+PVSPIRVEmitter >> emitGridWidth: op block: blk [
+	"groupCountX times localSizeX. The local size is a literal of this module's execution
+	 mode, so the multiplication folds to one OpIMul against a constant."
+
+	| u32T v3u32T loadId groupsX localSizeX resultId |
+	u32T := module typeRegistry intType: 32 signed: false.
+	v3u32T := module typeRegistry vectorType: u32T count: 3.
+	loadId := module newId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opLoad
+			 resultType: v3u32T id
+			 resultId: loadId
+			 operands: { self ensureNumWorkgroupsVariable id }).
+	groupsX := module newId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opCompositeExtract
+			 resultType: u32T id
+			 resultId: groupsX
+			 operands: { loadId. self class gridWidthComponent }).
+	localSizeX := module constantPool constantUInt32: annotation localSize first.
+	resultId := module newId.
+	regMap at: op result put: resultId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opIMul
+			 resultType: u32T id
+			 resultId: resultId
+			 operands: { groupsX. localSizeX })
+]
+
+{ #category : 'emitting' }
 PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: typeMap selectorTable: st name: funcName [
 	| paramTypes retTypeSymbol retType funcType spvFunc blk |
 	"Determine return type from the return op"
@@ -995,6 +1025,7 @@ PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
         mapping spirvOp = #workItemX        ifTrue: [ self emitWorkItemComponent: 0 op: op block: blk. ^ self ].
         mapping spirvOp = #workItemY        ifTrue: [ self emitWorkItemComponent: 1 op: op block: blk. ^ self ].
         mapping spirvOp = #workItemZ        ifTrue: [ self emitWorkItemComponent: 2 op: op block: blk. ^ self ].
+        mapping spirvOp = #workItemGridWidth ifTrue: [ self emitGridWidth: op block: blk. ^ self ].
         mapping spirvOp = #compositeConstruct ifTrue: [ self emitCompositeConstruct: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
         mapping spirvOp = #vecExtractX      ifTrue: [ self emitVecExtract: 0 op: op block: blk. ^ self ].
         mapping spirvOp = #vecExtractY      ifTrue: [ self emitVecExtract: 1 op: op block: blk. ^ self ].
@@ -1287,12 +1318,42 @@ PVSPIRVEmitter >> ensureGlslExtInstSet [
 ]
 
 { #category : 'emitting compute' }
-PVSPIRVEmitter >> finishComputeMain: spvFunc interfaces: interfaces [
-	"Register the entry point and its local size. Answer the serialised module."
+PVSPIRVEmitter >> ensureNumWorkgroupsVariable [
+	"The NumWorkgroups built-in is created on first use, because only the kernel body says
+	 whether the kernel asks for the grid at all. finishComputeMain:interfaces: adds it to
+	 the entry point's interface list, which SPIR-V requires for Input variables."
 
+	numWorkgroupsVar ifNotNil: [ ^ numWorkgroupsVar ].
+	numWorkgroupsVar := SpvGlobalVariable new
+		                    id: module newId;
+		                    type: (module typeRegistry
+				                     pointerType: SpvStorageClass input
+				                     type: (module typeRegistry
+						                      vectorType:
+						                      (module typeRegistry intType: 32 signed: false)
+						                      count: 3));
+		                    storageClass: SpvStorageClass input;
+		                    yourself.
+	module addGlobalVariable: numWorkgroupsVar.
+	module
+		addDecoration: numWorkgroupsVar id
+		decoration: SpvDecoration builtIn
+		literals: { SpvBuiltIn numWorkgroups }.
+	^ numWorkgroupsVar
+]
+
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> finishComputeMain: spvFunc interfaces: interfaces [
+	"Register the entry point and its local size. A kernel that asked for the grid geometry
+	 created a NumWorkgroups variable while its body was emitted, and SPIR-V wants every
+	 Input variable in the interface list, so it joins the declared parameters here."
+
+	| allInterfaces |
 	module addFunction: spvFunc.
-	module addEntryPoint: spvFunc executionModel: SpvExecutionModel glCompute name: 'main' interfaces: interfaces asArray.
-	module addExecutionMode: spvFunc mode: SpvExecutionMode localSize literals: self class defaultLocalSize.
+	allInterfaces := interfaces asOrderedCollection.
+	numWorkgroupsVar ifNotNil: [ allInterfaces add: numWorkgroupsVar ].
+	module addEntryPoint: spvFunc executionModel: SpvExecutionModel glCompute name: 'main' interfaces: allInterfaces asArray.
+	module addExecutionMode: spvFunc mode: SpvExecutionMode localSize literals: annotation localSize.
 	^ module serialize
 ]
 

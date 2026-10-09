@@ -56,6 +56,53 @@ PVCompilerTest >> assertSpirvMagic: bytes description: aDescription [
 			, actual printString
 ]
 
+{ #category : 'helpers' }
+PVCompilerTest >> builtInDecorationsIn: bytes [
+	"Answer the BuiltIn values decorated in a module, so a test can state which built-ins a
+	 kernel actually reads rather than trusting the emitter's own bookkeeping."
+
+	| words index found |
+	words := (1 to: bytes size by: 4) collect: [ :each |
+		         (bytes at: each) + ((bytes at: each + 1) bitShift: 8)
+		         + ((bytes at: each + 2) bitShift: 16)
+		         + ((bytes at: each + 3) bitShift: 24) ].
+	found := OrderedCollection new.
+	index := 6.
+	[ index <= words size ] whileTrue: [
+		| word wordCount opcode |
+		word := words at: index.
+		wordCount := word bitShift: -16.
+		opcode := word bitAnd: 16rFFFF.
+		(opcode = SpvOpcode opDecorate and: [
+			 (words at: index + 2) = SpvDecoration builtIn ]) ifTrue: [
+			found add: (words at: index + 3) ].
+		index := index + wordCount ].
+	^ found asArray
+]
+
+{ #category : 'helpers' }
+PVCompilerTest >> executionModeLiteralsIn: bytes [
+	"Answer the literal operands of the first OpExecutionMode in a module. The entry point
+	 id and the mode itself come first, so the local size starts at the third operand."
+
+	| words index |
+	words := (1 to: bytes size by: 4) collect: [ :each |
+		         (bytes at: each) + ((bytes at: each + 1) bitShift: 8)
+		         + ((bytes at: each + 2) bitShift: 16)
+		         + ((bytes at: each + 3) bitShift: 24) ].
+	index := 6.
+	[ index <= words size ] whileTrue: [
+		| word wordCount opcode |
+		word := words at: index.
+		wordCount := word bitShift: -16.
+		opcode := word bitAnd: 16rFFFF.
+		opcode = SpvOpcode opExecutionMode ifTrue: [
+			^ ((index + 3) to: (index + wordCount - 1)) asArray collect: [ :each |
+				  words at: each ] ].
+		index := index + wordCount ].
+	^ #( )
+]
+
 { #category : 'private - cfg shapes' }
 PVCompilerTest >> opcodeCountsIn: bytes [
 	"Decode the instruction stream of a SPIR-V module and count opcodes. A test about
@@ -258,6 +305,18 @@ PVCompilerTest >> testDecodesJumps [
 	self assert: (jumpIf operands first > 0)
 ]
 
+{ #category : 'tests' }
+PVCompilerTest >> testDefaultLocalSizeWhenPragmaAbsent [
+	"A kernel without a <localSize:> keeps the one-dimensional default, so every kernel
+	 written before the pragma existed still dispatches the same way."
+
+	| literals |
+	literals := self executionModeLiteralsIn:
+		            (PVKernelCompiler compile:
+			             PVKernelExamples >> #vectorAdd:a:b:out:).
+	self assert: literals equals: PVTypeAnnotation defaultLocalSize
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> testExampleRecogniserOnLoopKernelIsRecognised [
 
@@ -294,6 +353,19 @@ self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testGlslTriVertexCompiles'
 ]
 
+{ #category : 'tests' }
+PVCompilerTest >> testGridWidthEmitsNumWorkgroupsBuiltIn [
+	"wi gridWidth has to read the NumWorkgroups built-in. Nothing else in the kernel's
+	 interface can tell it how many groups were dispatched."
+
+	| builtIns |
+	builtIns := self builtInDecorationsIn:
+		            (PVKernelCompiler compile:
+			             PVKernelExamples >> #sumFirstGridWidth:data:out:).
+	self assert: (builtIns includes: SpvBuiltIn numWorkgroups).
+	self assert: (builtIns includes: SpvBuiltIn globalInvocationId)
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> testInspectorRecognitionViewBuildsARowPerBlock [
 
@@ -301,6 +373,18 @@ PVCompilerTest >> testInspectorRecognitionViewBuildsARowPerBlock [
 	recogniser := self recogniserFor: #oneLoop:.
 	view := recogniser inspectorRecognition: SpPresenter new.
 	self assert: view items size equals: recogniser blocks size
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testLocalSizePragmaReachesExecutionMode [
+	"A kernel's workgroup shape belongs to the kernel, not to the emitter. A 2-D matmul
+	 wants 16 by 16; the emitter must take the numbers from the pragma."
+
+	| literals |
+	literals := self executionModeLiteralsIn:
+		            (PVKernelCompiler compile:
+			             PVKernelExamples >> #taggedLocalSizeAdd:data:out:).
+	self assert: literals equals: #( 8 4 2 )
 ]
 
 { #category : 'tests' }
@@ -319,6 +403,21 @@ bytes := PVKernelCompiler compile: (PVKernelExamples >> #mat4Mul:vec:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testMat4MulCompiles'
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testMatmulKernelEmitsOneLoopAndA2DLocalSize [
+	"The matmul baseline is the first kernel that needs both of 7-C's pieces at once: a
+	 two-dimensional workgroup from the pragma, and a k loop that survives compilation."
+
+	| bytes counts |
+	bytes := PVKernelCompiler compile: PVKernelExamples >> #matmulF32:a:b:out:.
+	counts := self opcodeCountsIn: bytes.
+	self assert: (counts at: SpvOpcode opLoopMerge ifAbsent: [ 0 ]) equals: 1.
+	self assert: (self executionModeLiteralsIn: bytes) equals: #( 16 16 1 ).
+	self assert: (self builtInDecorationsIn: bytes) asSet equals: {
+			SpvBuiltIn globalInvocationId.
+			SpvBuiltIn numWorkgroups } asSet
 ]
 
 { #category : 'tests' }
@@ -535,4 +634,51 @@ PVCompilerTest >> testVertexShaderCompiles [
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assertSpirvMagic: bytes description: 'testVertexShaderCompiles'
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testWorkItemAtTheOriginOfAnEmptyGrid [
+	"The degenerate item: invocation zero of a dispatch that covers nothing. Its grid width
+	 is zero, which a kernel loop reads as no iterations."
+
+	| item |
+	item := PVWorkItem x: 0 y: 0 z: 0 gridWidth: 0.
+	self assert: item x equals: 0.
+	self assert: item gridWidth equals: 0.
+	self assert: item dispatchReport size equals: item kernelSelectors size
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testWorkItemCarriesTheDispatchCoordinates [
+	| item |
+	item := PVWorkItem x: 3 y: 7 z: 0 gridWidth: 512.
+	self assert: item x equals: 3.
+	self assert: item y equals: 7.
+	self assert: item z equals: 0.
+	self assert: item gridWidth equals: 512
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testWorkItemImplementsEverySelectorTheTableMapsForIt [
+	"Every selector a kernel may send to its WorkItem must exist on the host too, or the
+	 kernel source is a message to nobody. Asked of the table, so a mapping added later
+	 without a host-side method fails here."
+
+	| item |
+	item := PVWorkItem exampleWorkItemInA512Grid.
+	self deny: item kernelSelectors isEmpty.
+	item kernelSelectors do: [ :selector |
+		self
+			assert: (PVWorkItem canUnderstand: selector)
+			description: 'PVWorkItem must implement ' , selector ]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testWorkItemReportCoversTheWholeVocabulary [
+	| item values |
+	item := PVWorkItem exampleWorkItemInA512Grid.
+	self assert: item dispatchReport size equals: item kernelSelectors size.
+	values := item dispatchReport collect: [ :each | each at: #value ].
+	self deny: (values includes: 'not implemented').
+	self assert: (values includes: '512')
 ]

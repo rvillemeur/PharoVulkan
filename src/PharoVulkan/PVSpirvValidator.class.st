@@ -14,6 +14,17 @@ Class {
 	#tag : 'Compiler'
 }
 
+{ #category : 'reporting' }
+PVSpirvValidator class >> builtInNameFor: aNumber [
+	"Reflect over SpvBuiltIn rather than keeping a second table that could drift from it."
+
+	^ (SpvBuiltIn class selectors detect: [ :each | (SpvBuiltIn perform: each) = aNumber ]
+		   ifNone: [ nil ])
+		  ifNil: [ aNumber printString ]
+		  ifNotNil: [ :selector | selector asString ]
+
+]
+
 { #category : 'constants' }
 PVSpirvValidator class >> bytesPerWord [
 	^ 4
@@ -32,6 +43,14 @@ PVSpirvValidator class >> controlFlowOpcodeNames [
 		  SpvOpcode opReturnValue -> 'OpReturnValue' }
 ]
 
+{ #category : 'constants' }
+PVSpirvValidator class >> decorationLiteralOffset [
+	"OpDecorate: target, decoration, then the decoration's literals."
+
+	^ 3
+
+]
+
 { #category : 'examples' }
 PVSpirvValidator class >> exampleValidatorOnComputeLoopKernel [
 	"One click: the compute kernel whose body is a whileTrue:. spirv-val cannot see a
@@ -45,6 +64,16 @@ PVSpirvValidator class >> exampleValidatorOnComputeSelectionKernel [
 	"One click: the compute kernel whose body is an ifTrue:ifFalse:."
 	<sampleInstance>
 	^ self on: (PVKernelCompiler compile: (PVKernelExamples >> #clampNegatives:data:out:))
+]
+
+{ #category : 'examples' }
+PVSpirvValidator class >> exampleValidatorOnMatmulKernel [
+	"One click: the Phase 7 baseline matmul. The Entry point tab shows the 16 by 16
+	 workgroup from the kernel's pragma and the numWorkgroups built-in it reads for N."
+
+	<sampleInstance>
+	^ self on: (PVKernelCompiler compile: (PVKernelExamples >> #matmulF32:a:b:out:))
+
 ]
 
 { #category : 'examples' }
@@ -75,6 +104,14 @@ PVSpirvValidator class >> executableIn: aPathString [
 { #category : 'constants' }
 PVSpirvValidator class >> executableName [
 	^ 'spirv-val'
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> executionModeLiteralOffset [
+	"An OpExecutionMode names its entry point and its mode before any literal."
+
+	^ 3
+
 ]
 
 { #category : 'lookup' }
@@ -128,6 +165,25 @@ PVSpirvValidator class >> targetEnv [
 ]
 
 { #category : 'reporting' }
+PVSpirvValidator >> builtInsFromWords [
+	"Which built-ins the module reads, decoded from its OpDecorate instructions."
+
+	| words index found |
+	words := self spirvWords.
+	found := OrderedCollection new.
+	index := self class headerWordCount + 1.
+	[ index <= words size ] whileTrue: [
+		| word |
+		word := words at: index.
+		((word bitAnd: self class opcodeMask) = SpvOpcode opDecorate and: [
+			 (words at: index + 2) = SpvDecoration builtIn ]) ifTrue: [
+			found add: (self class builtInNameFor:
+					 (words at: index + self class decorationLiteralOffset)) ].
+		index := index + (word bitShift: -16) ].
+	^ found asArray
+]
+
+{ #category : 'reporting' }
 PVSpirvValidator >> controlFlowReport [
 	"One row per basic block of the module: how many instructions it holds, the merge
 	 instruction that declares its shape, and the terminator that leaves it. Decoded from
@@ -152,6 +208,26 @@ PVSpirvValidator >> controlFlowReport [
 			self record: opcode inControlFlowRow: current ].
 		index := index + (word bitShift: -16) ].
 	^ rows
+]
+
+{ #category : 'reporting' }
+PVSpirvValidator >> entryPointReport [
+	"One row per fact about the entry point's interface with the dispatch: the declared
+	 workgroup shape, the built-ins it reads, and the matrix order a grid of one group
+	 would hand a kernel that asks wi gridWidth."
+
+	| localSize |
+	localSize := self localSizeFromWords.
+	^ {
+		  (Dictionary newFrom: {
+				   (#setting -> 'Local size').
+				   (#value -> localSize printString) }).
+		  (Dictionary newFrom: {
+				   (#setting -> 'Invocations per group').
+				   (#value -> (localSize inject: 1 into: [ :a :b | a * b ]) printString) }).
+		  (Dictionary newFrom: {
+				   (#setting -> 'Built-ins read').
+				   (#value -> (', ' join: self builtInsFromWords)) }) }
 ]
 
 { #category : 'validating' }
@@ -186,6 +262,24 @@ PVSpirvValidator >> inspectorControlFlow: aBuilder [
 ]
 
 { #category : 'inspector' }
+PVSpirvValidator >> inspectorEntryPoint: aBuilder [
+	"What the module tells the driver about its dispatch. A <localSize:> pragma that never
+	 reached the emitter shows up here as 64, 1, 1, and a kernel that reads the grid shows
+	 numWorkgroups among its built-ins."
+
+	<inspectorPresentationOrder: 50 title: 'Entry point'>
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Setting' evaluated: [ :each |
+					   each at: #setting ]);
+		  addColumn:
+			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
+					   each at: #value ]);
+		  items: self entryPointReport;
+		  yourself
+]
+
+{ #category : 'inspector' }
 PVSpirvValidator >> inspectorValidation: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Validation'>
 	"Reports on a copy: asking for a verdict caches it, and a view must not change the
@@ -200,6 +294,27 @@ PVSpirvValidator >> inspectorValidation: aBuilder [
 { #category : 'validating' }
 PVSpirvValidator >> isValid [
 	^ self exitCode = 0
+]
+
+{ #category : 'reporting' }
+PVSpirvValidator >> localSizeFromWords [
+	"The workgroup shape the module really declares, read from its OpExecutionMode. A
+	 kernel's <localSize:> pragma is only a request until this says the same numbers."
+
+	| words index |
+	words := self spirvWords.
+	index := self class headerWordCount + 1.
+	[ index <= words size ] whileTrue: [
+		| word wordCount |
+		word := words at: index.
+		wordCount := word bitShift: -16.
+		((word bitAnd: self class opcodeMask) = SpvOpcode opExecutionMode and: [
+			 (words at: index + 2) = SpvExecutionMode localSize ]) ifTrue: [
+			^ ((index + self class executionModeLiteralOffset)
+			   to: index + wordCount - 1) asArray collect: [ :each |
+				  words at: each ] ].
+		index := index + wordCount ].
+	^ #( )
 ]
 
 { #category : 'reporting' }
