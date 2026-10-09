@@ -9,6 +9,16 @@ Class {
 	#tag : 'Compiler'
 }
 
+{ #category : 'helpers' }
+PVCompilerTest >> arrayStridesIn: bytes [
+	"The literal of every ArrayStride decoration in the module. An OpDecorate names its
+	 target and its decoration before the literal."
+
+	^ ((self operandsOf: SpvOpcode opDecorate in: bytes) select: [ :each |
+		   each second = SpvDecoration arrayStride ]) collect: [ :each |
+		  each third ]
+]
+
 { #category : 'private - cfg shapes' }
 PVCompilerTest >> assertShapeCompiles: aSelector [
 	"A shape the recogniser does represent must emit a SPIR-V module. Checks the magic
@@ -81,6 +91,14 @@ PVCompilerTest >> builtInDecorationsIn: bytes [
 ]
 
 { #category : 'helpers' }
+PVCompilerTest >> capabilitiesIn: bytes [
+	"Every capability the module declares, as its numeric value."
+
+	^ (self operandsOf: SpvOpcode opCapability in: bytes) collect: [ :each |
+		  each first ]
+]
+
+{ #category : 'helpers' }
 PVCompilerTest >> executionModeLiteralsIn: bytes [
 	"Answer the literal operands of the first OpExecutionMode in a module. The entry point
 	 id and the mode itself come first, so the local size starts at the third operand."
@@ -130,6 +148,26 @@ PVCompilerTest >> opcodeCountsIn: bytes [
 	^ counts
 ]
 
+{ #category : 'helpers' }
+PVCompilerTest >> operandsOf: anOpcode in: bytes [
+	"The operand words of every instruction carrying that opcode, in module order."
+
+	| words index found headerWordCount |
+	headerWordCount := 5.
+	words := self wordsIn: bytes.
+	found := OrderedCollection new.
+	index := headerWordCount + 1.
+	[ index <= words size ] whileTrue: [
+		| word wordCount |
+		word := words at: index.
+		wordCount := word bitShift: -16.
+		(word bitAnd: 16rFFFF) = anOpcode ifTrue: [
+			found add: (((index + 1) to: index + wordCount - 1) asArray collect: [ :each |
+					 words at: each ]) ].
+		index := index + wordCount ].
+	^ found asArray
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> recogniserFor: aSelector [
 	^ PVStructuredCFGRecognizer new initialize:
@@ -142,6 +180,22 @@ PVCompilerTest >> testAlphaClipFragmentCompiles [
 	| bytes |
 	bytes := PVKernelCompiler compile: (PVKernelExamples >> #alphaClip:threshold:).
 	self assertSpirvMagic: bytes description: 'alphaClip:threshold:'
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testArrayStrideFollowsTheBufferElementWidth [
+	"The stride decoration of a runtime array must match the element width rather than a
+	 constant: a half array packs two bytes per element where a float array packs four."
+
+	self
+		assert: (PVSPIRVEmitter storageBufferArrayStrideFor: #bufferOf_f16)
+		equals: 2.
+	self
+		assert: (PVSPIRVEmitter storageBufferArrayStrideFor: #bufferOf_f32)
+		equals: 4.
+	self
+		assert: (PVSPIRVEmitter storageBufferArrayStrideFor: #bufferOf_i32)
+		equals: 4
 ]
 
 { #category : 'tests' }
@@ -164,6 +218,21 @@ PVCompilerTest >> testCFGBuilderSingleBlock [
 	cfg := PVCFGBuilder buildFrom: regOps.
 	self assert: cfg blocks size equals: 1.
 	self assert: cfg entry ops size equals: regOps size
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testCapabilitiesDeclaredForEachBufferType [
+	"What the Buffer types tab shows must be what an emitted module carries, so the answer
+	 comes from the emitter's own declaration step."
+
+	self
+		assert:
+			(PVSPIRVEmitter capabilitiesDeclaredFor: #bufferOf_f16) asArray
+		equals: {
+			PVSPIRVEmitter float16Capability.
+			PVSPIRVEmitter storageBuffer16BitAccessCapability }.
+	self assert: (PVSPIRVEmitter capabilitiesDeclaredFor: #bufferOf_f32) isEmpty.
+	self assert: (PVSPIRVEmitter capabilitiesDeclaredFor: #bufferOf_i32) isEmpty
 ]
 
 { #category : 'tests - cfg shapes' }
@@ -366,6 +435,56 @@ PVCompilerTest >> testGridWidthEmitsNumWorkgroupsBuiltIn [
 	self assert: (builtIns includes: SpvBuiltIn globalInvocationId)
 ]
 
+{ #category : 'tests' }
+PVCompilerTest >> testHalfKernelDeclaresTheHalfPrecisionCapabilities [
+	"A module holding 16-bit floats in a storage buffer must say so: without Float16 and
+	 StorageBuffer16BitAccess the driver refuses the shader. A float kernel must not pay
+	 for capabilities it does not use."
+
+	| half float |
+	half := self capabilitiesIn:
+		        (PVKernelCompiler compile:
+			         (PVKernelExamples >> #vectorAddF16:a:b:out:)).
+	float := self capabilitiesIn:
+		         (PVKernelCompiler compile:
+			          (PVKernelExamples >> #vectorAdd:a:b:out:)).
+	self assert: (half includes: PVSPIRVEmitter float16Capability).
+	self assert:
+		(half includes: PVSPIRVEmitter storageBuffer16BitAccessCapability).
+	self deny: (float includes: PVSPIRVEmitter float16Capability).
+	self deny:
+		(float includes: PVSPIRVEmitter storageBuffer16BitAccessCapability)
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testHalfKernelDecoratesItsArraysWithATwoByteStride [
+	"Read out of the emitted module rather than off the constant: the stride the driver
+	 sees is the one in the decoration."
+
+	| half float |
+	half := self arrayStridesIn:
+		        (PVKernelCompiler compile:
+			         (PVKernelExamples >> #vectorAddF16:a:b:out:)).
+	float := self arrayStridesIn:
+		         (PVKernelCompiler compile:
+			          (PVKernelExamples >> #vectorAdd:a:b:out:)).
+	self deny: half isEmpty.
+	self assert: half asSet asArray equals: #( 2 ).
+	self assert: float asSet asArray equals: #( 4 )
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testHalfKernelLoadsAndStoresHalvesOnly [
+	"The three places the element type is decided — the buffer declaration, the load and
+	 the store — must agree, so the module may declare one float width only."
+
+	| widths |
+	widths := (self operandsOf: SpvOpcode opTypeFloat in: (PVKernelCompiler
+			            compile: (PVKernelExamples >> #vectorAddF16:a:b:out:)))
+		          collect: [ :each | each second ].
+	self assert: widths asArray equals: #( 16 )
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> testInspectorRecognitionViewBuildsARowPerBlock [
 
@@ -518,12 +637,67 @@ self assert: (st at: 'at:' receiverType: #bufferOf_i32) spirvOp equals: #bufferL
 self assert: (st at: 'at:put:' receiverType: #bufferOf_i32) spirvOp equals: #bufferStore
 ]
 
+{ #category : 'tests' }
+PVCompilerTest >> testSelectorTableMapsHalfArithmeticLikeFloat [
+	"Half arithmetic is the same SPIR-V instruction as single precision arithmetic; only
+	 the result type differs. Stated against the f32 rows so the two cannot drift apart."
+
+	| st |
+	st := PVSelectorTable standard.
+	#( '+' '-' '*' '/' ) do: [ :each |
+		self
+			assert: (st at: each receiverType: #f16) spirvOp
+			equals: (st at: each receiverType: #f32) spirvOp.
+		self
+			assert: (st at: each receiverType: #f16) resultTypeSymbol
+			equals: #f16 ].
+	#( '<' '<=' ) do: [ :each |
+		self
+			assert: (st at: each receiverType: #f16) spirvOp
+			equals: (st at: each receiverType: #f32) spirvOp.
+		self
+			assert: (st at: each receiverType: #f16) resultTypeSymbol
+			equals: #bool ]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSelectorTableMapsHalfBufferAccess [
+	"Indexing a half buffer answers a half, and storing into one answers nothing."
+
+	| st |
+	st := PVSelectorTable standard.
+	self
+		assert: (st at: 'at:' receiverType: #bufferOf_f16) spirvOp
+		equals: #bufferLoad.
+	self
+		assert: (st at: 'at:' receiverType: #bufferOf_f16) resultTypeSymbol
+		equals: #f16.
+	self
+		assert: (st at: 'at:put:' receiverType: #bufferOf_f16) spirvOp
+		equals: #bufferStore.
+	self
+		assert: (st at: 'at:put:' receiverType: #bufferOf_f16) resultTypeSymbol
+		equals: #void
+]
+
 { #category : 'tests - header' }
 PVCompilerTest >> testSpirvMagicAssertionRejectsAForeignHeader [
 	"The shared header assertion must be able to fail, or every test using it is vacuous."
 	self
 		should: [ self assertSpirvMagic: #[ 1 2 3 4 ] description: 'junk' ]
 		raise: TestFailure
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSpvTypeForHalfIsASixteenBitFloat [
+	"OpTypeFloat carries its width, so a half type is a distinct declaration from a float
+	 one and must not be deduplicated with it."
+
+	| em |
+	em := PVSPIRVEmitter new.
+	self assert: (em spvTypeFor: #f16) width equals: 16.
+	self assert: (em spvTypeFor: #f32) width equals: 32.
+	self deny: (em spvTypeFor: #f16) id = (em spvTypeFor: #f32) id
 ]
 
 { #category : 'tests' }
@@ -579,6 +753,19 @@ PVCompilerTest >> testTypeInferencerResolvesAdd [
 	typeMap := typeInf inferAll: regOps selectorTable: st.
 	addOp := regOps detect: [ :op | op opcode = #send ].
 	self assert: (typeMap at: addOp result) equals: #f32
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testUnknownBufferTypeIsRefused [
+	"The degenerate buffer type. A stride quietly defaulting to four bytes would emit a
+	 module that validates and reads the wrong addresses."
+
+	self
+		should: [ PVSPIRVEmitter storageBufferArrayStrideFor: #bufferOf_f64 ]
+		raise: PVTypeError.
+	self
+		should: [ PVSPIRVEmitter new spvTypeFor: #f64 ]
+		raise: PVTypeError
 ]
 
 { #category : 'tests' }
@@ -681,4 +868,15 @@ PVCompilerTest >> testWorkItemReportCoversTheWholeVocabulary [
 	values := item dispatchReport collect: [ :each | each at: #value ].
 	self deny: (values includes: 'not implemented').
 	self assert: (values includes: '512')
+]
+
+{ #category : 'helpers' }
+PVCompilerTest >> wordsIn: bytes [
+	"A SPIR-V module reaches Vulkan as a little-endian stream of 32-bit words, so a test
+	 about what a module declares has to read the words back out of the bytes."
+
+	^ (1 to: bytes size by: 4) collect: [ :each |
+		  (bytes at: each) + ((bytes at: each + 1) bitShift: 8)
+		  + ((bytes at: each + 2) bitShift: 16)
+		  + ((bytes at: each + 3) bitShift: 24) ]
 ]

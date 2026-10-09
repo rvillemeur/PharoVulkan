@@ -276,3 +276,19 @@ PVKernelExamples >> vectorAdd: wi a: a b: b out: output [
 idx := wi x.
 output at: idx put: (a at: idx) + (b at: idx)
 ]
+
+{ #category : 'kernels' }
+PVKernelExamples >> vectorAddF16: wi a: a b: b out: output [
+	"The half precision twin of vectorAdd:a:b:out:, the same arithmetic over two-byte
+	 elements. No pragma states the half precision capabilities: the emitter derives them
+	 from the buffer element type, so a kernel cannot declare one and use the other."
+
+	<gpu>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f16 named: #a>
+	<param: #bufferOf_f16 named: #b>
+	<param: #bufferOf_f16 named: #output>
+	| idx |
+	idx := wi x.
+	output at: idx put: (a at: idx) + (b at: idx)
+]
