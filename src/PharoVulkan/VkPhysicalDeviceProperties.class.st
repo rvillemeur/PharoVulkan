@@ -14,8 +14,10 @@ Class {
 		'OFFSET_DEVICETYPE',
 		'OFFSET_DRIVERVERSION',
 		'OFFSET_LIMITS',
+		'OFFSET_LIMITSALIGNMENTPAD',
 		'OFFSET_PIPELINECACHEUUID',
 		'OFFSET_SPARSEPROPERTIES',
+		'OFFSET_TAILALIGNMENTPAD',
 		'OFFSET_VENDORID'
 	],
 	#category : 'PharoVulkan-Bindings',
@@ -23,19 +25,63 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'fields' }
+{ #category : 'examples' }
+VkPhysicalDeviceProperties class >> examplePropertiesOfThisMachine [
+	"One click: the properties the local driver writes, with the Layout view beside them. The
+	 store is a ByteArray inside the image, so the bytes still read after the context that
+	 queried them has gone."
+
+	<sampleInstance>
+	| context |
+	context := VkContext computeContext.
+	^ [ Vk getPhysicalDeviceProperties: context physicalDevice handle ]
+		  ensure: [ context destroy ]
+]
+
+{ #category : 'field definition' }
 VkPhysicalDeviceProperties class >> fieldsDesc [
-    ^ #(
-        uint32    apiVersion;
-        uint32    driverVersion;
-        uint32    vendorID;
-        uint32    deviceID;
-        int32     deviceType;
-        Uint8_256 deviceName;
-        Uint8_16  pipelineCacheUUID;
-        Uint8_504 limits;
-        Uint8_20  sparseProperties
-    )
+	"Two pads the C layout has and a field list alone would miss: limits holds VkDeviceSize
+	 members, so it is eight byte aligned and starts four bytes after pipelineCacheUUID ends,
+	 and the struct itself is eight byte aligned, so it ends four bytes after sparseProperties.
+	 Without them the store is 816 bytes while the driver writes 824 into it, and that store is
+	 a ByteArray inside object memory."
+
+	^ #(
+		uint32    apiVersion;
+		uint32    driverVersion;
+		uint32    vendorID;
+		uint32    deviceID;
+		int32     deviceType;
+		Uint8_256 deviceName;
+		Uint8_16  pipelineCacheUUID;
+		uint32    limitsAlignmentPad;
+		Uint8_504 limits;
+		Uint8_20  sparseProperties;
+		uint32    tailAlignmentPad
+	)
+]
+
+{ #category : 'constants' }
+VkPhysicalDeviceProperties class >> headByteCount [
+	"Enough bytes to recognise a field in a table row, few enough that the long array fields do
+	 not push the other columns off the view."
+
+	^ 8
+]
+
+{ #category : 'accessing' }
+VkPhysicalDeviceProperties class >> layoutRows [
+	"The layout read back from the field specification the class compiled, never a second copy
+	 of the declaration: name, byte offset and byte count per field. uFFI keeps offsets as
+	 one based indices into the store, so each one is shifted to the C offset the driver uses."
+
+	| spec |
+	spec := self fieldSpec.
+	^ spec fieldNames with: spec types collect: [ :fieldName :type |
+		  {
+			  fieldName.
+			  (self classVariableNamed: (self offsetVariableNameFor: fieldName)) value - 1.
+			  type externalTypeSize } ]
 ]
 
 { #category : 'accessing - structure variables' }
@@ -109,6 +155,44 @@ VkPhysicalDeviceProperties >> driverVersion: anObject [
 	handle unsignedLongAt: OFFSET_DRIVERVERSION put: anObject
 ]
 
+{ #category : 'accessing' }
+VkPhysicalDeviceProperties >> headOfFieldAt: anOffset size: aSize [
+	"The first bytes of a field as this instance's store really holds them. A field longer than
+	 the shown head ends in an ellipsis, so a row cannot read as if the field were that short."
+
+	| store shown |
+	store := self getHandle.
+	shown := aSize min: self class headByteCount.
+	^ String streamContents: [ :out |
+		  (1 to: shown)
+			  do: [ :i |
+				  out nextPutAll: ((store at: anOffset + i) printPaddedWith: $0 to: 2 base: 16) ]
+			  separatedBy: [ out space ].
+		  aSize > shown ifTrue: [ out nextPutAll: ' ...' ] ]
+]
+
+{ #category : 'inspector' }
+VkPhysicalDeviceProperties >> inspectorLayout: aBuilder [
+	"Every row is read back from the compiled field specification and from this instance's own
+	 store, so the table cannot state a layout the struct does not have. The store is only read,
+	 never written, so inspecting a populated struct leaves its bytes alone."
+
+	<inspectorPresentationOrder: 10 title: 'Layout'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Field' evaluated: [ :each |
+					   each first ]);
+		  addColumn: (SpStringTableColumn title: 'Offset' evaluated: [ :each |
+					   each second printString ]);
+		  addColumn: (SpStringTableColumn title: 'Bytes' evaluated: [ :each |
+					   each third printString ]);
+		  addColumn: (SpStringTableColumn title: 'Next offset' evaluated: [ :each |
+					   (each second + each third) printString ]);
+		  addColumn: (SpStringTableColumn title: 'Head' evaluated: [ :each |
+					   self headOfFieldAt: each second size: each third ]);
+		  items: self class layoutRows;
+		  yourself
+]
+
 { #category : 'accessing - structure variables' }
 VkPhysicalDeviceProperties >> limits [
 	"This method was automatically generated"
@@ -119,6 +203,18 @@ VkPhysicalDeviceProperties >> limits [
 VkPhysicalDeviceProperties >> limits: anObject [
 	"This method was automatically generated"
 	handle replaceFrom: OFFSET_LIMITS to: OFFSET_LIMITS + 503 with: anObject getHandle startingAt: 1
+]
+
+{ #category : 'accessing - structure variables' }
+VkPhysicalDeviceProperties >> limitsAlignmentPad [
+	"This method was automatically generated"
+	^handle unsignedLongAt: OFFSET_LIMITSALIGNMENTPAD
+]
+
+{ #category : 'accessing - structure variables' }
+VkPhysicalDeviceProperties >> limitsAlignmentPad: anObject [
+	"This method was automatically generated"
+	handle unsignedLongAt: OFFSET_LIMITSALIGNMENTPAD put: anObject
 ]
 
 { #category : 'accessing - structure variables' }
@@ -143,6 +239,18 @@ VkPhysicalDeviceProperties >> sparseProperties [
 VkPhysicalDeviceProperties >> sparseProperties: anObject [
 	"This method was automatically generated"
 	handle replaceFrom: OFFSET_SPARSEPROPERTIES to: OFFSET_SPARSEPROPERTIES + 19 with: anObject getHandle startingAt: 1
+]
+
+{ #category : 'accessing - structure variables' }
+VkPhysicalDeviceProperties >> tailAlignmentPad [
+	"This method was automatically generated"
+	^handle unsignedLongAt: OFFSET_TAILALIGNMENTPAD
+]
+
+{ #category : 'accessing - structure variables' }
+VkPhysicalDeviceProperties >> tailAlignmentPad: anObject [
+	"This method was automatically generated"
+	handle unsignedLongAt: OFFSET_TAILALIGNMENTPAD put: anObject
 ]
 
 { #category : 'accessing - structure variables' }

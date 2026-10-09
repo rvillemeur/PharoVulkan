@@ -20,6 +20,39 @@ VkBindingsTest >> assertHalfOf: aFloat is: anInteger [
 			, anInteger printStringHex
 ]
 
+{ #category : 'measuring' }
+VkBindingsTest >> spanBytesWrittenByDevicePropertiesOf: aPhysicalDeviceHandle [
+	"The same query answered into memory outside the image, so the struct's own store can be
+	 compared against it byte for byte."
+
+	| capacity probe bytes |
+	capacity := 4096.
+	probe := ExternalAddress allocate: capacity.
+	^ [
+	  Vk getPhysicalDeviceProperties: aPhysicalDeviceHandle into: probe.
+	  bytes := ByteArray new: capacity.
+	  1 to: capacity do: [ :i | bytes at: i put: (probe byteAt: i) ].
+	  bytes ] ensure: [ probe free ]
+]
+
+{ #category : 'measuring' }
+VkBindingsTest >> spanWrittenByDevicePropertiesOf: aPhysicalDeviceHandle sentinel: aByte [
+	"Answers how far vkGetPhysicalDeviceProperties writes, measured in a buffer outside object
+	 memory so the measurement itself cannot corrupt anything. One sentinel could collide with
+	 a byte the driver really wrote, which is why the caller measures twice."
+
+	| capacity probe written |
+	capacity := 4096.
+	probe := ExternalAddress allocate: capacity.
+	^ [
+	  1 to: capacity do: [ :i | probe byteAt: i put: aByte ].
+	  Vk getPhysicalDeviceProperties: aPhysicalDeviceHandle into: probe.
+	  written := 0.
+	  1 to: capacity do: [ :i |
+		  (probe byteAt: i) = aByte ifFalse: [ written := i ] ].
+	  written ] ensure: [ probe free ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testCreateDestroyInstance [
     | info instance |
@@ -208,6 +241,64 @@ VkBindingsTest >> testPhysicalDeviceProperties [
       self assert: (name isKindOf: String).
       self assert: name isNotEmpty ]
     ensure: [ Vk destroyInstance: instance allocator: ExternalAddress null ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testPhysicalDevicePropertiesFieldHeadReadsTheStore [
+	"The layout view prints the first bytes of each field. It must read them from the store the
+	 instance really holds, and it must mark a field whose bytes it had to cut, otherwise a row
+	 could read as if the field were as short as the text shown."
+
+	| props store |
+	props := VkPhysicalDeviceProperties new.
+	store := props getHandle.
+	1 to: store size do: [ :i | store at: i put: i \\ 256 ].
+	self assert: (props headOfFieldAt: 0 size: 4) equals: '01 02 03 04'.
+	self
+		assert: (props headOfFieldAt: 0 size: VkPhysicalDeviceProperties byteSize)
+		equals: '01 02 03 04 05 06 07 08 ...'
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testPhysicalDevicePropertiesHoldsEverythingTheDriverWrites [
+	"The struct keeps its bytes in a ByteArray inside object memory, so a declaration shorter
+	 than what the driver writes overruns that object and corrupts whatever follows it in the
+	 heap. The span is measured from the driver rather than taken from the specification, and
+	 the byte comparison pins the field offsets as well as the size: the C layout aligns limits
+	 to eight bytes, so a missing pad shifts everything from limits onward."
+
+	| info instance devices device written props |
+	info := VkInstanceCreateInfo new.
+	instance := Vk createInstance: info.
+	[
+	devices := Vk enumeratePhysicalDevices: instance.
+	device := devices at: 1.
+	written := (self spanWrittenByDevicePropertiesOf: device sentinel: 16rAB)
+		           max: (self spanWrittenByDevicePropertiesOf: device sentinel: 16r5C).
+	self assert: written > 0.
+	self assert: VkPhysicalDeviceProperties byteSize >= written.
+	props := VkPhysicalDeviceProperties new.
+	Vk getPhysicalDeviceProperties: device into: props.
+	self
+		assert: ((props getHandle first: written) collect: [ :each | each ]) asArray
+		equals: (((self spanBytesWrittenByDevicePropertiesOf: device) first: written) collect: [ :each | each ]) asArray ]
+		ensure: [ Vk destroyInstance: instance allocator: ExternalAddress null ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testPhysicalDevicePropertiesLayoutTilesItsWholeStore [
+	"The layout the inspector shows is read back from the field specification the class really
+	 compiled. The fact to state is that the fields tile the store with no hole and no overlap:
+	 the first starts at zero, each one begins where the previous ends, and the last ends at the
+	 declared size. An alignment pad removed or put in the wrong place breaks one of the three."
+
+	| rows |
+	rows := VkPhysicalDeviceProperties layoutRows.
+	self assert: rows first second equals: 0.
+	rows overlappingPairsDo: [ :a :b | self assert: b second equals: a second + a third ].
+	self
+		assert: rows last second + rows last third
+		equals: VkPhysicalDeviceProperties byteSize
 ]
 
 { #category : 'tests' }
