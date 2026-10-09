@@ -6,7 +6,9 @@ packages — only the system Vulkan loader and SDL2.
 Two goals:
 1. **Full Vulkan API** exposed via uFFI with named constants (no magic numbers)
 2. **Pharo→SPIR-V compiler** — annotate a Pharo method with `<gpu>` and
-   `<param:named:>` pragmas and it compiles to a SPIR-V compute shader
+   `<param:named:>` pragmas and it compiles to SPIR-V: a compute shader when
+   the parameters include a `WorkItem` and storage buffers, a plain function
+   otherwise
 
 ---
 
@@ -68,45 +70,65 @@ TestRunner runClass: PVComputeTest
 
 ### Minimal headless compute in a Playground
 
+This runs `PVKernelExamples >> #vectorAdd:a:b:out:` — a four-parameter compute
+kernel, one `WorkItem` plus three storage buffers — through the Pharo→SPIR-V
+compiler. It is the same sequence as `PVComputeTest >> #testVectorAddFromCompiledMethod`,
+so it is covered by the suite.
+
 ```smalltalk
-| ctx buf spirv kernel result |
+| n ctx bufA bufB bufC kernel result |
+n := 64.
 
 "1. Create context (no window needed)"
 ctx := VkContext computeContext.
 
-"2. Allocate a 16-byte buffer (4 floats)"
-buf := VkBuffer on: ctx device size: 16 usage: 4.   "4 = STORAGE_BUFFER_BIT"
+"2. Allocate three storage buffers of n floats each.
+    storageBuffer:on: takes an element count and applies the usage flag for you."
+bufA := VkBuffer storageBuffer: n on: ctx device.
+bufB := VkBuffer storageBuffer: n on: ctx device.
+bufC := VkBuffer storageBuffer: n on: ctx device.
 
-"3. Fill with [1.0, 2.0, 3.0, 4.0]"
-| data |
-data := ByteArray new: 16.
-#(1.0 2.0 3.0 4.0) doWithIndex: [:v :i |
-    | bits base |
-    bits := v asIEEE32BitWord.
-    base := (i - 1) * 4 + 1.
-    data at: base   put: (bits        bitAnd: 255).
-    data at: base+1 put: ((bits >>  8) bitAnd: 255).
-    data at: base+2 put: ((bits >> 16) bitAnd: 255).
-    data at: base+3 put: ((bits >> 24) bitAnd: 255)].
-buf copyFromByteArray: data.
+"3. Fill the inputs; putF32s: does the IEEE-754 packing"
+bufA putF32s: ((0 to: n - 1) asArray collect: [:i | i asFloat]).
+bufB putF32s: ((0 to: n - 1) asArray collect: [:i | i asFloat]).
+bufC putF32s: (Array new: n withAll: 0.0).
 
-"4. Compile a relu kernel with the Pharo→SPIR-V compiler"
-spirv := PVKernelCompiler compile: (PVKernelExamples >> #relu:).
-
-"5. Run"
-kernel := PVComputeKernel on: ctx spirv: spirv.
-kernel bindBuffer: buf.
+"4. Compile the kernel and build the pipeline.
+    Buffers bind in parameter order: a, b, output."
+kernel := PVComputeKernel fromMethod: (PVKernelExamples >> #vectorAdd:a:b:out:) on: ctx.
+kernel bindBuffer: bufA; bindBuffer: bufB; bindBuffer: bufC.
 kernel prepare.
+
+"5. One workgroup, 64 invocations"
 kernel dispatch: 1 y: 1 z: 1.
 
-"6. Read back"
-result := buf copyToByteArray.
+"6. Read back: [0.0, 2.0, 4.0, … 126.0]"
+result := bufC getF32s.
 
-"7. Clean up"
+"7. Clean up in reverse creation order"
 kernel destroy.
-buf destroy.
+bufA destroy. bufB destroy. bufC destroy.
 ctx destroy.
 ```
+
+### `<gpu>` alone does not produce a shader module
+
+A `<gpu>` method whose parameters are all scalars — `PVKernelExamples >> #relu:`,
+for example — compiles to a SPIR-V *function*: no `OpEntryPoint`, no execution
+mode, no descriptor bindings. `PVComputeKernel` cannot load it, and `spirv-val`
+rejects it on its own with `No OpEntryPoint instruction was found`. An entry
+point is emitted only for
+
+- a compute kernel: one `#workItem` parameter plus `#bufferOf_f32` or
+  `#bufferOf_i32` parameters, as in `vectorAdd:a:b:out:` above, or
+- a `<gpuVertex>` or `<gpuFragment>` shader.
+
+Scalar `<gpu>` methods are lowering targets for those, not standalone shaders.
+Giving them an entry point would mean inventing a descriptor-binding convention
+for scalar parameters, which the `WorkItem`-plus-storage-buffer kernel ABI
+deliberately does not have. This is also why `PVSpirvValidatorTest` validates 5
+of the 19 kernel examples and not all 19: the other 14 are scalar functions with
+no entry point for the validator to start from.
 
 For a full walkthrough see `doc/compute-tutorial.md`.
 
@@ -181,16 +203,19 @@ anything that touches the GPU.
 Iceberg writes from image to disk. If you save the image first, Iceberg sees
 a clean state and the commit will be empty. Always commit first, then save.
 
-### Buffer usage flags
-Use named constants, not integers:
+### Usage flags: buffers and images are separate enumerations
+`VkBufferUsageFlagBits` and `VkImageUsageFlagBits` are different bitmasks, and
+the same numeric value means different things in each. Use the named constants
+that exist rather than literals:
 ```smalltalk
-VkImageUsage storageBit          "= 4  — compute storage buffer"
-VkImageUsage colorAttachmentBit  "= 16 — swapchain image"
-VkImageUsage transferSrcBit      "= 1  — copy source"
-VkImageUsage transferDstBit      "= 2  — copy destination"
-"Vertex buffer (128 = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) is not yet in
- VkImageUsage — use the integer 128 for now."
+VkBuffer storageBufferUsage      "= 32 — VK_BUFFER_USAGE_STORAGE_BUFFER_BIT"
+VkImageUsage colorAttachmentBit  "= 16 — VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT"
 ```
+Prefer `VkBuffer storageBuffer: elementCount on: aDevice`, which applies the
+usage flag and converts the element count to bytes. Other flags (transfer
+source and destination, vertex buffer = 128) have no named constant yet; add
+one to `VkBuffer` or `VkImageUsage` when you first need it instead of writing
+the integer at the call site.
 
 ### Swapchain format selection
 `VkSwapchain` prefers `VkFormat b8g8r8a8Unorm` (44). If the surface does not
@@ -228,20 +253,21 @@ temporarily to get driver-level error messages.
 
 ### Pharo→SPIR-V compiler (Phase 1–6 scope)
 
-- **No buffer indexing from compiled kernels.** The compiler emits scalar
-  compute functions. It cannot yet emit `OpAccessChain` to index into a
-  runtime array. For real workloads (per-element processing), build the SPIR-V
-  shader manually with `SpvBuilder` as shown in `PVComputeTest`.
-- **No `gl_GlobalInvocationID` in compiled kernels.** The emitter does not
-  yet wire in the built-in invocation ID. Again, use `SpvBuilder` for
-  anything needing per-thread indexing.
+- **Scalar `<gpu>` methods are functions, not shader modules.** Only a compute
+  kernel (a `#workItem` parameter plus `#bufferOf_*` parameters) or a
+  `<gpuVertex>`/`<gpuFragment>` shader gets an `OpEntryPoint`. See
+  "`<gpu>` alone does not produce a shader module" above.
 - **Integer literals beyond 0.** Pharo `SmallInteger` literals in a `<gpu>`
   method may not round-trip cleanly through the type inferencer for all
   operators. `0`, `1`, `0.0`, `1.0` are safe; arbitrary literals may cause
   `PVTypeError`.
-- **One level of control flow.** The CFG recogniser handles one
-  `ifTrue:ifFalse:` or one `whileTrue:` per method. Nested conditions or
-  loops raise `PVTypeError signal: 'Unrecognized CFG shape'`.
+- **Exactly one control-flow construct per method.** The CFG recogniser matches
+  one `ifTrue:ifFalse:` or one `whileTrue:`, and the node it returns must cover
+  every basic block of the method. Anything else — nested conditions, nested
+  loops, a condition inside a loop body, *and also* two constructs in sequence —
+  raises `PVTypeError signal: 'Unrecognized CFG shape'`. The sequential cases
+  were silently miscompiled before 2026-10-09; `PVCfgShapeFixture` pins all seven
+  shapes.
 - **No cross-method calls.** The compiler does not inline callees. Each
   kernel must be self-contained.
 
