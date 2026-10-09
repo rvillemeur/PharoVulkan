@@ -29,12 +29,52 @@ PVSpirvValidator class >> exampleValidatorOnVectorAddKernel [
 	^ self on: (PVKernelCompiler compile: (PVKernelExamples >> #vectorAdd:a:b:out:))
 ]
 
+{ #category : 'lookup' }
+PVSpirvValidator class >> executableIn: aPathString [
+	"Answer the first entry of a PATH-shaped string holding a runnable executableName,
+	 or nil. Empty entries and files without an executable bit are no match."
+	^ ((aPathString substrings: (String with: self pathSeparator))
+		collect: [ :each | each asFileReference / self executableName ])
+			detect: [ :candidate | candidate exists and: [ candidate isExecutable ] ]
+			ifNone: [ nil ]
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> executableName [
+	^ 'spirv-val'
+]
+
+{ #category : 'lookup' }
+PVSpirvValidator class >> findExecutable [
+	^ self executableIn: self pathEnvironment
+]
+
+{ #category : 'testing' }
+PVSpirvValidator class >> isAvailable [
+	^ self findExecutable isNotNil
+]
+
 { #category : 'instance creation' }
 PVSpirvValidator class >> on: aByteArray [
 	| validator |
 	validator := self new.
 	validator spirv: aByteArray.
 	^ validator
+]
+
+{ #category : 'lookup' }
+PVSpirvValidator class >> pathEnvironment [
+	^ OSEnvironment current at: 'PATH' ifAbsent: [ '' ]
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> pathSeparator [
+	^ $:
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> targetEnv [
+	^ 'vulkan1.3'
 ]
 
 { #category : 'validating' }
