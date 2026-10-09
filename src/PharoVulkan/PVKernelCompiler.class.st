@@ -29,15 +29,6 @@ PVKernelCompiler class >> compile: aCompiledMethod [
 	^ self new method: aCompiledMethod; compile
 ]
 
-{ #category : 'constants' }
-PVKernelCompiler class >> computeParamTypes [
-	"A method is a compute kernel if it takes a work item or any kernel buffer. The buffer
-	 types come from the emitter so a new element type is accepted here by adding it there
-	 once."
-
-	^ { #workItem } , PVSPIRVEmitter bufferElementTypes keys asArray
-]
-
 { #category : 'accessing' }
 PVKernelCompiler >> annotation [
 ^ annotation
@@ -82,7 +73,7 @@ PVKernelCompiler >> compile [
 			^ PVSPIRVEmitter compileShaderKernelSelection: structNode annotation: annotation typeMap: typeMap selectorTable: st executionModel: SpvExecutionModel fragment ].
 		PVTypeError signal: 'Unsupported CFG in fragment shader: ' , structNode class name ].
 	isCompute := annotation params anySatisfy: [ :p |
-		self class computeParamTypes includes: p type ].
+		#(#workItem #bufferOf_f32 #bufferOf_i32) includes: p type ].
 	bytecodeOps := PVBytecodeDecoder decode: method.
 	regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
 	st := PVSelectorTable standard.

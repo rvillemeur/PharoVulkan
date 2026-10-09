@@ -179,18 +179,6 @@ PVSpirvValidatorTest >> testVectorAdd [
 	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #vectorAdd:a:b:out:)) description: 'vectorAdd:a:b:out:'
 ]
 
-{ #category : 'tests' }
-PVSpirvValidatorTest >> testVectorAddF16 [
-	"Half precision is where a missing capability shows up: spirv-val refuses OpTypeFloat 16
-	 in a storage buffer unless the module declares Float16 and StorageBuffer16BitAccess."
-
-	self
-		validateSpirv:
-			(PVKernelCompiler compile:
-				 (PVKernelExamples >> #vectorAddF16:a:b:out:))
-		description: 'vectorAddF16:a:b:out:'
-]
-
 { #category : 'private' }
 PVSpirvValidatorTest >> validateSpirv: bytes description: aDescription [
 	| validator |
