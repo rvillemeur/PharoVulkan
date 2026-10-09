@@ -1,7 +1,6 @@
 # CFG recogniser: silent miscompile of sequential control flow
 
-Status: items 1, 2 and 3 done (2026-10-09), and the README half of item 4 with them.
-The `prompt.md` half of item 4 is not started. Item 5 deferred by decision.
+Status: items 1 to 4 done (2026-10-09). Item 5 deferred by decision.
 
 ## What was found (verified 2026-10-09)
 
@@ -127,10 +126,20 @@ This also settles an earlier open question: `PVSpirvValidatorTest` covering 5 of
 `PVKernelExamples` is **not** a coverage gap. The other 14 are `<gpu>` scalars with no
 entry point, which standalone `spirv-val` must reject. Chasing 19/19 would be wrong.
 
-### 4. Correct the remaining stale documentation
+### 4. Correct the remaining stale documentation — DONE
 
-- `README.md`: the control-flow limitation bullet, once item 1 makes the error honest.
-- `prompt.md`: Phase B and Phases 6.5-A, 6.5-B and 6.5-C are complete but still unmarked.
+- `README.md`: control-flow bullet rewritten, sequence case included.
+- `prompt.md`: Phase B and Phases 6.5-A, 6.5-B, 6.5-C marked ✅ DONE, each with a
+  **Delivered** paragraph naming the classes and methods that prove it. Each claim was
+  checked against the source first: `VkGraphicsPipeline >> vertexBindingDescriptions` and
+  `vertexAttributeDescriptions` exist and are read by the pipeline builder (6.5-B);
+  `PVKernelExamples >> alphaClip:threshold:` plus
+  `PVCompilerTest >> testAlphaClipFragmentCompiles` exist and `PVKernelCompiler` runs the
+  recogniser for both shader stages (6.5-C); `PVSpirvValidatorTest` has 5 skipping tests
+  (6.5-A); `PVVec2`/`PVVec3`/`PVVec4`/`PVMat4` and `PVGlslTriangleScene` exist (Phase B).
+  Two known defects were written down rather than silently fixed: the hardcoded
+  `/usr/bin/spirv-val` path, and `testAlphaClipFragmentCompiles` asserting the literal
+  `#[3 2 35 7]` instead of `SpvSerializer spirvMagic`.
 
 ### 5. Deferred: real nesting support
 

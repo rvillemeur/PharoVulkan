@@ -1584,7 +1584,7 @@ compiles to valid SPIR-V and runs on GPU via `PVComputeKernel fromMethod:on:`.
 
 ---
 
-## Phase B — GLSL-like Vector/Matrix DSL
+## Phase B — GLSL-like Vector/Matrix DSL ✅ DONE
 
 **Goal**: Add composite types to the compiler so vertex and fragment shaders
 can be written in Pharo without hand-coded SPIR-V.
@@ -1594,6 +1594,12 @@ can be written in Pharo without hand-coded SPIR-V.
 **Done when**: A Pharo method annotated with `<gpuVertex>` or `<gpuFragment>`
 using `PVVec3`, `PVVec4`, `PVMat4` compiles to valid SPIR-V and renders
 correctly in the Phase 6 hello-triangle scene.
+
+**Delivered**: `PVVec2`, `PVVec3`, `PVVec4`, `PVMat4`; `<gpuVertex>` and
+`<gpuFragment>` routing in `PVKernelCompiler`; `PVKernelExamples` shader pairs;
+`PVGlslTriangleScene`, which renders from the compiled shaders rather than
+hand-built SPIR-V. `PVSpirvValidatorTest >> testGlslTriVertex` and
+`testGlslTriFragment` check both against `spirv-val`.
 
 **Spec**:
 
@@ -1674,12 +1680,12 @@ high-level API.
 
 ---
 
-## Phase 6.5 — Housekeeping and Foundation Strengthening
+## Phase 6.5 — Housekeeping and Foundation Strengthening ✅ DONE
 
 These tasks were identified after Phase 6B (GLSL DSL) as high-value, low-risk
 improvements to do before entering the open-ended Phase 7.
 
-### 6.5-A  spirv-val integration (confidence)
+### 6.5-A  spirv-val integration (confidence) ✅ DONE
 
 Pipe every compiled SPIR-V `ByteArray` through the `spirv-val` CLI tool in
 a dedicated test. Currently tests only check the 4-byte magic header — a
@@ -1692,7 +1698,15 @@ wrong instruction ordering, and structural violations.
   does not break on minimal installs.
 - Fix any validation errors found.
 
-### 6.5-B  Parametric vertex input layout (flexibility)
+**Delivered**: `PVSpirvValidatorTest`, 5 tests, each skipping via
+`spirvValAvailable` when the tool is missing. No validation errors were found.
+It validates 5 of the 19 kernel examples by design, not by omission: the other
+14 are scalar `<gpu>` methods, which compile to SPIR-V functions with no
+`OpEntryPoint`, so standalone `spirv-val` must reject them. Do not chase 19/19.
+Open defect: `spirvValExecutable` hardcodes `/usr/bin/spirv-val`, so a
+`spirv-val` elsewhere on `PATH` still silently skips every test.
+
+### 6.5-B  Parametric vertex input layout (flexibility) ✅ DONE
 
 `VkGraphicsPipeline` hardcodes stride 20 (vec2 position + vec3 color).
 Any custom shader with a different vertex layout must subclass and re-implement
@@ -1703,7 +1717,11 @@ the full pipeline creation.
 - Keep the existing default (stride 20, location 0 = vec2, location 1 = vec3)
   so all current tests and scenes pass unchanged.
 
-### 6.5-C  Control flow in fragment/vertex shaders (expressiveness)
+**Delivered**: `VkGraphicsPipeline >> vertexBindingDescriptions` and
+`vertexAttributeDescriptions`, read by the pipeline creation method. The stride-20
+default is unchanged, so a custom layout is now an override rather than a rewrite.
+
+### 6.5-C  Control flow in fragment/vertex shaders (expressiveness) ✅ DONE
 
 Selection (`ifTrue:ifFalse:`) and loops are currently only compiled in compute
 kernels (`<gpu>`). The compiler routes `<gpuVertex>` and `<gpuFragment>` to the
@@ -1714,6 +1732,13 @@ straight-line emitter regardless of CFG shape.
 - Add a `PVKernelExamples >> alphaClip: color threshold: t` fragment example
   that uses `ifTrue:ifFalse:` to discard fragments below a threshold.
 - Add a corresponding `PVCompilerTest >> testAlphaClipFragmentCompiles` test.
+
+**Delivered**: all three. `PVKernelCompiler` runs `PVStructuredCFGRecognizer` for
+`<gpuVertex>` and `<gpuFragment>` as well, signalling
+`'Unrecognized CFG shape in vertex shader'` or `'… in fragment shader'` when the
+shape is refused. The recogniser's limit applies here too: exactly one
+`ifTrue:ifFalse:` or one `whileTrue:` per shader, nesting and sequence both
+refused — see `CFG-PLAN.md` and `PVCfgShapeFixture`.
 
 ---
 
