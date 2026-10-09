@@ -17,6 +17,16 @@ Class {
 	#tag : 'Core'
 }
 
+{ #category : 'constants' }
+VkBuffer class >> bitsPerByte [
+	^ 8
+]
+
+{ #category : 'constants' }
+VkBuffer class >> byteMask [
+	^ 16rFF
+]
+
 { #category : 'factory' }
 VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
     ^ self new initializeDevice: aDevice size: byteSize usage: usageFlags
@@ -25,6 +35,16 @@ VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
 { #category : 'factory' }
 VkBuffer class >> storageBuffer: count on: aDevice [
 	^ self on: aDevice size: count * 4 usage: self storageBufferUsage
+]
+
+{ #category : 'factory' }
+VkBuffer class >> storageBufferOfHalves: count on: aDevice [
+	"Two bytes per element rather than four, which is the whole point of a half buffer."
+
+	^ self
+		  on: aDevice
+		  size: count * PVFloat16 bytesPerHalf
+		  usage: self storageBufferUsage
 ]
 
 { #category : 'constants' }
@@ -110,6 +130,20 @@ VkBuffer >> destroy [
 ]
 
 { #category : 'accessing' }
+VkBuffer >> getF16s [
+	| bytes result |
+	bytes := self copyToByteArray.
+	result := Array new: bytes size // PVFloat16 bytesPerHalf.
+	1 to: result size do: [ :i |
+		| base word |
+		base := (i - 1) * PVFloat16 bytesPerHalf + 1.
+		word := (bytes at: base)
+		        + ((bytes at: base + 1) bitShift: self class bitsPerByte).
+		result at: i put: (PVFloat16 floatFromWord: word) ].
+	^ result
+]
+
+{ #category : 'accessing' }
 VkBuffer >> getF32s [
 	| bytes result |
 	bytes := self copyToByteArray.
@@ -145,6 +179,23 @@ VkBuffer >> map [
       mappedPointer := ptrBuf pointerAt: 1.
       ^ mappedPointer
     ] ensure: [ ptrBuf free ]
+]
+
+{ #category : 'accessing' }
+VkBuffer >> putF16s: aNumberCollection [
+	"Each value is rounded to the nearest half on the way in; PVFloat16 owns that rounding."
+
+	| bytes |
+	bytes := ByteArray new: aNumberCollection size * PVFloat16 bytesPerHalf.
+	aNumberCollection doWithIndex: [ :each :i |
+		| word base |
+		word := PVFloat16 wordForFloat: each.
+		base := (i - 1) * PVFloat16 bytesPerHalf + 1.
+		bytes at: base put: (word bitAnd: self class byteMask).
+		bytes
+			at: base + 1
+			put: ((word bitShift: 0 - self class bitsPerByte) bitAnd: self class byteMask) ].
+	self copyFromByteArray: bytes
 ]
 
 { #category : 'accessing' }

@@ -63,6 +63,42 @@ VkCoreTest >> testComputeContextCreation [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testHalfBufferHoldsTwiceAsManyValuesAsAFloatBuffer [
+	| halves floats |
+	halves := VkBuffer storageBufferOfHalves: 8 on: ctx device.
+	floats := VkBuffer storageBuffer: 8 on: ctx device.
+	[
+	self assert: halves size * 2 equals: floats size.
+	self assert: halves getF16s size equals: 8 ] ensure: [
+		halves destroy.
+		floats destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testHalfBufferRoundtripSnapsEachValueToItsNearestHalf [
+	"A half buffer is lossy by construction, so the fact to assert is not that the values
+	 come back unchanged but that they come back as the nearest half of what went in."
+
+	| buf values |
+	values := {
+		          0.0.
+		          1.0.
+		          -2.5.
+		          (1 / 3).
+		          Float infinity.
+		          (1.0 timesTwoPower: -24) }.
+	buf := VkBuffer storageBufferOfHalves: values size on: ctx device.
+	[
+	buf putF16s: values.
+	self
+		assert: buf getF16s
+		equals:
+			(values collect: [ :each |
+				 PVFloat16 floatFromWord: (PVFloat16 wordForFloat: each) ]) ]
+		ensure: [ buf destroy ]
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testPhysicalDeviceSelection [
 	self assert: (ctx physicalDevice findComputeQueueFamily >= 0)
 ]
