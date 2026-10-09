@@ -17,6 +17,18 @@ Class {
 }
 
 { #category : 'constants' }
+PVSPIRVEmitter class >> bufferElementTypes [
+	"The element type symbol each kernel buffer type holds. One source for the type the
+	 emitter declares, the stride it decorates the runtime array with, the capabilities a
+	 half buffer needs and the parameter types PVKernelCompiler takes for compute."
+
+	^ Dictionary newFrom: {
+			  (#bufferOf_f32 -> #f32).
+			  (#bufferOf_i32 -> #i32).
+			  (#bufferOf_f16 -> #f16) }
+]
+
+{ #category : 'constants' }
 PVSPIRVEmitter class >> bufferMemberIndex [
 	"A kernel buffer struct holds exactly one member: the runtime array."
 	^ 0
@@ -25,6 +37,17 @@ PVSPIRVEmitter class >> bufferMemberIndex [
 { #category : 'constants' }
 PVSPIRVEmitter class >> bufferMemberOffset [
 	^ 0
+]
+
+{ #category : 'reflecting' }
+PVSPIRVEmitter class >> capabilitiesDeclaredFor: aBufferTypeSymbol [
+	"The capabilities a buffer of that element type adds to a module, asked by letting a
+	 throwaway emitter declare them rather than by repeating the list."
+
+	| em |
+	em := self new.
+	em declareCapabilitiesFor: aBufferTypeSymbol.
+	^ em module capabilities asArray
 ]
 
 { #category : 'compiling' }
@@ -417,6 +440,17 @@ PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann sel
 		  #typeMap -> typeMap }
 ]
 
+{ #category : 'constants' }
+PVSPIRVEmitter class >> elementTypeOf: aBufferTypeSymbol [
+	"Raises rather than defaulting: a wrong element type emits a module that validates and
+	 reads the wrong addresses."
+
+	^ self bufferElementTypes
+		  at: aBufferTypeSymbol
+		  ifAbsent: [
+		  PVTypeError signal: 'Unknown buffer type: ' , aBufferTypeSymbol ]
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTable: st typeMap: typeMap module: aModule [
 	| em paramTypes spvFunc entryBlk trueBlkSpv falseBlkSpv mergeBlkSpv condReg trueReg falseReg condSpvId phiId phiType retType funcType condSimResult condTempDefs |
@@ -489,6 +523,14 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 ]
 
 { #category : 'constants' }
+PVSPIRVEmitter class >> float16Capability [
+	"Float16 = 9. Core since SPIR-V 1.3, and the module targets 1.5, so no OpExtension
+	 accompanies it."
+
+	^ 9
+]
+
+{ #category : 'constants' }
 PVSPIRVEmitter class >> gridWidthComponent [
 	"x component of the NumWorkgroups vector."
 
@@ -507,6 +549,29 @@ PVSPIRVEmitter class >> inferTypesOver: sims annotation: ann selectorTable: st [
 	typeMap := nil.
 	sims do: [ :each | typeMap := inferencer inferAll: each first selectorTable: st ].
 	^ { inferencer. typeMap }
+]
+
+{ #category : 'inspector' }
+PVSPIRVEmitter class >> inspectorBufferTypes: aBuilder [
+	<inspectorPresentationOrder: 10 title: 'Buffer types'>
+	"One row per kernel buffer type. Every column asks the method the emitter itself calls,
+	 the capabilities by letting an emitter declare them, so the tab cannot drift from what
+	 an emitted module carries."
+
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Buffer' evaluated: [ :each | each ]);
+		  addColumn: (SpStringTableColumn title: 'Element' evaluated: [ :each |
+					   self elementTypeOf: each ]);
+		  addColumn: (SpStringTableColumn title: 'Stride' evaluated: [ :each |
+					   self storageBufferArrayStrideFor: each ]);
+		  addColumn:
+			  (SpStringTableColumn title: 'Capabilities' evaluated: [ :each |
+					   ', ' join:
+						   ((self capabilitiesDeclaredFor: each) collect: [ :one |
+							    one printString ]) ]);
+		  items: self bufferElementTypes keys asSortedCollection asArray;
+		  yourself
 ]
 
 { #category : 'constants' }
@@ -550,6 +615,16 @@ PVSPIRVEmitter class >> paramTempDefsFor: ann [
 ]
 
 { #category : 'constants' }
+PVSPIRVEmitter class >> scalarByteWidths [
+	"How many bytes one element of each scalar type occupies in a storage buffer."
+
+	^ Dictionary newFrom: {
+			  (#f32 -> 4).
+			  (#i32 -> 4).
+			  (#f16 -> 2) }
+]
+
+{ #category : 'constants' }
 PVSPIRVEmitter class >> selectionControlNone [
 	"OpSelectionMerge takes a selection control mask; the compiler requests no flattening
 	 hints."
@@ -571,9 +646,19 @@ PVSPIRVEmitter class >> selectionMergeStackFrom: condSim phiReg: phiReg [
 ]
 
 { #category : 'constants' }
-PVSPIRVEmitter class >> storageBufferArrayStride [
-	"Both element types a kernel buffer may hold, f32 and i32, are four bytes wide."
-	^ 4
+PVSPIRVEmitter class >> storageBuffer16BitAccessCapability [
+	"StorageBuffer16BitAccess = 4433. Float16 alone covers the arithmetic; holding halves
+	 in a storage buffer needs this one as well."
+
+	^ 4433
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> storageBufferArrayStrideFor: aBufferTypeSymbol [
+	"A runtime array declares the byte distance between two elements, which follows the
+	 element type: a half is two bytes where a float or an int is four."
+
+	^ self scalarByteWidths at: (self elementTypeOf: aBufferTypeSymbol)
 ]
 
 { #category : 'accessing' }
@@ -599,15 +684,31 @@ PVSPIRVEmitter >> broadcastScalar: reg toVecType: vecTypeSymbol block: blk [
 	^ broadcastId
 ]
 
+{ #category : 'private' }
+PVSPIRVEmitter >> bufferElementTypeFor: aBufferTypeSymbol [
+	"The buffer declaration, every load and every store ask here, because a module whose
+	 three answers disagree declares one array and indexes another."
+
+	^ self spvTypeFor: (self class elementTypeOf: aBufferTypeSymbol)
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> declareCapabilitiesFor: aBufferTypeSymbol [
+	"A half buffer needs Float16 for the arithmetic and StorageBuffer16BitAccess for the
+	 array itself. The other element types need nothing beyond Shader."
+
+	(self class elementTypeOf: aBufferTypeSymbol) = #f16 ifFalse: [ ^ self ].
+	module addCapability: self class float16Capability.
+	module addCapability: self class storageBuffer16BitAccessCapability
+]
+
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> emitBufferLoad: op typeMap: typeMap block: blk [
 | bufVarId idxId recvType elemType ptrType elemPtrId loadId u32Zero |
 bufVarId := self spvIdFor: op inputs first.
 idxId := self spvIdFor: op inputs second.
 recvType := typeMap at: op inputs first.
-elemType := recvType = #bufferOf_i32
-    ifTrue: [ module typeRegistry intType: 32 signed: true ]
-    ifFalse: [ module typeRegistry floatType: 32 ].
+elemType := self bufferElementTypeFor: recvType.
 ptrType := module typeRegistry pointerType: 12 type: elemType.
 u32Zero := module constantPool constantUInt32: 0.
 elemPtrId := module newId.
@@ -632,9 +733,7 @@ bufVarId := self spvIdFor: op inputs first.
 idxId := self spvIdFor: op inputs second.
 valId := self spvIdFor: op inputs third.
 recvType := typeMap at: op inputs first.
-elemType := recvType = #bufferOf_i32
-    ifTrue: [ module typeRegistry intType: 32 signed: true ]
-    ifFalse: [ module typeRegistry floatType: 32 ].
+elemType := self bufferElementTypeFor: recvType.
 ptrType := module typeRegistry pointerType: 12 type: elemType.
 u32Zero := module constantPool constantUInt32: 0.
 elemPtrId := module newId.
@@ -1211,9 +1310,8 @@ PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding
 	 element type, and a type may carry each decoration once only, hence decoratedRtas."
 
 	| elemType rtaT structT pStructT bVar |
-	elemType := aParam type = #bufferOf_i32
-		            ifTrue: [ module typeRegistry intType: 32 signed: true ]
-		            ifFalse: [ module typeRegistry floatType: 32 ].
+	self declareCapabilitiesFor: aParam type.
+	elemType := self bufferElementTypeFor: aParam type.
 	rtaT := module typeRegistry runtimeArrayType: elemType.
 	structT := module typeRegistry structType: { rtaT }.
 	pStructT := module typeRegistry
@@ -1223,7 +1321,7 @@ PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding
 		module
 			addDecoration: rtaT id
 			decoration: SpvDecoration arrayStride
-			literals: { self class storageBufferArrayStride }.
+			literals: { self class storageBufferArrayStrideFor: aParam type }.
 		module
 			addDecoration: structT id
 			decoration: SpvDecoration block
@@ -1447,6 +1545,7 @@ PVSPIRVEmitter >> spvIdFor: regId [
 { #category : 'private' }
 PVSPIRVEmitter >> spvTypeFor: typeSymbol [
     typeSymbol = #f32  ifTrue: [ ^ module typeRegistry floatType: 32 ].
+    typeSymbol = #f16  ifTrue: [ ^ module typeRegistry floatType: 16 ].
     typeSymbol = #i32  ifTrue: [ ^ module typeRegistry intType: 32 signed: true ].
     typeSymbol = #u32  ifTrue: [ ^ module typeRegistry intType: 32 signed: false ].
     typeSymbol = #bool ifTrue: [ ^ module typeRegistry boolType ].

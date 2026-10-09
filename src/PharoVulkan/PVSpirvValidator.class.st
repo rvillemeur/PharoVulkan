@@ -67,6 +67,18 @@ PVSpirvValidator class >> exampleValidatorOnComputeSelectionKernel [
 ]
 
 { #category : 'examples' }
+PVSpirvValidator class >> exampleValidatorOnHalfVectorAddKernel [
+	"One click: the half precision vector add. spirv-val refuses a 16-bit float in a
+	 storage buffer unless the module declares Float16 and StorageBuffer16BitAccess, so the
+	 verdict is what tells the two capabilities reached the module."
+
+	<sampleInstance>
+	^ self on:
+		  (PVKernelCompiler compile:
+			   (PVKernelExamples >> #vectorAddF16:a:b:out:))
+]
+
+{ #category : 'examples' }
 PVSpirvValidator class >> exampleValidatorOnMatmulKernel [
 	"One click: the Phase 7 baseline matmul. The Entry point tab shows the 16 by 16
 	 workgroup from the kernel's pragma and the numWorkgroups built-in it reads for N."

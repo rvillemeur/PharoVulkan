@@ -1,5 +1,5 @@
 "
-Dispatch table mapping Pharo message sends to SPIR-V operations. Covers i32 and f32 arithmetic (+, -, *, //, \\, <, <=) and comparison ops. Used by PVTypeInferencer at stage 6.
+Dispatch table mapping Pharo message sends to SPIR-V operations. Covers i32, u32, f32 and f16 arithmetic (+, -, *, /, //, \\, <, <=), vector and mat4 operations, the GLSL.std.450 calls, work item queries and buffer indexing. Half precision reuses the float instructions and differs only in result type. Used by PVTypeInferencer at stage 6.
 "
 Class {
 	#name : 'PVSelectorTable',
@@ -56,6 +56,21 @@ self at: 'sqrt' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslSqrt re
 ]
 
 { #category : 'private' }
+PVSelectorTable >> initializeHalfMappings [
+	"Half precision arithmetic uses the same instructions as single precision, so only the
+	 result type differs; a comparison answers a bool at either width."
+
+	self at: '+' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f16).
+	self at: '-' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFSub resultType: #f16).
+	self at: '*' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFMul resultType: #f16).
+	self at: '/' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFDiv resultType: #f16).
+	self at: '<' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFOrdLessThan resultType: #bool).
+	self at: '<=' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFOrdLessThanEqual resultType: #bool).
+	self at: 'at:' receiverType: #bufferOf_f16 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #f16).
+	self at: 'at:put:' receiverType: #bufferOf_f16 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void)
+]
+
+{ #category : 'private' }
 PVSelectorTable >> initializeScalarMappings [
 self at: '+' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f32).
 self at: '-' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFSub resultType: #f32).
@@ -78,7 +93,8 @@ self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultT
 PVSelectorTable >> initializeStandardMappings [
 	self initializeScalarMappings.
 	self initializeWorkItemMappings.
-	self initializeBufferMappings
+	self initializeBufferMappings.
+	self initializeHalfMappings
 ]
 
 { #category : 'initialization' }
