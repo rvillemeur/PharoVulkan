@@ -206,3 +206,39 @@ VkCoreTest >> testPhysicalDeviceRejectsAnExtensionItDoesNotHave [
 VkCoreTest >> testPhysicalDeviceSelection [
 	self assert: (ctx physicalDevice findComputeQueueFamily >= 0)
 ]
+
+{ #category : 'tests' }
+VkCoreTest >> testStorageBufferByElementTypeRoundtripsBothWidths [
+	"One entry point for both element widths, so a caller that works in either precision
+	 holds one branch instead of three. The sizes differ by two, and each width answers the
+	 values its format can hold."
+
+	| halves floats values |
+	values := #( 0.0 1.0 -2.5 0.5 ).
+	halves := VkBuffer storageBuffer: values size of: #f16 on: ctx device.
+	floats := VkBuffer storageBuffer: values size of: #f32 on: ctx device.
+	[
+	halves put: values as: #f16.
+	floats put: values as: #f32.
+	self assert: halves size * 2 equals: floats size.
+	self assert: (halves elementsAs: #f16) equals: values.
+	self assert: (floats elementsAs: #f32) equals: values ] ensure: [
+		halves destroy.
+		floats destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testStorageBufferRefusesAnUnknownElementType [
+	"The degenerate element type. Falling back to four bytes would allocate a buffer of the
+	 wrong size and read it back at the wrong stride."
+
+	| buf |
+	self
+		should: [ VkBuffer storageBuffer: 4 of: #f64 on: ctx device ]
+		raise: PVTypeError.
+	buf := VkBuffer storageBuffer: 4 of: #f32 on: ctx device.
+	[
+	self should: [ buf put: #( 1.0 ) as: #f64 ] raise: PVTypeError.
+	self should: [ buf elementsAs: #f64 ] raise: PVTypeError ] ensure: [
+		buf destroy ]
+]

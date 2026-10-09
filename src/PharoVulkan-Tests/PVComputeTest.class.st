@@ -12,12 +12,34 @@ Class {
 	#tag : 'Compute'
 }
 
+{ #category : 'constants' }
+PVComputeTest class >> halfErrorBudget [
+	"How many roundings to the nearest half a matmul element is allowed to be out by: one
+	 for each input matrix, one for the stored result, and the rest slack for the order the
+	 device accumulates the dot product in."
+
+	^ 8
+]
+
 { #category : 'helpers' }
 PVComputeTest >> aAtRow: r col: c [
 	"Deliberately asymmetric input: a row-column swap in the kernel cannot pass unnoticed.
 	 Small magnitudes keep a 512-term float32 sum well inside tolerance."
 
 	^ ((r + (2 * c)) \\ 7) / 7.0
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> assertHalf: actual matchesReference: expected [
+	"Half precision is lossy by construction, so the tolerance scales with the magnitude of
+	 the value rather than being a fixed number of decimals. The floor covers an element
+	 whose reference is near zero, where a relative tolerance would demand exactness the
+	 format cannot give."
+
+	| tolerance |
+	tolerance := expected abs * self halfRoundoff * self class halfErrorBudget
+	             + self halfRoundoff.
+	self assert: actual closeTo: expected precision: tolerance
 ]
 
 { #category : 'helpers' }
@@ -93,20 +115,28 @@ PVComputeTest >> bytesToFloats: bytes [
 	^ result
 ]
 
-{ #category : 'private' }
+{ #category : 'helpers' }
 PVComputeTest >> dispatchMatmulOn: buffers groups: groupCount [
+	^ self
+		  dispatchMatmulOn: buffers
+		  groups: groupCount
+		  elementType: #f32
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> dispatchMatmulOn: buffers groups: groupCount elementType: anElementTypeSymbol [
 	"Bind the kernel's buffers in declaration order and answer the last one's contents: the
 	 kernel writes its result to its final parameter."
 
 	| kernel |
 	kernel := PVComputeKernel
-		          fromMethod: PVKernelExamples >> #matmulF32:a:b:out:
+		          fromMethod: (PVKernelExamples matmulFor: anElementTypeSymbol)
 		          on: ctx.
 	^ [
 	  buffers do: [ :each | kernel bindBuffer: each ].
 	  kernel prepare.
 	  kernel dispatch: groupCount y: groupCount z: 1.
-	  buffers last getF32s ] ensure: [ kernel destroy ]
+	  buffers last elementsAs: anElementTypeSymbol ] ensure: [ kernel destroy ]
 ]
 
 { #category : 'helpers' }
@@ -136,6 +166,14 @@ PVComputeTest >> floatArrayToBytes: anArray [
 ]
 
 { #category : 'helpers' }
+PVComputeTest >> halfRoundoff [
+	"A value rounded to the nearest half lands within this fraction of itself: half
+	 precision carries mantissaBits explicit bits plus the implicit one."
+
+	^ 1 / (2 raisedTo: PVFloat16 mantissaBits + 1)
+]
+
+{ #category : 'helpers' }
 PVComputeTest >> matmulSamplePositions [
 	"Fixed positions rather than random ones, so a failure reproduces. They include the
 	 corners, the first workgroup boundary (15, 16, 17) and the last row and column."
@@ -151,19 +189,34 @@ PVComputeTest >> referenceAtRow: r col: c order: n [
 
 { #category : 'private' }
 PVComputeTest >> runMatmulOfOrder: n groups: groupCount [
-	"Dispatch the baseline matmul over a fresh pair of input matrices and answer the output
-	 buffer's contents. The grid has to cover the matrix exactly, since the kernel takes N
-	 from wi gridWidth."
+	^ self runMatmulOfOrder: n groups: groupCount elementType: #f32
+]
+
+{ #category : 'private' }
+PVComputeTest >> runMatmulOfOrder: n groups: groupCount elementType: anElementTypeSymbol [
+	"Dispatch the matmul written for that element width over a fresh pair of input matrices
+	 and answer the output buffer's contents. The grid has to cover the matrix exactly,
+	 since the kernel takes N from wi gridWidth."
 
 	| bufA bufB bufOut |
-	bufA := VkBuffer storageBuffer: n * n on: ctx device.
-	bufB := VkBuffer storageBuffer: n * n on: ctx device.
-	bufOut := VkBuffer storageBuffer: n * n on: ctx device.
+	bufA := VkBuffer storageBuffer: n * n of: anElementTypeSymbol on: ctx device.
+	bufB := VkBuffer storageBuffer: n * n of: anElementTypeSymbol on: ctx device.
+	bufOut := VkBuffer
+		          storageBuffer: n * n
+		          of: anElementTypeSymbol
+		          on: ctx device.
 	^ [
-	  bufA putF32s: (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ]).
-	  bufB putF32s: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ]).
-	  bufOut putF32s: (Array new: n * n withAll: 0.0).
-	  self dispatchMatmulOn: { bufA. bufB. bufOut } groups: groupCount ] ensure: [
+	  bufA
+		  put: (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ])
+		  as: anElementTypeSymbol.
+	  bufB
+		  put: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ])
+		  as: anElementTypeSymbol.
+	  bufOut put: (Array new: n * n withAll: 0.0) as: anElementTypeSymbol.
+	  self
+		  dispatchMatmulOn: { bufA. bufB. bufOut }
+		  groups: groupCount
+		  elementType: anElementTypeSymbol ] ensure: [
 		  bufA destroy.
 		  bufB destroy.
 		  bufOut destroy ]
@@ -184,6 +237,31 @@ PVComputeTest >> tearDown [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testBenchmarkOfEachElementTypeDispatchesTheKernelOfThatWidth [
+	"A benchmark names the precision it measures, and takes the kernel and the workgroup from
+	 the matmul written for that precision rather than from a hardcoded one."
+
+	PVBenchmark elementTypes do: [ :each |
+		| benchmark |
+		benchmark := PVBenchmark on: ctx order: 64 repeats: 1 elementType: each.
+		self assert: benchmark elementType equals: each.
+		self
+			assert: benchmark kernelMethod
+			equals: (PVKernelExamples matmulFor: each).
+		self assert: benchmark workgroupWidth equals: 16 ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkRefusesAnUnknownElementType [
+	"There is no matmul kernel of that width, so there is nothing to measure. Falling back to
+	 float would report a number for a precision nobody asked for."
+
+	self
+		should: [ PVBenchmark on: ctx order: 64 repeats: 1 elementType: #f64 ]
+		raise: PVTypeError
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testBenchmarkRejectsOrderThatTheGridCannotCover [
 	"The kernel reads N from the dispatch grid, so an order the workgroup does not divide
 	 has no grid that covers it. Silently rounding would benchmark the wrong matrix."
@@ -191,6 +269,18 @@ PVComputeTest >> testBenchmarkRejectsOrderThatTheGridCannotCover [
 	self
 		should: [ PVBenchmark on: ctx order: 100 repeats: 1 ]
 		raise: PVTypeError
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testBenchmarkReportNamesThePrecisionItMeasured [
+	"Two rates at one matrix order mean nothing beside each other unless each row says which
+	 precision produced it."
+
+	| rows |
+	rows := (PVBenchmark on: ctx order: 64 repeats: 1 elementType: #f16) run; reportRows.
+	self
+		assert: (rows anySatisfy: [ :row |
+				 (row at: #name) = 'Element type' and: [ (row at: #value) = 'f16' ] ])
 ]
 
 { #category : 'tests' }
@@ -335,6 +425,38 @@ PVComputeTest >> testGridWidthFromDispatchOnDevice [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testMatmulF16OnDeviceHoldsAtTheBenchmarkSize [
+	"The size the benchmark runs. A 512 term dot product is where accumulating in half would
+	 drift far enough to fail, so this is what states the f32 accumulator earns its place."
+
+	| n result |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	n := 512.
+	result := self runMatmulOfOrder: n groups: n / 16 elementType: #f16.
+	self matmulSamplePositions do: [ :row |
+		self matmulSamplePositions do: [ :col |
+			self
+				assertHalf: (result at: row * n + col + 1)
+				matchesReference: (self referenceAtRow: row col: col order: n) ] ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testMatmulF16OnDeviceMatchesTheReferenceWithinHalfTolerance [
+	"Order 16 is one workgroup, so every output element is checked. Halves cannot carry the
+	 reference exactly, so the fact to state is the distance from it, not equality."
+
+	| n result |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	n := 16.
+	result := self runMatmulOfOrder: n groups: 1 elementType: #f16.
+	0 to: n - 1 do: [ :row |
+		0 to: n - 1 do: [ :col |
+			self
+				assertHalf: (result at: row * n + col + 1)
+				matchesReference: (self referenceAtRow: row col: col order: n) ] ]
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testMatmulOrder16MatchesReference [
 	"One workgroup, every element checked against a CPU reference. 16 by 16 is small enough
 	 to compare in full, so this is the test that pins the index arithmetic."
@@ -368,6 +490,55 @@ PVComputeTest >> testMatmulOrder512MatchesReferenceAtSampledPositions [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testPrecisionComparisonReportsOneRowPerElementType [
+	"The table is read against the baseline, so it holds one row per precision in a fixed
+	 order and the baseline's own speedup is one. Order 256 because a ratio needs a time the
+	 host clock can see."
+
+	| comparison rows |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	comparison := PVPrecisionComparison on: ctx order: 256 repeats: 2.
+	rows := comparison reportRows.
+	self
+		assert: (rows collect: [ :row | row at: #name ]) asArray
+		equals: (PVBenchmark elementTypes collect: [ :each | each asString ]) asArray.
+	self
+		assert: ((rows detect: [ :row |
+				  (row at: #name) = PVBenchmark defaultElementType asString ]) at: #speedup)
+		equals: '1.0'
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testPrecisionComparisonSpeedupNeedsTwoMeasuredTimes [
+	"Half the time is twice the speed. A dispatch too quick for the host clock has no ratio,
+	 and reporting one would be division by zero in one direction or a lie in the other."
+
+	self
+		assert: (PVPrecisionComparison speedupOfMilliseconds: 5 against: 10)
+		closeTo: 2.0
+		precision: 0.001.
+	self assert: (PVPrecisionComparison speedupOfMilliseconds: 0 against: 10) isNil.
+	self assert: (PVPrecisionComparison speedupOfMilliseconds: 5 against: 0) isNil
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testPrecisionComparisonTimesEveryElementTypeAtTheSameOrder [
+	"The honest way to state a precision speedup: the same matrix order, the same repeat
+	 count, one kernel per precision, measured in the one run."
+
+	| comparison |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	comparison := PVPrecisionComparison on: ctx order: 128 repeats: 3.
+	PVBenchmark elementTypes do: [ :each |
+		| benchmark |
+		benchmark := comparison benchmarkFor: each.
+		self assert: benchmark elementType equals: each.
+		self assert: benchmark result order equals: 128.
+		self assert: benchmark result repeats equals: 3.
+		self assert: benchmark result milliseconds >= 0 ]
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testVectorAdd [
 	"c[i] = a[i] + b[i] for i in [0,63]. LocalSize=64, dispatch 1 group."
 	| n spirv bufA bufB bufC kernel result |
@@ -392,6 +563,40 @@ PVComputeTest >> testVectorAdd [
 		kernel destroy
 	] ensure: [
 		bufA destroy. bufB destroy. bufC destroy ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testVectorAddF16OnDevice [
+	"The half path end to end: halves in the buffers, halves out, with values small enough
+	 that every input and every sum is an exact half, so the equality is the right fact to
+	 state and no tolerance hides a wrong answer."
+
+	| n bufA bufB bufC kernel result |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	n := 64.
+	bufA := VkBuffer storageBufferOfHalves: n on: ctx device.
+	bufB := VkBuffer storageBufferOfHalves: n on: ctx device.
+	bufC := VkBuffer storageBufferOfHalves: n on: ctx device.
+	[
+	bufA putF16s: ((0 to: n - 1) collect: [ :i | i asFloat ]).
+	bufB putF16s: ((0 to: n - 1) collect: [ :i | i asFloat ]).
+	bufC putF16s: (Array new: n withAll: 0.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #vectorAddF16:a:b:out:
+		          on: ctx.
+	[
+	kernel bindBuffer: bufA.
+	kernel bindBuffer: bufB.
+	kernel bindBuffer: bufC.
+	kernel prepare.
+	kernel dispatch: 1 y: 1 z: 1.
+	result := bufC getF16s.
+	0 to: n - 1 do: [ :i |
+		self assert: (result at: i + 1) equals: (i * 2) asFloat ] ] ensure: [
+		kernel destroy ] ] ensure: [
+		bufA destroy.
+		bufB destroy.
+		bufC destroy ]
 ]
 
 { #category : 'tests' }

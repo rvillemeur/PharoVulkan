@@ -13,6 +13,24 @@ Class {
 	#tag : 'Example'
 }
 
+{ #category : 'kernels' }
+PVKernelExamples class >> matmulFor: anElementTypeSymbol [
+	^ self >> (self matmulKernels
+		   at: anElementTypeSymbol
+		   ifAbsent: [
+		   PVTypeError signal: 'No matmul kernel for ' , anElementTypeSymbol ])
+]
+
+{ #category : 'kernels' }
+PVKernelExamples class >> matmulKernels [
+	"The matmul written for each element width. One source, so a caller working in either
+	 precision names the precision and the two kernels cannot drift apart in their callers."
+
+	^ Dictionary newFrom: {
+			  (#f32 -> #matmulF32:a:b:out:).
+			  (#f16 -> #matmulF16:a:b:out:) }
+]
+
 { #category : 'examples' }
 PVKernelExamples >> accumulateUpTo: n [
 	<gpu>
@@ -115,6 +133,31 @@ PVKernelExamples >> mat4Mul: m vec: v [
 <param: #mat4 named: #m>
 <param: #vec4 named: #v>
 ^ m * v
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> matmulF16: wi a: a b: b out: output [
+	"The half precision twin of matmulF32:a:b:out:: the same naive row-times-column
+	 product, with the matrices held as halves and the dot product accumulated in float.
+	 Accumulating in half would cost far more accuracy than the storage format itself does,
+	 because the error of an N-term sum grows with N."
+
+	<gpu>
+	<localSize: #( 16 16 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f16 named: #a>
+	<param: #bufferOf_f16 named: #b>
+	<param: #bufferOf_f16 named: #output>
+	| row col n k acc |
+	row := wi x.
+	col := wi y.
+	n := wi gridWidth.
+	acc := 0.0.
+	k := 0.
+	[ k < n ] whileTrue: [
+		acc := acc + ((a at: row * n + k) asF32 * (b at: k * n + col) asF32).
+		k := k + 1 ].
+	output at: row * n + col put: acc asF16
 ]
 
 { #category : 'kernels' }

@@ -58,7 +58,8 @@ self at: 'sqrt' receiverType: #f32 put: (PVSelectorMapping spirvOp: #glslSqrt re
 { #category : 'private' }
 PVSelectorTable >> initializeHalfMappings [
 	"Half precision arithmetic uses the same instructions as single precision, so only the
-	 result type differs; a comparison answers a bool at either width."
+	 result type differs; a comparison answers a bool at either width. The two conversions
+	 let a kernel hold halves and accumulate in float, which a long dot product needs."
 
 	self at: '+' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f16).
 	self at: '-' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFSub resultType: #f16).
@@ -66,6 +67,8 @@ PVSelectorTable >> initializeHalfMappings [
 	self at: '/' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFDiv resultType: #f16).
 	self at: '<' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFOrdLessThan resultType: #bool).
 	self at: '<=' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFOrdLessThanEqual resultType: #bool).
+	self at: 'asF32' receiverType: #f16 put: (PVSelectorMapping spirvOp: #OpFConvert resultType: #f32).
+	self at: 'asF16' receiverType: #f32 put: (PVSelectorMapping spirvOp: #OpFConvert resultType: #f16).
 	self at: 'at:' receiverType: #bufferOf_f16 put: (PVSelectorMapping spirvOp: #bufferLoad resultType: #f16).
 	self at: 'at:put:' receiverType: #bufferOf_f16 put: (PVSelectorMapping spirvOp: #bufferStore resultType: #void)
 ]

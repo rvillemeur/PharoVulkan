@@ -485,6 +485,21 @@ PVCompilerTest >> testHalfKernelLoadsAndStoresHalvesOnly [
 	self assert: widths asArray equals: #( 16 )
 ]
 
+{ #category : 'tests' }
+PVCompilerTest >> testHalfMatmulAccumulatesInSinglePrecision [
+	"Half storage with float arithmetic: a 512-term sum accumulated in half loses far more
+	 than the format's own rounding, so the module must declare both widths and convert
+	 between them."
+
+	| bytes widths |
+	bytes := PVKernelCompiler compile:
+		         (PVKernelExamples >> #matmulF16:a:b:out:).
+	widths := (self operandsOf: SpvOpcode opTypeFloat in: bytes) collect: [
+		          :each | each second ].
+	self assert: widths asSortedCollection asArray equals: #( 16 32 ).
+	self deny: (self operandsOf: SpvOpcode opFConvert in: bytes) isEmpty
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> testInspectorRecognitionViewBuildsARowPerBlock [
 
@@ -537,6 +552,25 @@ PVCompilerTest >> testMatmulKernelEmitsOneLoopAndA2DLocalSize [
 	self assert: (self builtInDecorationsIn: bytes) asSet equals: {
 			SpvBuiltIn globalInvocationId.
 			SpvBuiltIn numWorkgroups } asSet
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testMatmulKernelOfEachElementTypeUsesBuffersOfThatType [
+	"Callers that work in either precision name the precision and get the kernel. The
+	 buffer types come out of the kernel's own pragmas, so a kernel filed under the wrong
+	 element type fails here rather than on the device."
+
+	PVKernelExamples matmulKernels keysDo: [ :each |
+		| params expected |
+		expected := ('bufferOf_' , each) asSymbol.
+		params := (PVTypeAnnotation fromMethod:
+			           (PVKernelExamples matmulFor: each)) params.
+		self assert: params first type equals: #workItem.
+		(params allButFirst collect: [ :one | one type ]) do: [ :one |
+			self assert: one equals: expected ] ].
+	self
+		should: [ PVKernelExamples matmulFor: #f64 ]
+		raise: PVTypeError
 ]
 
 { #category : 'tests' }
@@ -635,6 +669,23 @@ self assert: (st at: 'at:' receiverType: #bufferOf_f32) spirvOp equals: #bufferL
 self assert: (st at: 'at:put:' receiverType: #bufferOf_f32) spirvOp equals: #bufferStore.
 self assert: (st at: 'at:' receiverType: #bufferOf_i32) spirvOp equals: #bufferLoad.
 self assert: (st at: 'at:put:' receiverType: #bufferOf_i32) spirvOp equals: #bufferStore
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSelectorTableMapsConversionsBetweenHalfAndFloat [
+	"Both directions, because a kernel that stores halves and accumulates in float needs
+	 one conversion on the way in and one on the way out."
+
+	| st |
+	st := PVSelectorTable standard.
+	self assert: (st at: 'asF32' receiverType: #f16) spirvOp equals: #OpFConvert.
+	self
+		assert: (st at: 'asF32' receiverType: #f16) resultTypeSymbol
+		equals: #f32.
+	self assert: (st at: 'asF16' receiverType: #f32) spirvOp equals: #OpFConvert.
+	self
+		assert: (st at: 'asF16' receiverType: #f32) resultTypeSymbol
+		equals: #f16
 ]
 
 { #category : 'tests' }

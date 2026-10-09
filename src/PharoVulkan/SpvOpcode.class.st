@@ -93,6 +93,10 @@ SpvOpcode class >> opExtension [           ^ 10
 SpvOpcode class >> opFAdd [                ^ 129
 ]
 
+{ #category : 'converting' }
+SpvOpcode class >> opFConvert [          ^ 115
+]
+
 { #category : 'arithmetic' }
 SpvOpcode class >> opFDiv [                ^ 136
 ]

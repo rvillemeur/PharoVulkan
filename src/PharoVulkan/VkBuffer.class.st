@@ -32,6 +32,18 @@ VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
     ^ self new initializeDevice: aDevice size: byteSize usage: usageFlags
 ]
 
+{ #category : 'instance creation' }
+VkBuffer class >> storageBuffer: count of: anElementTypeSymbol on: aDevice [
+	"One entry point for both element widths, so a caller that works in either precision
+	 holds one branch rather than one per operation."
+
+	anElementTypeSymbol = #f32 ifTrue: [
+		^ self storageBuffer: count on: aDevice ].
+	anElementTypeSymbol = #f16 ifTrue: [
+		^ self storageBufferOfHalves: count on: aDevice ].
+	PVTypeError signal: 'Unknown element type: ' , anElementTypeSymbol
+]
+
 { #category : 'factory' }
 VkBuffer class >> storageBuffer: count on: aDevice [
 	^ self on: aDevice size: count * 4 usage: self storageBufferUsage
@@ -130,6 +142,15 @@ VkBuffer >> destroy [
 ]
 
 { #category : 'accessing' }
+VkBuffer >> elementsAs: anElementTypeSymbol [
+	"Reads the whole buffer back at the width the element type asks for."
+
+	anElementTypeSymbol = #f32 ifTrue: [ ^ self getF32s ].
+	anElementTypeSymbol = #f16 ifTrue: [ ^ self getF16s ].
+	PVTypeError signal: 'Unknown element type: ' , anElementTypeSymbol
+]
+
+{ #category : 'accessing' }
 VkBuffer >> getF16s [
 	| bytes result |
 	bytes := self copyToByteArray.
@@ -179,6 +200,16 @@ VkBuffer >> map [
       mappedPointer := ptrBuf pointerAt: 1.
       ^ mappedPointer
     ] ensure: [ ptrBuf free ]
+]
+
+{ #category : 'accessing' }
+VkBuffer >> put: aNumberCollection as: anElementTypeSymbol [
+	"Writes the values at the width the element type asks for; an unknown type raises
+	 rather than guessing, because the wrong width corrupts the whole buffer."
+
+	anElementTypeSymbol = #f32 ifTrue: [ ^ self putF32s: aNumberCollection ].
+	anElementTypeSymbol = #f16 ifTrue: [ ^ self putF16s: aNumberCollection ].
+	PVTypeError signal: 'Unknown element type: ' , anElementTypeSymbol
 ]
 
 { #category : 'accessing' }

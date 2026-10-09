@@ -176,6 +176,27 @@ VkBindingsTest >> testLibraryLoads [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
+	"The kernel DSL sends asF16 and asF32. The host answers must be the rounding the device
+	 performs, so that running a half kernel's body on the host is a check on the kernel and
+	 not a different calculation."
+
+	{
+		0.0.
+		1.0.
+		-2.5.
+		65504.0.
+		(1 / 3).
+		(1.0 timesTwoPower: -24) } do: [ :each |
+		self
+			assert: each asF16
+			equals: (PVFloat16 floatFromWord: (PVFloat16 wordForFloat: each)).
+		self assert: each asF32 equals: each asFloat ].
+	self assert: 3 asF32 equals: 3.0.
+	self assert: Float infinity asF16 equals: Float infinity
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testPhysicalDeviceProperties [
     | info instance devices props name |
     info := VkInstanceCreateInfo new.

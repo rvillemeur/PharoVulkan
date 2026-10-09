@@ -133,6 +133,18 @@ PVSpirvValidatorTest >> testLocalSizeFromWordsReadsTheDeclaredWorkgroup [
 		equals: PVTypeAnnotation defaultLocalSize
 ]
 
+{ #category : 'tests' }
+PVSpirvValidatorTest >> testMatmulF16 [
+	"The half matmul mixes both float widths in one module, so spirv-val is what says the
+	 OpFConvert operands and the two OpTypeFloat declarations line up."
+
+	self
+		validateSpirv:
+			(PVKernelCompiler compile:
+				 (PVKernelExamples >> #matmulF16:a:b:out:))
+		description: 'matmulF16:a:b:out:'
+]
+
 { #category : 'tests - validating' }
 PVSpirvValidatorTest >> testScalarGpuMethodHasNoEntryPoint [
 	"Pins the documented rule: a <gpu> method whose parameters are all scalars compiles

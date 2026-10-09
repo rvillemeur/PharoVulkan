@@ -1,3 +1,6 @@
+"
+Times the naive matmul kernel of one precision on the device. Build it with on:order:repeats: for the float baseline or on:order:repeats:elementType: for another width, send run to measure, and read the numbers through reportRows or the Benchmark tab. The kernel, the workgroup width and the buffer element width all follow the element type, so the benchmark cannot time one precision and report another. PVPrecisionComparison runs one of these per precision at the same order.
+"
 Class {
 	#name : 'PVBenchmark',
 	#superclass : 'Object',
@@ -5,12 +8,28 @@ Class {
 		'context',
 		'order',
 		'repeats',
-		'result'
+		'result',
+		'elementType'
 	],
 	#category : 'PharoVulkan-Compute',
 	#package : 'PharoVulkan',
 	#tag : 'Compute'
 }
+
+{ #category : 'constants' }
+PVBenchmark class >> defaultElementType [
+	"Float is the baseline every other precision is read against."
+
+	^ #f32
+]
+
+{ #category : 'accessing' }
+PVBenchmark class >> elementTypes [
+	"Every precision a matmul kernel exists for, so a comparison covers what the compiler can
+	 dispatch rather than a list kept here by hand."
+
+	^ PVKernelExamples matmulKernels keys asSortedCollection asArray
+]
 
 { #category : 'examples' }
 PVBenchmark class >> exampleBenchmarkOnOrder64Matmul [
@@ -27,42 +46,72 @@ PVBenchmark class >> exampleBenchmarkOnOrder64Matmul [
 
 ]
 
+{ #category : 'examples' }
+PVBenchmark class >> exampleHalfBenchmarkOnOrder64Matmul [
+	"One click: the half precision matmul timed on its own, so the Benchmark tab names f16 in
+	 its first row. PVPrecisionComparison is the one to open for a ratio against float."
+
+	<sampleInstance>
+	| context |
+	context := VkContext computeContext.
+	^ [ (self on: context order: 64 repeats: 10 elementType: #f16)
+		    run;
+		    yourself ] ensure: [ context destroy ]
+]
+
 { #category : 'accessing' }
-PVBenchmark class >> kernelMethod [
-	"The kernel under measurement."
+PVBenchmark class >> kernelMethodFor: anElementTypeSymbol [
+	"The kernel under measurement for one precision. Unknown precisions raise, because there
+	 is no kernel to time and a float fallback would report the wrong number."
 
-	^ PVKernelExamples >> #matmulF32:a:b:out:
-
+	^ PVKernelExamples matmulFor: anElementTypeSymbol
 ]
 
 { #category : 'instance creation' }
 PVBenchmark class >> on: aContext order: n repeats: count [
-	"The kernel takes N from the dispatch grid, so a grid must exist that covers the
-	 matrix exactly."
+	^ self
+		  on: aContext
+		  order: n
+		  repeats: count
+		  elementType: self defaultElementType
+]
+
+{ #category : 'instance creation' }
+PVBenchmark class >> on: aContext order: n repeats: count elementType: anElementTypeSymbol [
+	"The kernel takes N from the dispatch grid, so a grid must exist that covers the matrix
+	 exactly."
 
 	| width |
-	width := self workgroupWidth.
+	width := self workgroupWidthFor: anElementTypeSymbol.
 	n \\ width = 0 ifFalse: [
 		PVTypeError signal: 'Matrix order ' , n printString
 			, ' is not a multiple of the kernel workgroup width ' , width printString ].
-	^ self new setContext: aContext order: n repeats: count
-
+	^ self new
+		  setContext: aContext
+		  order: n
+		  repeats: count
+		  elementType: anElementTypeSymbol
 ]
 
 { #category : 'accessing' }
-PVBenchmark class >> workgroupWidth [
-	"Asked of the kernel's own <localSize:> pragma, so the benchmark cannot disagree with
-	 the module it dispatches."
+PVBenchmark class >> workgroupWidthFor: anElementTypeSymbol [
+	"Asked of the kernel's own <localSize:> pragma, so the benchmark cannot disagree with the
+	 module it dispatches."
 
-	^ (PVTypeAnnotation fromMethod: self kernelMethod) localSize first
+	^ (PVTypeAnnotation fromMethod: (self kernelMethodFor: anElementTypeSymbol)) localSize
+		  first
+]
 
+{ #category : 'accessing' }
+PVBenchmark >> elementType [
+	^ elementType
 ]
 
 { #category : 'accessing' }
 PVBenchmark >> groupCount [
 	"One invocation per output element, so the grid is the matrix divided by the workgroup."
 
-	^ order // self class workgroupWidth
+	^ order // self workgroupWidth
 ]
 
 { #category : 'private' }
@@ -90,15 +139,23 @@ PVBenchmark >> inspectorBenchmark: aBuilder [
 		  yourself
 ]
 
+{ #category : 'accessing' }
+PVBenchmark >> kernelMethod [
+	^ self class kernelMethodFor: elementType
+]
+
 { #category : 'private' }
 PVBenchmark >> newBuffers [
+	"Three buffers of the precision under measurement, so the bytes moved per dispatch are
+	 the bytes that precision actually moves."
+
 	| a b out |
-	a := VkBuffer storageBuffer: order * order on: context device.
-	b := VkBuffer storageBuffer: order * order on: context device.
-	out := VkBuffer storageBuffer: order * order on: context device.
-	a putF32s: (self inputMatrixWithOffset: 0).
-	b putF32s: (self inputMatrixWithOffset: 1).
-	out putF32s: (Array new: order * order withAll: 0.0).
+	a := VkBuffer storageBuffer: order * order of: elementType on: context device.
+	b := VkBuffer storageBuffer: order * order of: elementType on: context device.
+	out := VkBuffer storageBuffer: order * order of: elementType on: context device.
+	a put: (self inputMatrixWithOffset: 0) as: elementType.
+	b put: (self inputMatrixWithOffset: 1) as: elementType.
+	out put: (Array new: order * order withAll: 0.0) as: elementType.
 	^ {
 		  a.
 		  b.
@@ -115,8 +172,9 @@ PVBenchmark >> reportRows [
 				    (#name -> 'State').
 				    (#value -> 'not run yet') }) } ].
 	^ {
+		  (self rowNamed: 'Element type' value: elementType asString).
 		  (self rowNamed: 'Matrix order' value: result order printString).
-		  (self rowNamed: 'Workgroup width' value: self class workgroupWidth printString).
+		  (self rowNamed: 'Workgroup width' value: self workgroupWidth printString).
 		  (self rowNamed: 'Groups per side' value: self groupCount printString).
 		  (self rowNamed: 'Dispatches timed' value: result repeats printString).
 		  (self rowNamed: 'Milliseconds per dispatch' value: result milliseconds printString).
@@ -154,17 +212,18 @@ PVBenchmark >> run [
 { #category : 'private' }
 PVBenchmark >> runWithBuffers: buffers [
 	| kernel |
-	kernel := PVComputeKernel fromMethod: self class kernelMethod on: context.
+	kernel := PVComputeKernel fromMethod: self kernelMethod on: context.
 	buffers do: [ :each | kernel bindBuffer: each ].
 	kernel prepare.
 	^ [ self timeDispatchesOf: kernel ] ensure: [ kernel destroy ]
 ]
 
 { #category : 'initialization' }
-PVBenchmark >> setContext: aContext order: n repeats: count [
+PVBenchmark >> setContext: aContext order: n repeats: count elementType: anElementTypeSymbol [
 	context := aContext.
 	order := n.
-	repeats := count
+	repeats := count.
+	elementType := anElementTypeSymbol
 ]
 
 { #category : 'private' }
@@ -183,4 +242,9 @@ PVBenchmark >> timeDispatchesOf: aKernel [
 		          milliseconds: (total / repeats) asFloat
 		          repeats: repeats.
 	^ result
+]
+
+{ #category : 'accessing' }
+PVBenchmark >> workgroupWidth [
+	^ self class workgroupWidthFor: elementType
 ]
