@@ -92,6 +92,16 @@ VkStructureType class >> memoryAllocateInfo [        ^ 5
 ]
 
 { #category : 'structure-types' }
+VkStructureType class >> physicalDevice16BitStorageFeatures [
+    ^ 1000083000
+]
+
+{ #category : 'structure-types' }
+VkStructureType class >> physicalDeviceShaderFloat16Int8Features [
+    ^ 1000082000
+]
+
+{ #category : 'structure-types' }
 VkStructureType class >> physicalDeviceSynchronization2Features [
     ^ 1000314007
 ]

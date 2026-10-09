@@ -540,6 +540,15 @@ Vk class >> primCreateInstance: pCreateInfo allocator: pAllocator instanceOut: p
 ]
 
 { #category : 'ffi-primitives' }
+Vk class >> primEnumerateDeviceExtensionProperties: physDevice layerName: pLayerName count: pCount props: pProps [
+    ^ self ffiCall: #( int32 vkEnumerateDeviceExtensionProperties (
+        VkPhysicalDevice_H physDevice,
+        void* pLayerName,
+        void* pCount,
+        void* pProps ) )
+]
+
+{ #category : 'ffi-primitives' }
 Vk class >> primEnumeratePhysicalDevices: instance count: pCount devices: pDevices [
     ^ self ffiCall: #( int32 vkEnumeratePhysicalDevices (
         VkInstance_H instance,

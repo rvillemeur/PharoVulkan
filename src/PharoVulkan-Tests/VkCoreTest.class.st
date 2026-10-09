@@ -62,6 +62,75 @@ VkCoreTest >> testComputeContextCreation [
 	self assert: ctx physicalDevice notNil
 ]
 
+{ #category : 'as yet unclassified' }
+VkCoreTest >> testComputeContextEnablesHalfPrecisionWhenTheDeviceOffersIt [
+	"Half precision is gated rather than assumed, so this states the gate both ways round and
+	 keeps passing on a device without the extensions."
+
+	| wanted |
+	wanted := VkContext halfPrecisionExtensionNames.
+	ctx halfPrecisionAvailable
+		ifTrue: [
+			self assert: (wanted allSatisfy: [ :each |
+					 ctx enabledDeviceExtensionNames includes: each ]) ]
+		ifFalse: [
+			self assert: (wanted anySatisfy: [ :each |
+					 (ctx physicalDevice supportsExtension: each) not ]) ]
+]
+
+{ #category : 'as yet unclassified' }
+VkCoreTest >> testComputeContextEnablesOnlyExtensionsTheDeviceSupports [
+	"Asking for an extension the driver does not have fails device creation, so the enabled
+	 list may never run ahead of what the physical device reports."
+
+	ctx enabledDeviceExtensionNames do: [ :each |
+		self assert: (ctx physicalDevice supportsExtension: each) ]
+]
+
+{ #category : 'as yet unclassified' }
+VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension [
+	"Reads back the struct handed to vkCreateDevice: an extension the context says it enables
+	 counts for nothing unless it reaches that field."
+
+	| queueInfo info |
+	queueInfo := ctx buildDeviceQueueCreateInfo: ctx computeQueueFamily.
+	info := ctx buildDeviceCreateInfo: queueInfo.
+	[
+	self
+		assert: (ctx extensionNamesIn: info) asArray
+		equals: ctx enabledDeviceExtensionNames asArray ] ensure: [
+		ctx freeDeviceCreateInfo: info.
+		(queueInfo pointerAt: 33) free.
+		queueInfo free ]
+]
+
+{ #category : 'as yet unclassified' }
+VkCoreTest >> testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs [
+	"Synchronization2 is always asked for; the two half precision structs follow it only where
+	 the device offers the extensions."
+
+	| queueInfo info types half |
+	queueInfo := ctx buildDeviceQueueCreateInfo: ctx computeQueueFamily.
+	info := ctx buildDeviceCreateInfo: queueInfo.
+	[
+	types := ctx featureChainTypesIn: (info pointerAt: 9).
+	half := {
+		        VkStructureType physicalDeviceShaderFloat16Int8Features.
+		        VkStructureType physicalDevice16BitStorageFeatures }.
+	self
+		assert: types first
+		equals: VkStructureType physicalDeviceSynchronization2Features.
+	ctx halfPrecisionAvailable
+		ifTrue: [
+			self assert: (half allSatisfy: [ :each | types includes: each ]) ]
+		ifFalse: [
+			self assert: (half noneSatisfy: [ :each | types includes: each ]) ] ]
+		ensure: [
+			ctx freeDeviceCreateInfo: info.
+			(queueInfo pointerAt: 33) free.
+			queueInfo free ]
+]
+
 { #category : 'tests' }
 VkCoreTest >> testHalfBufferHoldsTwiceAsManyValuesAsAFloatBuffer [
 	| halves floats |
@@ -96,6 +165,28 @@ VkCoreTest >> testHalfBufferRoundtripSnapsEachValueToItsNearestHalf [
 			(values collect: [ :each |
 				 PVFloat16 floatFromWord: (PVFloat16 wordForFloat: each) ]) ]
 		ensure: [ buf destroy ]
+]
+
+{ #category : 'as yet unclassified' }
+VkCoreTest >> testPhysicalDeviceNamesEveryExtensionItSupports [
+	"Every name the driver reports must be a plain String the gate can match on, and the gate
+	 must agree with the list it was built from."
+
+	| names |
+	names := ctx physicalDevice extensionNames.
+	self deny: names isEmpty.
+	self assert: names asSet size equals: names size.
+	names do: [ :each |
+		self assert: (each beginsWith: VkPhysicalDevice extensionNamePrefix).
+		self assert: (ctx physicalDevice supportsExtension: each) ]
+]
+
+{ #category : 'as yet unclassified' }
+VkCoreTest >> testPhysicalDeviceRejectsAnExtensionItDoesNotHave [
+	"The degenerate names: one no driver can report, and the empty one."
+
+	self deny: (ctx physicalDevice supportsExtension: 'VK_KHR_no_such_extension').
+	self deny: (ctx physicalDevice supportsExtension: '')
 ]
 
 { #category : 'tests' }

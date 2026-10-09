@@ -204,6 +204,23 @@ VkBindingsTest >> testStructureTypeConstants [
     self assert: VkStructureType instanceCreateInfo equals: 1
 ]
 
+{ #category : 'as yet unclassified' }
+VkBindingsTest >> testStructureTypeNamesEveryConstantItDefines [
+	"The reverse lookup is reflective, so it must answer, for every constant the class declares,
+	 a name that carries that same value, and nothing for a value no constant carries."
+
+	| names |
+	names := VkStructureType constantSelectors.
+	self deny: names isEmpty.
+	names do: [ :each |
+		| value |
+		value := VkStructureType perform: each.
+		self
+			assert: (VkStructureType perform: (VkStructureType nameForValue: value))
+			equals: value ].
+	self assert: (VkStructureType nameForValue: -1) isNil
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testVkApplicationInfoSType [
     "VkApplicationInfo initialize must set sType to applicationInfo."

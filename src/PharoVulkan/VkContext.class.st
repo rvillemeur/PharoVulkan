@@ -21,33 +21,83 @@ VkContext class >> computeContext [
     ^ self new initializeCompute
 ]
 
+{ #category : 'constants' }
+VkContext class >> deviceCreateInfoSize [
+    ^ 72
+]
+
+{ #category : 'constants' }
+VkContext class >> featureEnabled [
+    "VK_TRUE."
+    ^ 1
+]
+
 { #category : 'context' }
 VkContext class >> graphicsContextForExtensions: extNames [
     "extNames: Array of String (from SDL_Vulkan_GetInstanceExtensions)."
     ^ self new initializeGraphicsWithExtensions: extNames
 ]
 
-{ #category : 'private' }
+{ #category : 'constants' }
+VkContext class >> halfPrecisionExtensionNames [
+    "Both are needed before a kernel may declare an f16 storage buffer: one for the type,
+     one for 16-bit access to a buffer."
+    ^ #( 'VK_KHR_shader_float16_int8' 'VK_KHR_16bit_storage' )
+]
+
+{ #category : 'constants' }
+VkContext class >> pointerSize [
+    ^ 8
+]
+
+{ #category : 'constants' }
+VkContext class >> shaderFloat16Int8FeaturesSize [
+    ^ 24
+]
+
+{ #category : 'constants' }
+VkContext class >> storage16BitFeaturesSize [
+    ^ 32
+]
+
+{ #category : 'constants' }
+VkContext class >> synchronization2FeaturesSize [
+    ^ 24
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> allocateCString: aString [
+	"Vulkan takes names as NUL-terminated C strings; the caller owns the memory and frees it."
+
+	| bytes buf |
+	bytes := aString asByteArray copyWith: 0.
+	buf := ExternalAddress allocate: bytes size.
+	bytes doWithIndex: [ :byte :i | buf byteAt: i put: byte ].
+	^ buf
+]
+
+{ #category : 'as yet unclassified' }
 VkContext >> buildDeviceCreateInfo: queueInfoBuf [
-    "VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType  8:pNext  16:synchronization2
-     VkDeviceCreateInfo (72 bytes): 0:sType  8:pNext  16:flags  20:queueCreateInfoCount  24:pQueueCreateInfos(ptr)  32:enabledLayerCount  40:ppEnabledLayerNames(ptr)  48:enabledExtensionCount  56:ppEnabledExtensionNames(ptr)  64:pEnabledFeatures(ptr)"
-    | sync2Feat buf |
-    sync2Feat := ExternalAddress allocate: 24.
-    sync2Feat unsignedLongAt: 1  put: VkStructureType physicalDeviceSynchronization2Features.
-    sync2Feat pointerAt:   9  put: ExternalAddress null.
-    sync2Feat unsignedLongAt: 17 put: 1.
-    buf := ExternalAddress allocate: 72.
-    buf unsignedLongAt: 1  put: VkStructureType deviceCreateInfo.
-    buf pointerAt:   9  put: sync2Feat.
-    buf unsignedLongAt: 17 put: 0.
-    buf unsignedLongAt: 21 put: 1.
-    buf pointerAt:   25 put: queueInfoBuf.
-    buf unsignedLongAt: 33 put: 0.
-    buf pointerAt:   41 put: ExternalAddress null.
-    buf unsignedLongAt: 49 put: 0.
-    buf pointerAt:   57 put: ExternalAddress null.
-    buf pointerAt:   65 put: ExternalAddress null.
-    ^ buf
+	"VkDeviceCreateInfo (72 bytes): 0:sType 8:pNext 16:flags 20:queueCreateInfoCount
+	 24:pQueueCreateInfos 32:enabledLayerCount 40:ppEnabledLayerNames 48:enabledExtensionCount
+	 56:ppEnabledExtensionNames 64:pEnabledFeatures.
+	 Everything allocated here is released by freeDeviceCreateInfo:."
+
+	| buf names array |
+	names := self enabledDeviceExtensionNames.
+	array := self buildExtensionNameArray: names.
+	buf := ExternalAddress allocate: self class deviceCreateInfoSize.
+	buf unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
+	buf pointerAt: 9 put: self buildFeatureChain.
+	buf unsignedLongAt: 17 put: 0.
+	buf unsignedLongAt: 21 put: 1.
+	buf pointerAt: 25 put: queueInfoBuf.
+	buf unsignedLongAt: 33 put: 0.
+	buf pointerAt: 41 put: ExternalAddress null.
+	buf unsignedLongAt: 49 put: names size.
+	buf pointerAt: 57 put: (array ifNil: [ ExternalAddress null ]).
+	buf pointerAt: 65 put: ExternalAddress null.
+	^ buf
 ]
 
 { #category : 'private' }
@@ -66,6 +116,69 @@ VkContext >> buildDeviceQueueCreateInfo: familyIndex [
     buf unsignedLongAt: 29 put: 0.
     buf pointerAt: 33 put: priorityBuf.
     ^ buf
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> buildExtensionNameArray: aNameCollection [
+	"Answers nil for an empty list rather than a zero-length allocation, so the create info can
+	 hold a null pointer beside its count of none."
+
+	| array stride |
+	aNameCollection isEmpty ifTrue: [ ^ nil ].
+	stride := self class pointerSize.
+	array := ExternalAddress allocate: aNameCollection size * stride.
+	aNameCollection doWithIndex: [ :each :i |
+		array pointerAt: i - 1 * stride + 1 put: (self allocateCString: each) ].
+	^ array
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> buildFeatureChain [
+	"VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType 8:pNext 16:synchronization2.
+	 Synchronization2 is the project's only sync API, so it is always asked for; half precision
+	 hangs off it when the device has the extensions."
+
+	| sync2 |
+	sync2 := ExternalAddress allocate: self class synchronization2FeaturesSize.
+	sync2
+		unsignedLongAt: 1
+		put: VkStructureType physicalDeviceSynchronization2Features.
+	sync2 pointerAt: 9 put: (self halfPrecisionAvailable
+			 ifTrue: [ self buildHalfPrecisionFeatures ]
+			 ifFalse: [ ExternalAddress null ]).
+	sync2 unsignedLongAt: 17 put: self class featureEnabled.
+	^ sync2
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> buildHalfPrecisionFeatures [
+	"VkPhysicalDeviceShaderFloat16Int8Features (24 bytes): 0:sType 8:pNext 16:shaderFloat16
+	 20:shaderInt8
+	 VkPhysicalDevice16BitStorageFeatures (32 bytes): 0:sType 8:pNext
+	 16:storageBuffer16BitAccess 20:uniformAndStorageBuffer16BitAccess 24:storagePushConstant16
+	 28:storageInputOutput16
+	 ExternalAddress allocate: hands back uninitialised memory, so every field is written,
+	 including the ones left off."
+
+	| float16 storage16 |
+	storage16 := ExternalAddress allocate: self class storage16BitFeaturesSize.
+	storage16
+		unsignedLongAt: 1
+		put: VkStructureType physicalDevice16BitStorageFeatures.
+	storage16 pointerAt: 9 put: ExternalAddress null.
+	storage16 unsignedLongAt: 17 put: self class featureEnabled.
+	storage16 unsignedLongAt: 21 put: 0.
+	storage16 unsignedLongAt: 25 put: 0.
+	storage16 unsignedLongAt: 29 put: 0.
+	float16 := ExternalAddress allocate:
+		           self class shaderFloat16Int8FeaturesSize.
+	float16
+		unsignedLongAt: 1
+		put: VkStructureType physicalDeviceShaderFloat16Int8Features.
+	float16 pointerAt: 9 put: storage16.
+	float16 unsignedLongAt: 17 put: self class featureEnabled.
+	float16 unsignedLongAt: 21 put: 0.
+	^ float16
 ]
 
 { #category : 'accessing' }
@@ -116,24 +229,29 @@ VkContext >> createGraphicsDevice [
     ] ensure: [ queueInfo free ]
 ]
 
-{ #category : 'initialization' }
+{ #category : 'as yet unclassified' }
 VkContext >> createLogicalDevice [
-    | queueInfo deviceInfo devBuf result devHandle |
-    queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
-    [ deviceInfo := self buildDeviceCreateInfo: queueInfo.
-      [ devBuf := ExternalAddress allocate: 8.
-        [ result := Vk createDevice: physicalDevice handle
-            createInfo: deviceInfo
-            allocator: ExternalAddress null
-            deviceOut: devBuf.
-          Vk checkResult: result.
-          devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-          device := VkDevice on: devHandle physicalDevice: physicalDevice context: self
-        ] ensure: [ devBuf free ].
-        (deviceInfo pointerAt: 9) free
-      ] ensure: [ deviceInfo free ].
-      (queueInfo pointerAt: 33) free
-    ] ensure: [ queueInfo free ]
+
+	| queueInfo deviceInfo devBuf result devHandle |
+	queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
+	[
+	deviceInfo := self buildDeviceCreateInfo: queueInfo.
+	[
+	devBuf := ExternalAddress allocate: self class pointerSize.
+	[
+	result := Vk
+		          createDevice: physicalDevice handle
+		          createInfo: deviceInfo
+		          allocator: ExternalAddress null
+		          deviceOut: devBuf.
+	Vk checkResult: result.
+	devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+	device := VkDevice
+		          on: devHandle
+		          physicalDevice: physicalDevice
+		          context: self ] ensure: [ devBuf free ] ] ensure: [
+		self freeDeviceCreateInfo: deviceInfo ].
+	(queueInfo pointerAt: 33) free ] ensure: [ queueInfo free ]
 ]
 
 { #category : 'lifecycle' }
@@ -159,6 +277,46 @@ VkContext >> destroy [
 { #category : 'accessing' }
 VkContext >> device [
     ^ device
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> enabledDeviceExtensionNames [
+	"The device extensions this context asks for, which is the half precision pair where the
+	 device has them and nothing at all where it does not."
+
+	^ self halfPrecisionAvailable
+		  ifTrue: [ self class halfPrecisionExtensionNames ]
+		  ifFalse: [ #() ]
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> extensionNamesIn: aCreateInfo [
+	"Decodes the enabled extension names back out of a create info, reusing the physical
+	 device's decoder so there is one place that walks a Vulkan name."
+
+	| count array stride |
+	count := aCreateInfo unsignedLongAt: 49.
+	array := aCreateInfo pointerAt: 57.
+	(count = 0 or: [ array isNull ]) ifTrue: [ ^ #() ].
+	stride := self class pointerSize.
+	^ (1 to: count) collect: [ :i |
+		  VkPhysicalDevice
+			  extensionNameIn: (array pointerAt: i - 1 * stride + 1)
+			  at: 0 ]
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> featureChainTypesIn: aStruct [
+	"Every struct in a pNext chain starts with its sType and carries its successor at offset 8,
+	 so the chain can be read back without knowing which structs are on it."
+
+	| types current |
+	types := OrderedCollection new.
+	current := aStruct.
+	[ current isNull ] whileFalse: [
+		types add: (current unsignedLongAt: 1).
+		current := current pointerAt: 9 ].
+	^ types asArray
 ]
 
 { #category : 'initialization' }
@@ -193,6 +351,43 @@ VkContext >> fetchGraphicsQueue [
 			                on: (VkQueue_H fromHandle: (buf pointerAt: 1))
 			                familyIndex: computeQueueFamily ] ensure: [
 		                buf free ]
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> freeDeviceCreateInfo: aCreateInfo [
+	"Releases everything buildDeviceCreateInfo: allocated, the create info included: the pNext
+	 chain, the name array, and each name in it."
+
+	| count array stride |
+	self freeFeatureChain: (aCreateInfo pointerAt: 9).
+	count := aCreateInfo unsignedLongAt: 49.
+	array := aCreateInfo pointerAt: 57.
+	stride := self class pointerSize.
+	array isNull ifFalse: [
+		1 to: count do: [ :i | (array pointerAt: i - 1 * stride + 1) free ].
+		array free ].
+	aCreateInfo free
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> freeFeatureChain: aStruct [
+	"Walks the chain forward, keeping the successor before freeing the struct that holds it."
+
+	| current next |
+	current := aStruct.
+	[ current isNull ] whileFalse: [
+		next := current pointerAt: 9.
+		current free.
+		current := next ]
+]
+
+{ #category : 'as yet unclassified' }
+VkContext >> halfPrecisionAvailable [
+	"Asks the driver rather than assuming: the same context must come up on a device that
+	 offers neither extension."
+
+	^ self class halfPrecisionExtensionNames allSatisfy: [ :each |
+		  physicalDevice supportsExtension: each ]
 ]
 
 { #category : 'initialization' }
