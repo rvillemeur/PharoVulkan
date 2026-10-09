@@ -9,6 +9,44 @@ Class {
 	#tag : 'Compiler'
 }
 
+{ #category : 'private - cfg shapes' }
+PVCompilerTest >> assertShapeCompiles: aSelector [
+	"A shape the recogniser does represent must emit a SPIR-V module. Checks the magic
+	 word against SpvSerializer rather than a literal byte pattern."
+
+	| bytes expectedMagic |
+	bytes := PVKernelCompiler compile: (PVCfgShapeFixture >> aSelector).
+	self assert: (bytes isKindOf: ByteArray).
+	expectedMagic := (1 to: 4) collect: [ :i |
+		                 (SpvSerializer spirvMagic bitShift: (i - 1) * -8) bitAnd: 16rFF ].
+	self assert: (bytes first: 4) asArray equals: expectedMagic asArray.
+	^ bytes
+]
+
+{ #category : 'private - cfg shapes' }
+PVCompilerTest >> assertShapeRejected: aSelector [
+	"Every CFG shape the recogniser cannot represent must be refused outright. A shape
+	 that compiles to something is the failure this checks for: the recogniser used to
+	 match the head of the graph and discard the rest, which produced a module that was
+	 either silently wrong or invalid SPIR-V."
+
+	| raised |
+	raised := false.
+	[ PVKernelCompiler compile: (PVCfgShapeFixture >> aSelector) ]
+		on: PVTypeError
+		do: [ :e | raised := true ].
+	self
+		assert: raised
+		description: aSelector , ' compiled instead of raising PVTypeError'
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> recogniserFor: aSelector [
+	^ PVStructuredCFGRecognizer new initialize:
+		  (PVCFGBuilder buildBytecodeBlocks:
+			   (PVBytecodeDecoder decode: (PVCfgShapeFixture >> aSelector)))
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testAlphaClipFragmentCompiles [
 	| bytes |
@@ -36,6 +74,47 @@ PVCompilerTest >> testCFGBuilderSingleBlock [
 	cfg := PVCFGBuilder buildFrom: regOps.
 	self assert: cfg blocks size equals: 1.
 	self assert: cfg entry ops size equals: regOps size
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeLoopThenSelectionRejected [
+	"Emitted OpReturnValue with a bool from a function declared to return an int before
+	 the coverage check existed; spirv-val rejected the module."
+
+	self assertShapeRejected: #loopThenSelection:
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeNestedLoopsRejected [
+	self assertShapeRejected: #nestedLoops:
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeNestedSelectionRejected [
+	self assertShapeRejected: #nestedSelection:
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeOneLoopCompiles [
+	self assertShapeCompiles: #oneLoop:
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeOneSelectionCompiles [
+	self assertShapeCompiles: #oneSelection:
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeSelectionInLoopRejected [
+	self assertShapeRejected: #selectionInLoop:
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeTwoSequentialSelectionsRejected [
+	"Compiled to a module byte-identical to the single-selection one before the
+	 coverage check existed: the second selection was silently dropped."
+
+	self assertShapeRejected: #twoSequentialSelections:
 ]
 
 { #category : 'tests' }
@@ -82,6 +161,15 @@ PVCompilerTest >> testDecodesJumps [
 	self assert: (jumpIf operands first > 0)
 ]
 
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testExampleRecogniserOnLoopKernelIsRecognised [
+
+	| recogniser |
+	recogniser := PVStructuredCFGRecognizer exampleRecogniserOnLoopKernel.
+	self assert: (recogniser recognize isKindOf: PVLoopNode).
+	self assert: (recogniser recognitionReport allSatisfy: [ :each | each value ])
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testFragmentShaderCompiles [
     | bytes |
@@ -109,6 +197,15 @@ self deny: bytes isEmpty.
 self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
 ]
 
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testInspectorRecognitionViewBuildsARowPerBlock [
+
+	| recogniser view |
+	recogniser := self recogniserFor: #oneLoop:.
+	view := recogniser inspectorRecognition: SpPresenter new.
+	self assert: view items size equals: recogniser blocks size
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testLoopKernelCompiles [
 
@@ -134,6 +231,31 @@ PVCompilerTest >> testNormalizeCompiles [
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assert: (bytes copyFrom: 1 to: 4) equals: #[3 2 35 7]
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testRecognitionReportCoversEveryBlockOfARecognisedShape [
+
+	| report |
+	report := (self recogniserFor: #oneLoop:) recognitionReport.
+	self assert: report size equals: 4.
+	self
+		assert: (report allSatisfy: [ :each | each value ])
+		description: 'a recognised node must account for every block'
+]
+
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testRecognitionReportCoversNothingWhenShapeIsRefused [
+	"Two sequential selections match the recogniser pattern at the head of the graph.
+	 Covering only part of it is what used to be accepted, so the report must show the
+	 refusal as no coverage at all rather than as a partial match."
+
+	| recogniser report |
+	recogniser := self recogniserFor: #twoSequentialSelections:.
+	report := recogniser recognitionReport.
+	self assert: recogniser recognize isNil.
+	self assert: report size equals: recogniser blocks size.
+	self assert: (report noneSatisfy: [ :each | each value ])
 ]
 
 { #category : 'tests' }
