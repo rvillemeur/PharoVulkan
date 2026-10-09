@@ -25,43 +25,81 @@ Class {
 	#tag : 'Example'
 }
 
+{ #category : 'constants' }
+PVHelloTriangleScene class >> exampleExtent [
+	^ 800 @ 600
+]
+
+{ #category : 'constants' }
+PVHelloTriangleScene class >> exampleFrameCount [
+	^ 300
+]
+
+{ #category : 'constants' }
+PVHelloTriangleScene class >> liveLabel [
+	^ 'live'
+]
+
 { #category : 'instance creation' }
 PVHelloTriangleScene class >> prepare: aVkContext backendWindow: aBackendWindow [
-    ^ self new initializeCtx: aVkContext backendWindow: aBackendWindow
+	"Answer a prepared scene, or nothing at all. A raise part-way through
+	 initialisation would otherwise strand the Vulkan objects already created on an
+	 instance no caller ever receives, so there would be no way left to destroy them.
+	 destroy tolerates nil slots, so it is safe on a half-initialised scene."
+
+	| scene |
+	scene := self new.
+	[ scene initializeCtx: aVkContext backendWindow: aBackendWindow ]
+		ifCurtailed: [ scene destroy ].
+	^ scene
+]
+
+{ #category : 'constants' }
+PVHelloTriangleScene class >> releasedLabel [
+	^ 'released'
 ]
 
 { #category : 'examples' }
 PVHelloTriangleScene class >> renderTriangle [
-	"Open window"
+	"Open a window, render exampleFrameCount frames, then tear everything down.
+	 Every acquired resource is released by an ensure: block, in reverse order of
+	 creation: scene, then context, then window, then the OSWindow driver. A raise
+	 or a user interrupt mid-loop must not leave a live VkInstance, an SDL window
+	 still registered with the driver, or the driver itself swapped out — with the
+	 validation layers off, that state resurfaces as a segfault on the next run."
 
 	<sampleInstance>
-	| attrs win backendWin ctx scene |
-	PVVulkanDriver install.
+	| attrs |
 	attrs := PVWindowAttributes newVulkan.
 	attrs
-		title: 'Hello Triangle';
-		extent: 800 @ 600;
+		title: self windowTitle;
+		extent: self exampleExtent;
 		windowCentered: true.
-	win := OSWindow createWithAttributes: attrs.
-	backendWin := win backendWindow.
+	^ PVVulkanDriver installDuring: [
+		  | win |
+		  win := OSWindow createWithAttributes: attrs.
+		  [ | backendWin ctx |
+		  backendWin := win backendWindow.
+		  ctx := VkContext graphicsContextForExtensions:
+			         backendWin requiredInstanceExtensions.
+		  [ | scene |
+		  scene := self prepare: ctx backendWindow: backendWin.
+		  [ 1 to: self exampleFrameCount do: [ :i | scene renderFrame ] ]
+			  ensure: [ scene destroy ].
+		  scene ] ensure: [ ctx destroy ] ] ensure: [ win destroy ] ]
+]
 
-	"Create context + scene"
-	ctx := VkContext graphicsContextForExtensions:
-		       backendWin requiredInstanceExtensions.
-	scene := PVHelloTriangleScene prepare: ctx backendWindow: backendWin.
+{ #category : 'constants' }
+PVHelloTriangleScene class >> unownedSlotNames [
+	"Slots the scene reads but does not destroy. The context outlives the scene: the
+	 caller that created it destroys it, and destroy only waits on its queue."
 
-	"Render loop"
-	1 to: 300 do: [ :i | scene renderFrame ].
+	^ #( #ctx )
+]
 
-	"Tear down"
-	ctx computeQueue waitIdle.
-	scene destroy.
-	ctx destroy.
-	win destroy.
-
-	"Restore default driver"
-	PVVulkanDriver uninstall.
-	^ scene
+{ #category : 'constants' }
+PVHelloTriangleScene class >> windowTitle [
+	^ 'Hello Triangle'
 ]
 
 { #category : 'private' }
@@ -202,9 +240,13 @@ PVHelloTriangleScene >> buildVertexShader [
 PVHelloTriangleScene >> commandPool [ ^ commandPool
 ]
 
-{ #category : 'lifecycle' }
+{ #category : 'initialization' }
 PVHelloTriangleScene >> destroy [
+	"Release every owned object in reverse creation order, nilling each slot so the
+	 method is safe to run twice: it is reached from ensure: blocks that may already
+	 have run once on the same scene. The context is not owned here, only waited on."
 
+	self waitForIdleGpu.
 	inFlightFence ifNotNil: [
 			inFlightFence destroy.
 			inFlightFence := nil ].
@@ -287,6 +329,42 @@ PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow 
 	inFlightFence := VkFenceWrapper createSignaledDevice: ctx device
 ]
 
+{ #category : 'inspecting' }
+PVHelloTriangleScene >> inspectorLifecycle: aBuilder [
+	"Show which owned objects the scene is still holding. Reads the live slots through
+	 lifecycleReport, so it cannot drift from what destroy actually releases: after a
+	 complete teardown every row reads released except the slots the scene never owned."
+
+	<inspectorPresentationOrder: 30 title: 'Lifecycle'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn
+				   title: 'Slot'
+				   evaluated: [ :each | each key asString ]);
+		  addColumn: (SpStringTableColumn
+				   title: 'State'
+				   evaluated: [ :each | each value ]);
+		  addColumn: (SpStringTableColumn
+				   title: 'Owned'
+				   evaluated: [ :each |
+					   (self class unownedSlotNames includes: each key)
+						   ifTrue: [ 'no' ]
+						   ifFalse: [ 'yes' ] ]);
+		  items: self lifecycleReport;
+		  yourself
+]
+
+{ #category : 'inspecting' }
+PVHelloTriangleScene >> lifecycleReport [
+	"Each slot paired with whether the scene is still holding something in it.
+	 Reflects over the class own slots instead of naming them, so an owned object
+	 added later cannot be left out of the report."
+
+	^ self class allInstVarNames collect: [ :each |
+		  each -> ((self instVarNamed: each)
+			   ifNil: [ self class releasedLabel ]
+			   ifNotNil: [ self class liveLabel ]) ]
+]
+
 { #category : 'accessing' }
 PVHelloTriangleScene >> pipeline [ ^ pipeline
 ]
@@ -343,4 +421,17 @@ PVHelloTriangleScene >> seeClassSide [
 
 { #category : 'accessing' }
 PVHelloTriangleScene >> swapchain [ ^ swapchain
+]
+
+{ #category : 'initialization' }
+PVHelloTriangleScene >> waitForIdleGpu [
+	"Block until the device has finished every submitted command. destroy is reached
+	 from an ensure: block, so the render loop may have been aborted with work still in
+	 flight; destroying a resource the GPU is still reading is undefined behaviour and
+	 shows up as a segfault once the validation layers are off. The context is not owned
+	 here, so a context already destroyed or never prepared is simply skipped."
+
+	ctx ifNil: [ ^ self ].
+	(ctx device notNil and: [ ctx computeQueue notNil ]) ifFalse: [ ^ self ].
+	ctx computeQueue waitIdle
 ]

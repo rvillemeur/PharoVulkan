@@ -11,13 +11,43 @@ Class {
 
 { #category : 'driver management' }
 PVVulkanDriver class >> install [
+	"Prefer installDuring:, which cannot leave the driver swapped if the caller raises."
 
-	OSWindowDriver driverClass: self
+	self quietlySetDriverClass: self
+]
+
+{ #category : 'driver management' }
+PVVulkanDriver class >> installDuring: aBlock [
+	"Install self as the OSWindow driver for the duration of aBlock, then restore
+	 whatever was installed before. Callers must use this rather than install and
+	 uninstall: a raise between the two leaves the image with a swapped driver and a
+	 registered window that SDL keeps dispatching events to."
+
+	| previous |
+	previous := OSWindowDriver driverClass.
+	self quietlySetDriverClass: self.
+	^ aBlock ensure: [ self quietlySetDriverClass: previous ]
+]
+
+{ #category : 'driver management' }
+PVVulkanDriver class >> quietlySetDriverClass: aDriverClass [
+	"Swap the OSWindow driver without the dialog Pharo shows on every swap.
+	 OSWindowDriver class >> driverClassFromSystem: ends with an inform: telling the
+	 user to restart the image; that advice does not apply here, because the same
+	 method also nils the cached driver instance, so the swap takes effect on the next
+	 window creation. An example swaps twice, which would mean two dialogs per run.
+	 Only the swap itself runs non-interactively, never caller code, so a genuine error
+	 raised inside an installDuring: block still opens a debugger as usual."
+
+	UIManager nonInteractiveDuring: [ OSWindowDriver driverClass: aDriverClass ]
 ]
 
 { #category : 'driver management' }
 PVVulkanDriver class >> uninstall [
-    OSWindowDriver driverClass: OSSDL2Driver
+	"Restores the stock SDL2 driver. Only correct if that is what was installed before;
+	 installDuring: restores the actual previous driver instead."
+
+	self quietlySetDriverClass: OSSDL2Driver
 ]
 
 { #category : 'window creation and deletion' }

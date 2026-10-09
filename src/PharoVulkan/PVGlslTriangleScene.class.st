@@ -11,22 +11,17 @@ Class {
 
 { #category : 'examples' }
 PVGlslTriangleScene class >> renderTriangle [
+	"Same lifecycle as the superclass; redefined only so the example button shows up
+	 on this class too, since the sampleInstance pragma is not looked up in
+	 superclasses. windowTitle supplies the only difference."
+
 	<sampleInstance>
-	| attrs win backendWin ctx scene |
-	PVVulkanDriver install.
-	attrs := PVWindowAttributes newVulkan.
-	attrs title: 'GLSL Triangle'; extent: 800 @ 600; windowCentered: true.
-	win := OSWindow createWithAttributes: attrs.
-	backendWin := win backendWindow.
-	ctx := VkContext graphicsContextForExtensions: backendWin requiredInstanceExtensions.
-	scene := self prepare: ctx backendWindow: backendWin.
-	1 to: 300 do: [ :i | scene renderFrame ].
-	ctx computeQueue waitIdle.
-	scene destroy.
-	ctx destroy.
-	win destroy.
-	PVVulkanDriver uninstall.
-	^ scene
+	^ super renderTriangle
+]
+
+{ #category : 'constants' }
+PVGlslTriangleScene class >> windowTitle [
+	^ 'GLSL Triangle'
 ]
 
 { #category : 'private' }
