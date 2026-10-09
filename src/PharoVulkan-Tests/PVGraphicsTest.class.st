@@ -9,6 +9,20 @@ Class {
 	#tag : 'Graphics'
 }
 
+{ #category : 'private' }
+PVGraphicsTest >> assertValidSpirv: bytes description: aDescription [
+	"A magic-number check only proves the first four bytes. Ask spirv-val for the verdict
+	 on the whole module, and skip rather than fail when the tool is not installed."
+	| validator |
+	self assert: bytes class equals: ByteArray.
+	self deny: bytes isEmpty.
+	PVSpirvValidator isAvailable ifFalse: [ self skip ].
+	validator := PVSpirvValidator on: bytes.
+	self
+		assert: validator isValid
+		description: aDescription , ' produced invalid SPIR-V: ' , validator validationOutput
+]
+
 { #category : 'tests - driver lifecycle' }
 PVGraphicsTest >> testDriverInstallDuringKeepsUiManagerAndDoesNotPrompt [
 
@@ -53,15 +67,23 @@ PVGraphicsTest >> testDriverInstallDuringRestoresDriverOnException [
 
 { #category : 'tests' }
 PVGraphicsTest >> testFragmentShaderBuilds [
+	self
+		assertValidSpirv: PVHelloTriangleScene new buildFragmentShader
+		description: 'PVHelloTriangleScene buildFragmentShader'
+]
 
-	| bytes |
-	bytes := PVHelloTriangleScene new buildFragmentShader.
-	self assert: (bytes isKindOf: ByteArray).
-	self assert: bytes size > 20.
-	self assert: bytes first equals: 3.
-	self assert: (bytes at: 2) equals: 2.
-	self assert: (bytes at: 3) equals: 35.
-	self assert: (bytes at: 4) equals: 7
+{ #category : 'tests' }
+PVGraphicsTest >> testGlslSceneFragmentShaderBuilds [
+	self
+		assertValidSpirv: PVGlslTriangleScene new buildFragmentShader
+		description: 'PVGlslTriangleScene buildFragmentShader'
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testGlslSceneVertexShaderBuilds [
+	self
+		assertValidSpirv: PVGlslTriangleScene new buildVertexShader
+		description: 'PVGlslTriangleScene buildVertexShader'
 ]
 
 { #category : 'tests - lifecycle report' }
@@ -146,13 +168,7 @@ PVGraphicsTest >> testVertexDataSize [
 
 { #category : 'tests' }
 PVGraphicsTest >> testVertexShaderBuilds [
-
-	| bytes |
-	bytes := PVHelloTriangleScene new buildVertexShader.
-	self assert: (bytes isKindOf: ByteArray).
-	self assert: bytes size > 20.
-	self assert: bytes first equals: 3.
-	self assert: (bytes at: 2) equals: 2.
-	self assert: (bytes at: 3) equals: 35.
-	self assert: (bytes at: 4) equals: 7
+	self
+		assertValidSpirv: PVHelloTriangleScene new buildVertexShader
+		description: 'PVHelloTriangleScene buildVertexShader'
 ]

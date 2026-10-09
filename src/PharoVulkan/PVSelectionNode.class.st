@@ -26,6 +26,16 @@ PVSelectionNode >> condBlock: b [
 ]
 
 { #category : 'accessing' }
+PVSelectionNode >> coveredBlocks [
+	"Every bytecode block this node accounts for. The recogniser compares this against
+	 the whole block list, so a node is never used to describe a graph that has more in
+	 it than the node can emit."
+
+	^ ({ condBlock } , trueBlocks , falseBlocks , { mergeBlock }) reject: [ :each |
+		  each isNil ]
+]
+
+{ #category : 'accessing' }
 PVSelectionNode >> falseBlocks [
 ^ falseBlocks
 ]
