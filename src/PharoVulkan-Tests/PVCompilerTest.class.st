@@ -56,6 +56,33 @@ PVCompilerTest >> assertSpirvMagic: bytes description: aDescription [
 			, actual printString
 ]
 
+{ #category : 'private - cfg shapes' }
+PVCompilerTest >> opcodeCountsIn: bytes [
+	"Decode the instruction stream of a SPIR-V module and count opcodes. A test about
+	 control flow has to state a fact about the instructions, because spirv-val cannot see
+	 a dropped loop: a straight-line kernel is valid SPIR-V."
+
+	| headerWordCount words counts index |
+	headerWordCount := 5.
+	words := (1 to: bytes size by: 4) collect: [ :each |
+		         (bytes at: each) + ((bytes at: each + 1) bitShift: 8)
+		         + ((bytes at: each + 2) bitShift: 16)
+		         + ((bytes at: each + 3) bitShift: 24) ].
+	counts := Dictionary new.
+	index := headerWordCount + 1.
+	[ index <= words size ] whileTrue: [
+		| word wordCount opcode |
+		word := words at: index.
+		wordCount := word bitShift: -16.
+		opcode := word bitAnd: 16rFFFF.
+		self
+			assert: wordCount > 0
+			description: 'instruction with zero word count at word ' , index printString.
+		counts at: opcode put: (counts at: opcode ifAbsent: [ 0 ]) + 1.
+		index := index + wordCount ].
+	^ counts
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> recogniserFor: aSelector [
 	^ PVStructuredCFGRecognizer new initialize:
@@ -140,6 +167,60 @@ bytes := PVKernelCompiler compile: (PVKernelExamples >> #clampF32:lo:hi:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testClampCompiles'
+]
+
+{ #category : 'tests - compute control flow' }
+PVCompilerTest >> testComputeLoopKernelEmitsOneLoopMerge [
+	"A whileTrue: in a compute kernel must become a real SPIR-V loop. The compute path
+	 used to return before the recogniser ran, so the body was emitted once into a single
+	 basic block and spirv-val still passed the module."
+
+	| counts |
+	counts := self opcodeCountsIn: (PVKernelCompiler compile: (PVCfgShapeFixture >> #computeLoopSum:data:out:)).
+	self
+		assert: (counts at: SpvOpcode opLoopMerge ifAbsent: [ 0 ])
+		equals: 1.
+	self
+		assert: (counts at: SpvOpcode opBranchConditional ifAbsent: [ 0 ])
+		equals: 1.
+	self
+		assert: (counts at: SpvOpcode opPhi ifAbsent: [ 0 ]) > 0
+		description: 'a loop carrying a counter and an accumulator needs phi nodes'
+]
+
+{ #category : 'tests - compute control flow' }
+PVCompilerTest >> testComputeNestedLoopsRejected [
+	"The compute path must refuse what it cannot represent instead of emitting the head of
+	 the graph and discarding the rest."
+
+	self assertShapeRejected: #computeNestedLoops:data:out:
+]
+
+{ #category : 'tests - compute control flow' }
+PVCompilerTest >> testComputeSelectionKernelEmitsSelectionMerge [
+	"An ifTrue:ifFalse: in a compute kernel must become a real SPIR-V selection. This
+	 raised PVTypeError: No mapping for at:put: before the compute path ran the
+	 recogniser."
+
+	| counts |
+	counts := self opcodeCountsIn: (PVKernelCompiler compile: (PVCfgShapeFixture >> #computeSelectionClamp:data:out:)).
+	self
+		assert: (counts at: SpvOpcode opSelectionMerge ifAbsent: [ 0 ])
+		equals: 1.
+	self
+		assert: (counts at: SpvOpcode opBranchConditional ifAbsent: [ 0 ])
+		equals: 1.
+	self
+		assert: (counts at: SpvOpcode opPhi ifAbsent: [ 0 ])
+		equals: 1
+]
+
+{ #category : 'tests - compute control flow' }
+PVCompilerTest >> testComputeSequentialSelectionsRejected [
+	"Sequence is refused as firmly as nesting: one construct per method, on the compute
+	 path too."
+
+	self assertShapeRejected: #computeTwoSequentialSelections:data:out:
 ]
 
 { #category : 'tests' }

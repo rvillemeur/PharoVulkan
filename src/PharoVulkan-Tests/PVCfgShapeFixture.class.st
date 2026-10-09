@@ -9,6 +9,77 @@ Class {
 	#tag : 'Compiler'
 }
 
+{ #category : 'recognised shapes' }
+PVCfgShapeFixture >> computeLoopSum: aWorkItem data: aBuffer out: anOutput [
+	"One whileTrue: in a compute kernel. The loop was flattened to a single pass before
+	 the compute path ran the recogniser, and the module still passed spirv-val."
+
+	<gpu>
+	<param: #workItem named: #aWorkItem>
+	<param: #bufferOf_f32 named: #aBuffer>
+	<param: #bufferOf_f32 named: #anOutput>
+	| i acc |
+	i := 0.
+	acc := 0.0.
+	[ i < 16 ] whileTrue: [
+		acc := acc + (aBuffer at: i).
+		i := i + 1 ].
+	anOutput at: aWorkItem x put: acc
+]
+
+{ #category : 'rejected shapes' }
+PVCfgShapeFixture >> computeNestedLoops: aWorkItem data: aBuffer out: anOutput [
+	"Loop inside a loop body, in a compute kernel. The compute path must refuse it the
+	 same way the scalar path does."
+
+	<gpu>
+	<param: #workItem named: #aWorkItem>
+	<param: #bufferOf_f32 named: #aBuffer>
+	<param: #bufferOf_f32 named: #anOutput>
+	| i j acc |
+	i := 0.
+	acc := 0.0.
+	[ i < 4 ] whileTrue: [
+		j := 0.
+		[ j < 4 ] whileTrue: [
+			acc := acc + (aBuffer at: j).
+			j := j + 1 ].
+		i := i + 1 ].
+	anOutput at: aWorkItem x put: acc
+]
+
+{ #category : 'recognised shapes' }
+PVCfgShapeFixture >> computeSelectionClamp: aWorkItem data: aBuffer out: anOutput [
+	"One ifTrue:ifFalse: in a compute kernel. Raised PVTypeError: No mapping for at:put:
+	 before the compute path ran the recogniser, because type inference saw the register
+	 numbering of the whole-method simulation rather than of the blocks."
+
+	<gpu>
+	<param: #workItem named: #aWorkItem>
+	<param: #bufferOf_f32 named: #aBuffer>
+	<param: #bufferOf_f32 named: #anOutput>
+	| v r |
+	v := aBuffer at: aWorkItem x.
+	r := v < 0.0 ifTrue: [ 0.0 ] ifFalse: [ v ].
+	anOutput at: aWorkItem x put: r
+]
+
+{ #category : 'rejected shapes' }
+PVCfgShapeFixture >> computeTwoSequentialSelections: aWorkItem data: aBuffer out: anOutput [
+	"Two selections one after the other, in a compute kernel. The sequence case is the one
+	 the coverage check in PVStructuredCFGRecognizer exists to refuse."
+
+	<gpu>
+	<param: #workItem named: #aWorkItem>
+	<param: #bufferOf_f32 named: #aBuffer>
+	<param: #bufferOf_f32 named: #anOutput>
+	| v r |
+	v := aBuffer at: aWorkItem x.
+	r := v < 0.0 ifTrue: [ 0.0 ] ifFalse: [ v ].
+	r := r < 1.0 ifTrue: [ r ] ifFalse: [ 1.0 ].
+	anOutput at: aWorkItem x put: r
+]
+
 { #category : 'rejected shapes' }
 PVCfgShapeFixture >> loopThenSelection: n [
 	"A loop followed by a selection. Emitted a module returning a bool from a function

@@ -62,6 +62,22 @@ PVKernelExamples >> clampF32: x lo: lo hi: hi [
 ^ x clamp: lo to: hi
 ]
 
+{ #category : 'kernels' }
+PVKernelExamples >> clampNegatives: wi data: data out: output [
+	"A compute kernel whose body is one ifTrue:ifFalse:. Negative inputs become zero."
+
+	<gpu>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	| v r |
+	v := data at: wi x.
+	r := v < 0.0
+		     ifTrue: [ 0.0 ]
+		     ifFalse: [ v ].
+	output at: wi x put: r
+]
+
 { #category : 'examples' }
 PVKernelExamples >> dotOfA: a b: b [
     <gpuVertex>
@@ -129,6 +145,24 @@ PVKernelExamples >> sqrtF32: x [
 <gpu>
 <param: #f32 named: #x>
 ^ x sqrt
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> sumFirst16: wi data: data out: output [
+	"A compute kernel whose body is one whileTrue:. Every invocation sums the first
+	 16 elements of data and writes the total to its own slot."
+
+	<gpu>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	| i acc |
+	i := 0.
+	acc := 0.0.
+	[ i < 16 ] whileTrue: [
+		acc := acc + (data at: i).
+		i := i + 1 ].
+	output at: wi x put: acc
 ]
 
 { #category : 'examples' }

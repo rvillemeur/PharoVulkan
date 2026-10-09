@@ -79,9 +79,9 @@ PVKernelCompiler >> compile [
 	st := PVSelectorTable standard.
 	typeInf := PVTypeInferencer new initialize annotation: annotation.
 	[ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
-	isCompute ifTrue: [
-		^ PVSPIRVEmitter compileComputeKernel: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
 	blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
+	isCompute ifTrue: [
+		^ self compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st ].
 	blocks size = 1 ifTrue: [
 		| cfg ssaCFG |
 		cfg := PVCFGBuilder buildFrom: regOps.
@@ -94,6 +94,37 @@ PVKernelCompiler >> compile [
 	(structNode isKindOf: PVLoopNode) ifTrue: [
 		^ PVSPIRVEmitter compileLoop: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
 	PVTypeError signal: 'Unrecognized control flow node: ' , structNode class name
+]
+
+{ #category : 'compiling' }
+PVKernelCompiler >> compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st [
+	"A compute kernel with control flow must go through the recogniser like any other
+	 kernel. Returning straight to compileComputeKernel: emitted the linearised register
+	 ops as one basic block, which dropped the loop and still passed spirv-val. The two
+	 structured emitters infer their own types, because the per-block simulations number
+	 registers differently from the whole-method one that typeMap came from."
+
+	| structNode |
+	blocks size = 1 ifTrue: [
+		^ PVSPIRVEmitter
+			  compileComputeKernel: regOps
+			  annotation: annotation
+			  typeMap: typeMap
+			  selectorTable: st ].
+	structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
+	structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].
+	(structNode isKindOf: PVLoopNode) ifTrue: [
+		^ PVSPIRVEmitter
+			  compileComputeKernelLoop: structNode
+			  annotation: annotation
+			  selectorTable: st ].
+	(structNode isKindOf: PVSelectionNode) ifTrue: [
+		^ PVSPIRVEmitter
+			  compileComputeKernelSelection: structNode
+			  annotation: annotation
+			  selectorTable: st ].
+	PVTypeError signal:
+		'Unrecognized control flow node: ' , structNode class name
 ]
 
 { #category : 'accessing' }

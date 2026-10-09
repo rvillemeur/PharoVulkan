@@ -110,6 +110,62 @@ PVComputeTest >> tearDown [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testComputeLoopSumOnDevice [
+	"The loop kernel must produce the right numbers on the device. spirv-val cannot see a
+	 dropped loop — a straight-line kernel is valid SPIR-V — so only a GPU run proves the
+	 loop ran all 16 iterations."
+
+	| n bufIn bufOut kernel result expected |
+	n := 64.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	bufIn putF32s: ((0 to: n - 1) asArray collect: [ :i | i asFloat ]).
+	bufOut putF32s: (Array new: n withAll: 0.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVCfgShapeFixture >> #computeLoopSum:data:out:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: 1 y: 1 z: 1.
+	result := bufOut getF32s.
+	expected := (0 to: 15) inject: 0.0 into: [ :acc :i | acc + i ].
+	1 to: n do: [ :i | self assert: (result at: i) closeTo: expected ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testComputeSelectionClampOnDevice [
+	"The selection kernel must clamp negatives to zero on the device, which proves both
+	 arms of the OpBranchConditional and the OpPhi that joins them."
+
+	| n bufIn bufOut kernel input result |
+	n := 64.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	input := (0 to: n - 1) asArray collect: [ :i | i - 32 ].
+	bufIn putF32s: (input collect: [ :each | each asFloat ]).
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVCfgShapeFixture >> #computeSelectionClamp:data:out:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: 1 y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: n do: [ :i |
+		self assert: (result at: i) closeTo: ((input at: i) asFloat max: 0.0) ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testVectorAdd [
 	"c[i] = a[i] + b[i] for i in [0,63]. LocalSize=64, dispatch 1 group."
 	| n spirv bufA bufB bufC kernel result |

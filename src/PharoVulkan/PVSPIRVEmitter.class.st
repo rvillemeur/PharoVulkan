@@ -15,58 +15,73 @@ Class {
 	#tag : 'Compiler-Pipeline'
 }
 
+{ #category : 'constants' }
+PVSPIRVEmitter class >> bufferMemberIndex [
+	"A kernel buffer struct holds exactly one member: the runtime array."
+	^ 0
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> bufferMemberOffset [
+	^ 0
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileComputeKernel: regOps annotation: ann typeMap: typeMap selectorTable: st [
-	| em mod u32T v3u32T pV3u32InT voidT voidFnT spvFunc blk interfaces binding decoratedRtas |
+	"A straight-line compute kernel: one basic block between the interface prologue and
+	 OpReturn. Kernels holding control flow go through compileComputeKernelLoop: or
+	 compileComputeKernelSelection:."
+
+	| em mod spvFunc blk interfaces |
 	em := self new.
 	em annotation: ann.
 	mod := em module.
 	mod addCapability: 1.
 	mod setAddressingModel: 0 memoryModel: 1.
-	u32T := mod typeRegistry intType: 32 signed: false.
-	v3u32T := mod typeRegistry vectorType: u32T count: 3.
-	pV3u32InT := mod typeRegistry pointerType: SpvStorageClass input type: v3u32T.
-	interfaces := OrderedCollection new.
-	decoratedRtas := Set new.
-	binding := 0.
-	ann params doWithIndex: [ :p :i |
-		p type = #workItem ifTrue: [
-			| gVar |
-			gVar := SpvGlobalVariable new id: mod newId; type: pV3u32InT; storageClass: SpvStorageClass input; yourself.
-			mod addGlobalVariable: gVar.
-			interfaces add: gVar.
-			em regMap at: i put: gVar id.
-			mod addDecoration: gVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn globalInvocationId }
-		] ifFalse: [
-			| elemType rtaT structT pStructT bVar |
-			elemType := p type = #bufferOf_i32
-				ifTrue: [ mod typeRegistry intType: 32 signed: true ]
-				ifFalse: [ mod typeRegistry floatType: 32 ].
-			rtaT := mod typeRegistry runtimeArrayType: elemType.
-			structT := mod typeRegistry structType: { rtaT }.
-			pStructT := mod typeRegistry pointerType: SpvStorageClass storageBuffer type: structT.
-			(decoratedRtas includes: rtaT id) ifFalse: [
-				mod addDecoration: rtaT id decoration: SpvDecoration arrayStride literals: { 4 }.
-				mod addDecoration: structT id decoration: SpvDecoration block literals: #().
-				mod addMemberDecoration: structT id member: 0 decoration: SpvDecoration offset literals: { 0 }.
-				decoratedRtas add: rtaT id ].
-			bVar := SpvGlobalVariable new id: mod newId; type: pStructT; storageClass: SpvStorageClass storageBuffer; yourself.
-			mod addGlobalVariable: bVar.
-			interfaces add: bVar.
-			em regMap at: i put: bVar id.
-			mod addDecoration: bVar id decoration: SpvDecoration descriptorSet literals: { 0 }.
-			mod addDecoration: bVar id decoration: SpvDecoration binding literals: { binding }.
-			binding := binding + 1 ] ].
-	voidT := mod typeRegistry voidType.
-	voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
-	spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+	interfaces := em emitComputeInterfaces.
+	spvFunc := em newComputeMainFunction.
 	blk := spvFunc addBlock.
 	regOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: blk ].
 	blk isTerminated ifFalse: [ blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
-	mod addFunction: spvFunc.
-	mod addEntryPoint: spvFunc executionModel: SpvExecutionModel glCompute name: 'main' interfaces: interfaces asArray.
-	mod addExecutionMode: spvFunc mode: SpvExecutionMode localSize literals: #(64 1 1).
-	^ mod serialize
+	^ em finishComputeMain: spvFunc interfaces: interfaces
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> compileComputeKernelLoop: loopNode annotation: ann selectorTable: st [
+	"A compute entry point whose body is one whileTrue:. Unlike the other compile methods
+	 this one takes no typeMap: the types have to be inferred over the register numbering
+	 the per-block simulations produce, which is not the numbering the whole-method
+	 simulation produces. Passing the whole-method map in was what made a compute kernel
+	 with a selection raise No mapping for at:put:."
+
+	| em interfaces sims phis |
+	em := self new.
+	em annotation: ann.
+	em module addCapability: 1.
+	em module setAddressingModel: 0 memoryModel: 1.
+	interfaces := em emitComputeInterfaces.
+	sims := self computeLoopSimulations: loopNode annotation: ann selectorTable: st.
+	phis := self loopPhisFrom: (sims at: #preheader) latch: (sims at: #latch).
+	^ em
+		  finishComputeMain: (em emitComputeLoopFrom: sims phis: phis selectorTable: st)
+		  interfaces: interfaces
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> compileComputeKernelSelection: selNode annotation: ann selectorTable: st [
+	"A compute entry point whose body is one ifTrue:ifFalse:. Takes no typeMap for the
+	 reason given in compileComputeKernelLoop:."
+
+	| em interfaces sims |
+	em := self new.
+	em annotation: ann.
+	em module addCapability: 1.
+	em module setAddressingModel: 0 memoryModel: 1.
+	interfaces := em emitComputeInterfaces.
+	sims := self computeSelectionSimulations: selNode annotation: ann selectorTable: st.
+	^ em
+		  finishComputeMain: (em emitComputeSelectionFrom: sims selectorTable: st)
+		  interfaces: interfaces
 ]
 
 { #category : 'compiling' }
@@ -349,6 +364,67 @@ PVSPIRVEmitter class >> compileVertexShader: regOps annotation: ann typeMap: typ
         executionModel: SpvExecutionModel vertex
 ]
 
+{ #category : 'constants' }
+PVSPIRVEmitter class >> computeDescriptorSet [
+	"PVComputeKernel allocates one descriptor set, so every buffer lives in set 0."
+	^ 0
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> computeLoopSimulations: loopNode annotation: ann selectorTable: st [
+	"Simulate the four blocks of a compute loop with one shared register numbering, and
+	 infer the types over that numbering. The exit block inherits the preheader's stack
+	 residue, because the preheader may leave a value on the stack that the code after
+	 the loop pops."
+
+	| preheaderSim headerSim latchSim exitSim |
+	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: (self paramTempDefsFor: ann) startingNextReg: ann params size + 1.
+	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim second startingNextReg: preheaderSim fourth.
+	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim second startingNextReg: headerSim fourth.
+	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim second startingNextReg: latchSim fourth initialStack: (preheaderSim at: 5).
+	^ Dictionary newFrom: {
+		  #preheader -> preheaderSim.
+		  #header -> headerSim.
+		  #latch -> latchSim.
+		  #exit -> exitSim.
+		  #typeMap -> (self inferTypesOver: { preheaderSim. headerSim. latchSim. exitSim } annotation: ann selectorTable: st) second }
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann selectorTable: st [
+	"Simulate the four blocks of a compute selection with one shared register numbering,
+	 and infer the types over that numbering. The phi register is the first register no
+	 block defined, and its type is the type of the value the arms produce, which the
+	 merge block then consumes."
+
+	| condSim trueSim falseSim mergeSim phiReg inference typeMap |
+	condSim := PVBlockSimulator new simulateBlock: selNode condBlock initialTempDefs: (self paramTempDefsFor: ann) startingNextReg: ann params size + 1.
+	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condSim second startingNextReg: condSim fourth.
+	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condSim second startingNextReg: trueSim fourth.
+	phiReg := falseSim fourth.
+	mergeSim := PVBlockSimulator new simulateBlock: selNode mergeBlock initialTempDefs: condSim second startingNextReg: phiReg + 1 initialStack: (self selectionMergeStackFrom: condSim phiReg: phiReg).
+	inference := self inferTypesOver: { condSim. trueSim. falseSim } annotation: ann selectorTable: st.
+	typeMap := inference second.
+	typeMap at: phiReg put: (typeMap at: trueSim third ifAbsent: [ typeMap at: falseSim third ]).
+	inference first inferAll: mergeSim first selectorTable: st.
+	^ Dictionary newFrom: {
+		  #cond -> condSim.
+		  #true -> trueSim.
+		  #false -> falseSim.
+		  #merge -> mergeSim.
+		  #phiReg -> phiReg.
+		  #typeMap -> typeMap }
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> defaultLocalSize [
+	"The local size every compute entry point declares. One dimension of 64 matches the
+	 group size PVComputeTest dispatches with; a kernel that wants another shape has to
+	 carry it in its annotation, which this phase does not add."
+
+	^ #( 64 1 1 )
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTable: st typeMap: typeMap module: aModule [
 	| em paramTypes spvFunc entryBlk trueBlkSpv falseBlkSpv mergeBlkSpv condReg trueReg falseReg condSpvId phiId phiType retType funcType condSimResult condTempDefs |
@@ -418,6 +494,86 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 		resultType: nil resultId: nil operands: { phiId }).
 	aModule addFunction: spvFunc.
 	^ aModule serialize
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> inferTypesOver: sims annotation: ann selectorTable: st [
+	"One PVTypeInferencer accumulates into a single typeMap across the blocks, so a
+	 register defined in one block keeps its type in the next. Answer the inferencer as
+	 well, because a caller may have to seed a phi type and then infer one block more."
+
+	| inferencer typeMap |
+	inferencer := PVTypeInferencer new initialize annotation: ann.
+	typeMap := nil.
+	sims do: [ :each | typeMap := inferencer inferAll: each first selectorTable: st ].
+	^ { inferencer. typeMap }
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> loopControlNone [
+	"OpLoopMerge takes a loop control mask; the compiler requests no unrolling hints."
+	^ 0
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> loopPhisFrom: preheaderSim latch: latchSim [
+	"A loop-carried variable is one the latch leaves in a different register than the
+	 preheader did; that pair is exactly what the header phi joins. A variable both
+	 blocks leave in the same register is loop-invariant and needs no phi."
+
+	| indices initRegs latchRegs |
+	indices := OrderedCollection new.
+	initRegs := Dictionary new.
+	latchRegs := Dictionary new.
+	preheaderSim second keysAndValuesDo: [ :k :preReg |
+		| latchReg |
+		latchReg := latchSim second at: k ifAbsent: [ preReg ].
+		latchReg = preReg ifFalse: [
+			indices add: k.
+			initRegs at: k put: preReg.
+			latchRegs at: k put: latchReg ] ].
+	^ Dictionary newFrom: {
+		  #indices -> indices.
+		  #init -> initRegs.
+		  #latch -> latchRegs }
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> paramTempDefsFor: ann [
+	"The kernel's parameters occupy the first registers, in declaration order; temp 0 is
+	 the first parameter because a kernel method has no receiver on the GPU."
+
+	| defs |
+	defs := Dictionary new.
+	ann params doWithIndex: [ :p :i | defs at: i - 1 put: i ].
+	^ defs
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> selectionControlNone [
+	"OpSelectionMerge takes a selection control mask; the compiler requests no flattening
+	 hints."
+	^ 0
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter class >> selectionMergeStackFrom: condSim phiReg: phiReg [
+	"What the merge block consumes is the value the two arms produce, so the phi register
+	 sits on top of its stack. Below it is whatever the condition block pushed before the
+	 selection, less the condition itself: the simulator never executes the jumpIf that
+	 pops it."
+
+	| stack |
+	stack := (condSim at: 5) asOrderedCollection.
+	stack isEmpty ifFalse: [ stack removeLast ].
+	stack addLast: phiReg.
+	^ stack
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> storageBufferArrayStride [
+	"Both element types a kernel buffer may hold, f32 and i32, are four bytes wide."
+	^ 4
 ]
 
 { #category : 'accessing' }
@@ -554,6 +710,75 @@ PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: typeMap selectorTable: st 
         operands: (op inputs collect: [:r | self spvIdFor: r]))
 ]
 
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitComputeInterfaces [
+	"Create the interface variables of a compute entry point from the annotation: the
+	 WorkItem parameter becomes the GlobalInvocationId built-in, and every buffer
+	 parameter becomes a storage buffer at descriptor set 0 on the next binding. Answer
+	 them in declaration order, which is the order the entry point lists them and the
+	 order PVComputeKernel binds buffers in. Shared by the three compute entry points,
+	 which differ only in what sits between this prologue and OpReturn."
+
+	| interfaces decoratedRtas binding |
+	interfaces := OrderedCollection new.
+	decoratedRtas := Set new.
+	binding := 0.
+	annotation params doWithIndex: [ :p :i |
+		p type = #workItem
+			ifTrue: [ interfaces add: (self emitWorkItemInputForParam: i) ]
+			ifFalse: [
+				interfaces add: (self
+						 emitStorageBufferParam: p
+						 at: i
+						 binding: binding
+						 decoratedArrays: decoratedRtas).
+				binding := binding + 1 ] ].
+	^ interfaces
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitComputeLoopFrom: sims phis: phis selectorTable: st [
+	"Build the four blocks of a compute loop and answer the function holding them. The
+	 context dictionary carries what every step needs — the simulations, the phi pairs and
+	 the four blocks — because the steps have to agree on all of it."
+
+	| spvFunc ctx |
+	spvFunc := self newComputeMainFunction.
+	ctx := Dictionary newFrom: {
+			       (#sims -> sims).
+			       (#phis -> phis).
+			       (#selectorTable -> st).
+			       (#preBlock -> spvFunc addBlock).
+			       (#headerBlock -> spvFunc addBlock).
+			       (#latchBlock -> spvFunc addBlock).
+			       (#exitBlock -> spvFunc addBlock) }.
+	self emitLoopPreheaderIn: ctx.
+	self emitLoopHeaderIn: ctx.
+	self emitLoopLatchIn: ctx.
+	self prependLoopPhisIn: ctx.
+	self emitLoopExitIn: ctx.
+	^ spvFunc
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitComputeSelectionFrom: sims selectorTable: st [
+	"Build the four blocks of a compute selection and answer the function holding them."
+
+	| spvFunc ctx |
+	spvFunc := self newComputeMainFunction.
+	ctx := Dictionary newFrom: {
+			       (#sims -> sims).
+			       (#selectorTable -> st).
+			       (#entryBlock -> spvFunc addBlock).
+			       (#trueBlock -> spvFunc addBlock).
+			       (#falseBlock -> spvFunc addBlock).
+			       (#mergeBlock -> spvFunc addBlock) }.
+	self emitSelectionConditionIn: ctx.
+	self emitSelectionArmsIn: ctx.
+	self emitSelectionMergeIn: ctx.
+	^ spvFunc
+]
+
 { #category : 'emit' }
 PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: typeMap block: blk [
     | mapping resultType resultTypeId resultId setId |
@@ -635,6 +860,112 @@ PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: typeMap selectorTable: st 
 		blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
 	module addFunction: spvFunc.
 	^ spvFunc
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitLoopExitIn: ctx [
+	"The exit block carries the work after the loop, which for a compute kernel is the
+	 store through the output buffer, then returns."
+
+	| sims blk |
+	sims := ctx at: #sims.
+	blk := ctx at: #exitBlock.
+	self
+		emitRegOps: (sims at: #exit) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	blk isTerminated ifFalse: [
+		blk terminate:
+			(SpvInstruction opcode: SpvOpcode opReturn operands: #( )) ]
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitLoopHeaderIn: ctx [
+	"The header holds the test. OpLoopMerge names the exit block and the continue target,
+	 and must come immediately before the branch that leaves the block."
+
+	| sims blk |
+	sims := ctx at: #sims.
+	blk := ctx at: #headerBlock.
+	self
+		emitRegOps: (sims at: #header) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	blk
+		addInstruction: (SpvInstruction
+				 opcode: SpvOpcode opLoopMerge
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (ctx at: #exitBlock) id.
+						 (ctx at: #latchBlock) id.
+						 self class loopControlNone });
+		terminate: (SpvInstruction
+				 opcode: SpvOpcode opBranchConditional
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (self spvIdFor: (sims at: #header) third).
+						 (ctx at: #latchBlock) id.
+						 (ctx at: #exitBlock) id })
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitLoopLatchIn: ctx [
+	"The body is also the continue target: it ends with the back edge to the header, and
+	 the registers it leaves the loop-carried variables in become the latch side of the
+	 phis."
+
+	| sims phis blk |
+	sims := ctx at: #sims.
+	phis := ctx at: #phis.
+	blk := ctx at: #latchBlock.
+	self
+		emitRegOps: (sims at: #latch) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	ctx
+		at: #phiLatch
+		put: ((phis at: #indices) collect: [ :k |
+				 self spvIdFor: ((phis at: #latch) at: k) ]).
+	blk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { (ctx at: #headerBlock) id })
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitLoopPreheaderIn: ctx [
+	"The preheader runs once, before the loop. Its last act is to name the phi results:
+	 the phi stands for the variable inside the loop, so the register the preheader left
+	 the initial value in must point at the phi before the header and the latch are
+	 emitted."
+
+	| sims phis blk |
+	sims := ctx at: #sims.
+	phis := ctx at: #phis.
+	blk := ctx at: #preBlock.
+	self
+		emitRegOps: (sims at: #preheader) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	ctx
+		at: #phiInit
+		put: ((phis at: #indices) collect: [ :k |
+				 self spvIdFor: ((phis at: #init) at: k) ]).
+	ctx at: #phiResult put: ((phis at: #indices) collect: [ :k | module newId ]).
+	(phis at: #indices) doWithIndex: [ :k :n |
+		regMap at: ((phis at: #init) at: k) put: ((ctx at: #phiResult) at: n) ].
+	blk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { (ctx at: #headerBlock) id })
 ]
 
 { #category : 'emit' }
@@ -739,6 +1070,178 @@ PVSPIRVEmitter >> emitSelection: selNode typeMap: typeMap selectorTable: st func
 	^ nil
 ]
 
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey in: ctx [
+	"One arm of the selection: its own work, then the branch to the merge block. The id of
+	 the value it produces is kept under armKey for the merge phi."
+
+	| sims blk |
+	sims := ctx at: #sims.
+	blk := ctx at: blockKey.
+	self
+		emitRegOps: (sims at: armKey) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	ctx at: armKey put: (self spvIdFor: (sims at: armKey) third).
+	blk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { (ctx at: #mergeBlock) id })
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey valueKey: valueKey in: ctx [
+	"One arm of the selection: its own work, then the branch to the merge block. The id of
+	 the value it produces is kept under valueKey for the merge phi."
+
+	| sims blk |
+	sims := ctx at: #sims.
+	blk := ctx at: blockKey.
+	self
+		emitRegOps: (sims at: armKey) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	ctx at: valueKey put: (self spvIdFor: (sims at: armKey) third).
+	blk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { (ctx at: #mergeBlock) id })
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitSelectionArmsIn: ctx [
+	"Each arm starts from the register map as the condition block left it: the arms are
+	 alternatives, so a register one arm defines must not be visible to the other."
+
+	| condRegMap |
+	condRegMap := regMap copy.
+	self
+		emitSelectionArm: #true
+		into: #trueBlock
+		valueKey: #trueValue
+		in: ctx.
+	regMap := condRegMap copy.
+	self
+		emitSelectionArm: #false
+		into: #falseBlock
+		valueKey: #falseValue
+		in: ctx
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitSelectionConditionIn: ctx [
+	"The entry block computes the condition. OpSelectionMerge names the block the two arms
+	 rejoin at, and must come immediately before the conditional branch."
+
+	| sims blk |
+	sims := ctx at: #sims.
+	blk := ctx at: #entryBlock.
+	self
+		emitRegOps: (sims at: #cond) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	blk
+		addInstruction: (SpvInstruction
+				 opcode: SpvOpcode opSelectionMerge
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (ctx at: #mergeBlock) id.
+						 self class selectionControlNone });
+		terminate: (SpvInstruction
+				 opcode: SpvOpcode opBranchConditional
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (self spvIdFor: (sims at: #cond) third).
+						 (ctx at: #trueBlock) id.
+						 (ctx at: #falseBlock) id })
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> emitSelectionMergeIn: ctx [
+	"The merge block joins the two arms in a phi and then carries the kernel's own work —
+	 the store that writes the chosen value. compileSelection: never had to emit that
+	 block's ops, because a value-returning function only returns the phi."
+
+	| sims blk phiReg phiId |
+	sims := ctx at: #sims.
+	blk := ctx at: #mergeBlock.
+	phiReg := sims at: #phiReg.
+	phiId := module newId.
+	regMap at: phiReg put: phiId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opPhi
+			 resultType: (self spvTypeFor: ((sims at: #typeMap) at: phiReg)) id
+			 resultId: phiId
+			 operands: {
+					 (ctx at: #trueValue).
+					 (ctx at: #trueBlock) id.
+					 (ctx at: #falseValue).
+					 (ctx at: #falseBlock) id }).
+	self
+		emitRegOps: (sims at: #merge) first
+		typeMap: (sims at: #typeMap)
+		selectorTable: (ctx at: #selectorTable)
+		block: blk.
+	blk isTerminated ifFalse: [
+		blk terminate:
+			(SpvInstruction opcode: SpvOpcode opReturn operands: #( )) ]
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding decoratedArrays: decoratedRtas [
+	"A buffer parameter becomes a Block-decorated struct holding one runtime array. The
+	 type registry hands back the same runtime array for two parameters of the same
+	 element type, and a type may carry each decoration once only, hence decoratedRtas."
+
+	| elemType rtaT structT pStructT bVar |
+	elemType := aParam type = #bufferOf_i32
+		            ifTrue: [ module typeRegistry intType: 32 signed: true ]
+		            ifFalse: [ module typeRegistry floatType: 32 ].
+	rtaT := module typeRegistry runtimeArrayType: elemType.
+	structT := module typeRegistry structType: { rtaT }.
+	pStructT := module typeRegistry
+		            pointerType: SpvStorageClass storageBuffer
+		            type: structT.
+	(decoratedRtas includes: rtaT id) ifFalse: [
+		module
+			addDecoration: rtaT id
+			decoration: SpvDecoration arrayStride
+			literals: { self class storageBufferArrayStride }.
+		module
+			addDecoration: structT id
+			decoration: SpvDecoration block
+			literals: #( ).
+		module
+			addMemberDecoration: structT id
+			member: self class bufferMemberIndex
+			decoration: SpvDecoration offset
+			literals: { self class bufferMemberOffset }.
+		decoratedRtas add: rtaT id ].
+	bVar := SpvGlobalVariable new
+		        id: module newId;
+		        type: pStructT;
+		        storageClass: SpvStorageClass storageBuffer;
+		        yourself.
+	module addGlobalVariable: bVar.
+	regMap at: paramIndex put: bVar id.
+	module
+		addDecoration: bVar id
+		decoration: SpvDecoration descriptorSet
+		literals: { self class computeDescriptorSet }.
+	module
+		addDecoration: bVar id
+		decoration: SpvDecoration binding
+		literals: { binding }.
+	^ bVar
+]
+
 { #category : 'emit' }
 PVSPIRVEmitter >> emitVecExtract: index op: op block: blk [
     | resultTypeId resultId |
@@ -773,10 +1276,45 @@ blk addInstruction: (SpvInstruction
     operands: { loadId. compIdx })
 ]
 
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemInputForParam: paramIndex [
+	"The WorkItem parameter is not a buffer: it reads the GlobalInvocationId built-in, a
+	 three-component unsigned vector in the Input storage class."
+
+	| u32T v3u32T pV3u32InT gVar |
+	u32T := module typeRegistry intType: 32 signed: false.
+	v3u32T := module typeRegistry vectorType: u32T count: 3.
+	pV3u32InT := module typeRegistry
+		             pointerType: SpvStorageClass input
+		             type: v3u32T.
+	gVar := SpvGlobalVariable new
+		        id: module newId;
+		        type: pV3u32InT;
+		        storageClass: SpvStorageClass input;
+		        yourself.
+	module addGlobalVariable: gVar.
+	regMap at: paramIndex put: gVar id.
+	module
+		addDecoration: gVar id
+		decoration: SpvDecoration builtIn
+		literals: { SpvBuiltIn globalInvocationId }.
+	^ gVar
+]
+
 { #category : 'private' }
 PVSPIRVEmitter >> ensureGlslExtInstSet [
     "Import GLSL.std.450 once; return its result id."
     ^ module importExtInstSet: GlslStd450 instSetName
+]
+
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> finishComputeMain: spvFunc interfaces: interfaces [
+	"Register the entry point and its local size. Answer the serialised module."
+
+	module addFunction: spvFunc.
+	module addEntryPoint: spvFunc executionModel: SpvExecutionModel glCompute name: 'main' interfaces: interfaces asArray.
+	module addExecutionMode: spvFunc mode: SpvExecutionMode localSize literals: self class defaultLocalSize.
+	^ module serialize
 ]
 
 { #category : 'initialization' }
@@ -795,6 +1333,23 @@ PVSPIRVEmitter >> isVoidMain [ ^ isVoidMain
 PVSPIRVEmitter >> isVoidMain: x [ isVoidMain := x
 ]
 
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> newComputeMainFunction [
+	"A void main() with no parameters, the shape every compute entry point has. The
+	 kernel's parameters are interface variables, not function parameters."
+
+	| voidT voidFnT |
+	voidT := module typeRegistry voidType.
+	voidFnT := module typeRegistry functionType: voidT paramTypes: #().
+	^ SpvFunction new
+		  id: module newId;
+		  returnType: voidT;
+		  functionType: voidFnT;
+		  module: module;
+		  initialize;
+		  yourself
+]
+
 { #category : 'type mapping' }
 PVSPIRVEmitter >> opcodeFor: spirvOpSymbol [
 	^ SpvOpcode perform: spirvOpSymbol asString uncapitalized asSymbol
@@ -806,6 +1361,32 @@ PVSPIRVEmitter >> outputVarIds [ ^ outputVarIds
 
 { #category : 'accessing' }
 PVSPIRVEmitter >> outputVarIds: x [ outputVarIds := x
+]
+
+{ #category : 'compiling' }
+PVSPIRVEmitter >> prependLoopPhisIn: ctx [
+	"A phi must be the first instruction of its block, and both its incoming ids are only
+	 known once the preheader and the latch are emitted, so the phis go in last and go in
+	 at the front."
+
+	| phis typeMap hdr |
+	phis := ctx at: #phis.
+	typeMap := (ctx at: #sims) at: #typeMap.
+	hdr := ctx at: #headerBlock.
+	(phis at: #indices) doWithIndex: [ :k :n |
+		| phiType |
+		phiType := typeMap
+			           at: ((phis at: #latch) at: k)
+			           ifAbsent: [ typeMap at: ((phis at: #init) at: k) ].
+		hdr prependInstruction: (SpvInstruction
+				 opcode: SpvOpcode opPhi
+				 resultType: (self spvTypeFor: phiType) id
+				 resultId: ((ctx at: #phiResult) at: n)
+				 operands: {
+						 ((ctx at: #phiInit) at: n).
+						 (ctx at: #preBlock) id.
+						 ((ctx at: #phiLatch) at: n).
+						 (ctx at: #latchBlock) id }) ]
 ]
 
 { #category : 'accessing' }
