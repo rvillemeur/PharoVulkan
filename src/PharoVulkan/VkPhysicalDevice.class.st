@@ -15,6 +15,19 @@ Class {
 	#tag : 'Core'
 }
 
+{ #category : 'examples' }
+VkPhysicalDevice class >> exampleExtensionsOfThisMachine [
+    "One click: the extension list of whatever device this image finds. The names are cached
+     in the instance, so the object still answers them after the context is destroyed, which
+     is why the example can hand back a device whose handle has gone."
+    <sampleInstance>
+    | context |
+    context := VkContext computeContext.
+    ^ [ context physicalDevice
+            extensionNames;
+            yourself ] ensure: [ context destroy ]
+]
+
 { #category : 'decoding' }
 VkPhysicalDevice class >> extensionNameIn: aBuffer at: anOffset [
     "The name field is a fixed 256 bytes holding a NUL-terminated string, so stop at the
@@ -50,7 +63,7 @@ VkPhysicalDevice class >> on: aHandle [
     ^ self new initializeWith: aHandle
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'querying' }
 VkPhysicalDevice >> extensionNames [
 	"Fetched on demand: the compute path needs the list only to gate optional features, and
 	 the graphics path never asks."
@@ -58,7 +71,7 @@ VkPhysicalDevice >> extensionNames [
 	^ extensionNames ifNil: [ self fetchExtensionNames ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'initialization' }
 VkPhysicalDevice >> fetchExtensionNames [
 	"vkEnumerateDeviceExtensionProperties is a two-call query: once for the count, once for
 	 the array."
@@ -143,6 +156,19 @@ VkPhysicalDevice >> findMemoryType: typeFilter properties: requiredFlags [
     VkError signal: 'No suitable memory type found'
 ]
 
+{ #category : 'reporting' }
+VkPhysicalDevice >> halfPrecisionReport [
+	"One row per extension VkContext gates half precision on, each answered by the predicate
+	 the gate itself uses, and a last row for the gate's own verdict."
+
+	| names |
+	names := VkContext halfPrecisionExtensionNames.
+	^ (names collect: [ :each | each -> (self supportsExtension: each) ])
+	  , {
+		    ('Half precision available'
+		     -> (names allSatisfy: [ :each | self supportsExtension: each ])) }
+]
+
 { #category : 'accessing' }
 VkPhysicalDevice >> handle [
     ^ handle
@@ -155,7 +181,29 @@ VkPhysicalDevice >> initializeWith: aHandle [
     self fetchMemoryProperties
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'inspector' }
+VkPhysicalDevice >> inspectorExtensions: aBuilder [
+	<inspectorPresentationOrder: 10 title: 'Extensions'>
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Extension' evaluated: [ :each | each ]);
+		  items: self extensionNames asSortedCollection asArray;
+		  yourself
+]
+
+{ #category : 'inspector' }
+VkPhysicalDevice >> inspectorHalfPrecision: aBuilder [
+	<inspectorPresentationOrder: 20 title: 'Half precision'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Requirement' evaluated: [ :each |
+				   each key ]);
+		  addColumn: (SpStringTableColumn title: 'Supported' evaluated: [ :each |
+				   each value printString ]);
+		  items: self halfPrecisionReport;
+		  yourself
+]
+
+{ #category : 'initialization' }
 VkPhysicalDevice >> readExtensionNames: aCount count: countBuf [
 	"The driver reports no extensions at all on a bare software device, which is a list of
 	 none rather than an error."
@@ -175,7 +223,7 @@ VkPhysicalDevice >> readExtensionNames: aCount count: countBuf [
 		  ensure: [ propsBuf free ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'querying' }
 VkPhysicalDevice >> supportsExtension: aName [
 	"A gate, so an unknown or empty name answers false instead of raising."
 

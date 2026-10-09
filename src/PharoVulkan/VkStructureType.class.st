@@ -41,6 +41,21 @@ VkStructureType class >> commandPoolCreateInfo [     ^ 39
 VkStructureType class >> computePipelineCreateInfo [ ^ 29
 ]
 
+{ #category : 'reflecting' }
+VkStructureType class >> constantProtocol [
+    "The protocol every sType constant is filed under; the reverse lookup selects on it."
+    ^ #'structure-types'
+]
+
+{ #category : 'reflecting' }
+VkStructureType class >> constantSelectors [
+    "Selected by protocol rather than by evaluating candidates: performing every unary
+     class-side selector would include this one and recurse until the session dies."
+    ^ (self class selectors select: [ :each |
+           (self class >> each) protocolName = self constantProtocol ])
+        asSortedCollection asArray
+]
+
 { #category : 'structure-types' }
 VkStructureType class >> descriptorPoolCreateInfo [  ^ 33
 ]
@@ -89,6 +104,14 @@ VkStructureType class >> instanceCreateInfo [        ^ 1
 
 { #category : 'structure-types' }
 VkStructureType class >> memoryAllocateInfo [        ^ 5
+]
+
+{ #category : 'reflecting' }
+VkStructureType class >> nameForValue: anInteger [
+    "Answers nil for a value no constant carries, so callers can show the raw number."
+    ^ self constantSelectors
+        detect: [ :each | (self perform: each) = anInteger ]
+        ifNone: [ nil ]
 ]
 
 { #category : 'structure-types' }

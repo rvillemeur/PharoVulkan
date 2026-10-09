@@ -65,7 +65,7 @@ VkContext class >> synchronization2FeaturesSize [
     ^ 24
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> allocateCString: aString [
 	"Vulkan takes names as NUL-terminated C strings; the caller owns the memory and frees it."
 
@@ -76,7 +76,7 @@ VkContext >> allocateCString: aString [
 	^ buf
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> buildDeviceCreateInfo: queueInfoBuf [
 	"VkDeviceCreateInfo (72 bytes): 0:sType 8:pNext 16:flags 20:queueCreateInfoCount
 	 24:pQueueCreateInfos 32:enabledLayerCount 40:ppEnabledLayerNames 48:enabledExtensionCount
@@ -118,7 +118,7 @@ VkContext >> buildDeviceQueueCreateInfo: familyIndex [
     ^ buf
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> buildExtensionNameArray: aNameCollection [
 	"Answers nil for an empty list rather than a zero-length allocation, so the create info can
 	 hold a null pointer beside its count of none."
@@ -132,7 +132,7 @@ VkContext >> buildExtensionNameArray: aNameCollection [
 	^ array
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> buildFeatureChain [
 	"VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType 8:pNext 16:synchronization2.
 	 Synchronization2 is the project's only sync API, so it is always asked for; half precision
@@ -150,7 +150,7 @@ VkContext >> buildFeatureChain [
 	^ sync2
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> buildHalfPrecisionFeatures [
 	"VkPhysicalDeviceShaderFloat16Int8Features (24 bytes): 0:sType 8:pNext 16:shaderFloat16
 	 20:shaderInt8
@@ -229,7 +229,7 @@ VkContext >> createGraphicsDevice [
     ] ensure: [ queueInfo free ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'initialization' }
 VkContext >> createLogicalDevice [
 
 	| queueInfo deviceInfo devBuf result devHandle |
@@ -279,7 +279,28 @@ VkContext >> device [
     ^ device
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'reporting' }
+VkContext >> deviceFeatureReport [
+	"Reads the pNext chain back out of a chain built for this context instead of restating what
+	 buildFeatureChain writes, and frees it again, so inspecting a context leaves it untouched."
+
+	| chain names |
+	physicalDevice ifNil: [ ^ { ('Device' -> 'destroyed') } ].
+	chain := self buildFeatureChain.
+	names := [
+	         (self featureChainTypesIn: chain) collect: [ :each |
+		         (VkStructureType nameForValue: each)
+			         ifNil: [ each printString ]
+			         ifNotNil: [ :name | name asString ] ] ] ensure: [
+		         self freeFeatureChain: chain ].
+	^ {
+		  ('Half precision available' -> self halfPrecisionAvailable printString).
+		  ('Enabled extensions'
+		   -> (', ' join: self enabledDeviceExtensionNames)).
+		  ('Feature chain' -> (', ' join: names)) }
+]
+
+{ #category : 'querying' }
 VkContext >> enabledDeviceExtensionNames [
 	"The device extensions this context asks for, which is the half precision pair where the
 	 device has them and nothing at all where it does not."
@@ -289,7 +310,7 @@ VkContext >> enabledDeviceExtensionNames [
 		  ifFalse: [ #() ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> extensionNamesIn: aCreateInfo [
 	"Decodes the enabled extension names back out of a create info, reusing the physical
 	 device's decoder so there is one place that walks a Vulkan name."
@@ -305,7 +326,7 @@ VkContext >> extensionNamesIn: aCreateInfo [
 			  at: 0 ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> featureChainTypesIn: aStruct [
 	"Every struct in a pNext chain starts with its sType and carries its successor at offset 8,
 	 so the chain can be read back without knowing which structs are on it."
@@ -353,7 +374,7 @@ VkContext >> fetchGraphicsQueue [
 		                buf free ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> freeDeviceCreateInfo: aCreateInfo [
 	"Releases everything buildDeviceCreateInfo: allocated, the create info included: the pNext
 	 chain, the name array, and each name in it."
@@ -369,7 +390,7 @@ VkContext >> freeDeviceCreateInfo: aCreateInfo [
 	aCreateInfo free
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'private' }
 VkContext >> freeFeatureChain: aStruct [
 	"Walks the chain forward, keeping the successor before freeing the struct that holds it."
 
@@ -381,7 +402,7 @@ VkContext >> freeFeatureChain: aStruct [
 		current := next ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'querying' }
 VkContext >> halfPrecisionAvailable [
 	"Asks the driver rather than assuming: the same context must come up on a device that
 	 offers neither extension."
@@ -474,6 +495,18 @@ VkContext >> initializeGraphicsWithExtensions: extNames [
     self createGraphicsDevice.
     self fetchGraphicsQueue.
     ^ self
+]
+
+{ #category : 'inspector' }
+VkContext >> inspectorDeviceFeatures: aBuilder [
+	<inspectorPresentationOrder: 10 title: 'Device features'>
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Setting' evaluated: [ :each | each key ]);
+		  addColumn:
+			  (SpStringTableColumn title: 'Value' evaluated: [ :each | each value ]);
+		  items: self deviceFeatureReport;
+		  yourself
 ]
 
 { #category : 'accessing' }

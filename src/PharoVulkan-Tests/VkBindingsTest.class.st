@@ -204,7 +204,7 @@ VkBindingsTest >> testStructureTypeConstants [
     self assert: VkStructureType instanceCreateInfo equals: 1
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
 VkBindingsTest >> testStructureTypeNamesEveryConstantItDefines [
 	"The reverse lookup is reflective, so it must answer, for every constant the class declares,
 	 a name that carries that same value, and nothing for a value no constant carries."

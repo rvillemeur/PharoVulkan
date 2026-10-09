@@ -62,7 +62,7 @@ VkCoreTest >> testComputeContextCreation [
 	self assert: ctx physicalDevice notNil
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
 VkCoreTest >> testComputeContextEnablesHalfPrecisionWhenTheDeviceOffersIt [
 	"Half precision is gated rather than assumed, so this states the gate both ways round and
 	 keeps passing on a device without the extensions."
@@ -78,7 +78,7 @@ VkCoreTest >> testComputeContextEnablesHalfPrecisionWhenTheDeviceOffersIt [
 					 (ctx physicalDevice supportsExtension: each) not ]) ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
 VkCoreTest >> testComputeContextEnablesOnlyExtensionsTheDeviceSupports [
 	"Asking for an extension the driver does not have fails device creation, so the enabled
 	 list may never run ahead of what the physical device reports."
@@ -87,7 +87,7 @@ VkCoreTest >> testComputeContextEnablesOnlyExtensionsTheDeviceSupports [
 		self assert: (ctx physicalDevice supportsExtension: each) ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
 VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension [
 	"Reads back the struct handed to vkCreateDevice: an extension the context says it enables
 	 counts for nothing unless it reaches that field."
@@ -104,7 +104,7 @@ VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension [
 		queueInfo free ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
 VkCoreTest >> testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs [
 	"Synchronization2 is always asked for; the two half precision structs follow it only where
 	 the device offers the extensions."
@@ -167,7 +167,20 @@ VkCoreTest >> testHalfBufferRoundtripSnapsEachValueToItsNearestHalf [
 		ensure: [ buf destroy ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
+VkCoreTest >> testHalfPrecisionReportAgreesWithTheGate [
+	"The Half precision tab is only worth having if it answers the gate rather than a copy of
+	 it, so the last row must equal what the context decides."
+
+	| report |
+	report := ctx physicalDevice halfPrecisionReport.
+	self
+		assert: report size
+		equals: VkContext halfPrecisionExtensionNames size + 1.
+	self assert: report last value equals: ctx halfPrecisionAvailable
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testPhysicalDeviceNamesEveryExtensionItSupports [
 	"Every name the driver reports must be a plain String the gate can match on, and the gate
 	 must agree with the list it was built from."
@@ -181,7 +194,7 @@ VkCoreTest >> testPhysicalDeviceNamesEveryExtensionItSupports [
 		self assert: (ctx physicalDevice supportsExtension: each) ]
 ]
 
-{ #category : 'as yet unclassified' }
+{ #category : 'tests' }
 VkCoreTest >> testPhysicalDeviceRejectsAnExtensionItDoesNotHave [
 	"The degenerate names: one no driver can report, and the empty one."
 
