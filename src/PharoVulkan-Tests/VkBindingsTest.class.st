@@ -21,6 +21,15 @@ VkBindingsTest >> assertHalfOf: aFloat is: anInteger [
 ]
 
 { #category : 'measuring' }
+VkBindingsTest >> offsetOf: aFieldName in: aStructureClass [
+	"The offset uFFI compiled, shifted to the C offset the driver uses, so a test never hand
+	 counts one."
+
+	^ (aStructureClass classVariableNamed:
+		   (aStructureClass offsetVariableNameFor: aFieldName)) value - 1
+]
+
+{ #category : 'measuring' }
 VkBindingsTest >> spanBytesWrittenByDevicePropertiesOf: aPhysicalDeviceHandle [
 	"The same query answered into memory outside the image, so the struct's own store can be
 	 compared against it byte for byte."
@@ -209,6 +218,30 @@ VkBindingsTest >> testLibraryLoads [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testNestedPropertiesNameReadsThroughTheOuterStore [
+	"deviceNameString read the store directly, which only works where the structure owns it.
+	 Nested in a query structure the handle is a reference into the outer store, so the name has
+	 to be read through the generated accessor instead. The bytes are written where the driver
+	 would write them, at the offsets uFFI compiled. The zero byte ends the name, and a name
+	 filling the whole field, which carries no terminator, must still read back whole."
+
+	| query base name fieldSize |
+	query := VkPhysicalDeviceProperties2 new.
+	base := (self offsetOf: #properties in: VkPhysicalDeviceProperties2)
+	        + (self offsetOf: #deviceName in: VkPhysicalDeviceProperties).
+	name := 'Probe'.
+	1 to: name size do: [ :i |
+		query getHandle at: base + i put: (name at: i) asciiValue ].
+	self assert: query properties deviceNameString equals: name.
+	fieldSize := query properties deviceName size.
+	1 to: fieldSize do: [ :i |
+		query getHandle at: base + i put: $A asciiValue ].
+	self
+		assert: query properties deviceNameString
+		equals: (String new: fieldSize withAll: $A)
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
 	"The kernel DSL sends asF16 and asF32. The host answers must be the rounding the device
 	 performs, so that running a half kernel's body on the host is a check on the kernel and
@@ -227,6 +260,38 @@ VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
 		self assert: each asF32 equals: each asFloat ].
 	self assert: 3 asF32 equals: 3.0.
 	self assert: Float infinity asF16 equals: Float infinity
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testPhysicalDeviceLimitsFillsTheLimitsFieldExactly [
+	"The limits block is read through its own structure rather than as a byte blob, so every
+	 limit's offset comes from the compiled field specification instead of a hand counted byte
+	 count. The facts to state are that the structure is exactly as long as the field holding
+	 it, and that the field starts on an eight byte boundary: limits holds VkDeviceSize members,
+	 so a missing pad moves it and moves every limit inside it."
+
+	| limitsRow |
+	limitsRow := VkPhysicalDeviceProperties layoutRows detect: [ :each |
+		             each first = #limits ].
+	self assert: limitsRow third equals: VkPhysicalDeviceLimits byteSize.
+	self assert: limitsRow second \\ 8 equals: 0
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testPhysicalDeviceLimitsRowsReadTheirOwnAccessors [
+	"The Limits view prints one row per member by performing the generated accessor, so a row
+	 cannot show a value the structure does not hold. An array member must read as its elements
+	 rather than as an opaque FFIArray, which is the degenerate case of the same rule."
+
+	| limits |
+	limits := VkPhysicalDeviceLimits new.
+	limits maxComputeSharedMemorySize: 48 * 1024.
+	self
+		assert: (limits printableValueOf: #maxComputeSharedMemorySize)
+		equals: (48 * 1024) printString.
+	self
+		assert: (limits printableValueOf: #maxComputeWorkGroupSize)
+		equals: #( 0 0 0 ) printString
 ]
 
 { #category : 'tests' }
@@ -310,6 +375,28 @@ VkBindingsTest >> testQueueFlagsConstants [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testStructureCopyIntoObjectMemoryDetachesFromItsSource [
+	"A structure the driver filled in memory outside the image has to be copied before that
+	 memory is freed. The copy must hold the same bytes, keep a store of its own so a later
+	 write to the source cannot reach it, and drop a pNext that would otherwise point into
+	 memory already given back."
+
+	| address source copy |
+	address := ExternalAddress allocate: VkPhysicalDeviceSubgroupProperties byteSize.
+	[
+	source := VkPhysicalDeviceSubgroupProperties fromHandle: address.
+	1 to: VkPhysicalDeviceSubgroupProperties byteSize do: [ :i |
+		address byteAt: i put: 0 ].
+	source subgroupSize: 32.
+	source pNext: address.
+	copy := source copyIntoObjectMemory.
+	self assert: copy subgroupSize equals: 32.
+	self assert: copy pNext isNull.
+	source subgroupSize: 64.
+	self assert: copy subgroupSize equals: 32 ] ensure: [ address free ]
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testStructureTypeConstants [
     "VkStructureType must expose named constants — no magic numbers."
     self assert: VkStructureType applicationInfo equals: 0.
@@ -331,6 +418,25 @@ VkBindingsTest >> testStructureTypeNamesEveryConstantItDefines [
 			assert: (VkStructureType perform: (VkStructureType nameForValue: value))
 			equals: value ].
 	self assert: (VkStructureType nameForValue: -1) isNil
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testSubgroupFeaturePredicateMatchesTheOperationBits [
+	"VkPhysicalDevice and the Features view read supportedOperations through one predicate. The
+	 device only ever reports the mask it has, so the two degenerate masks are stated here: an
+	 empty one supports nothing, and one carrying every named bit supports all of them."
+
+	| block everyBit supported |
+	block := VkPhysicalDeviceSubgroupProperties new.
+	everyBit := VkSubgroupFeature featureSelectors
+		            inject: 0
+		            into: [ :mask :each |
+			            mask bitOr: (VkSubgroupFeature perform: each) ].
+	supported := [ VkSubgroupFeature featureSelectors select: [ :each |
+		           block supportsFeature: (VkSubgroupFeature perform: each) ] ].
+	self assert: supported value isEmpty.
+	block supportedOperations: everyBit.
+	self assert: supported value equals: VkSubgroupFeature featureSelectors
 ]
 
 { #category : 'tests' }

@@ -40,11 +40,12 @@ VkPhysicalDeviceProperties class >> examplePropertiesOfThisMachine [
 
 { #category : 'field definition' }
 VkPhysicalDeviceProperties class >> fieldsDesc [
-	"Two pads the C layout has and a field list alone would miss: limits holds VkDeviceSize
-	 members, so it is eight byte aligned and starts four bytes after pipelineCacheUUID ends,
-	 and the struct itself is eight byte aligned, so it ends four bytes after sparseProperties.
-	 Without them the store is 816 bytes while the driver writes 824 into it, and that store is
-	 a ByteArray inside object memory."
+	"limits is a VkPhysicalDeviceLimits by value, so its own members carry their alignment and
+	 every limit is reached through a generated accessor. Two pads a field list alone would miss
+	 remain: limits holds VkDeviceSize members, so it is eight byte aligned and starts four
+	 bytes after pipelineCacheUUID ends, and the struct itself is eight byte aligned, so it ends
+	 four bytes after sparseProperties. Without them the store is 816 bytes while the driver
+	 writes 824 into it, and that store is a ByteArray inside object memory."
 
 	^ #(
 		uint32    apiVersion;
@@ -55,7 +56,7 @@ VkPhysicalDeviceProperties class >> fieldsDesc [
 		Uint8_256 deviceName;
 		Uint8_16  pipelineCacheUUID;
 		uint32    limitsAlignmentPad;
-		Uint8_504 limits;
+		VkPhysicalDeviceLimits limits;
 		Uint8_20  sparseProperties;
 		uint32    tailAlignmentPad
 	)
@@ -122,13 +123,18 @@ VkPhysicalDeviceProperties >> deviceName: anObject [
 
 { #category : 'accessing' }
 VkPhysicalDeviceProperties >> deviceNameString [
-    | stream byte |
-    stream := WriteStream on: String new.
-    0 to: 255 do: [ :j |
-        byte := handle basicAt: OFFSET_DEVICENAME + j.
-        byte = 0 ifTrue: [ ^ stream contents ].
-        stream nextPut: (Character value: byte) ].
-    ^ stream contents
+	"Read through the generated accessor rather than through the store, because this structure
+	 can be a member of another one: the handle is then a reference into the outer store, which
+	 basicAt: does not reach. Vulkan ends the name with a zero byte, and a name filling the
+	 whole field has none."
+
+	| name byte |
+	name := self deviceName.
+	^ String streamContents: [ :out |
+		  1 to: name size do: [ :i |
+			  byte := name at: i.
+			  byte = 0 ifTrue: [ ^ out contents ].
+			  out nextPut: (Character value: byte) ] ]
 ]
 
 { #category : 'accessing - structure variables' }
@@ -196,13 +202,13 @@ VkPhysicalDeviceProperties >> inspectorLayout: aBuilder [
 { #category : 'accessing - structure variables' }
 VkPhysicalDeviceProperties >> limits [
 	"This method was automatically generated"
-	^(FFIArray ofType: #FFIUInt8 size: 504) fromHandle: (handle copyFrom: OFFSET_LIMITS to: OFFSET_LIMITS + 503)
+	^ VkPhysicalDeviceLimits fromHandle: (handle referenceStructAt: OFFSET_LIMITS length: VkPhysicalDeviceLimits byteSize)
 ]
 
 { #category : 'accessing - structure variables' }
 VkPhysicalDeviceProperties >> limits: anObject [
 	"This method was automatically generated"
-	handle replaceFrom: OFFSET_LIMITS to: OFFSET_LIMITS + 503 with: anObject getHandle startingAt: 1
+	handle structAt: OFFSET_LIMITS put: anObject getHandle length: VkPhysicalDeviceLimits byteSize
 ]
 
 { #category : 'accessing - structure variables' }

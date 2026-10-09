@@ -8,7 +8,9 @@ Class {
 		'handle',
 		'queueFamilyProps',
 		'memoryProperties',
-		'extensionNames'
+		'extensionNames',
+		'properties',
+		'subgroupProperties'
 	],
 	#category : 'PharoVulkan-Core',
 	#package : 'PharoVulkan',
@@ -61,6 +63,20 @@ VkPhysicalDevice class >> extensionPropertiesSize [
 { #category : 'factory' }
 VkPhysicalDevice class >> on: aHandle [
     ^ self new initializeWith: aHandle
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> computeCapabilityRows [
+	"What the Compute view shows. Every row asks the accessor a kernel would ask, so the table
+	 cannot report a capability the compiler would not get."
+
+	^ {
+		  ('Subgroup size' -> self subgroupSize printString).
+		  ('Subgroup arithmetic' -> self supportsSubgroupArithmetic printString).
+		  ('Shared memory bytes' -> self maxComputeSharedMemorySize printString).
+		  ('Work group invocations'
+		   -> self maxComputeWorkGroupInvocations printString).
+		  ('Work group size' -> self maxComputeWorkGroupSize printString) }
 ]
 
 { #category : 'querying' }
@@ -120,6 +136,17 @@ VkPhysicalDevice >> fetchQueueFamilyProperties [
 					                    propsBuf unsignedLongAt: base + 1 ] ]
 			                    ensure: [ propsBuf free ] ] ensure: [
 		                    countBuf free ]
+]
+
+{ #category : 'private' }
+VkPhysicalDevice >> fetchSubgroupProperties [
+	"The chain lives outside the image only for the duration of the query, so the answered block
+	 is copied into object memory before that memory is freed."
+
+	^ VkPhysicalDeviceProperties2
+		  of: handle
+		  chainedWith: VkPhysicalDeviceSubgroupProperties
+		  do: [ :head :block | block copyIntoObjectMemory ]
 ]
 
 { #category : 'querying' }
@@ -182,6 +209,21 @@ VkPhysicalDevice >> initializeWith: aHandle [
 ]
 
 { #category : 'inspector' }
+VkPhysicalDevice >> inspectorCompute: aBuilder [
+	"The limits and subgroup facts a compute kernel has to fit, each answered by the accessor
+	 the compiler uses. Nothing here writes to the device or its properties."
+
+	<inspectorPresentationOrder: 30 title: 'Compute'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Capability' evaluated: [ :each |
+					   each key ]);
+		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
+					   each value ]);
+		  items: self computeCapabilityRows;
+		  yourself
+]
+
+{ #category : 'inspector' }
 VkPhysicalDevice >> inspectorExtensions: aBuilder [
 	<inspectorPresentationOrder: 10 title: 'Extensions'>
 	^ aBuilder newTable
@@ -201,6 +243,44 @@ VkPhysicalDevice >> inspectorHalfPrecision: aBuilder [
 				   each value printString ]);
 		  items: self halfPrecisionReport;
 		  yourself
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> limits [
+	"The VkPhysicalDeviceLimits block of this device's properties, reached through its own
+	 accessors rather than by indexing into a byte blob."
+
+	^ self properties limits
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> maxComputeSharedMemorySize [
+	"Bytes of shared memory one work group may declare. A tiled kernel cannot exceed it."
+
+	^ self limits maxComputeSharedMemorySize
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> maxComputeWorkGroupInvocations [
+	"Invocations one work group may hold, so the product of a local size must not exceed it."
+
+	^ self limits maxComputeWorkGroupInvocations
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> maxComputeWorkGroupSize [
+	"The per dimension ceiling on a local size, x, y and z, as plain integers."
+
+	^ (1 to: 3) collect: [ :i | self limits maxComputeWorkGroupSize at: i ]
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> properties [
+	"Queried once and kept. The driver answers the same struct for the life of the device, and
+	 the struct's store is a ByteArray inside object memory, so a second query would only write
+	 the same bytes again."
+
+	^ properties ifNil: [ properties := Vk getPhysicalDeviceProperties: handle ]
 ]
 
 { #category : 'initialization' }
@@ -223,9 +303,38 @@ VkPhysicalDevice >> readExtensionNames: aCount count: countBuf [
 		  ensure: [ propsBuf free ]
 ]
 
+{ #category : 'accessing' }
+VkPhysicalDevice >> subgroupProperties [
+	"Queried once and kept, like the rest of a device's fixed properties."
+
+	^ subgroupProperties ifNil: [
+		  subgroupProperties := self fetchSubgroupProperties ]
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> subgroupSize [
+	"Invocations in one subgroup. A subgroup reduction can only be written against this width."
+
+	^ self subgroupProperties subgroupSize
+]
+
 { #category : 'querying' }
 VkPhysicalDevice >> supportsExtension: aName [
 	"A gate, so an unknown or empty name answers false instead of raising."
 
 	^ self extensionNames includes: aName
+]
+
+{ #category : 'testing' }
+VkPhysicalDevice >> supportsSubgroupArithmetic [
+	"Whether the device offers the subgroup add and multiply operations a reduction needs."
+
+	^ self supportsSubgroupFeature: VkSubgroupFeature arithmeticBit
+]
+
+{ #category : 'testing' }
+VkPhysicalDevice >> supportsSubgroupFeature: aBit [
+	"Asked of the properties block itself, so the device and the block cannot disagree."
+
+	^ self subgroupProperties supportsFeature: aBit
 ]

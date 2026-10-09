@@ -120,8 +120,18 @@ VkStructureType class >> physicalDevice16BitStorageFeatures [
 ]
 
 { #category : 'structure-types' }
+VkStructureType class >> physicalDeviceProperties2 [
+	^ 1000059001
+]
+
+{ #category : 'structure-types' }
 VkStructureType class >> physicalDeviceShaderFloat16Int8Features [
     ^ 1000082000
+]
+
+{ #category : 'structure-types' }
+VkStructureType class >> physicalDeviceSubgroupProperties [
+	^ 1000094000
 ]
 
 { #category : 'structure-types' }

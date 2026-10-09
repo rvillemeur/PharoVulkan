@@ -443,6 +443,17 @@ Vk class >> getPhysicalDeviceMemoryProperties: physDevice memoryProperties: pMem
         VkPhysicalDevice_H physDevice, void* pMemProps ) )
 ]
 
+{ #category : 'physical device' }
+Vk class >> getPhysicalDeviceProperties2: physDevice into: pProperties2 [
+	"pProperties2 points at a VkPhysicalDeviceProperties2 whose pNext chain the driver walks, so
+	 it must be memory outside the image: a ByteArray may move while the driver holds a pointer
+	 into it."
+
+	^ self ffiCall: #( void vkGetPhysicalDeviceProperties2 (
+			   VkPhysicalDevice_H physDevice,
+			   void* pProperties2 ) )
+]
+
 { #category : 'physical-device' }
 Vk class >> getPhysicalDeviceProperties: aVkPhysicalDevice_H [
     "Return a populated VkPhysicalDeviceProperties for the given physical device."

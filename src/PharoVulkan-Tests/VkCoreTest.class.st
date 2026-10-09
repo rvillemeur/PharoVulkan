@@ -94,6 +94,33 @@ VkCoreTest >> testBufferRoundtrip [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testChainedPropertiesQueryLinksTheBlockItIsGiven [
+	"The chain is built outside the image and freed again, so the query hands both structures to
+	 a block instead of answering memory that has gone. The facts: the head carries its own
+	 structure type, its pNext holds the address of the chained block, the block keeps the type
+	 it was given, and the driver filled it. pNext reads back as a void pointer rather than an
+	 ExternalAddress, so the two are compared as the addresses they are."
+
+	| device verdict |
+	device := ctx physicalDevice.
+	verdict := VkPhysicalDeviceProperties2
+		           of: device handle
+		           chainedWith: VkPhysicalDeviceSubgroupProperties
+		           do: [ :head :block |
+			           {
+				           head sType.
+				           head pNext asInteger = block getHandle asInteger.
+				           block sType.
+				           block subgroupSize } ].
+	self assert: verdict first equals: VkStructureType physicalDeviceProperties2.
+	self assert: verdict second.
+	self
+		assert: verdict third
+		equals: VkStructureType physicalDeviceSubgroupProperties.
+	self assert: verdict fourth equals: 32
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testComputeContextCreation [
 	self assert: ctx device notNil.
 	self assert: ctx computeQueue notNil.
@@ -123,6 +150,24 @@ VkCoreTest >> testComputeContextEnablesOnlyExtensionsTheDeviceSupports [
 
 	ctx enabledDeviceExtensionNames do: [ :each |
 		self assert: (ctx physicalDevice supportsExtension: each) ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testComputeLimitsOfThisDeviceAgreeWithTheDriver [
+	"The compute limits the emitter needs reach it through generated accessors on
+	 VkPhysicalDeviceLimits. A wrong offset answers a plausible number rather than an error, so
+	 the facts are pinned against what this machine's driver really reports: 48 KiB of shared
+	 memory and 1024 invocations per work group. The last assertion holds on every device, not
+	 only this one: no single dimension of a work group can hold more invocations than a whole
+	 work group may have."
+
+	| device |
+	device := ctx physicalDevice.
+	self assert: device maxComputeSharedMemorySize equals: 48 * 1024.
+	self assert: device maxComputeWorkGroupInvocations equals: 1024.
+	self assert: device maxComputeWorkGroupSize size equals: 3.
+	self assert: (device maxComputeWorkGroupSize allSatisfy: [ :each |
+			 each between: 1 and: device maxComputeWorkGroupInvocations ])
 ]
 
 { #category : 'tests' }
@@ -279,4 +324,19 @@ VkCoreTest >> testStorageBufferRefusesAnUnknownElementType [
 	self should: [ buf put: #( 1.0 ) as: #f64 ] raise: PVTypeError.
 	self should: [ buf elementsAs: #f64 ] raise: PVTypeError ] ensure: [
 		buf destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testSubgroupPropertiesOfThisDeviceAgreeWithTheDriver [
+	"Subgroup properties arrive through vkGetPhysicalDeviceProperties2 and a pNext chain, so a
+	 broken chain leaves the block untouched and every field reads zero. The size is pinned
+	 against what this machine reports, 32, and the arithmetic verdict against the fact that
+	 this driver offers it. The power of two assertion is a rule of the specification and holds
+	 on every device, so a zero from an unwritten block cannot pass it."
+
+	| device |
+	device := ctx physicalDevice.
+	self assert: device subgroupSize equals: 32.
+	self assert: device subgroupSize isPowerOfTwo.
+	self assert: device supportsSubgroupArithmetic
 ]
