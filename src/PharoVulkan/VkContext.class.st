@@ -67,6 +67,19 @@ VkContext class >> exampleDeviceChosenByCapabilityOnThisMachine [
 	^ context
 ]
 
+{ #category : 'examples' }
+VkContext class >> exampleOffscreenContextOnThisMachine [
+	"One click: the context an offscreen graphics render would use on whatever device
+	 this image finds, destroyed before it is handed back. The Device choice tab names
+	 the requirement (supportsGraphicsAndComputeOnOneQueue) and the device that met it,
+	 which destroy does not clear."
+	<sampleInstance>
+	| context |
+	context := self offscreenGraphicsContext.
+	context destroy.
+	^ context
+]
+
 { #category : 'constants' }
 VkContext class >> featureEnabled [
     "VK_TRUE."
@@ -84,6 +97,14 @@ VkContext class >> halfPrecisionExtensionNames [
     "Both are needed before a kernel may declare an f16 storage buffer: one for the type,
      one for 16-bit access to a buffer."
     ^ #( 'VK_KHR_shader_float16_int8' 'VK_KHR_16bit_storage' )
+]
+
+{ #category : 'factory' }
+VkContext class >> offscreenGraphicsContext [
+	"A device whose graphics and compute families differ would need a second queue,
+	 which this context does not create, so it does not qualify rather than failing later
+	 when a draw is submitted on a queue that cannot accept it."
+	^ self computeContextRequiring: #( #supportsGraphicsAndComputeOnOneQueue )
 ]
 
 { #category : 'constants' }

@@ -306,7 +306,7 @@ VkPhysicalDevice >> inspectorHalfPrecision: aBuilder [
 VkPhysicalDevice >> inspectorMemoryTypes: aBuilder [
 	"The Chosen column calls findMemoryType:properties: itself for hostVisibleAndCoherent,
 	 so it cannot drift from what VkBuffer allocate actually gets."
-	<inspectorPresentationOrder: 20 title: 'Memory types'>
+	<inspectorPresentationOrder: 25 title: 'Memory types'>
 	^ aBuilder newTable
 		addColumn: (SpStringTableColumn title: 'Index' evaluated: [ :each | each first printString ]);
 		addColumn: (SpStringTableColumn title: 'Properties' evaluated: [ :each | each second ]);
@@ -315,6 +315,23 @@ VkPhysicalDevice >> inspectorMemoryTypes: aBuilder [
 			title: 'Chosen for hostVisibleAndCoherent'
 			evaluated: [ :each | each fourth printString ]);
 		items: self memoryTypeRows;
+		yourself
+]
+
+{ #category : 'inspector' }
+VkPhysicalDevice >> inspectorQueueFamilies: aBuilder [
+	"The Graphics and Compute columns call findGraphicsQueueFamily and
+	 findComputeQueueFamily themselves, so they cannot drift from what a context
+	 actually selects. No queue-count column: fetchQueueFamilyProperties keeps only
+	 the flags word of each family, and widening it is a code change with no bug
+	 behind it, so it is left out here rather than ridden along with this view."
+	<inspectorPresentationOrder: 15 title: 'Queue families'>
+	^ aBuilder newTable
+		addColumn: (SpStringTableColumn title: 'Index' evaluated: [ :each | each first printString ]);
+		addColumn: (SpStringTableColumn title: 'Flags' evaluated: [ :each | each second ]);
+		addColumn: (SpStringTableColumn title: 'Graphics' evaluated: [ :each | each third printString ]);
+		addColumn: (SpStringTableColumn title: 'Compute' evaluated: [ :each | each fourth printString ]);
+		items: self queueFamilyRows;
 		yourself
 ]
 
@@ -397,6 +414,24 @@ VkPhysicalDevice >> properties [
 	^ properties ifNil: [ properties := Vk getPhysicalDeviceProperties: handle ]
 ]
 
+{ #category : 'accessing' }
+VkPhysicalDevice >> queueFamilyRows [
+	"One row per queue family this device reports, each fact read through the same
+	 accessors findGraphicsQueueFamily and findComputeQueueFamily use, so the table
+	 cannot drift from what the context actually selects."
+	| graphicsChoice computeChoice |
+	graphicsChoice := self findGraphicsQueueFamily.
+	computeChoice := self findComputeQueueFamily.
+	^ (1 to: queueFamilyProps size) collect: [ :i |
+		| index |
+		index := i - 1.
+		{
+			index.
+			VkQueueFlag nameForFlags: (queueFamilyProps at: i).
+			index = graphicsChoice.
+			index = computeChoice } ]
+]
+
 { #category : 'private' }
 VkPhysicalDevice >> readCooperativeMatrixConfigurations: aCount with: aCommand count: countBuf [
 	"A device may report the extension and still offer no configuration, which is a list of
@@ -466,6 +501,23 @@ VkPhysicalDevice >> supportsExtension: aName [
 	"A gate, so an unknown or empty name answers false instead of raising."
 
 	^ self extensionNames includes: aName
+]
+
+{ #category : 'testing' }
+VkPhysicalDevice >> supportsGraphics [
+	^ self findGraphicsQueueFamily notNil
+]
+
+{ #category : 'testing' }
+VkPhysicalDevice >> supportsGraphicsAndComputeOnOneQueue [
+	"The requirement an offscreen graphics context actually needs: it creates a single
+	 queue from findComputeQueueFamily and submits graphics work on it, so a device whose
+	 graphics and compute families differ cannot be used without a second queue this
+	 context does not create."
+	| graphics compute |
+	graphics := self findGraphicsQueueFamily.
+	compute := self findComputeQueueFamily.
+	^ graphics notNil and: [ compute notNil and: [ graphics = compute ] ]
 ]
 
 { #category : 'testing' }

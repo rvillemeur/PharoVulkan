@@ -616,6 +616,18 @@ VkCoreTest >> testHostVisibleAndCoherentAsksForBothProperties [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testOffscreenGraphicsContextQueueCanDraw [
+	"The context handed back must be able to draw with no window and no surface
+	 extensions: its one queue family must be a graphics-capable one."
+	| context |
+	context := VkContext offscreenGraphicsContext.
+	[ self assert: context physicalDevice supportsGraphics.
+	  self
+	  	assert: context computeQueueFamily
+	  	equals: context physicalDevice findGraphicsQueueFamily ] ensure: [ context destroy ]
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testPhysicalDeviceNamesEveryExtensionItSupports [
 	"Every name the driver reports must be a plain String the gate can match on, and the gate
 	 must agree with the list it was built from."
@@ -726,4 +738,17 @@ VkCoreTest >> testSubgroupPropertiesOfThisDeviceAgreeWithTheDriver [
 	self assert: device subgroupSize equals: 32.
 	self assert: device subgroupSize isPowerOfTwo.
 	self assert: device supportsSubgroupArithmetic
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testUnsatisfiableGraphicsRequirementNamesItself [
+	"A predicate no device answers true to raises rather than silently refusing to pick a
+	 device, and the message names the selector so the reader knows which capability the
+	 machine is missing."
+	| error |
+	error := [
+		VkContext computeContextRequiring: #( #supportsSomeGraphicsCapabilityNoDeviceHas ) ]
+		on: VkError
+		do: [ :signal | signal ].
+	self assert: (error messageText includesSubstring: 'supportsSomeGraphicsCapabilityNoDeviceHas')
 ]
