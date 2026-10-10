@@ -327,6 +327,17 @@ VkCoreTest >> testStorageBufferRefusesAnUnknownElementType [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testSubgroupArithmeticAvailabilityAgreesWithTheDevice [
+	"A context answers what its own device reports, so a kernel asking the context for the
+	 reduction cannot be told something the driver did not say. This machine supports the
+	 arithmetic, so both answers are true here; the fact under test is that they are equal."
+
+	self
+		assert: ctx subgroupArithmeticAvailable
+		equals: ctx physicalDevice supportsSubgroupArithmetic
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testSubgroupPropertiesOfThisDeviceAgreeWithTheDriver [
 	"Subgroup properties arrive through vkGetPhysicalDeviceProperties2 and a pNext chain, so a
 	 broken chain leaves the block untouched and every field reads zero. The size is pinned

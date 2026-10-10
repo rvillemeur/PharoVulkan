@@ -539,6 +539,78 @@ PVComputeTest >> testPrecisionComparisonTimesEveryElementTypeAtTheSameOrder [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testSubgroupDotExampleReportsEveryRowAfterItsContextIsGone [
+	"The example destroys the context it built, as every example here does, so a run must
+	 carry the device facts it reports rather than asking a destroyed context for them."
+
+	| run |
+	ctx subgroupArithmeticAvailable ifFalse: [ ^ self skip ].
+	run := PVSubgroupDotProduct exampleSubgroupDotOf1024Elements.
+	self assert: run reportedSubgroupSize isInteger.
+	self assert: (run reportRows anySatisfy: [ :each |
+			 (each at: #name) = 'Subgroup width measured' ])
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testSubgroupDotMeasuresTheWidthTheShaderRanAt [
+	"The width the kernel counts is not the width the device reports. A driver compiles a
+	 shader to whichever subgroup width it likes, no wider than the one the device offers,
+	 and this one picks half of it. Dividing by the reported width is what made the first
+	 version of this run answer half the dot product."
+
+	| run |
+	ctx subgroupArithmeticAvailable ifFalse: [ ^ self skip ].
+	run := PVSubgroupDotProduct on: ctx size: 1024.
+	run run.
+	self assert: run measuredSubgroupSize isPowerOfTwo.
+	self assert: run measuredSubgroupSize <= run reportedSubgroupSize.
+	self assert: (run laneCounts allSatisfy: [ :each |
+			 each asInteger = run measuredSubgroupSize ])
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testSubgroupDotOnDeviceMatchesTheCpuSum [
+	"A dot product over 1024 elements reduced in hardware. Every lane of a subgroup holds the
+	 same partial sum, so the sum of all the slots counts each subgroup's total once per lane
+	 and the subgroup size divides it out. That recovery needs no assumption about which lanes
+	 share a subgroup, which the specification leaves to the implementation."
+
+	| run |
+	ctx subgroupArithmeticAvailable ifFalse: [ ^ self skip ].
+	run := PVSubgroupDotProduct on: ctx size: 1024.
+	run run.
+	self assert: run gpuTotal closeTo: run cpuTotal
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testSubgroupDotRefusesADeviceWithoutTheArithmetic [
+	"The degenerate device. A run that went ahead anyway would dispatch a kernel the driver
+	 may reject, so the refusal has to name what is missing rather than return a wrong number."
+
+	| run raised |
+	run := PVNoSubgroupArithmeticStub on: ctx size: 64.
+	raised := nil.
+	[ run run ] on: PVTypeError do: [ :e | raised := e messageText ].
+	self deny: raised isNil.
+	self assert: (raised includesSubstring: 'subgroup')
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testSubgroupDotSlotsHoldMoreThanOneLaneProduct [
+	"What proves the reduction ran rather than the multiplication alone: every product is
+	 positive here, so a slot holding its own lane's product would be smaller than the
+	 subgroup's total. A kernel that dropped the group operation would fail this and still
+	 pass spirv-val."
+
+	| run |
+	ctx subgroupArithmeticAvailable ifFalse: [ ^ self skip ].
+	run := PVSubgroupDotProduct on: ctx size: 1024.
+	run run.
+	run partialSums doWithIndex: [ :each :i |
+		self assert: each > (run productAt: i) ]
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testVectorAdd [
 	"c[i] = a[i] + b[i] for i in [0,63]. LocalSize=64, dispatch 1 group."
 	| n spirv bufA bufB bufC kernel result |

@@ -99,6 +99,16 @@ PVCompilerTest >> capabilitiesIn: bytes [
 ]
 
 { #category : 'helpers' }
+PVCompilerTest >> constantIdOfValue: aValue in: bytes [
+	"The result id of the OpConstant holding that value, so a test can state which id an
+	 instruction's scope operand must be rather than guessing an id the emitter allocated.
+	 An OpConstant carries its result type and result id before the literal."
+
+	^ ((self operandsOf: SpvOpcode opConstant in: bytes) detect: [ :each |
+		   each third = aValue ]) second
+]
+
+{ #category : 'helpers' }
 PVCompilerTest >> executionModeLiteralsIn: bytes [
 	"Answer the literal operands of the first OpExecutionMode in a module. The entry point
 	 id and the mode itself come first, so the local size starts at the third operand."
@@ -790,6 +800,60 @@ PVCompilerTest >> testStraightLineAdd [
 	bytes := PVKernelCompiler compile: m.
 	self deny: bytes isEmpty.
 	self assertSpirvMagic: bytes description: 'addFloat:to:'
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSubgroupDotKernelDeclaresTheGroupCapabilities [
+	"A module that reduces across a subgroup must ask for both capabilities. Without
+	 GroupNonUniformArithmetic the driver is entitled to reject the add, and a module that
+	 only declares Shader passes spirv-val while failing on the device."
+
+	| caps |
+	caps := self capabilitiesIn:
+		        (PVKernelCompiler compile:
+			         PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:).
+	self assert: (caps includes: PVSPIRVEmitter groupNonUniformCapability).
+	self assert:
+		(caps includes: PVSPIRVEmitter groupNonUniformArithmeticCapability)
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSubgroupDotKernelReducesOverTheSubgroupScope [
+	"Both reductions — the one over the products and the one that counts the lanes — go over
+	 the subgroup and not the workgroup, and add every lane's value rather than scanning. The
+	 scope is an id, so the test resolves it back to the constant the module declares instead
+	 of trusting a number the emitter allocated."
+
+	| bytes reductions scopeId |
+	bytes := PVKernelCompiler compile:
+		         PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:.
+	reductions := self
+		              operandsOf: SpvOpcode opGroupNonUniformFAdd
+		              in: bytes.
+	self assert: reductions size equals: 2.
+	scopeId := self constantIdOfValue: SpvScope subgroup in: bytes.
+	reductions do: [ :operands |
+		self assert: (operands at: 3) equals: scopeId.
+		self assert: (operands at: 4) equals: SpvGroupOperation reduce ]
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSubgroupSumMapsToTheGroupNonUniformAdd [
+	"The DSL surface for the reduction. A float that answers a float, because the operation
+	 adds the value every lane of the subgroup holds and delivers one sum."
+
+	| mapping |
+	mapping := PVSelectorTable standard at: 'subgroupSum' receiverType: #f32.
+	self assert: mapping spirvOp equals: #subgroupReduceSum.
+	self assert: mapping resultTypeSymbol equals: #f32
+]
+
+{ #category : 'tests' }
+PVCompilerTest >> testSubgroupSumOnTheHostAnswersTheValueItself [
+	"The host meaning of the DSL selector: one process is a subgroup of one, so the sum over
+	 it is the value. A kernel body has to mean something when it runs in the image."
+
+	self assert: 3.5 subgroupSum equals: 3.5
 ]
 
 { #category : 'tests' }

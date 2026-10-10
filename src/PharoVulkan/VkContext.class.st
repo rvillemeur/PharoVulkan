@@ -549,3 +549,11 @@ VkContext >> selectPhysicalDevice [
             ^ self ] ].
     VkError signal: 'No device with compute queue found'
 ]
+
+{ #category : 'querying' }
+VkContext >> subgroupArithmeticAvailable [
+	"Asks the device rather than assuming: a kernel that reduces across a subgroup needs the
+	 arithmetic operations, which a device may leave out while still reporting a subgroup."
+
+	^ physicalDevice supportsSubgroupArithmetic
+]

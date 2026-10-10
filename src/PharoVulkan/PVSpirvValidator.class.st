@@ -97,6 +97,18 @@ PVSpirvValidator class >> exampleValidatorOnScalarKernel [
 ]
 
 { #category : 'examples' }
+PVSpirvValidator class >> exampleValidatorOnSubgroupDotKernel [
+	"One click: the kernel that adds the lanes of a subgroup. The verdict is what tells the
+	 two group capabilities and the Subgroup scope reached the module, because spirv-val
+	 refuses the instruction without them."
+
+	<sampleInstance>
+	^ self on:
+		  (PVKernelCompiler compile:
+			   (PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:))
+]
+
+{ #category : 'examples' }
 PVSpirvValidator class >> exampleValidatorOnVectorAddKernel [
 	"One click: the compute kernel that must pass spirv-val."
 	<sampleInstance>

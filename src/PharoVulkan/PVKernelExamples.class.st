@@ -216,6 +216,31 @@ PVKernelExamples >> sqrtF32: x [
 ]
 
 { #category : 'kernels' }
+PVKernelExamples >> subgroupDotOf: wi a: a b: b out: output lanes: lanes [
+	"A dot product reduced in hardware: each invocation multiplies its own pair, then the
+	 subgroup adds the products. Reduce delivers the total to every lane, so each lane writes
+	 its subgroup's total to its own slot.
+	 The second reduction adds 1.0 per lane, which answers how many lanes the subgroup really
+	 had. The host cannot assume that: VkPhysicalDeviceSubgroupProperties reports the widest
+	 subgroup the device offers, while the driver compiles a shader to whichever width it
+	 likes, and this one chose half of what the device reports. With the width measured, the
+	 host recovers the dot product by dividing the sum of every slot by it.
+	 subgroupSum is a group operation, so every lane of the subgroup must reach it: that is
+	 why this body carries no control flow."
+
+	<gpu>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #a>
+	<param: #bufferOf_f32 named: #b>
+	<param: #bufferOf_f32 named: #output>
+	<param: #bufferOf_f32 named: #lanes>
+	| i |
+	i := wi x.
+	output at: i put: ((a at: i) * (b at: i)) subgroupSum.
+	lanes at: i put: 1.0 subgroupSum
+]
+
+{ #category : 'kernels' }
 PVKernelExamples >> sumFirst16: wi data: data out: output [
 	"A compute kernel whose body is one whileTrue:. Every invocation sums the first
 	 16 elements of data and writes the total to its own slot."

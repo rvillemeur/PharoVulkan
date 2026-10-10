@@ -538,6 +538,22 @@ PVSPIRVEmitter class >> gridWidthComponent [
 
 ]
 
+{ #category : 'constants' }
+PVSPIRVEmitter class >> groupNonUniformArithmeticCapability [
+	"GroupNonUniformArithmetic = 63, the neighbour of GroupNonUniformVote 62. The add itself
+	 needs it; GroupNonUniform alone only buys the ballot and election instructions."
+
+	^ 63
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> groupNonUniformCapability [
+	"GroupNonUniform = 61, the capability every OpGroupNonUniform instruction needs. Core
+	 since SPIR-V 1.3, and the module targets 1.5, so no OpExtension accompanies it."
+
+	^ 61
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> inferTypesOver: sims annotation: ann selectorTable: st [
 	"One PVTypeInferencer accumulates into a single typeMap across the blocks, so a
@@ -1130,6 +1146,7 @@ PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
         mapping spirvOp = #vecExtractY      ifTrue: [ self emitVecExtract: 1 op: op block: blk. ^ self ].
         mapping spirvOp = #vecExtractZ      ifTrue: [ self emitVecExtract: 2 op: op block: blk. ^ self ].
         mapping spirvOp = #vecExtractW      ifTrue: [ self emitVecExtract: 3 op: op block: blk. ^ self ].
+        mapping spirvOp = #subgroupReduceSum ifTrue: [ self emitSubgroupReduceSum: op resultTypeSymbol: mapping resultTypeSymbol block: blk. ^ self ].
         mapping spirvOp = #glslNormalize    ifTrue: [ self emitExtInst: GlslStd450 normalize  op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
         mapping spirvOp = #glslLength       ifTrue: [ self emitExtInst: GlslStd450 length     op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
         mapping spirvOp = #glslFMix         ifTrue: [ self emitExtInst: GlslStd450 fMix       op: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
@@ -1348,6 +1365,31 @@ PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding
 		decoration: SpvDecoration binding
 		literals: { binding }.
 	^ bVar
+]
+
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> emitSubgroupReduceSum: op resultTypeSymbol: aTypeSymbol block: blk [
+	"Adds the value every lane of the subgroup holds and delivers the total to all of them.
+	 The execution scope is an id of a constant rather than a literal, so the module declares
+	 it like any other constant, while the group operation beside it is a literal. Both
+	 capabilities are declared here rather than at module set-up, because a kernel that never
+	 reduces must not ask the driver for them."
+
+	| scopeId resultId elemType |
+	module addCapability: self class groupNonUniformCapability.
+	module addCapability: self class groupNonUniformArithmeticCapability.
+	scopeId := module constantPool constantUInt32: SpvScope subgroup.
+	elemType := self spvTypeFor: aTypeSymbol.
+	resultId := module newId.
+	regMap at: op result put: resultId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opGroupNonUniformFAdd
+			 resultType: elemType id
+			 resultId: resultId
+			 operands: {
+					 scopeId.
+					 SpvGroupOperation reduce.
+					 (self spvIdFor: op inputs first) })
 ]
 
 { #category : 'emit' }

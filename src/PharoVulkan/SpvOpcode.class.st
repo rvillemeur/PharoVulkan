@@ -137,6 +137,14 @@ SpvOpcode class >> opFunctionEnd [         ^ 56
 SpvOpcode class >> opFunctionParameter [   ^ 55
 ]
 
+{ #category : 'group-operations' }
+SpvOpcode class >> opGroupNonUniformFAdd [
+	"OpGroupNonUniformFAdd, the floating point neighbour of OpGroupNonUniformIAdd 349. It
+	 takes an execution scope id, a group operation literal and the value this lane holds."
+
+	^ 350
+]
+
 { #category : 'arithmetic' }
 SpvOpcode class >> opIAdd [                ^ 128
 ]

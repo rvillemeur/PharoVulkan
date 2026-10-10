@@ -97,7 +97,21 @@ PVSelectorTable >> initializeStandardMappings [
 	self initializeScalarMappings.
 	self initializeWorkItemMappings.
 	self initializeBufferMappings.
-	self initializeHalfMappings
+	self initializeHalfMappings.
+	self initializeSubgroupMappings
+]
+
+{ #category : 'private' }
+PVSelectorTable >> initializeSubgroupMappings [
+	"Unlike every other entry in this table, subgroupSum is a group operation: its result
+	 depends on what the other lanes of the subgroup hold, so every lane must reach it. A
+	 kernel that sends it from one arm of a branch is undefined, which is why the only kernel
+	 that sends it has a straight line body."
+
+	self
+		at: 'subgroupSum'
+		receiverType: #f32
+		put: (PVSelectorMapping spirvOp: #subgroupReduceSum resultType: #f32)
 ]
 
 { #category : 'initialization' }

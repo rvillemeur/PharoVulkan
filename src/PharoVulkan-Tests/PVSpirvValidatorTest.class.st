@@ -157,6 +157,16 @@ PVSpirvValidatorTest >> testScalarGpuMethodHasNoEntryPoint [
 ]
 
 { #category : 'tests' }
+PVSpirvValidatorTest >> testSubgroupDotKernelValidates [
+	"spirv-val refuses OpGroupNonUniformFAdd unless the module declares GroupNonUniform and
+	 GroupNonUniformArithmetic and gives the instruction a Subgroup scope, so the verdict is
+	 what states the reduction was encoded the way the specification asks."
+
+	PVSpirvValidator isAvailable ifFalse: [ ^ self skip ].
+	self assert: PVSpirvValidator exampleValidatorOnSubgroupDotKernel isValid
+]
+
+{ #category : 'tests' }
 PVSpirvValidatorTest >> testTriFragment [
 	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #triFragment:)) description: 'triFragment:'
 ]
