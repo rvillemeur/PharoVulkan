@@ -93,6 +93,39 @@ PVStructuredCFGRecognizer >> inspectorRecognition: aBuilder [
 		  yourself
 ]
 
+{ #category : 'recognizing' }
+PVStructuredCFGRecognizer >> isTwoWayHeader: aBlock [
+	"A loop header in the nested shape tests a condition, so it has a body and an exit and
+	 nothing else."
+
+	| term |
+	term := aBlock terminator.
+	^ (term notNil and: [ term opcode = #jumpIf ]) and: [
+		  aBlock successors size = 2 ]
+]
+
+{ #category : 'recognizing' }
+PVStructuredCFGRecognizer >> nestedLoopNodeAt: headerBlk preheader: preBlk innerPreheader: outerBody innerHeader: innerHeader [
+	"The two back edges the shape needs: the inner body closes the inner loop, and the block
+	 the inner loop merges into carries the outer increment and jumps back to the outer
+	 header, which makes it the outer latch as well. Answer nil if either edge is missing."
+
+	| innerBody innerMerge |
+	innerBody := innerHeader successors first.
+	innerMerge := innerHeader successors last.
+	(innerBody successors includes: innerHeader) ifFalse: [ ^ nil ].
+	(innerMerge successors includes: headerBlk) ifFalse: [ ^ nil ].
+	^ PVNestedLoopNode new
+		  preheaderBlock: preBlk;
+		  headerBlock: headerBlk;
+		  innerPreheaderBlock: outerBody;
+		  innerHeaderBlock: innerHeader;
+		  innerBodyBlocks: { innerBody };
+		  innerMergeBlock: innerMerge;
+		  exitBlock: headerBlk successors last;
+		  yourself
+]
+
 { #category : 'inspecting' }
 PVStructuredCFGRecognizer >> recognitionReport [
 	"One row per block, paired with whether the node this recogniser answers accounts
@@ -108,15 +141,24 @@ PVStructuredCFGRecognizer >> recognitionReport [
 	^ blocks collect: [ :each | each -> (covered includes: each) ]
 ]
 
-{ #category : 'recognizing' }
+{ #category : 'recognition' }
 PVStructuredCFGRecognizer >> recognize [
+	"Try the patterns in order of how much of the graph they claim. The nested loop is
+	 tried before the single loop, because a single-loop match on an outer header would
+	 take the inner loop's preheader for the whole body and then be refused by the coverage
+	 check, losing a shape that is in fact representable."
+
 	| node |
 	blocks size >= 2 ifFalse: [ ^ nil ].
 	node := self recognizeSelectionAt: blocks first.
 	node ifNil: [
 		(blocks first successors size = 1 and: [
 			 blocks first successors first == blocks second ]) ifTrue: [
-			node := self recognizeLoopAt: blocks second preheader: blocks first ] ].
+			node := self
+				        recognizeNestedLoopAt: blocks second
+				        preheader: blocks first.
+			node ifNil: [
+				node := self recognizeLoopAt: blocks second preheader: blocks first ] ] ].
 	node ifNil: [ ^ nil ].
 	^ (self covers: node)
 		  ifTrue: [ node ]
@@ -135,6 +177,25 @@ PVStructuredCFGRecognizer >> recognizeLoopAt: headerBlk preheader: preBlk [
 	^ PVLoopNode new
 		preheaderBlock: preBlk; headerBlock: headerBlk;
 		bodyBlocks: { bodyBlk }; exitBlock: exitBlk; yourself
+]
+
+{ #category : 'recognizing' }
+PVStructuredCFGRecognizer >> recognizeNestedLoopAt: headerBlk preheader: preBlk [
+	"An outer loop whose body is an inner loop. The outer body block is the inner loop's
+	 preheader, so it has one successor and that successor is the inner header. Answer nil
+	 for anything else, which leaves the shape to the single-loop recogniser or to refusal."
+
+	| outerBody innerHeader |
+	(self isTwoWayHeader: headerBlk) ifFalse: [ ^ nil ].
+	outerBody := headerBlk successors first.
+	outerBody successors size = 1 ifFalse: [ ^ nil ].
+	innerHeader := outerBody successors first.
+	(self isTwoWayHeader: innerHeader) ifFalse: [ ^ nil ].
+	^ self
+		  nestedLoopNodeAt: headerBlk
+		  preheader: preBlk
+		  innerPreheader: outerBody
+		  innerHeader: innerHeader
 ]
 
 { #category : 'recognizing' }

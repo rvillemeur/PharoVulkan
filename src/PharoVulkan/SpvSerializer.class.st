@@ -171,9 +171,22 @@ SpvSerializer >> emitMemoryModel [
 
 { #category : 'emit-sections' }
 SpvSerializer >> emitTypesConstantsGlobals [
-    module typeRegistry allTypes do: [:t | self emit: t instruction].
-    module constantPool allConstants do: [:c | self emit: c].
-    module globalVariables do: [:v | self emit: v instruction]
+	"Types, constants and global variables share one section of the module, and inside it a
+	 definition must precede every use of its id. Emitting all types and only then all
+	 constants broke that for a fixed-size array, whose length is the id of a constant.
+	 Result ids come from one counter in creation order, and nothing can be built before the
+	 things it is built from, so ascending id is a dependency order."
+
+	| items |
+	items := OrderedCollection new.
+	module typeRegistry allTypes do: [ :each |
+		items add: each id -> each instruction ].
+	module constantPool allConstants do: [ :each |
+		items add: each resultId -> each ].
+	module globalVariables do: [ :each |
+		items add: each id -> each instruction ].
+	(items asSortedCollection: [ :a :b | a key <= b key ]) do: [ :each |
+		self emit: each value ]
 ]
 
 { #category : 'private' }

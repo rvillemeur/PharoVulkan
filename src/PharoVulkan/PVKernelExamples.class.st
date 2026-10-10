@@ -72,6 +72,23 @@ PVKernelExamples >> alphaClip: color threshold: t [
 ]
 
 { #category : 'kernels' }
+PVKernelExamples >> broadcastFirstOf: wi data: data out: output tile: tile [
+	"Shared memory and a barrier in Pharo source. Each invocation fills its own slot of the
+	 workgroup's tile, then every invocation reads slot zero, which only the first invocation
+	 of the workgroup wrote. The barrier is what makes that read defined."
+
+	<gpu>
+	<localSize: #( 8 1 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	<shared: #f32 named: #tile count: 8>
+	tile at: wi localX put: (data at: wi x).
+	wi barrier.
+	output at: wi x put: (tile at: 0)
+]
+
+{ #category : 'kernels' }
 PVKernelExamples >> clampF32: x lo: lo hi: hi [
 <gpu>
 <param: #f32 named: #x>
@@ -125,6 +142,20 @@ PVKernelExamples >> glslTriVertex: position color: color [
 <output: #vec3 named: #fragColor location: 0>
 out0 := position x , position y , 0.0 , 1.0.
 out1 := color normalize
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> localIndexOf: wi data: data out: output [
+	"Reads the element its position inside the workgroup points at, and writes it to the slot
+	 its position in the dispatch points at. Every workgroup therefore reads the same first
+	 eight elements, which is what tells a local index apart from a global one."
+
+	<gpu>
+	<localSize: #( 8 1 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	output at: wi x put: (data at: wi localX)
 ]
 
 { #category : 'kernels' }
@@ -191,6 +222,30 @@ PVKernelExamples >> mulFloat: a by: b [
 	<param: #f32 named: #a>
 	<param: #f32 named: #b>
 	^ a * b
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> nestedAccumulateOf: wi data: data out: output [
+	"A loop inside a loop, the one nesting shape the recogniser matches. The addition after
+	 the inner loop lands in the block the inner loop merges into, which is also where the
+	 outer loop steps."
+
+	<gpu>
+	<localSize: #( 4 1 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #data>
+	<param: #bufferOf_f32 named: #output>
+	| i j acc |
+	i := 0.
+	acc := 0.0.
+	[ i < 4 ] whileTrue: [
+		j := 0.
+		[ j < 2 ] whileTrue: [
+			acc := acc + (data at: j).
+			j := j + 1 ].
+		acc := acc + (data at: i).
+		i := i + 1 ].
+	output at: wi x put: acc
 ]
 
 { #category : 'examples' }
@@ -290,6 +345,50 @@ PVKernelExamples >> taggedLocalSizeAdd: wi data: data out: output [
 	<param: #bufferOf_f32 named: #data>
 	<param: #bufferOf_f32 named: #output>
 	output at: wi x put: (data at: wi x) * 2.0
+]
+
+{ #category : 'kernels' }
+PVKernelExamples >> tiledMatmulF32: wi a: a b: b out: output tileA: tileA tileB: tileB [
+	"Tiled row-times-column matmul in Pharo source: the kernel PVTiledMatmulKernel builds
+	 by hand, written through the DSL instead. Each workgroup walks the matrices one 16 by
+	 16 tile at a time, copies its own element of each tile into shared memory, waits, and
+	 reads the tile 16 times from there rather than 16 times from global memory. The two
+	 barriers are both needed: the first before the tile is read, the second before the next
+	 iteration overwrites it.
+
+	 The tile width appears as the literal 16 and the tile size as the literal 256, which is
+	 16 by 16: a kernel body carries no message sends beyond those the DSL maps, so it
+	 cannot ask a class-side constant for them. The matrix order comes from the dispatch
+	 (wi gridWidth), so the grid must cover the matrix exactly: N / 16 groups along each of
+	 x and y. Row-major storage throughout."
+
+	<gpu>
+	<localSize: #( 16 16 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f32 named: #a>
+	<param: #bufferOf_f32 named: #b>
+	<param: #bufferOf_f32 named: #output>
+	<shared: #f32 named: #tileA count: 256>
+	<shared: #f32 named: #tileB count: 256>
+	| row col n lx ly acc tileBase k |
+	row := wi x.
+	col := wi y.
+	n := wi gridWidth.
+	lx := wi localX.
+	ly := wi localY.
+	acc := 0.0.
+	tileBase := 0.
+	[ tileBase < n ] whileTrue: [
+		tileA at: lx * 16 + ly put: (a at: row * n + (tileBase + ly)).
+		tileB at: lx * 16 + ly put: (b at: (tileBase + lx) * n + col).
+		wi barrier.
+		k := 0.
+		[ k < 16 ] whileTrue: [
+			acc := acc + ((tileA at: lx * 16 + k) * (tileB at: k * 16 + ly)).
+			k := k + 1 ].
+		wi barrier.
+		tileBase := tileBase + 16 ].
+	output at: row * n + col put: acc
 ]
 
 { #category : 'examples' }

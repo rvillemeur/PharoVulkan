@@ -31,11 +31,12 @@ PVKernelCompiler class >> compile: aCompiledMethod [
 
 { #category : 'constants' }
 PVKernelCompiler class >> computeParamTypes [
-	"A method is a compute kernel if it takes a work item or any kernel buffer. The buffer
-	 types come from the emitter so a new element type is accepted here by adding it there
-	 once."
+	"A method is a compute kernel if it takes a work item, any kernel buffer or any
+	 workgroup tile. The buffer and tile types come from the emitter so a new element type
+	 is accepted here by adding it there once."
 
 	^ { #workItem } , PVSPIRVEmitter bufferElementTypes keys asArray
+	  , PVSPIRVEmitter sharedElementTypes keys asArray
 ]
 
 { #category : 'accessing' }
@@ -109,7 +110,7 @@ PVKernelCompiler >> compile [
 PVKernelCompiler >> compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st [
 	"A compute kernel with control flow must go through the recogniser like any other
 	 kernel. Returning straight to compileComputeKernel: emitted the linearised register
-	 ops as one basic block, which dropped the loop and still passed spirv-val. The two
+	 ops as one basic block, which dropped the loop and still passed spirv-val. The
 	 structured emitters infer their own types, because the per-block simulations number
 	 registers differently from the whole-method one that typeMap came from."
 
@@ -122,6 +123,11 @@ PVKernelCompiler >> compileComputeBlocks: blocks regOps: regOps typeMap: typeMap
 			  selectorTable: st ].
 	structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
 	structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].
+	(structNode isKindOf: PVNestedLoopNode) ifTrue: [
+		^ PVSPIRVEmitter
+			  compileComputeKernelNestedLoop: structNode
+			  annotation: annotation
+			  selectorTable: st ].
 	(structNode isKindOf: PVLoopNode) ifTrue: [
 		^ PVSPIRVEmitter
 			  compileComputeKernelLoop: structNode

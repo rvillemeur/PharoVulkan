@@ -26,8 +26,22 @@ PVSpirvValidator class >> builtInNameFor: aNumber [
 ]
 
 { #category : 'constants' }
+PVSpirvValidator class >> byteMask [
+	"The low eight bits of a word, for reading one packed byte of a literal string."
+
+	^ 16rFF
+]
+
+{ #category : 'constants' }
 PVSpirvValidator class >> bytesPerWord [
 	^ 4
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> bytesPerWordIndices [
+	"The byte positions inside a 32-bit word, used to look for a string's null terminator."
+
+	^ 0 to: self bytesPerWord - 1
 ]
 
 { #category : 'constants' }
@@ -49,6 +63,15 @@ PVSpirvValidator class >> decorationLiteralOffset [
 
 	^ 3
 
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> entryPointNameOffset [
+	"OpEntryPoint: opcode word, execution model, function id, then the first word of the
+	 null-terminated name. The interface ids follow the word that holds the terminator, so
+	 their position depends on the name's length and cannot be a fixed offset."
+
+	^ 3
 ]
 
 { #category : 'examples' }
@@ -97,6 +120,18 @@ PVSpirvValidator class >> exampleValidatorOnScalarKernel [
 ]
 
 { #category : 'examples' }
+PVSpirvValidator class >> exampleValidatorOnSharedBroadcastKernel [
+	"One click: shared memory and a barrier compiled from Pharo source rather than
+	 assembled through the builder. The entry point view shows whether the tile reached the
+	 interface list, which is the one thing the DSL path can lose."
+
+	<sampleInstance>
+	^ self on:
+		  (PVKernelCompiler compile:
+			   (PVKernelExamples >> #broadcastFirstOf:data:out:tile:))
+]
+
+{ #category : 'examples' }
 PVSpirvValidator class >> exampleValidatorOnSubgroupDotKernel [
 	"One click: the kernel that adds the lanes of a subgroup. The verdict is what tells the
 	 two group capabilities and the Subgroup scope reached the module, because spirv-val
@@ -106,6 +141,16 @@ PVSpirvValidator class >> exampleValidatorOnSubgroupDotKernel [
 	^ self on:
 		  (PVKernelCompiler compile:
 			   (PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:))
+]
+
+{ #category : 'examples' }
+PVSpirvValidator class >> exampleValidatorOnTiledMatmulKernel [
+	"One click: the hand-built tiled matmul. Nothing else checks this module's structured
+	 control flow, its Workgroup variables or its barrier operands, because it is assembled
+	 through the builder rather than compiled from a Pharo method."
+
+	<sampleInstance>
+	^ self on: PVTiledMatmulKernel new spirv
 ]
 
 { #category : 'examples' }
@@ -188,6 +233,29 @@ PVSpirvValidator class >> targetEnv [
 	^ 'vulkan1.3'
 ]
 
+{ #category : 'constants' }
+PVSpirvValidator class >> variableResultIdOffset [
+	"OpVariable: opcode word, result type, then the result id."
+
+	^ 2
+]
+
+{ #category : 'constants' }
+PVSpirvValidator class >> variableStorageClassOffset [
+	"OpVariable: opcode word, result type, result id, then the storage class."
+
+	^ 3
+]
+
+{ #category : 'reading - instructions' }
+PVSpirvValidator class >> wordHoldsStringTerminator: aWord [
+	"A SPIR-V literal string packs four bytes to a word and ends at the first zero byte, so
+	 the word holding the terminator is the name's last word whatever the name's length."
+
+	^ self bytesPerWordIndices anySatisfy: [ :byteIndex |
+		  ((aWord bitShift: byteIndex * -8) bitAnd: self byteMask) = 0 ]
+]
+
 { #category : 'reporting' }
 PVSpirvValidator >> builtInsFromWords [
 	"Which built-ins the module reads, decoded from its OpDecorate instructions."
@@ -235,13 +303,51 @@ PVSpirvValidator >> controlFlowReport [
 ]
 
 { #category : 'reporting' }
+PVSpirvValidator >> countOfOpcode: anOpcode [
+	"How many instructions of that opcode the module holds, walked the way every other
+	 report here walks it: the first word of an instruction carries the opcode in its low
+	 half and the instruction's word count in its high half."
+
+	| count |
+	count := 0.
+	self instructionWordIndicesDo: [ :index :opcode |
+		opcode = anOpcode ifTrue: [ count := count + 1 ] ].
+	^ count
+]
+
+{ #category : 'reading - instructions' }
+PVSpirvValidator >> entryPointInterfaceIds [
+	"The variable ids the entry points name in their interface lists. Under SPIR-V 1.5 the
+	 list must name every module-scope variable an entry point touches, so this is what a
+	 missing Workgroup tile or a missing built-in shows up as."
+
+	| words found |
+	words := self spirvWords.
+	found := OrderedCollection new.
+	self instructionWordIndicesDo: [ :index :opcode |
+		opcode = SpvOpcode opEntryPoint ifTrue: [
+			| last nameEnd |
+			last := index + ((words at: index) bitShift: -16) - 1.
+			nameEnd := index + self class entryPointNameOffset.
+			[ nameEnd <= last and: [
+			  (self class wordHoldsStringTerminator: (words at: nameEnd)) not ] ]
+				whileTrue: [ nameEnd := nameEnd + 1 ].
+			nameEnd + 1 to: last do: [ :i | found add: (words at: i) ] ] ].
+	^ found asArray
+]
+
+{ #category : 'reporting' }
 PVSpirvValidator >> entryPointReport [
 	"One row per fact about the entry point's interface with the dispatch: the declared
-	 workgroup shape, the built-ins it reads, and the matrix order a grid of one group
-	 would hand a kernel that asks wi gridWidth."
+	 workgroup shape, the built-ins it reads, the shared tiles it declares and how many of
+	 them the entry point names. The last two are read back from the instruction stream
+	 rather than restated, because a tile missing from the interface list is invalid under
+	 SPIR-V 1.5 and is otherwise invisible."
 
-	| localSize |
+	| localSize tiles named |
 	localSize := self localSizeFromWords.
+	tiles := self variableIdsInStorageClass: SpvStorageClass workgroup.
+	named := tiles count: [ :id | self entryPointInterfaceIds includes: id ].
 	^ {
 		  (Dictionary newFrom: {
 				   (#setting -> 'Local size').
@@ -251,7 +357,13 @@ PVSpirvValidator >> entryPointReport [
 				   (#value -> (localSize inject: 1 into: [ :a :b | a * b ]) printString) }).
 		  (Dictionary newFrom: {
 				   (#setting -> 'Built-ins read').
-				   (#value -> (', ' join: self builtInsFromWords)) }) }
+				   (#value -> (', ' join: self builtInsFromWords)) }).
+		  (Dictionary newFrom: {
+				   (#setting -> 'Shared tiles').
+				   (#value -> tiles size printString) }).
+		  (Dictionary newFrom: {
+				   (#setting -> 'Tiles named by entry point').
+				   (#value -> named printString) }) }
 ]
 
 { #category : 'validating' }
@@ -313,6 +425,21 @@ PVSpirvValidator >> inspectorValidation: aBuilder [
 		addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each | each value printString ]);
 		items: self copy validationReport;
 		yourself
+]
+
+{ #category : 'private' }
+PVSpirvValidator >> instructionWordIndicesDo: aBlock [
+	"Walk the instruction stream once, handing each instruction's first word index and its
+	 opcode to the block. The header is not an instruction, so the walk starts after it."
+
+	| words index |
+	words := self spirvWords.
+	index := self class headerWordCount + 1.
+	[ index <= words size ] whileTrue: [
+		| word |
+		word := words at: index.
+		aBlock value: index value: (word bitAnd: self class opcodeMask).
+		index := index + (word bitShift: -16) ]
 ]
 
 { #category : 'validating' }
@@ -427,4 +554,28 @@ PVSpirvValidator >> validationReport [
 		'exit code' -> self exitCode.
 		'verdict' -> (self isValid ifTrue: [ 'valid' ] ifFalse: [ 'invalid' ]).
 		'output' -> (self validationOutput ifEmpty: [ '(none)' ] ifNotEmpty: [ :text | text trimBoth ]) }
+]
+
+{ #category : 'reading - instructions' }
+PVSpirvValidator >> variableCountInStorageClass: aStorageClass [
+	"How many module-scope variables the module declares in that storage class."
+
+	^ (self variableIdsInStorageClass: aStorageClass) size
+]
+
+{ #category : 'reading - instructions' }
+PVSpirvValidator >> variableIdsInStorageClass: aStorageClass [
+	"The result ids of the module-scope variables declared in that storage class. OpVariable
+	 names its storage class in the operand after the result id, so this needs no access to
+	 the type table."
+
+	| words found |
+	words := self spirvWords.
+	found := OrderedCollection new.
+	self instructionWordIndicesDo: [ :index :opcode |
+		(opcode = SpvOpcode opVariable and: [
+			 (words at: index + self class variableStorageClassOffset) = aStorageClass ])
+			ifTrue: [
+			found add: (words at: index + self class variableResultIdOffset) ] ].
+	^ found asArray
 ]

@@ -9,7 +9,8 @@ Class {
 		'regMap',
 		'outputVarIds',
 		'isVoidMain',
-		'numWorkgroupsVar'
+		'demandBuiltIns',
+		'sharedVariables'
 	],
 	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan',
@@ -88,6 +89,38 @@ PVSPIRVEmitter class >> compileComputeKernelLoop: loopNode annotation: ann selec
 	phis := self loopPhisFrom: (sims at: #preheader) latch: (sims at: #latch).
 	^ em
 		  finishComputeMain: (em emitComputeLoopFrom: sims phis: phis selectorTable: st)
+		  interfaces: interfaces
+]
+
+{ #category : 'compiling - compute' }
+PVSPIRVEmitter class >> compileComputeKernelNestedLoop: nestedNode annotation: ann selectorTable: st [
+	"A compute entry point whose body is an outer loop holding an inner loop. Like the
+	 single-loop entry point this takes no typeMap: the types have to be inferred over the
+	 register numbering the per-block simulations produce."
+
+	| em interfaces sims innerPhis outerPhis |
+	em := self new.
+	em annotation: ann.
+	em module addCapability: 1.
+	em module setAddressingModel: 0 memoryModel: 1.
+	interfaces := em emitComputeInterfaces.
+	sims := self
+		        computeNestedLoopSimulations: nestedNode
+		        annotation: ann
+		        selectorTable: st.
+	innerPhis := self
+		             loopPhisFrom: (sims at: #innerPreheader)
+		             latch: (sims at: #innerBody).
+	outerPhis := self
+		             nestedOuterPhisFrom: (sims at: #preheader)
+		             innerMerge: (sims at: #innerMerge)
+		             innerPhis: innerPhis.
+	^ em
+		  finishComputeMain: (em
+				   emitComputeNestedLoopFrom: sims
+				   outerPhis: outerPhis
+				   innerPhis: innerPhis
+				   selectorTable: st)
 		  interfaces: interfaces
 ]
 
@@ -414,6 +447,66 @@ PVSPIRVEmitter class >> computeLoopSimulations: loopNode annotation: ann selecto
 		  #typeMap -> (self inferTypesOver: { preheaderSim. headerSim. latchSim. exitSim } annotation: ann selectorTable: st) second }
 ]
 
+{ #category : 'compiling - compute' }
+PVSPIRVEmitter class >> computeNestedLoopSimulations: nestedNode annotation: ann selectorTable: st [
+	"Simulate the seven blocks of a nested compute loop with one shared register
+	 numbering, and infer the types over that numbering. Every block inside a loop is
+	 simulated from the definitions that reach the loop's entry, not from the block before
+	 it: the registers the entry left are the ones the emitter redirects onto the phi
+	 results. The exit block inherits the preheader's stack residue, because the preheader
+	 may leave a value the code after the loop pops."
+
+	| preheaderSim outerHeaderSim innerPreSim innerHeaderSim innerBodySim innerMergeSim exitSim |
+	preheaderSim := PVBlockSimulator new
+		                simulateBlock: nestedNode preheaderBlock
+		                initialTempDefs: (self paramTempDefsFor: ann)
+		                startingNextReg: ann params size + 1.
+	outerHeaderSim := PVBlockSimulator new
+		                  simulateBlock: nestedNode headerBlock
+		                  initialTempDefs: preheaderSim second
+		                  startingNextReg: preheaderSim fourth.
+	innerPreSim := PVBlockSimulator new
+		               simulateBlock: nestedNode innerPreheaderBlock
+		               initialTempDefs: preheaderSim second
+		               startingNextReg: outerHeaderSim fourth.
+	innerHeaderSim := PVBlockSimulator new
+		                  simulateBlock: nestedNode innerHeaderBlock
+		                  initialTempDefs: innerPreSim second
+		                  startingNextReg: innerPreSim fourth.
+	innerBodySim := PVBlockSimulator new
+		                simulateBlock: nestedNode innerBodyBlocks first
+		                initialTempDefs: innerPreSim second
+		                startingNextReg: innerHeaderSim fourth.
+	innerMergeSim := PVBlockSimulator new
+		                 simulateBlock: nestedNode innerMergeBlock
+		                 initialTempDefs: innerPreSim second
+		                 startingNextReg: innerBodySim fourth.
+	exitSim := PVBlockSimulator new
+		           simulateBlock: nestedNode exitBlock
+		           initialTempDefs: preheaderSim second
+		           startingNextReg: innerMergeSim fourth
+		           initialStack: (preheaderSim at: 5).
+	^ Dictionary newFrom: {
+			  (#preheader -> preheaderSim).
+			  (#outerHeader -> outerHeaderSim).
+			  (#innerPreheader -> innerPreSim).
+			  (#innerHeader -> innerHeaderSim).
+			  (#innerBody -> innerBodySim).
+			  (#innerMerge -> innerMergeSim).
+			  (#exit -> exitSim).
+			  (#typeMap -> (self
+				    inferTypesOver: {
+						    preheaderSim.
+						    outerHeaderSim.
+						    innerPreSim.
+						    innerHeaderSim.
+						    innerBodySim.
+						    innerMergeSim.
+						    exitSim }
+				    annotation: ann
+				    selectorTable: st) second) }
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann selectorTable: st [
 	"Simulate the four blocks of a compute selection with one shared register numbering,
@@ -619,6 +712,29 @@ PVSPIRVEmitter class >> loopPhisFrom: preheaderSim latch: latchSim [
 		  #latch -> latchRegs }
 ]
 
+{ #category : 'compiling - compute' }
+PVSPIRVEmitter class >> nestedOuterPhisFrom: preheaderSim innerMerge: innerMergeSim innerPhis: innerPhis [
+	"A variable the inner loop carries is carried by the outer loop as well, even though the
+	 inner merge block leaves it in the register the outer body was entered with: inside the
+	 inner loop that register points at the inner phi, so the outer phi's latch operand
+	 resolves to it. Comparing registers alone misses that variable, and in a tiled kernel
+	 it is the accumulator. A variable the inner loop declares, on the other hand, does not
+	 exist before the outer loop and is carried by the inner loop only."
+
+	| phis |
+	phis := self loopPhisFrom: preheaderSim latch: innerMergeSim.
+	(innerPhis at: #indices) do: [ :k |
+		(((phis at: #indices) includes: k) not and: [
+			 preheaderSim second includesKey: k ]) ifTrue: [
+			(phis at: #indices) add: k.
+			(phis at: #init) at: k put: (preheaderSim second at: k).
+			(phis at: #latch)
+				at: k
+				put: (innerMergeSim second at: k ifAbsent: [
+						 preheaderSim second at: k ]) ] ].
+	^ phis
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter class >> paramTempDefsFor: ann [
 	"The kernel's parameters occupy the first registers, in declaration order; temp 0 is
@@ -662,6 +778,44 @@ PVSPIRVEmitter class >> selectionMergeStackFrom: condSim phiReg: phiReg [
 ]
 
 { #category : 'constants' }
+PVSPIRVEmitter class >> sharedElementTypeOf: aSharedTypeSymbol [
+	"Raises rather than defaulting: a wrong element type emits a module that validates and
+	 reads the wrong addresses."
+
+	^ self sharedElementTypes
+		  at: aSharedTypeSymbol
+		  ifAbsent: [
+		  PVTypeError signal: 'Unknown shared type: ' , aSharedTypeSymbol ]
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> sharedElementTypes [
+	"The element type symbol each shared array type holds. A shared array is a workgroup
+	 tile declared by a <shared:named:count:> pragma, not a buffer: it has no descriptor and
+	 the host never binds it. One source for the type the emitter declares, the selector
+	 mappings for at: and at:put:, and the parameter types PVKernelCompiler takes for
+	 compute."
+
+	^ Dictionary newFrom: {
+			  (#sharedOf_f32 -> #f32).
+			  (#sharedOf_i32 -> #i32).
+			  (#sharedOf_f16 -> #f16) }
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> sharedTypeOf: anElementTypeSymbol [
+	"The shared array type that holds the element type a <shared:named:count:> pragma
+	 names. Raises rather than defaulting, so that a pragma naming an element type the
+	 emitter cannot declare is refused at compile time instead of emitting a tile of the
+	 wrong element type."
+
+	^ self sharedElementTypes
+		  keyAtValue: anElementTypeSymbol
+		  ifAbsent: [
+		  PVTypeError signal: 'No shared array type for: ' , anElementTypeSymbol ]
+]
+
+{ #category : 'constants' }
 PVSPIRVEmitter class >> storageBuffer16BitAccessCapability [
 	"StorageBuffer16BitAccess = 4433. Float16 alone covers the arithmetic; holding halves
 	 in a storage buffer needs this one as well."
@@ -687,6 +841,17 @@ PVSPIRVEmitter >> annotation: ann [
 	annotation := ann
 ]
 
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> branchTo: aBlock [
+	"The unconditional branch a block that falls through to the next one ends with."
+
+	^ SpvInstruction
+		  opcode: SpvOpcode opBranch
+		  resultType: nil
+		  resultId: nil
+		  operands: { aBlock id }
+]
+
 { #category : 'emit' }
 PVSPIRVEmitter >> broadcastScalar: reg toVecType: vecTypeSymbol block: blk [
 	| count vecType scalarId broadcastId |
@@ -708,6 +873,20 @@ PVSPIRVEmitter >> bufferElementTypeFor: aBufferTypeSymbol [
 	^ self spvTypeFor: (self class elementTypeOf: aBufferTypeSymbol)
 ]
 
+{ #category : 'emitting - phis' }
+PVSPIRVEmitter >> captureLatchIdsFor: aLoopLevel [
+	"The ids the back edge carries, read at the point the last block of the body has been
+	 emitted. For the outer level of a nested loop that point is after the inner loop, so
+	 the id of a variable the inner loop carries is the inner phi."
+
+	| phis |
+	phis := aLoopLevel at: #phis.
+	aLoopLevel
+		at: #latchIds
+		put: ((phis at: #indices) collect: [ :k |
+				 self spvIdFor: ((phis at: #latch) at: k) ])
+]
+
 { #category : 'emitting' }
 PVSPIRVEmitter >> declareCapabilitiesFor: aBufferTypeSymbol [
 	"A half buffer needs Float16 for the arithmetic and StorageBuffer16BitAccess for the
@@ -716,6 +895,15 @@ PVSPIRVEmitter >> declareCapabilitiesFor: aBufferTypeSymbol [
 	(self class elementTypeOf: aBufferTypeSymbol) = #f16 ifFalse: [ ^ self ].
 	module addCapability: self class float16Capability.
 	module addCapability: self class storageBuffer16BitAccessCapability
+]
+
+{ #category : 'emitting - shared memory' }
+PVSPIRVEmitter >> declareSharedCapabilitiesFor: aSharedTypeSymbol [
+	"A half tile needs Float16 for the arithmetic. It needs no 16-bit access capability:
+	 that one covers storage buffers, and a workgroup tile is not one."
+
+	(self class sharedElementTypeOf: aSharedTypeSymbol) = #f16 ifFalse: [ ^ self ].
+	module addCapability: self class float16Capability
 ]
 
 { #category : 'emitting compute' }
@@ -795,6 +983,29 @@ PVSPIRVEmitter >> emitBytecodeBlock: blk typeMap: typeMap selectorTable: st bloc
 	^ lastResultReg
 ]
 
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> emitComponent: compIdx ofVariable: varId op: op block: blk [
+	"One component of a three-component built-in vector: load the whole vector, then extract.
+	 Shared by every built-in read so that the load and the extract cannot disagree about the
+	 vector type."
+
+	| loadId resultId u32T |
+	u32T := module typeRegistry intType: 32 signed: false.
+	loadId := module newId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opLoad
+			 resultType: self uvec3Type id
+			 resultId: loadId
+			 operands: { varId }).
+	resultId := module newId.
+	regMap at: op result put: resultId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opCompositeExtract
+			 resultType: u32T id
+			 resultId: resultId
+			 operands: { loadId. compIdx })
+]
+
 { #category : 'emit' }
 PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: typeMap block: blk [
     | mapping resultType resultTypeId resultId |
@@ -825,13 +1036,14 @@ PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: typeMap selectorTable: st 
         operands: (op inputs collect: [:r | self spvIdFor: r]))
 ]
 
-{ #category : 'emitting' }
+{ #category : 'emitting - compute' }
 PVSPIRVEmitter >> emitComputeInterfaces [
 	"Create the interface variables of a compute entry point from the annotation: the
-	 WorkItem parameter becomes the GlobalInvocationId built-in, and every buffer
-	 parameter becomes a storage buffer at descriptor set 0 on the next binding. Answer
-	 them in declaration order, which is the order the entry point lists them and the
-	 order PVComputeKernel binds buffers in. Shared by the three compute entry points,
+	 WorkItem parameter becomes the GlobalInvocationId built-in, a shared parameter becomes
+	 a Workgroup tile, and every buffer parameter becomes a storage buffer at descriptor
+	 set 0 on the next binding. A tile takes no binding, because the host binds nothing for
+	 it. Answer them in declaration order, which is the order the entry point lists them and
+	 the order PVComputeKernel binds buffers in. Shared by the three compute entry points,
 	 which differ only in what sits between this prologue and OpReturn."
 
 	| interfaces decoratedRtas binding |
@@ -842,12 +1054,15 @@ PVSPIRVEmitter >> emitComputeInterfaces [
 		p type = #workItem
 			ifTrue: [ interfaces add: (self emitWorkItemInputForParam: i) ]
 			ifFalse: [
-				interfaces add: (self
-						 emitStorageBufferParam: p
-						 at: i
-						 binding: binding
-						 decoratedArrays: decoratedRtas).
-				binding := binding + 1 ] ].
+				p isShared
+					ifTrue: [ interfaces add: (self emitSharedArrayParam: p at: i) ]
+					ifFalse: [
+						interfaces add: (self
+								 emitStorageBufferParam: p
+								 at: i
+								 binding: binding
+								 decoratedArrays: decoratedRtas).
+						binding := binding + 1 ] ] ].
 	^ interfaces
 ]
 
@@ -872,6 +1087,39 @@ PVSPIRVEmitter >> emitComputeLoopFrom: sims phis: phis selectorTable: st [
 	self emitLoopLatchIn: ctx.
 	self prependLoopPhisIn: ctx.
 	self emitLoopExitIn: ctx.
+	^ spvFunc
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitComputeNestedLoopFrom: sims outerPhis: outerPhis innerPhis: innerPhis selectorTable: st [
+	"Build the eight blocks of a nested compute loop and answer the function holding them.
+	 There is one block more than the graph has, because the outer loop's continue target
+	 cannot be the inner loop's merge block."
+
+	| spvFunc ctx |
+	spvFunc := self newComputeMainFunction.
+	ctx := Dictionary newFrom: {
+			       (#sims -> sims).
+			       (#outer -> (Dictionary newFrom: { (#phis -> outerPhis) })).
+			       (#inner -> (Dictionary newFrom: { (#phis -> innerPhis) })).
+			       (#selectorTable -> st).
+			       (#preBlock -> spvFunc addBlock).
+			       (#outerHeaderBlock -> spvFunc addBlock).
+			       (#innerPreBlock -> spvFunc addBlock).
+			       (#innerHeaderBlock -> spvFunc addBlock).
+			       (#innerBodyBlock -> spvFunc addBlock).
+			       (#innerMergeBlock -> spvFunc addBlock).
+			       (#outerLatchBlock -> spvFunc addBlock).
+			       (#exitBlock -> spvFunc addBlock) }.
+	self emitNestedPreheaderIn: ctx.
+	self emitNestedOuterHeaderIn: ctx.
+	self emitNestedInnerPreheaderIn: ctx.
+	self emitNestedInnerHeaderIn: ctx.
+	self emitNestedInnerBodyIn: ctx.
+	self emitNestedInnerMergeIn: ctx.
+	self emitNestedOuterLatchIn: ctx.
+	self prependNestedPhisIn: ctx.
+	self emitNestedExitIn: ctx.
 	^ spvFunc
 ]
 
@@ -1007,6 +1255,19 @@ PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: typeMap selectorTable: st 
 	^ spvFunc
 ]
 
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> emitLocalInvocationComponent: compIdx op: op block: blk [
+	"Reads LocalInvocationId instead of the receiver's variable: the work item parameter is
+	 GlobalInvocationId, and asking where an invocation sits inside its workgroup is a
+	 question for a different built-in."
+
+	^ self
+		  emitComponent: compIdx
+		  ofVariable: self ensureLocalInvocationIdVariable id
+		  op: op
+		  block: blk
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter >> emitLoopExitIn: ctx [
 	"The exit block carries the work after the loop, which for a compute kernel is the
@@ -1113,7 +1374,145 @@ PVSPIRVEmitter >> emitLoopPreheaderIn: ctx [
 			 operands: { (ctx at: #headerBlock) id })
 ]
 
-{ #category : 'emit' }
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedBlock: aSimKey in: ctx into: aBlockKey [
+	"Emit one block of a nested loop: the register ops the simulation of that block
+	 produced, into the SPIR-V block the context holds under that key."
+
+	^ self
+		  emitRegOps: ((ctx at: #sims) at: aSimKey) first
+		  typeMap: ((ctx at: #sims) at: #typeMap)
+		  selectorTable: (ctx at: #selectorTable)
+		  block: (ctx at: aBlockKey)
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedExitIn: ctx [
+	"The work after the outer loop, which for a compute kernel is the store through the
+	 output buffer. The outer phi results are put back in front of the registers the loop
+	 was entered with first: the inner loop redirected the same registers at its own phis,
+	 and an inner phi does not dominate this block."
+
+	| blk |
+	blk := ctx at: #exitBlock.
+	self redirectToPhiResultsFor: (ctx at: #outer).
+	self emitNestedBlock: #exit in: ctx into: #exitBlock.
+	blk isTerminated ifFalse: [
+		blk terminate:
+			(SpvInstruction opcode: SpvOpcode opReturn operands: #( )) ]
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedInnerBodyIn: ctx [
+	"The inner body is also the inner continue target: it ends with the back edge to the
+	 inner header, and the registers it leaves the inner variables in are the latch side of
+	 the inner phis."
+
+	self emitNestedBlock: #innerBody in: ctx into: #innerBodyBlock.
+	self captureLatchIdsFor: (ctx at: #inner).
+	(ctx at: #innerBodyBlock) terminate:
+		(self branchTo: (ctx at: #innerHeaderBlock))
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedInnerHeaderIn: ctx [
+	"The inner test. The inner loop's continue target is its body, as in a single loop."
+
+	| blk |
+	blk := ctx at: #innerHeaderBlock.
+	self emitNestedBlock: #innerHeader in: ctx into: #innerHeaderBlock.
+	blk
+		addInstruction: (SpvInstruction
+				 opcode: SpvOpcode opLoopMerge
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (ctx at: #innerMergeBlock) id.
+						 (ctx at: #innerBodyBlock) id.
+						 self class loopControlNone });
+		terminate: (SpvInstruction
+				 opcode: SpvOpcode opBranchConditional
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (self spvIdFor: ((ctx at: #sims) at: #innerHeader) third).
+						 (ctx at: #innerBodyBlock) id.
+						 (ctx at: #innerMergeBlock) id })
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedInnerMergeIn: ctx [
+	"Where the inner loop leaves to, and the rest of the outer body: in the bytecode this
+	 block carries the outer loop's step. The outer latch ids are read here, after the inner
+	 loop, so that a variable the inner loop carries is taken from the inner phi."
+
+	self emitNestedBlock: #innerMerge in: ctx into: #innerMergeBlock.
+	self captureLatchIdsFor: (ctx at: #outer).
+	(ctx at: #innerMergeBlock) terminate:
+		(self branchTo: (ctx at: #outerLatchBlock))
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedInnerPreheaderIn: ctx [
+	"The outer loop's body up to the inner loop, which is the inner loop's preheader. It
+	 names the inner phi results, and from here on the registers the outer body was entered
+	 with point at them rather than at the outer phis."
+
+	self emitNestedBlock: #innerPreheader in: ctx into: #innerPreBlock.
+	self reservePhiResultsFor: (ctx at: #inner).
+	(ctx at: #innerPreBlock) terminate:
+		(self branchTo: (ctx at: #innerHeaderBlock))
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedOuterHeaderIn: ctx [
+	"The outer test. OpLoopMerge names the block the loop leaves to and the continue
+	 target, and must come immediately before the branch that leaves the block."
+
+	| blk |
+	blk := ctx at: #outerHeaderBlock.
+	self emitNestedBlock: #outerHeader in: ctx into: #outerHeaderBlock.
+	blk
+		addInstruction: (SpvInstruction
+				 opcode: SpvOpcode opLoopMerge
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (ctx at: #exitBlock) id.
+						 (ctx at: #outerLatchBlock) id.
+						 self class loopControlNone });
+		terminate: (SpvInstruction
+				 opcode: SpvOpcode opBranchConditional
+				 resultType: nil
+				 resultId: nil
+				 operands: {
+						 (self spvIdFor: ((ctx at: #sims) at: #outerHeader) third).
+						 (ctx at: #innerPreBlock) id.
+						 (ctx at: #exitBlock) id })
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedOuterLatchIn: ctx [
+	"The outer loop's continue target holds nothing but the back edge. It exists because a
+	 block may not be the merge block of one construct and the continue target of another,
+	 and the block the inner loop merges into is where the outer body ends."
+
+	(ctx at: #outerLatchBlock) terminate:
+		(self branchTo: (ctx at: #outerHeaderBlock))
+]
+
+{ #category : 'emitting - compute' }
+PVSPIRVEmitter >> emitNestedPreheaderIn: ctx [
+	"Runs once, before the outer loop. Its last act is to name the outer phi results, so
+	 that every block of the loop reads the phi and not the value from before it."
+
+	self emitNestedBlock: #preheader in: ctx into: #preBlock.
+	self reservePhiResultsFor: (ctx at: #outer).
+	(ctx at: #preBlock) terminate:
+		(self branchTo: (ctx at: #outerHeaderBlock))
+]
+
+{ #category : 'emitting' }
 PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
     | opc |
     op opcode = #const ifTrue: [
@@ -1137,9 +1536,15 @@ PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
         mapping ifNil: [ PVTypeError signal: 'No mapping for ' , op literal ].
         mapping spirvOp = #bufferLoad       ifTrue: [ self emitBufferLoad: op typeMap: typeMap block: blk. ^ self ].
         mapping spirvOp = #bufferStore      ifTrue: [ self emitBufferStore: op typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #sharedLoad       ifTrue: [ self emitSharedLoad: op typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #sharedStore      ifTrue: [ self emitSharedStore: op typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #workgroupBarrier ifTrue: [ self emitWorkgroupBarrier: op block: blk. ^ self ].
         mapping spirvOp = #workItemX        ifTrue: [ self emitWorkItemComponent: 0 op: op block: blk. ^ self ].
         mapping spirvOp = #workItemY        ifTrue: [ self emitWorkItemComponent: 1 op: op block: blk. ^ self ].
         mapping spirvOp = #workItemZ        ifTrue: [ self emitWorkItemComponent: 2 op: op block: blk. ^ self ].
+        mapping spirvOp = #workItemLocalX   ifTrue: [ self emitLocalInvocationComponent: 0 op: op block: blk. ^ self ].
+        mapping spirvOp = #workItemLocalY   ifTrue: [ self emitLocalInvocationComponent: 1 op: op block: blk. ^ self ].
+        mapping spirvOp = #workItemLocalZ   ifTrue: [ self emitLocalInvocationComponent: 2 op: op block: blk. ^ self ].
         mapping spirvOp = #workItemGridWidth ifTrue: [ self emitGridWidth: op block: blk. ^ self ].
         mapping spirvOp = #compositeConstruct ifTrue: [ self emitCompositeConstruct: op typeMap: typeMap selectorTable: st block: blk. ^ self ].
         mapping spirvOp = #vecExtractX      ifTrue: [ self emitVecExtract: 0 op: op block: blk. ^ self ].
@@ -1320,6 +1725,92 @@ PVSPIRVEmitter >> emitSelectionMergeIn: ctx [
 			(SpvInstruction opcode: SpvOpcode opReturn operands: #( )) ]
 ]
 
+{ #category : 'emitting - shared memory' }
+PVSPIRVEmitter >> emitSharedArrayParam: aParam at: paramIndex [
+	"A shared parameter becomes one Workgroup variable holding a fixed-size array. It
+	 carries no descriptor set and no binding, because the host binds nothing for it: the
+	 workgroup owns the storage for the life of its invocations. It still has to reach the
+	 entry point's interface list, which is why it is answered and kept."
+
+	| elemType arrayT pArrayT sVar |
+	self declareSharedCapabilitiesFor: aParam type.
+	elemType := self sharedElementTypeFor: aParam type.
+	arrayT := module typeRegistry
+		          arrayType: elemType
+		          length: aParam count.
+	pArrayT := module typeRegistry
+		           pointerType: SpvStorageClass workgroup
+		           type: arrayT.
+	sVar := SpvGlobalVariable new
+		        id: module newId;
+		        type: pArrayT;
+		        storageClass: SpvStorageClass workgroup;
+		        yourself.
+	module addGlobalVariable: sVar.
+	regMap at: paramIndex put: sVar id.
+	sharedVariables add: sVar.
+	^ sVar
+]
+
+{ #category : 'emitting - shared memory' }
+PVSPIRVEmitter >> emitSharedLoad: op typeMap: typeMap block: blk [
+	"One index only in the access chain, unlike a buffer load: a tile is a bare array, not a
+	 struct holding one."
+
+	| tileVarId idxId recvType elemType ptrType elemPtrId loadId |
+	tileVarId := self spvIdFor: op inputs first.
+	idxId := self spvIdFor: op inputs second.
+	recvType := typeMap at: op inputs first.
+	elemType := self sharedElementTypeFor: recvType.
+	ptrType := module typeRegistry
+		           pointerType: SpvStorageClass workgroup
+		           type: elemType.
+	elemPtrId := module newId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opAccessChain
+			 resultType: ptrType id
+			 resultId: elemPtrId
+			 operands: {
+					 tileVarId.
+					 idxId }).
+	loadId := module newId.
+	regMap at: op result put: loadId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opLoad
+			 resultType: elemType id
+			 resultId: loadId
+			 operands: { elemPtrId })
+]
+
+{ #category : 'emitting - shared memory' }
+PVSPIRVEmitter >> emitSharedStore: op typeMap: typeMap block: blk [
+	"One index only in the access chain, unlike a buffer store: a tile is a bare array, not a
+	 struct holding one."
+
+	| tileVarId idxId valId recvType elemType ptrType elemPtrId |
+	tileVarId := self spvIdFor: op inputs first.
+	idxId := self spvIdFor: op inputs second.
+	valId := self spvIdFor: op inputs third.
+	recvType := typeMap at: op inputs first.
+	elemType := self sharedElementTypeFor: recvType.
+	ptrType := module typeRegistry
+		           pointerType: SpvStorageClass workgroup
+		           type: elemType.
+	elemPtrId := module newId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opAccessChain
+			 resultType: ptrType id
+			 resultId: elemPtrId
+			 operands: {
+					 tileVarId.
+					 idxId }).
+	blk addInstruction:
+		(SpvInstruction opcode: SpvOpcode opStore operands: {
+				 elemPtrId.
+				 valId }).
+	regMap at: op result put: elemPtrId
+]
+
 { #category : 'emitting' }
 PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding decoratedArrays: decoratedRtas [
 	"A buffer parameter becomes a Block-decorated struct holding one runtime array. The
@@ -1407,23 +1898,14 @@ PVSPIRVEmitter >> emitVecExtract: index op: op block: blk [
 
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> emitWorkItemComponent: compIdx op: op block: blk [
-| varId u32T v3u32T loadId resultId |
-varId := self spvIdFor: op inputs first.
-u32T := module typeRegistry intType: 32 signed: false.
-v3u32T := module typeRegistry vectorType: u32T count: 3.
-loadId := module newId.
-blk addInstruction: (SpvInstruction
-    opcode: SpvOpcode opLoad
-    resultType: v3u32T id
-    resultId: loadId
-    operands: { varId }).
-resultId := module newId.
-regMap at: op result put: resultId.
-blk addInstruction: (SpvInstruction
-    opcode: SpvOpcode opCompositeExtract
-    resultType: u32T id
-    resultId: resultId
-    operands: { loadId. compIdx })
+	"The work item parameter stands for the GlobalInvocationId variable, so the component
+	 comes from the receiver's own variable."
+
+	^ self
+		  emitComponent: compIdx
+		  ofVariable: (self spvIdFor: op inputs first)
+		  op: op
+		  block: blk
 ]
 
 { #category : 'emitting' }
@@ -1451,6 +1933,40 @@ PVSPIRVEmitter >> emitWorkItemInputForParam: paramIndex [
 	^ gVar
 ]
 
+{ #category : 'emitting - shared memory' }
+PVSPIRVEmitter >> emitWorkgroupBarrier: op block: blk [
+	"The barrier answers nothing, so the register the send writes stands for the receiver.
+	 A kernel that used the value of a barrier send would be refused by type inference
+	 before reaching here."
+
+	blk addInstruction: module workgroupBarrierInstruction.
+	regMap at: op result put: (self spvIdFor: op inputs first)
+]
+
+{ #category : 'emitting compute' }
+PVSPIRVEmitter >> ensureBuiltIn: aBuiltInNumber [
+	"An input built-in that only the kernel body asks for, created on first use and kept by
+	 built-in number so two sends share one variable. Every one of them has to reach the
+	 entry point's interface list, which is what keeping them here is for: a module that
+	 reads a built-in the entry point does not list is invalid."
+
+	^ demandBuiltIns at: aBuiltInNumber ifAbsentPut: [
+		  | var |
+		  var := SpvGlobalVariable new
+			         id: module newId;
+			         type: (module typeRegistry
+					          pointerType: SpvStorageClass input
+					          type: self uvec3Type);
+			         storageClass: SpvStorageClass input;
+			         yourself.
+		  module addGlobalVariable: var.
+		  module
+			  addDecoration: var id
+			  decoration: SpvDecoration builtIn
+			  literals: { aBuiltInNumber }.
+		  var ]
+]
+
 { #category : 'private' }
 PVSPIRVEmitter >> ensureGlslExtInstSet [
     "Import GLSL.std.450 once; return its result id."
@@ -1458,51 +1974,54 @@ PVSPIRVEmitter >> ensureGlslExtInstSet [
 ]
 
 { #category : 'emitting compute' }
+PVSPIRVEmitter >> ensureLocalInvocationIdVariable [
+	"Where the invocation sits inside its workgroup. Created on first use like the grid
+	 built-in, since a kernel that never addresses shared memory has no reason to read it."
+
+	^ self ensureBuiltIn: SpvBuiltIn localInvocationId
+]
+
+{ #category : 'emitting compute' }
 PVSPIRVEmitter >> ensureNumWorkgroupsVariable [
 	"The NumWorkgroups built-in is created on first use, because only the kernel body says
-	 whether the kernel asks for the grid at all. finishComputeMain:interfaces: adds it to
-	 the entry point's interface list, which SPIR-V requires for Input variables."
+	 whether the kernel asks for the grid at all."
 
-	numWorkgroupsVar ifNotNil: [ ^ numWorkgroupsVar ].
-	numWorkgroupsVar := SpvGlobalVariable new
-		                    id: module newId;
-		                    type: (module typeRegistry
-				                     pointerType: SpvStorageClass input
-				                     type: (module typeRegistry
-						                      vectorType:
-						                      (module typeRegistry intType: 32 signed: false)
-						                      count: 3));
-		                    storageClass: SpvStorageClass input;
-		                    yourself.
-	module addGlobalVariable: numWorkgroupsVar.
-	module
-		addDecoration: numWorkgroupsVar id
-		decoration: SpvDecoration builtIn
-		literals: { SpvBuiltIn numWorkgroups }.
-	^ numWorkgroupsVar
+	^ self ensureBuiltIn: SpvBuiltIn numWorkgroups
 ]
 
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> finishComputeMain: spvFunc interfaces: interfaces [
 	"Register the entry point and its local size. A kernel that asked for the grid geometry
-	 created a NumWorkgroups variable while its body was emitted, and SPIR-V wants every
-	 Input variable in the interface list, so it joins the declared parameters here."
+	 or for its position in the workgroup created a built-in variable while its body was
+	 emitted, and SPIR-V wants every module-scope variable the entry point touches in the
+	 interface list, so those join the declared parameters here. They are added in id order
+	 so that compiling the same method twice answers the same bytes."
 
 	| allInterfaces |
 	module addFunction: spvFunc.
 	allInterfaces := interfaces asOrderedCollection.
-	numWorkgroupsVar ifNotNil: [ allInterfaces add: numWorkgroupsVar ].
-	module addEntryPoint: spvFunc executionModel: SpvExecutionModel glCompute name: 'main' interfaces: allInterfaces asArray.
-	module addExecutionMode: spvFunc mode: SpvExecutionMode localSize literals: annotation localSize.
+	allInterfaces addAll:
+		(demandBuiltIns values asSortedCollection: [ :a :b | a id <= b id ]).
+	module
+		addEntryPoint: spvFunc
+		executionModel: SpvExecutionModel glCompute
+		name: 'main'
+		interfaces: allInterfaces asArray.
+	module
+		addExecutionMode: spvFunc
+		mode: SpvExecutionMode localSize
+		literals: annotation localSize.
 	^ module serialize
 ]
 
 { #category : 'initialization' }
 PVSPIRVEmitter >> initialize [
-    super initialize.
-    regMap := Dictionary new.
-    outputVarIds := OrderedCollection new.
-    isVoidMain := false
+	super initialize.
+	regMap := Dictionary new.
+	outputVarIds := OrderedCollection new.
+	demandBuiltIns := Dictionary new.
+	sharedVariables := OrderedCollection new.
+	isVoidMain := false
 ]
 
 { #category : 'accessing' }
@@ -1569,6 +2088,69 @@ PVSPIRVEmitter >> prependLoopPhisIn: ctx [
 						 (ctx at: #latchBlock) id }) ]
 ]
 
+{ #category : 'emitting-nested-loop' }
+PVSPIRVEmitter >> prependNestedPhisIn: ctx [
+	"Both headers take their phis once every block that feeds them is emitted. The inner
+	 phis come from the inner preheader and the inner body; the outer phis come from the
+	 preheader and the outer latch, which is the block the back edge leaves from."
+
+	| typeMap |
+	typeMap := (ctx at: #sims) at: #typeMap.
+	(ctx at: #inner)
+		at: #header put: (ctx at: #innerHeaderBlock);
+		at: #preBlock put: (ctx at: #innerPreBlock);
+		at: #latchBlock put: (ctx at: #innerBodyBlock).
+	(ctx at: #outer)
+		at: #header put: (ctx at: #outerHeaderBlock);
+		at: #preBlock put: (ctx at: #preBlock);
+		at: #latchBlock put: (ctx at: #outerLatchBlock).
+	self prependPhisFor: (ctx at: #inner) typeMap: typeMap.
+	self prependPhisFor: (ctx at: #outer) typeMap: typeMap
+]
+
+{ #category : 'emitting-nested-loop' }
+PVSPIRVEmitter >> prependPhisFor: aLoopLevel typeMap: typeMap [
+	"A phi must be the first instruction of its block, and both its incoming ids are only
+	 known once the body is emitted, so the phis go in last and go in at the front. The
+	 three blocks a phi names are read off the level, which is what the caller filled in
+	 once it knew which block the back edge leaves from."
+
+	| phis hdr preBlk latchBlk |
+	phis := aLoopLevel at: #phis.
+	hdr := aLoopLevel at: #header.
+	preBlk := aLoopLevel at: #preBlock.
+	latchBlk := aLoopLevel at: #latchBlock.
+	(phis at: #indices) doWithIndex: [ :k :n |
+		| phiType |
+		phiType := typeMap
+			           at: ((phis at: #latch) at: k)
+			           ifAbsent: [ typeMap at: ((phis at: #init) at: k) ].
+		hdr prependInstruction: (SpvInstruction
+				 opcode: SpvOpcode opPhi
+				 resultType: (self spvTypeFor: phiType) id
+				 resultId: ((aLoopLevel at: #resultIds) at: n)
+				 operands: {
+						 ((aLoopLevel at: #initIds) at: n).
+						 preBlk id.
+						 ((aLoopLevel at: #latchIds) at: n).
+						 latchBlk id }) ]
+]
+
+{ #category : 'emitting - phis' }
+PVSPIRVEmitter >> redirectToPhiResultsFor: aLoopLevel [
+	"Point the registers the level was entered with at its phi results. The exit block asks
+	 for this again after the inner loop has redirected the same registers at its own phis:
+	 an inner phi does not dominate the outer loop's merge block, and the value that leaves
+	 the outer loop is the outer phi."
+
+	| phis |
+	phis := aLoopLevel at: #phis.
+	(phis at: #indices) doWithIndex: [ :k :n |
+		regMap
+			at: ((phis at: #init) at: k)
+			put: ((aLoopLevel at: #resultIds) at: n) ]
+]
+
 { #category : 'accessing' }
 PVSPIRVEmitter >> regMap [
 ^ regMap
@@ -1577,6 +2159,33 @@ PVSPIRVEmitter >> regMap [
 { #category : 'accessing' }
 PVSPIRVEmitter >> regMap: d [
 	regMap := d
+]
+
+{ #category : 'emitting - phis' }
+PVSPIRVEmitter >> reservePhiResultsFor: aLoopLevel [
+	"Name the phi results of one loop level and point the registers the level was entered
+	 with at them, so that every block inside the loop reads the phi rather than the value
+	 from before the loop. The init ids are read first, because the redirection overwrites
+	 the entries they come from."
+
+	| phis |
+	phis := aLoopLevel at: #phis.
+	aLoopLevel
+		at: #initIds
+		put: ((phis at: #indices) collect: [ :k |
+				 self spvIdFor: ((phis at: #init) at: k) ]).
+	aLoopLevel
+		at: #resultIds
+		put: ((phis at: #indices) collect: [ :k | module newId ]).
+	self redirectToPhiResultsFor: aLoopLevel
+]
+
+{ #category : 'emitting - shared memory' }
+PVSPIRVEmitter >> sharedElementTypeFor: aSharedTypeSymbol [
+	"The tile declaration, every load and every store ask here, because a module whose
+	 three answers disagree declares one array and indexes another."
+
+	^ self spvTypeFor: (self class sharedElementTypeOf: aSharedTypeSymbol)
 ]
 
 { #category : 'private' }
@@ -1600,4 +2209,15 @@ PVSPIRVEmitter >> spvTypeFor: typeSymbol [
         | vec4T | vec4T := module typeRegistry vectorType: (module typeRegistry floatType: 32) count: 4.
         ^ module typeRegistry matrixType: vec4T columns: 4 ].
     PVTypeError signal: 'Unknown type: ' , typeSymbol
+]
+
+{ #category : 'type mapping' }
+PVSPIRVEmitter >> uvec3Type [
+	"The type of every invocation built-in: three unsigned 32-bit components. The registry
+	 deduplicates, so asking for it costs a lookup and cannot drift from the type the rest
+	 of the module uses."
+
+	^ module typeRegistry
+		  vectorType: (module typeRegistry intType: 32 signed: false)
+		  count: 3
 ]

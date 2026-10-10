@@ -254,7 +254,35 @@ PVCompilerTest >> testCfgShapeLoopThenSelectionRejected [
 ]
 
 { #category : 'tests - cfg shapes' }
+PVCompilerTest >> testCfgShapeNestedLoopsRecognised [
+	"The one nesting shape the recogniser matches: an outer loop whose body is an inner
+	 loop. The node must account for every block, because the coverage check is what stops
+	 a partly matched graph compiling to its head alone."
+
+	| blocks node |
+	blocks := PVCFGBuilder buildBytecodeBlocks:
+		          (PVBytecodeDecoder decode:
+			           (PVCfgShapeFixture >> #computeNestedLoops:data:out:)).
+	node := PVStructuredCFGRecognizer recognizeFrom: blocks.
+	self assert: node class equals: PVNestedLoopNode.
+	self
+		assert: (IdentitySet newFrom: node coveredBlocks) size
+		equals: blocks size.
+	self assert: node preheaderBlock identicalTo: blocks first.
+	self assert: node headerBlock identicalTo: (blocks at: 2).
+	self assert: node innerPreheaderBlock identicalTo: (blocks at: 3).
+	self assert: node innerHeaderBlock identicalTo: (blocks at: 4).
+	self assert: node innerBodyBlocks asArray equals: { (blocks at: 5) }.
+	self assert: node innerMergeBlock identicalTo: (blocks at: 6).
+	self assert: node exitBlock identicalTo: (blocks at: 7)
+]
+
+{ #category : 'tests - cfg shapes' }
 PVCompilerTest >> testCfgShapeNestedLoopsRejected [
+	"The recogniser matches nested loops, but only the compute path emits them: a scalar
+	 <gpu> method of that shape must still be refused outright rather than compiled to the
+	 outer loop alone."
+
 	self assertShapeRejected: #nestedLoops:
 ]
 
@@ -314,12 +342,22 @@ PVCompilerTest >> testComputeLoopKernelEmitsOneLoopMerge [
 		description: 'a loop carrying a counter and an accumulator needs phi nodes'
 ]
 
-{ #category : 'tests - compute control flow' }
-PVCompilerTest >> testComputeNestedLoopsRejected [
-	"The compute path must refuse what it cannot represent instead of emitting the head of
-	 the graph and discarding the rest."
+{ #category : 'tests - cfg shapes' }
+PVCompilerTest >> testComputeNestedLoopsCompiles [
+	"The compute path emits the nested shape. Both loop merges and both back edges have to
+	 be there: a module holding one OpLoopMerge would be the outer loop with its body
+	 inlined once, which is the silent wrongness the recogniser used to refuse instead."
 
-	self assertShapeRejected: #computeNestedLoops:data:out:
+	| validator |
+	validator := PVSpirvValidator on: (PVKernelCompiler compile:
+			              (PVCfgShapeFixture >> #computeNestedLoops:data:out:)).
+	self
+		assert: (validator countOfOpcode: SpvOpcode opLoopMerge)
+		equals: 2.
+	self
+		assert: (validator countOfOpcode: SpvOpcode opBranchConditional)
+		equals: 2.
+	self assert: validator isValid description: validator validationReport
 ]
 
 { #category : 'tests - compute control flow' }
@@ -583,6 +621,26 @@ PVCompilerTest >> testMatmulKernelOfEachElementTypeUsesBuffersOfThatType [
 		raise: PVTypeError
 ]
 
+{ #category : 'tests-cfg' }
+PVCompilerTest >> testNestedLoopNodeRolesReadEverySlotWithoutMovingAnything [
+	"The Roles view reflects over the node's slots, so a role added to the class appears
+	 without the view changing, and reading it leaves the recognised graph as it was."
+
+	| node idsBefore rows roles |
+	node := PVNestedLoopNode exampleNestedLoopOfTheTiledMatmul.
+	idsBefore := node coveredBlocks collect: [ :each | each id ].
+	rows := node roleRows.
+	roles := rows collect: [ :each | each at: #role ].
+	self assert: rows size equals: node coveredBlocks size.
+	PVNestedLoopNode slotNames do: [ :slotName |
+		self
+			assert: (roles anySatisfy: [ :each | each beginsWith: slotName ])
+			description: slotName ].
+	self
+		assert: (node coveredBlocks collect: [ :each | each id ])
+		equals: idsBefore
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testNoCooperativeMatrixSelectorIsMappedYet [
 	"The skip is deliberate, and this states it. No cooperative matrix type or selector is in
@@ -753,6 +811,26 @@ PVCompilerTest >> testSelectorTableMapsHalfBufferAccess [
 	self
 		assert: (st at: 'at:put:' receiverType: #bufferOf_f16) resultTypeSymbol
 		equals: #void
+]
+
+{ #category : 'tests - shared memory' }
+PVCompilerTest >> testSharedPragmaRefusesAnElementTypeTheEmitterCannotDeclare [
+	"A <shared:named:count:> pragma naming an element type with no shared array type is
+	 refused when the annotation is read, rather than defaulting to a tile of the wrong
+	 element type."
+
+	self
+		should: [ PVSPIRVEmitter sharedTypeOf: #mat4 ]
+		raise: PVTypeError.
+	self
+		should: [ PVSPIRVEmitter sharedElementTypeOf: #sharedOf_mat4 ]
+		raise: PVTypeError.
+	self
+		assert: (PVSPIRVEmitter sharedTypeOf: #f32)
+		equals: #sharedOf_f32.
+	self
+		assert: (PVSPIRVEmitter sharedElementTypeOf: #sharedOf_f32)
+		equals: #f32
 ]
 
 { #category : 'tests - header' }

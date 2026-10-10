@@ -7,7 +7,8 @@ Class {
 	#instVars : [
 		'kind',
 		'type',
-		'name'
+		'name',
+		'count'
 	],
 	#category : 'PharoVulkan-Compiler',
 	#package : 'PharoVulkan',
@@ -17,6 +18,38 @@ Class {
 { #category : 'instance creation' }
 PVParamAnnotation class >> kind: k type: t name: n [
 	^ self new kind: k; type: t; name: n; yourself
+]
+
+{ #category : 'instance creation' }
+PVParamAnnotation class >> kind: k type: t name: n count: anInteger [
+	"A parameter that carries a length: a shared array has to state how many elements it
+	 holds, because a workgroup's share of shared memory is fixed when the module is
+	 compiled rather than when it is dispatched."
+
+	^ self new
+		  kind: k;
+		  type: t;
+		  name: n;
+		  count: anInteger;
+		  yourself
+]
+
+{ #category : 'accessing' }
+PVParamAnnotation >> count [
+	^ count
+]
+
+{ #category : 'accessing' }
+PVParamAnnotation >> count: anInteger [
+	count := anInteger
+]
+
+{ #category : 'testing' }
+PVParamAnnotation >> isShared [
+	"Shared parameters are not bound by the host: they become Workgroup-storage variables,
+	 so they take no descriptor and the host passes nothing for them."
+
+	^ kind = PVTypeAnnotation sharedKind
 ]
 
 { #category : 'accessing' }

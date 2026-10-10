@@ -191,3 +191,11 @@ SpvBuilder >> setMemoryModel: addrModel memoryModel: memModel [
 { #category : 'accessing' }
 SpvBuilder >> types [           ^ module typeRegistry
 ]
+
+{ #category : 'barriers' }
+SpvBuilder >> workgroupBarrier [
+	"Answers the module's one barrier definition, so that a kernel built through the builder
+	 and a kernel compiled from Pharo source emit the same instruction."
+
+	^ module workgroupBarrierInstruction
+]

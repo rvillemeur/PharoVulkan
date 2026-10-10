@@ -92,11 +92,35 @@ self at: '+' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIAdd resultT
 self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultType: #u32)
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
+PVSelectorTable >> initializeSharedMappings [
+	"A workgroup tile is indexed like a buffer but reaches a different storage class, so it
+	 needs its own receiver types rather than reusing the buffer mappings."
+
+	self
+		at: 'at:'
+		receiverType: #sharedOf_f32
+		put: (PVSelectorMapping spirvOp: #sharedLoad resultType: #f32).
+	self
+		at: 'at:'
+		receiverType: #sharedOf_i32
+		put: (PVSelectorMapping spirvOp: #sharedLoad resultType: #i32).
+	self
+		at: 'at:put:'
+		receiverType: #sharedOf_f32
+		put: (PVSelectorMapping spirvOp: #sharedStore resultType: #void).
+	self
+		at: 'at:put:'
+		receiverType: #sharedOf_i32
+		put: (PVSelectorMapping spirvOp: #sharedStore resultType: #void)
+]
+
+{ #category : 'initialization' }
 PVSelectorTable >> initializeStandardMappings [
 	self initializeScalarMappings.
 	self initializeWorkItemMappings.
 	self initializeBufferMappings.
+	self initializeSharedMappings.
 	self initializeHalfMappings.
 	self initializeSubgroupMappings
 ]
@@ -140,11 +164,19 @@ PVSelectorTable >> initializeVecMappings [
 
 { #category : 'private' }
 PVSelectorTable >> initializeWorkItemMappings [
-self at: 'x' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemX resultType: #u32).
-self at: 'y' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemY resultType: #u32).
-self at: 'z' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemZ resultType: #u32).
-"gridWidth is dispatch geometry, not an invocation index: groupCountX times localSizeX."
-self at: 'gridWidth' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemGridWidth resultType: #u32)
+	self at: 'x' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemX resultType: #u32).
+	self at: 'y' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemY resultType: #u32).
+	self at: 'z' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemZ resultType: #u32).
+	"The local indices read a different built-in from x, y and z: LocalInvocationId counts
+	 inside the workgroup, which is what addresses a slot of shared memory."
+	self at: 'localX' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemLocalX resultType: #u32).
+	self at: 'localY' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemLocalY resultType: #u32).
+	self at: 'localZ' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemLocalZ resultType: #u32).
+	"barrier is the one work item selector that reads nothing and answers nothing: like
+	 subgroupSum it is a group operation, so every invocation of the workgroup must reach it."
+	self at: 'barrier' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workgroupBarrier resultType: #void).
+	"gridWidth is dispatch geometry, not an invocation index: groupCountX times localSizeX."
+	self at: 'gridWidth' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemGridWidth resultType: #u32)
 ]
 
 { #category : 'accessing' }

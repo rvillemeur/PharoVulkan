@@ -39,6 +39,21 @@ PVTypeAnnotation class >> fromMethod: aCompiledMethod [
 
 ]
 
+{ #category : 'constants' }
+PVTypeAnnotation class >> paramKind [
+	"The kind every parameter the host binds carries."
+
+	^ #param
+]
+
+{ #category : 'constants' }
+PVTypeAnnotation class >> sharedKind [
+	"The kind marking a parameter that stands for a shared array rather than for something
+	 the host binds. One name, so the annotation and the emitter cannot disagree."
+
+	^ #shared
+]
+
 { #category : 'initialization' }
 PVTypeAnnotation >> applyPragma: aPragma [
 	"One pragma of a kernel method. Unknown pragmas are ignored: a method may carry
@@ -52,9 +67,16 @@ PVTypeAnnotation >> applyPragma: aPragma [
 	keyword = #localSize: ifTrue: [ ^ self localSize: (aPragma argumentAt: 1) ].
 	keyword = #param:named: ifTrue: [
 		^ params add: (PVParamAnnotation
-				   kind: #param
+				   kind: self class paramKind
 				   type: (aPragma argumentAt: 1)
 				   name: (aPragma argumentAt: 2)) ].
+	keyword = #shared:named:count: ifTrue: [
+		^ params add: (PVParamAnnotation
+				   kind: self class sharedKind
+				   type:
+					   (PVSPIRVEmitter sharedTypeOf: (aPragma argumentAt: 1))
+				   name: (aPragma argumentAt: 2)
+				   count: (aPragma argumentAt: 3)) ].
 	keyword = #output:named:builtin: ifTrue: [
 		^ outputs add: (PVOutputAnnotation
 				   type: (aPragma argumentAt: 1)

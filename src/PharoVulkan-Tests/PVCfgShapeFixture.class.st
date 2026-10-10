@@ -27,10 +27,11 @@ PVCfgShapeFixture >> computeLoopSum: aWorkItem data: aBuffer out: anOutput [
 	anOutput at: aWorkItem x put: acc
 ]
 
-{ #category : 'rejected shapes' }
+{ #category : 'recognised shapes' }
 PVCfgShapeFixture >> computeNestedLoops: aWorkItem data: aBuffer out: anOutput [
-	"Loop inside a loop body, in a compute kernel. The compute path must refuse it the
-	 same way the scalar path does."
+	"Loop inside a loop body, in a compute kernel. The one nesting shape the recogniser
+	 matches, added for the tiled matmul: the outer body is the inner loop and nothing
+	 else. The scalar path still refuses the shape, see nestedLoops:."
 
 	<gpu>
 	<param: #workItem named: #aWorkItem>

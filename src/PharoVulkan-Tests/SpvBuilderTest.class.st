@@ -85,6 +85,114 @@ SpvBuilderTest >> buildVectorAddModule [
     ^ b module
 ]
 
+{ #category : 'helpers' }
+SpvBuilderTest >> definitionOrderIn: bytes [
+	"Maps every result id in the module to the position of the instruction that defines it, so
+	 a test can state that a definition precedes its use rather than reading hex by eye. Only
+	 the instructions that carry a result id in the same place are walked: types, constants
+	 and global variables all put it first or second, and this answers both forms by taking
+	 the id a type instruction declares."
+
+	| words index order position |
+	order := Dictionary new.
+	words := self wordsIn: bytes.
+	index := 6.
+	position := 0.
+	[ index <= words size ] whileTrue: [
+		| word wordCount opcode |
+		word := words at: index.
+		wordCount := word bitShift: -16.
+		opcode := word bitAnd: 16rFFFF.
+		position := position + 1.
+		(self resultIdOfTypeOrConstant: opcode at: index in: words) ifNotNil: [ :id |
+			order at: id ifAbsentPut: [ position ] ].
+		index := index + wordCount ].
+	^ order
+]
+
+{ #category : 'helpers' }
+SpvBuilderTest >> resultIdOfTypeOrConstant: anOpcode at: anIndex in: words [
+	"Type declarations carry their result id as the first word after the opcode; constants and
+	 variables carry a result type first and the result id second. Anything else answers nil,
+	 since this is only asked about the types-and-constants section."
+
+	| typeOpcodes typedOpcodes |
+	typeOpcodes := {
+		               SpvOpcode opTypeVoid.
+		               SpvOpcode opTypeBool.
+		               SpvOpcode opTypeInt.
+		               SpvOpcode opTypeFloat.
+		               SpvOpcode opTypeVector.
+		               SpvOpcode opTypeMatrix.
+		               SpvOpcode opTypeArray.
+		               SpvOpcode opTypeRuntimeArray.
+		               SpvOpcode opTypeStruct.
+		               SpvOpcode opTypePointer.
+		               SpvOpcode opTypeFunction }.
+	typedOpcodes := {
+		                SpvOpcode opConstant.
+		                SpvOpcode opConstantTrue.
+		                SpvOpcode opConstantFalse.
+		                SpvOpcode opConstantNull.
+		                SpvOpcode opVariable }.
+	(typeOpcodes includes: anOpcode) ifTrue: [ ^ words at: anIndex + 1 ].
+	(typedOpcodes includes: anOpcode) ifTrue: [ ^ words at: anIndex + 2 ].
+	^ nil
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testArrayLengthConstantIsDefinedBeforeTheArrayType [
+	"An array type's length is an id, so the constant holding it has to be serialised first.
+	 The serialiser used to emit every type and only then every constant, which put the use
+	 before the definition and made any fixed-size array invalid SPIR-V."
+
+	| b types f32 array lengthId bytes order |
+	b := SpvBuilder new.
+	b addCapability: #Shader.
+	b setMemoryModel: 0 memoryModel: 1.
+	types := b types.
+	f32 := types floatType: 32.
+	array := types arrayType: f32 length: 16.
+	lengthId := b constants constantUInt32: 16.
+	bytes := SpvSerializer serialize: b module.
+	order := self definitionOrderIn: bytes.
+	self assert: ((order at: lengthId) < (order at: array id))
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testArrayTypeCarriesItsElementTypeAndLengthConstant [
+	"A fixed-size array names its length through an id of a constant, not a literal, which is
+	 what separates OpTypeArray from OpTypeRuntimeArray."
+
+	| b types f32 array lengthId |
+	b := SpvBuilder new.
+	types := b types.
+	f32 := types floatType: 32.
+	lengthId := b constants constantUInt32: 16.
+	array := types arrayType: f32 length: 16.
+	self assert: array instruction opcode equals: SpvOpcode opTypeArray.
+	self assert: array instruction operands equals: {
+			f32 id.
+			lengthId }
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testArrayTypeOfTheSameShapeIsDeduplicated [
+	"Two arrays of the same element type and length are one type, as every other type in the
+	 registry is."
+
+	| b types f32 |
+	b := SpvBuilder new.
+	types := b types.
+	f32 := types floatType: 32.
+	self
+		assert: (types arrayType: f32 length: 16) id
+		equals: (types arrayType: f32 length: 16) id.
+	self
+		deny: (types arrayType: f32 length: 16) id
+		equals: (types arrayType: f32 length: 32) id
+]
+
 { #category : 'tests' }
 SpvBuilderTest >> testConstantDeduplication [
     "Requesting the same constant twice must return the same result id."
@@ -93,6 +201,39 @@ SpvBuilderTest >> testConstantDeduplication [
     id1 := m constantPool constantFloat32: 1.0.
     id2 := m constantPool constantFloat32: 1.0.
     self assert: id1 equals: id2
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testMemorySemanticsAreSingleBitsOfOneMask [
+	"Memory semantics is a bitmask, so the named values have to be distinct single bits that
+	 can be combined. A value that is not a power of two would silently set two meanings."
+
+	{
+		SpvMemorySemantics acquire.
+		SpvMemorySemantics release.
+		SpvMemorySemantics acquireRelease.
+		SpvMemorySemantics uniformMemory.
+		SpvMemorySemantics subgroupMemory.
+		SpvMemorySemantics workgroupMemory } do: [ :each |
+		self assert: each isPowerOfTwo ].
+	self
+		assert: (SpvMemorySemantics acquireRelease bitAnd:
+				 SpvMemorySemantics workgroupMemory)
+		equals: 0
+]
+
+{ #category : 'tests - barriers' }
+SpvBuilderTest >> testModuleAnswersTheSameBarrierTheBuilderDoes [
+	"The hand-built path reaches the barrier through the builder and the compiled path
+	 reaches it through the module. One definition, so the two cannot drift apart in scope
+	 or memory semantics."
+
+	| b fromBuilder fromModule |
+	b := SpvBuilder new.
+	fromBuilder := b workgroupBarrier.
+	fromModule := b module workgroupBarrierInstruction.
+	self assert: fromModule opcode equals: fromBuilder opcode.
+	self assert: fromModule operands equals: fromBuilder operands
 ]
 
 { #category : 'tests' }
@@ -147,4 +288,38 @@ SpvBuilderTest >> testVectorAddModuleSerializes [
     self assert: (bytes at: 2) equals: 16r02.
     self assert: (bytes at: 3) equals: 16r23.
     self assert: (bytes at: 4) equals: 16r07
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testWorkgroupBarrierCarriesThreeConstantIds [
+	"OpControlBarrier takes an execution scope, a memory scope and memory semantics, and all
+	 three are ids of constants rather than literals — unlike the group operation beside the
+	 scope in a subgroup reduction. The semantics say the workgroup's shared memory is made
+	 visible, which is the whole reason a tiled kernel needs the barrier."
+
+	| b barrier scopeId semanticsId |
+	b := SpvBuilder new.
+	b addCapability: #Shader.
+	b setMemoryModel: 0 memoryModel: 1.
+	barrier := b workgroupBarrier.
+	scopeId := b constants constantUInt32: SpvScope workgroup.
+	semanticsId := b constants constantUInt32:
+		               (SpvMemorySemantics acquireRelease
+			                bitOr: SpvMemorySemantics workgroupMemory).
+	self assert: barrier opcode equals: SpvOpcode opControlBarrier.
+	self assert: barrier operands equals: {
+			scopeId.
+			scopeId.
+			semanticsId }
+]
+
+{ #category : 'helpers' }
+SpvBuilderTest >> wordsIn: bytes [
+	"The module as 32-bit little-endian words, which is the only form its instruction stream
+	 can be walked in."
+
+	^ (1 to: bytes size by: 4) collect: [ :each |
+		  (bytes at: each) + ((bytes at: each + 1) bitShift: 8)
+		  + ((bytes at: each + 2) bitShift: 16)
+		  + ((bytes at: each + 3) bitShift: 24) ]
 ]

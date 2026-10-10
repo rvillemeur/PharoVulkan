@@ -17,3 +17,12 @@ SpvScope class >> subgroup [
 
 	^ 3
 ]
+
+{ #category : 'constants' }
+SpvScope class >> workgroup [
+	"Scope Workgroup from the SPIR-V Scope enumeration, between Device 1 and Subgroup 3.
+	 All invocations of one workgroup, which is the scope a shared memory tile and the
+	 barrier guarding it belong to."
+
+	^ 2
+]

@@ -28,6 +28,23 @@ SpvTypeRegistry >> allTypes [
 ]
 
 { #category : 'type-factories' }
+SpvTypeRegistry >> arrayType: anElementType length: anInteger [
+	"A fixed-size array, which is what a shared memory tile needs. The length constant is
+	 declared here rather than when the instruction is encoded, so that the constant is in
+	 the pool before the type is serialised: the type names it by id and a use must follow
+	 its definition."
+
+	| key |
+	key := Array with: #array with: anElementType id with: anInteger.
+	^ types at: key ifAbsent: [
+		  module constantPool constantUInt32: anInteger.
+		  self register: (SpvArrayType new
+				   elementType: anElementType;
+				   length: anInteger;
+				   yourself) ]
+]
+
+{ #category : 'type-factories' }
 SpvTypeRegistry >> boolType [
     ^ types at: #bool ifAbsent: [ self register: SpvBoolType new ]
 ]

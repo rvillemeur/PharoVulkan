@@ -169,3 +169,25 @@ SpvModule >> setAddressingModel: addrModel memoryModel: memModel [
 { #category : 'accessing' }
 SpvModule >> typeRegistry [    ^ typeRegistry
 ]
+
+{ #category : 'instructions' }
+SpvModule >> workgroupBarrierInstruction [
+	"The barrier a tiled kernel puts between filling a shared tile and reading it. All three
+	 operands are ids of constants, which the pool declares and deduplicates. The semantics
+	 name the Workgroup storage class, because a barrier that only synchronised execution
+	 would let a lane read a tile slot its neighbour has written but not yet made visible.
+	 It lives on the module rather than the builder so that the hand-built and the compiled
+	 path share one definition."
+
+	| scopeId semanticsId |
+	scopeId := constantPool constantUInt32: SpvScope workgroup.
+	semanticsId := constantPool constantUInt32:
+		               (SpvMemorySemantics acquireRelease bitOr:
+			                SpvMemorySemantics workgroupMemory).
+	^ SpvInstruction
+		  opcode: SpvOpcode opControlBarrier
+		  operands: {
+				  scopeId.
+				  scopeId.
+				  semanticsId }
+]

@@ -51,6 +51,15 @@ SpvOpcode class >> opConstantNull [        ^ 46
 SpvOpcode class >> opConstantTrue [        ^ 41
 ]
 
+{ #category : 'constants' }
+SpvOpcode class >> opControlBarrier [
+	"OpControlBarrier, the neighbour of OpMemoryBarrier 225. Every invocation of the
+	 execution scope must reach it before any of them continues, and it carries memory
+	 semantics so the shared memory written before it is visible after it."
+
+	^ 224
+]
+
 { #category : 'converting' }
 SpvOpcode class >> opConvertSToF [
 
@@ -268,6 +277,14 @@ SpvOpcode class >> opTypeVector [          ^ 23
 
 { #category : 'types' }
 SpvOpcode class >> opTypeVoid [            ^ 19
+]
+
+{ #category : 'constants' }
+SpvOpcode class >> opULessThan [
+	"The unsigned neighbour of OpSLessThan 177. Loop counters built from a built-in
+	 invocation id are unsigned, so an unsigned comparison is the one that cannot wrap."
+
+	^ 176
 ]
 
 { #category : 'constants' }

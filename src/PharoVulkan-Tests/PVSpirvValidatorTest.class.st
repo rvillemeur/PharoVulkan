@@ -23,9 +23,24 @@ PVSpirvValidatorTest >> testBuiltInsFromWordsNamesWhatTheKernelReads [
 ]
 
 { #category : 'tests' }
+PVSpirvValidatorTest >> testCountOfOpcodeCountsEveryInstructionOfThatOpcode [
+	"Counted from the bytes, so the figure is what the module holds rather than what the
+	 emitter was asked for. The tiled matmul is the module with barriers in it."
+
+	| validator |
+	validator := PVSpirvValidator on: PVTiledMatmulKernel new spirv.
+	self assert: (validator countOfOpcode: SpvOpcode opControlBarrier) equals: 2.
+	self assert: (validator countOfOpcode: SpvOpcode opLoopMerge) equals: 2.
+	self
+		assert: (validator countOfOpcode: SpvOpcode opGroupNonUniformFAdd)
+		equals: 0
+]
+
+{ #category : 'tests - reporting' }
 PVSpirvValidatorTest >> testEntryPointReportOnAModuleWithoutAWorkgroup [
 	"A vertex shader declares no local size. The report must say so with an empty shape
-	 rather than failing or inventing the compute default."
+	 rather than failing or inventing the compute default. It declares no shared tile
+	 either, which is the degenerate case for the two tile rows."
 
 	| validator rows |
 	validator := PVSpirvValidator on:
@@ -33,8 +48,33 @@ PVSpirvValidatorTest >> testEntryPointReportOnAModuleWithoutAWorkgroup [
 			              PVKernelExamples >> #triVertex:color:).
 	self assert: validator localSizeFromWords equals: #( ).
 	rows := validator entryPointReport.
-	self assert: (rows collect: [ :each | each at: #setting ]) equals: #( 'Local size' 'Invocations per group' 'Built-ins read' ).
-	self assert: (rows first at: #value) equals: '#()'
+	self
+		assert: (rows collect: [ :each | each at: #setting ])
+		equals: #( 'Local size' 'Invocations per group' 'Built-ins read'
+			   'Shared tiles' 'Tiles named by entry point' ).
+	self assert: (rows first at: #value) equals: '#()'.
+	self assert: ((rows at: 4) at: #value) equals: '0'.
+	self assert: ((rows at: 5) at: #value) equals: '0'
+]
+
+{ #category : 'tests - compute' }
+PVSpirvValidatorTest >> testEveryWorkgroupVariableIsNamedByTheEntryPoint [
+	"Under SPIR-V 1.5 the entry point's interface list must name every module-scope
+	 variable the entry point touches, Workgroup tiles included. A module that leaves a
+	 tile out validates nowhere and is the mistake this reads back. The plain matmul is the
+	 degenerate case: no tiles, and the list still names its buffers."
+
+	| shared plain tiles |
+	shared := PVSpirvValidator on: (PVKernelCompiler compile:
+			           (PVKernelExamples >> #broadcastFirstOf:data:out:tile:)).
+	plain := PVSpirvValidator exampleValidatorOnMatmulKernel.
+	tiles := shared variableIdsInStorageClass: SpvStorageClass workgroup.
+	self assert: tiles size equals: 1.
+	self assert: (tiles allSatisfy: [ :id |
+			 shared entryPointInterfaceIds includes: id ]).
+	self
+		assertEmpty: (plain variableIdsInStorageClass: SpvStorageClass workgroup).
+	self deny: plain entryPointInterfaceIds isEmpty
 ]
 
 { #category : 'tests - report' }
@@ -121,6 +161,18 @@ PVSpirvValidatorTest >> testInspectorValidationViewLeavesTheInspectedValidatorUn
 	self assert: view items size equals: (PVSpirvValidator on: bytes) validationReport size
 ]
 
+{ #category : 'tests - compute' }
+PVSpirvValidatorTest >> testLocalIndexKernelValidates [
+	"The DSL path to LocalInvocationId. The built-in is created on demand by the kernel
+	 body rather than by a parameter, so its decoration and its place in the interface list
+	 are the thing at risk."
+
+	self
+		validateSpirv:
+		(PVKernelCompiler compile: (PVKernelExamples >> #localIndexOf:data:out:))
+		description: 'localIndexOf:data:out:'
+]
+
 { #category : 'tests' }
 PVSpirvValidatorTest >> testLocalSizeFromWordsReadsTheDeclaredWorkgroup [
 	"Decoded from the module, not asked of the annotation: this is what the driver sees."
@@ -154,6 +206,35 @@ PVSpirvValidatorTest >> testScalarGpuMethodHasNoEntryPoint [
 	validator := self validatorFor: (PVKernelCompiler compile: (PVKernelExamples >> #relu:)).
 	self deny: validator isValid.
 	self assert: (validator validationOutput includesSubstring: 'No OpEntryPoint')
+]
+
+{ #category : 'tests - compute' }
+PVSpirvValidatorTest >> testSharedBroadcastKernelDeclaresOneWorkgroupVariable [
+	"The tile must land in the Workgroup storage class. A tile emitted as Private would
+	 validate and would still pass a single-invocation reading of the kernel, while giving
+	 every invocation its own copy and silently losing the broadcast."
+
+	| validator |
+	validator := PVSpirvValidator on: (PVKernelCompiler compile:
+			              (PVKernelExamples >> #broadcastFirstOf:data:out:tile:)).
+	self
+		assert: (validator variableCountInStorageClass: SpvStorageClass workgroup)
+		equals: 1.
+	self
+		assert: (validator countOfOpcode: SpvOpcode opControlBarrier)
+		equals: 1
+]
+
+{ #category : 'tests - compute' }
+PVSpirvValidatorTest >> testSharedBroadcastKernelValidates [
+	"The DSL path to shared memory. A Workgroup variable missing from the entry point's
+	 interface list is invalid under SPIR-V 1.5, and spirv-val is what catches it."
+
+	self
+		validateSpirv:
+		(PVKernelCompiler compile:
+			 (PVKernelExamples >> #broadcastFirstOf:data:out:tile:))
+		description: 'broadcastFirstOf:data:out:tile:'
 ]
 
 { #category : 'tests' }
@@ -194,6 +275,25 @@ PVSpirvValidatorTest >> testValidationReportSaysSoWhenTheToolIsMissing [
 	report := (PVMissingToolValidatorStub on: #[ 1 2 3 4 ]) validationReport.
 	self assert: report size equals: 1.
 	self assert: (report first value includesSubstring: 'not found on PATH')
+]
+
+{ #category : 'tests' }
+PVSpirvValidatorTest >> testVariableCountInStorageClassSeesTheSharedTiles [
+	"A shared tile is an OpVariable in the Workgroup storage class. A kernel without tiling
+	 has none, which is the degenerate case that makes the count mean something."
+
+	| tiled plain |
+	tiled := PVSpirvValidator on: PVTiledMatmulKernel new spirv.
+	plain := PVSpirvValidator exampleValidatorOnMatmulKernel.
+	self
+		assert: (tiled variableCountInStorageClass: SpvStorageClass workgroup)
+		equals: PVTiledMatmulKernel tileCount.
+	self
+		assert: (plain variableCountInStorageClass: SpvStorageClass workgroup)
+		equals: 0.
+	self
+		assert: (tiled variableCountInStorageClass: SpvStorageClass storageBuffer)
+		equals: PVTiledMatmulKernel bufferBindings size
 ]
 
 { #category : 'tests' }

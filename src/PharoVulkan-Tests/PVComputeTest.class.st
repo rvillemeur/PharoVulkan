@@ -115,6 +115,24 @@ PVComputeTest >> bytesToFloats: bytes [
 	^ result
 ]
 
+{ #category : 'running - matmul' }
+PVComputeTest >> dispatchCompiledTiledMatmulOn: buffers groups: groupCount [
+	"Bind the compiled tiled kernel's three buffers in binding order and answer the last
+	 one's contents. Its two shared tiles take no binding, which is the whole point of
+	 declaring them with <shared:named:count:> rather than as buffers."
+
+	| kernel |
+	kernel := PVComputeKernel
+		          fromMethod:
+		          PVKernelExamples >> #tiledMatmulF32:a:b:out:tileA:tileB:
+		          on: ctx.
+	^ [
+	  buffers do: [ :each | kernel bindBuffer: each ].
+	  kernel prepare.
+	  kernel dispatch: groupCount y: groupCount z: 1.
+	  buffers last elementsAs: #f32 ] ensure: [ kernel destroy ]
+]
+
 { #category : 'helpers' }
 PVComputeTest >> dispatchMatmulOn: buffers groups: groupCount [
 	^ self
@@ -137,6 +155,21 @@ PVComputeTest >> dispatchMatmulOn: buffers groups: groupCount elementType: anEle
 	  kernel prepare.
 	  kernel dispatch: groupCount y: groupCount z: 1.
 	  buffers last elementsAs: anElementTypeSymbol ] ensure: [ kernel destroy ]
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> dispatchTiledMatmulOn: buffers groups: groupCount [
+	"Bind the tiled kernel's three buffers in binding order and answer the last one's
+	 contents. The kernel is hand-built SPIR-V, so the runner is given bytes rather than a
+	 compiled method."
+
+	| kernel |
+	kernel := PVComputeKernel on: ctx spirv: PVTiledMatmulKernel new spirv.
+	^ [
+	  buffers do: [ :each | kernel bindBuffer: each ].
+	  kernel prepare.
+	  kernel dispatch: groupCount y: groupCount z: 1.
+	  buffers last elementsAs: #f32 ] ensure: [ kernel destroy ]
 ]
 
 { #category : 'helpers' }
@@ -187,6 +220,34 @@ PVComputeTest >> referenceAtRow: r col: c order: n [
 		  acc + ((self aAtRow: r col: k) * (self bAtRow: k col: c)) ]
 ]
 
+{ #category : 'running - matmul' }
+PVComputeTest >> runCompiledTiledMatmulOfOrder: n [
+	"The same inputs the other two matmul kernels are checked against, so all three are
+	 compared on identical data."
+
+	| bufA bufB bufOut |
+	bufA := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	bufB := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	bufOut := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	^ [
+	  bufA
+		  put: (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ])
+		  as: #f32.
+	  bufB
+		  put: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ])
+		  as: #f32.
+	  bufOut put: (Array new: n * n withAll: 0.0) as: #f32.
+	  self
+		  dispatchCompiledTiledMatmulOn: {
+				  bufA.
+				  bufB.
+				  bufOut }
+		  groups: n // PVTiledMatmulKernel tileWidth ] ensure: [
+		  bufA destroy.
+		  bufB destroy.
+		  bufOut destroy ]
+]
+
 { #category : 'private' }
 PVComputeTest >> runMatmulOfOrder: n groups: groupCount [
 	^ self runMatmulOfOrder: n groups: groupCount elementType: #f32
@@ -217,6 +278,32 @@ PVComputeTest >> runMatmulOfOrder: n groups: groupCount elementType: anElementTy
 		  dispatchMatmulOn: { bufA. bufB. bufOut }
 		  groups: groupCount
 		  elementType: anElementTypeSymbol ] ensure: [
+		  bufA destroy.
+		  bufB destroy.
+		  bufOut destroy ]
+]
+
+{ #category : 'helpers' }
+PVComputeTest >> runTiledMatmulOfOrder: n [
+	"The same inputs the naive matmul is checked against, so the two kernels are compared
+	 on identical data. The kernel takes N from the grid, so the grid covers the matrix
+	 exactly: n divided by the tile width, along both axes."
+
+	| bufA bufB bufOut |
+	bufA := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	bufB := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	bufOut := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	^ [
+	  bufA
+		  put: (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ])
+		  as: #f32.
+	  bufB
+		  put: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ])
+		  as: #f32.
+	  bufOut put: (Array new: n * n withAll: 0.0) as: #f32.
+	  self
+		  dispatchTiledMatmulOn: { bufA. bufB. bufOut }
+		  groups: n // PVTiledMatmulKernel tileWidth ] ensure: [
 		  bufA destroy.
 		  bufB destroy.
 		  bufOut destroy ]
@@ -333,6 +420,25 @@ PVComputeTest >> testBenchmarkRunsMatmulAndReportsTime [
 		ifFalse: [ self assert: result gigaflopsPerSecond > 0 ]
 ]
 
+{ #category : 'tests - matmul' }
+PVComputeTest >> testCompiledTiledMatmulMatchesTheReferenceAtOrder64 [
+	"The tiled kernel written in Pharo source, element by element. The hand-built module is
+	 checked the same way at the same order, so a difference between the two shows up here
+	 rather than in the timing."
+
+	| n result |
+	n := 64.
+	result := self runCompiledTiledMatmulOfOrder: n.
+	self assert: result size equals: n * n.
+	0 to: n - 1 do: [ :r |
+		0 to: n - 1 do: [ :c |
+			self
+				assert: ((result at: r * n + c + 1)
+						 - (self referenceAtRow: r col: c order: n)) abs < 0.001
+				description: 'Element ' , r printString , ',' , c printString
+					, ' is ' , (result at: r * n + c + 1) printString ] ]
+]
+
 { #category : 'tests' }
 PVComputeTest >> testComputeLoopSumOnDevice [
 	"The loop kernel must produce the right numbers on the device. spirv-val cannot see a
@@ -425,6 +531,36 @@ PVComputeTest >> testGridWidthFromDispatchOnDevice [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testLocalInvocationIdOnDevice [
+	"wi localX must read the LocalInvocationId built-in, which numbers an invocation inside
+	 its own workgroup rather than inside the dispatch. The kernel uses it as an index, so
+	 the output says which slot each invocation read: with two groups of eight, both groups
+	 must read the first eight elements, which a global index could not do."
+
+	| n groups bufIn bufOut kernel result |
+	n := 16.
+	groups := 2.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	bufIn putF32s: ((0 to: n - 1) collect: [ :i | i asFloat ]).
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #localIndexOf:data:out:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: groups y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: n do: [ :i |
+		self assert: (result at: i) closeTo: ((i - 1) \\ 8) asFloat ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testMatmulF16OnDeviceHoldsAtTheBenchmarkSize [
 	"The size the benchmark runs. A 512 term dot product is where accumulating in half would
 	 drift far enough to fail, so this is what states the f32 accumulator earns its place."
@@ -489,6 +625,37 @@ PVComputeTest >> testMatmulOrder512MatchesReferenceAtSampledPositions [
 				precision: 0.01 ] ]
 ]
 
+{ #category : 'tests - control flow' }
+PVComputeTest >> testNestedLoopsOnDevice [
+	"A nested loop through the DSL, on the device. The inner loop runs twice per outer
+	 iteration and the block the inner loop merges into adds one more element, so a dropped
+	 outer loop, a dropped inner loop and a dropped merge block each give a different wrong
+	 answer rather than all three giving the same one."
+
+	| n bufIn bufOut kernel input expected result |
+	n := 4.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	input := #( 1.0 2.0 4.0 8.0 ).
+	bufIn putF32s: input.
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	expected := 4 * ((input at: 1) + (input at: 2))
+	            + (input inject: 0.0 into: [ :a :b | a + b ]).
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #nestedAccumulateOf:data:out:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: 1 y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: n do: [ :i | self assert: (result at: i) closeTo: expected ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
+]
+
 { #category : 'tests' }
 PVComputeTest >> testPrecisionComparisonReportsOneRowPerElementType [
 	"The table is read against the baseline, so it holds one row per precision in a fixed
@@ -536,6 +703,41 @@ PVComputeTest >> testPrecisionComparisonTimesEveryElementTypeAtTheSameOrder [
 		self assert: benchmark result order equals: 128.
 		self assert: benchmark result repeats equals: 3.
 		self assert: benchmark result milliseconds >= 0 ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testSharedMemoryBroadcastWithinWorkgroupOnDevice [
+	"Shared memory and the barrier, through the DSL rather than through a hand-built module.
+	 Each invocation copies its own element into its slot of the tile, waits at the barrier,
+	 then reads slot zero — a slot another invocation filled. Every invocation of a workgroup
+	 must therefore answer that workgroup's first element, which no private variable could
+	 produce, and which would be a race without the barrier."
+
+	| n width groups bufIn bufOut kernel input result |
+	n := 32.
+	width := 8.
+	groups := n // width.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	input := (1 to: n) collect: [ :i | i asFloat * 10.0 ].
+	bufIn putF32s: input.
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #broadcastFirstOf:data:out:tile:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: groups y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: n do: [ :i |
+		self
+			assert: (result at: i)
+			closeTo: (input at: (i - 1) // width * width + 1) ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
 ]
 
 { #category : 'tests' }
@@ -608,6 +810,171 @@ PVComputeTest >> testSubgroupDotSlotsHoldMoreThanOneLaneProduct [
 	run run.
 	run partialSums doWithIndex: [ :each :i |
 		self assert: each > (run productAt: i) ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledComparisonExampleReportsEveryRowAfterItsContextIsGone [
+	"The example destroys the context it built, and a table is read long after that, so
+	 every row has to come from what the run kept rather than from the device."
+
+	| comparison rows |
+	comparison := PVTiledMatmulComparison exampleComparisonAtOrder256.
+	rows := comparison reportRows.
+	self assert: rows size > 1.
+	rows do: [ :each |
+		self deny: (each at: #value) isEmpty description: (each at: #name) ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledComparisonRejectsAnOrderTheGridCannotCover [
+	"Both kernels take the matrix order from the dispatch grid, so an order the tile width
+	 does not divide has no grid and must be refused rather than timed."
+
+	self
+		should: [
+			PVTiledMatmulComparison
+				on: ctx
+				order: PVTiledMatmulKernel tileWidth + 1
+				repeats: 1 ]
+		raise: PVTypeError
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledComparisonReportBeforeAnyRun [
+	"A table opened on a comparison that has not run says so, rather than showing a ratio
+	 of nothing against nothing."
+
+	| rows |
+	rows := (PVTiledMatmulComparison on: ctx order: 64 repeats: 1) reportRows.
+	self assert: rows size equals: 1.
+	self assert: ((rows first at: #value) includesSubstring: 'not run')
+]
+
+{ #category : 'tests-compute' }
+PVComputeTest >> testTiledComparisonReportNamesTheCompiledKernel [
+	"A table that shows two kernels where three ran would hide the measurement the DSL
+	 was added for."
+
+	| names |
+	names := ((PVTiledMatmulComparison on: ctx order: 64 repeats: 1) run
+		          reportRows collect: [ :each | each at: #name ]) asArray.
+	self assert: (names includes: 'Compiled milliseconds').
+	self assert: (names includes: 'Compiled GFLOP/s').
+	self assert: (names includes: 'Cost of going through the DSL').
+	self assert:
+		(names includes: 'Largest difference between compiled and hand-built')
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledComparisonTimesBothKernelsOnTheSameData [
+	"The comparison is only a comparison if both kernels ran at the same order on the same
+	 buffers and agreed on the answer."
+
+	| comparison |
+	comparison := (PVTiledMatmulComparison on: ctx order: 128 repeats: 3) run.
+	self assert: comparison tiledResult order equals: 128.
+	self assert: comparison naiveResult order equals: 128.
+	self assert: comparison tiledResult repeats equals: 3.
+	self assert: comparison maximumDifference < 0.001.
+	self assert: comparison speedup isNumber
+]
+
+{ #category : 'tests-compute' }
+PVComputeTest >> testTiledComparisonTimesTheCompiledKernelBesideTheHandBuiltOne [
+	"The comparison is the only place the cost of going through the DSL is visible, so it
+	 has to time the compiled kernel on the same buffers as the other two and say whether
+	 it agreed with them."
+
+	| comparison |
+	comparison := (PVTiledMatmulComparison on: ctx order: 128 repeats: 3) run.
+	self assert: comparison compiledResult order equals: 128.
+	self assert: comparison compiledResult repeats equals: 3.
+	self assert: comparison maximumCompiledDifference < 0.001.
+	self assert: comparison compiledCost isNumber
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledMatmulAtOrder512MatchesTheNaiveKernelAtSampledPositions [
+	"The benchmark size. Both kernels run on the same inputs, so the tiled one is read
+	 against the kernel it is meant to replace as well as against the host reference."
+
+	| n tiled naive |
+	n := 512.
+	tiled := self runTiledMatmulOfOrder: n.
+	naive := self
+		         runMatmulOfOrder: n
+		         groups: n // (PVBenchmark workgroupWidthFor: #f32).
+	self matmulSamplePositions do: [ :r |
+		self matmulSamplePositions do: [ :c |
+			| index |
+			index := r * n + c + 1.
+			self
+				assert: ((tiled at: index) - (self referenceAtRow: r col: c order: n)) abs
+						< 0.001
+				description: 'Tiled element ' , r printString , ',' , c printString
+					, ' is ' , (tiled at: index) printString.
+			self
+				assert: ((tiled at: index) - (naive at: index)) abs < 0.001
+				description: 'Tiled and naive disagree at ' , r printString , ','
+					, c printString ] ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledMatmulMatchesTheReferenceAtOrder64 [
+	"Every element, not a sample: a tiling bug shows up as a wrong tile, and at order 64
+	 the whole matrix is cheap enough to check."
+
+	| n result |
+	n := 64.
+	result := self runTiledMatmulOfOrder: n.
+	self assert: result size equals: n * n.
+	0 to: n - 1 do: [ :r |
+		0 to: n - 1 do: [ :c |
+			self
+				assert: ((result at: r * n + c + 1)
+						 - (self referenceAtRow: r col: c order: n)) abs < 0.001
+				description: 'Element ' , r printString , ',' , c printString
+					, ' is ' , (result at: r * n + c + 1) printString ] ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledMatmulModuleDeclaresTwoSharedTilesAndTwoBarriers [
+	"The shape of the tiled kernel, read back from the bytes it emits: one shared tile per
+	 input matrix, a barrier on each side of the accumulation loop, and two nested loops."
+
+	| module |
+	module := PVSpirvValidator on: PVTiledMatmulKernel new spirv.
+	self
+		assert: (module variableCountInStorageClass: SpvStorageClass workgroup)
+		equals: 2.
+	self assert: (module countOfOpcode: SpvOpcode opControlBarrier) equals: 2.
+	self assert: (module countOfOpcode: SpvOpcode opLoopMerge) equals: 2
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledMatmulModuleIsValidSpirv [
+	"The kernel is hand-built rather than compiled, so nothing but the validator checks its
+	 structured control flow, its Workgroup variables and its barrier operands."
+
+	| validator |
+	PVSpirvValidator isAvailable ifFalse: [ ^ self skip ].
+	validator := PVSpirvValidator on: PVTiledMatmulKernel new spirv.
+	self assert: validator isValid description: validator validationOutput
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testTiledMatmulSharedTilesFitTheDeviceLimit [
+	"A tile pair that does not fit is not a slow kernel, it is a pipeline the driver
+	 refuses, so the size is read against the limit this device reports."
+
+	| kernel |
+	kernel := PVTiledMatmulKernel new.
+	self assert: kernel sharedMemoryBytes > 0.
+	self
+		assert: kernel sharedMemoryBytes <= ctx physicalDevice maxComputeSharedMemorySize
+		description: 'Tile pair of ' , kernel sharedMemoryBytes printString
+			, ' bytes exceeds the device limit of '
+			, ctx physicalDevice maxComputeSharedMemorySize printString
 ]
 
 { #category : 'tests' }
