@@ -70,6 +70,27 @@ SpvOpcode class >> opConvertSToF [
 SpvOpcode class >> opConvertUToF [         ^ 112
 ]
 
+{ #category : 'memory' }
+SpvOpcode class >> opCooperativeMatrixLoadKHR [
+	"OpCooperativeMatrixLoadKHR = 4457. Operands: pointer, memory layout, stride."
+
+	^ 4457
+]
+
+{ #category : 'arithmetic' }
+SpvOpcode class >> opCooperativeMatrixMulAddKHR [
+	"OpCooperativeMatrixMulAddKHR = 4459. Operands: the A, B and accumulator matrices."
+
+	^ 4459
+]
+
+{ #category : 'memory' }
+SpvOpcode class >> opCooperativeMatrixStoreKHR [
+	"OpCooperativeMatrixStoreKHR = 4458. Operands: pointer, object, memory layout, stride."
+
+	^ 4458
+]
+
 { #category : 'annotations' }
 SpvOpcode class >> opDecorate [            ^ 71
 ]
@@ -241,6 +262,14 @@ SpvOpcode class >> opTypeArray [           ^ 28
 
 { #category : 'types' }
 SpvOpcode class >> opTypeBool [            ^ 20
+]
+
+{ #category : 'types' }
+SpvOpcode class >> opTypeCooperativeMatrixKHR [
+	"OpTypeCooperativeMatrixKHR = 4456, from the SPV_KHR_cooperative_matrix extension. The
+	 number was read back out of a module spirv-as assembled, not recalled."
+
+	^ 4456
 ]
 
 { #category : 'types' }

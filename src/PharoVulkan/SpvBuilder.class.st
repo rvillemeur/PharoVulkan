@@ -17,6 +17,15 @@ Class {
 	#tag : 'SPIRV'
 }
 
+{ #category : 'instance creation' }
+SpvBuilder class >> on: aSpvModule [
+	"A builder over a module its caller already owns. PVSPIRVEmitter builds its module
+	 itself and still needs the instructions whose operand assembly lives here, and two
+	 producers of the same operand order would drift apart."
+
+	^ self new setModule: aSpvModule; yourself
+]
+
 { #category : 'module' }
 SpvBuilder >> addCapability: aSymbol [
     module addCapability: aSymbol
@@ -125,6 +134,60 @@ SpvBuilder >> emitConvertUToF: valueId fromType: intType toType: floatType [
 ]
 
 { #category : 'instructions' }
+SpvBuilder >> emitCooperativeMatrixLoad: aPointerId type: aMatrixType layout: aLayout stride: aStrideId [
+	"Emit OpCooperativeMatrixLoadKHR. The layout is an id of a constant, not a literal, and
+	 the stride counts elements between consecutive rows under the row-major layout. Every
+	 invocation of the scope must reach this instruction, so it belongs in uniform control
+	 flow. Returns result id."
+
+	| id |
+	id := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opCooperativeMatrixLoadKHR
+			 resultType: aMatrixType id
+			 resultId: id
+			 operands: {
+					 aPointerId.
+					 (module constantPool constantUInt32: aLayout).
+					 aStrideId }).
+	^ id
+]
+
+{ #category : 'instructions' }
+SpvBuilder >> emitCooperativeMatrixMulAdd: aMatrixId by: bMatrixId into: accumulatorId type: aMatrixType [
+	"Emit OpCooperativeMatrixMulAddKHR: A times B added to the accumulator, answering a new
+	 accumulator. The result type is the accumulator's type, which is what makes an f16 by
+	 f16 product accumulate in f32. Returns result id."
+
+	| id |
+	id := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opCooperativeMatrixMulAddKHR
+			 resultType: aMatrixType id
+			 resultId: id
+			 operands: {
+					 aMatrixId.
+					 bMatrixId.
+					 accumulatorId }).
+	^ id
+]
+
+{ #category : 'instructions' }
+SpvBuilder >> emitCooperativeMatrixStore: aMatrixId at: aPointerId layout: aLayout stride: aStrideId [
+	"Emit OpCooperativeMatrixStoreKHR. The operand order is the pointer first and the matrix
+	 second, the other way round from this method's own reading, which is why the instruction
+	 is built here rather than at each call site. No result id."
+
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opCooperativeMatrixStoreKHR
+			 operands: {
+					 aPointerId.
+					 aMatrixId.
+					 (module constantPool constantUInt32: aLayout).
+					 aStrideId })
+]
+
+{ #category : 'instructions' }
 SpvBuilder >> emitLoad: ptrId type: aType [
     "Emit OpLoad. Returns result id."
     | id |
@@ -186,6 +249,11 @@ SpvBuilder >> newFunction: aReturnType [
 { #category : 'module' }
 SpvBuilder >> setMemoryModel: addrModel memoryModel: memModel [
     module setAddressingModel: addrModel memoryModel: memModel
+]
+
+{ #category : 'initialization' }
+SpvBuilder >> setModule: aSpvModule [
+	module := aSpvModule
 ]
 
 { #category : 'accessing' }

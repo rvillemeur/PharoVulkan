@@ -25,6 +25,14 @@ VkPhysicalDevice class >> cooperativeMatrixExtensionName [
 	^ self extensionNamePrefix , 'KHR_cooperative_matrix'
 ]
 
+{ #category : 'constants' }
+VkPhysicalDevice class >> cooperativeMatrixPropertiesCommandName [
+	"The command that answers which M, N, K and type combinations a device offers. The
+	 loader exports no symbol for it, so it is reached through VkExtensionCommand."
+
+	^ 'vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR'
+]
+
 { #category : 'examples' }
 VkPhysicalDevice class >> exampleExtensionsOfThisMachine [
     "One click: the extension list of whatever device this image finds. The names are cached
@@ -73,6 +81,20 @@ VkPhysicalDevice class >> on: aHandle [
     ^ self new initializeWith: aHandle
 ]
 
+{ #category : 'private' }
+VkPhysicalDevice >> callCooperativeMatrixProperties: aCommand count: countBuf properties: aPropertiesBuffer [
+	"VkResult vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(VkPhysicalDevice,
+	 uint32_t* pPropertyCount, VkCooperativeMatrixPropertiesKHR* pProperties). The signature
+	 is written once here because both calls of the two-call query must agree on it."
+	^ Vk checkResult: (aCommand
+			   callWithArguments: {
+					   handle.
+					   countBuf.
+					   aPropertiesBuffer }
+			   parameterTypes: #( #pointer #pointer #pointer )
+			   returnType: #int32)
+]
+
 { #category : 'accessing' }
 VkPhysicalDevice >> computeCapabilityRows [
 	"What the Compute view shows. Every row asks the accessor a kernel would ask, so the table
@@ -85,6 +107,28 @@ VkPhysicalDevice >> computeCapabilityRows [
 		  ('Work group invocations'
 		   -> self maxComputeWorkGroupInvocations printString).
 		  ('Work group size' -> self maxComputeWorkGroupSize printString) }
+]
+
+{ #category : 'querying' }
+VkPhysicalDevice >> cooperativeMatrixConfigurationsOn: anInstanceHandle [
+	"The shapes and component types this device offers for VK_KHR_cooperative_matrix. A
+	 kernel has to name one of them exactly, so this query decides what can be compiled.
+	 The instance comes in as an argument because a physical device holds no instance."
+	| command countBuf count |
+	self supportsCooperativeMatrix ifFalse: [ ^ #() ].
+	command := VkExtensionCommand
+		           on: anInstanceHandle
+		           named: self class cooperativeMatrixPropertiesCommandName.
+	countBuf := ExternalAddress allocate: 4.
+	^ [
+	  countBuf unsignedLongAt: 1 put: 0.
+	  self
+		  callCooperativeMatrixProperties: command
+		  count: countBuf
+		  properties: ExternalAddress null.
+	  count := countBuf unsignedLongAt: 1.
+	  self readCooperativeMatrixConfigurations: count with: command count: countBuf ]
+		  ensure: [ countBuf free ]
 ]
 
 { #category : 'querying' }
@@ -291,6 +335,26 @@ VkPhysicalDevice >> properties [
 	^ properties ifNil: [ properties := Vk getPhysicalDeviceProperties: handle ]
 ]
 
+{ #category : 'private' }
+VkPhysicalDevice >> readCooperativeMatrixConfigurations: aCount with: aCommand count: countBuf [
+	"A device may report the extension and still offer no configuration, which is a list of
+	 none rather than an error. The second call can also answer fewer entries than the
+	 first, so the count it leaves behind is the one decoded."
+	| buffer |
+	aCount = 0 ifTrue: [ ^ #() ].
+	buffer := ExternalAddress allocate:
+		          aCount * VkCooperativeMatrixConfiguration structureByteSize.
+	^ [
+	  VkCooperativeMatrixConfiguration prepareEntriesIn: buffer count: aCount.
+	  self
+		  callCooperativeMatrixProperties: aCommand
+		  count: countBuf
+		  properties: buffer.
+	  VkCooperativeMatrixConfiguration
+		  readAllFrom: buffer
+		  count: (countBuf unsignedLongAt: 1) ] ensure: [ buffer free ]
+]
+
 { #category : 'initialization' }
 VkPhysicalDevice >> readExtensionNames: aCount count: countBuf [
 	"The driver reports no extensions at all on a bare software device, which is a list of
@@ -354,4 +418,17 @@ VkPhysicalDevice >> supportsSubgroupFeature: aBit [
 	"Asked of the properties block itself, so the device and the block cannot disagree."
 
 	^ self subgroupProperties supportsFeature: aBit
+]
+
+{ #category : 'querying' }
+VkPhysicalDevice >> supportsVulkanMemoryModel [
+	"Whether this device can have the vulkanMemoryModel feature enabled, which a cooperative
+	 matrix module needs: spirv-val refuses Shader plus CooperativeMatrixKHR without the
+	 VulkanMemoryModel capability. vkGetPhysicalDeviceFeatures2 is core, so no instance handle
+	 and no extension command is needed, and the flag is read before the chain is freed."
+
+	^ VkPhysicalDeviceFeatures2
+		  of: handle
+		  chainedWith: VkPhysicalDeviceVulkanMemoryModelFeatures
+		  do: [ :head :features | features vulkanMemoryModel ~= 0 ]
 ]

@@ -29,6 +29,30 @@ Class {
 	#tag : 'SPIRV'
 }
 
+{ #category : 'constants' }
+SpvModule class >> glsl450MemoryModel [
+	"Memory model GLSL450 = 1, the model a module uses unless it asks for another."
+
+	^ 1
+]
+
+{ #category : 'constants' }
+SpvModule class >> logicalAddressingModel [
+	"Addressing model Logical = 0, the only one a Vulkan shader may use: no physical
+	 pointer arithmetic."
+
+	^ 0
+]
+
+{ #category : 'constants' }
+SpvModule class >> vulkanMemoryModel [
+	"Memory model Vulkan = 3. A module declaring the VulkanMemoryModel capability must name
+	 this model, which is what a cooperative matrix module needs; the default GLSL450 = 1
+	 serves every other kernel in this project."
+
+	^ 3
+]
+
 { #category : 'building' }
 SpvModule >> addCapability: aSymbol [
     (capabilities includes: aSymbol) ifFalse: [ capabilities add: aSymbol ]

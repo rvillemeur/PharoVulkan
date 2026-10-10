@@ -113,6 +113,26 @@ PVKernelExamples >> clampNegatives: wi data: data out: output [
 	output at: wi x put: r
 ]
 
+{ #category : 'kernels' }
+PVKernelExamples >> coopMatrixProductOf: a by: b into: output [
+	"The 8 by 8 cooperative matrix product PVCooperativeMatrixKernel builds by hand,
+	 written through the DSL instead. Each parameter type names the operand role its
+	 buffer feeds, because one cooperative matrix type is fixed to one role in SPIR-V and
+	 a load has to know which one it is building. The kernel takes no work item: every
+	 invocation of the subgroup reaches the same three instructions, and the matrix
+	 position inside the subgroup is the device's business, not the kernel's.
+	 coopMatMulAdd: adds to a zero matrix, so the product is exactly a times b. The
+	 hand-built kernel reads its accumulator from the output binding instead, which lets
+	 the host decide what the product is added to; the DSL has no selector for that yet."
+
+	<gpu>
+	<localSize: #( 8 1 1 )>
+	<param: #matrixABufferOf_f16 named: #a>
+	<param: #matrixBBufferOf_f16 named: #b>
+	<param: #accumulatorBufferOf_f32 named: #output>
+	output coopMatStore: ((a coopMatLoad: 0) coopMatMulAdd: (b coopMatLoad: 0))
+]
+
 { #category : 'examples' }
 PVKernelExamples >> dotOfA: a b: b [
     <gpuVertex>

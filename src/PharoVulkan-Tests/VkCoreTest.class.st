@@ -12,6 +12,24 @@ Class {
 	#tag : 'Core'
 }
 
+{ #category : 'private' }
+VkCoreTest >> configurationWithDistinctMembers [
+	"A configuration decoded from a block this test wrote itself, one different number per
+	 member, so a wrong offset shows as a swapped pair instead of passing by accident. No
+	 device is involved: the layout is what is under test."
+	| buffer configuration |
+	buffer := ExternalAddress allocate:
+		          VkCooperativeMatrixConfiguration structureByteSize.
+	^ [
+	  VkCooperativeMatrixConfiguration prepareEntriesIn: buffer count: 1.
+	  VkCooperativeMatrixConfiguration memberFieldNames withIndexDo: [ :name :index |
+		  buffer
+			  unsignedLongAt: (VkCooperativeMatrixConfiguration offsetOf: name) + 1
+			  put: index * 3 ].
+	  configuration := VkCooperativeMatrixConfiguration readFrom: buffer at: 0 ]
+		  ensure: [ buffer free ]
+]
+
 { #category : 'helpers' }
 VkCoreTest >> floatArrayToBytes: anArray [
 	"Pack float array as little-endian IEEE 754 32-bit words"
@@ -171,6 +189,102 @@ VkCoreTest >> testComputeLimitsOfThisDeviceAgreeWithTheDriver [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testConfigurationDecodesEveryMemberTheLayoutDeclares [
+	| configuration |
+	configuration := self configurationWithDistinctMembers.
+	VkCooperativeMatrixConfiguration memberFieldNames withIndexDo: [ :name :index |
+		self assert: (configuration perform: name) equals: index * 3 ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testConfigurationRowsNameEveryMemberWithoutChangingIt [
+	| configuration before rows |
+	configuration := self configurationWithDistinctMembers.
+	before := VkCooperativeMatrixConfiguration memberFieldNames collect: [ :name |
+		          configuration perform: name ].
+	rows := configuration configurationRows.
+	self
+		assert: (rows collect: [ :each | each at: #member ])
+		equals: VkCooperativeMatrixConfiguration memberFieldNames.
+	self
+		assert: (VkCooperativeMatrixConfiguration memberFieldNames collect: [ :name |
+				 configuration perform: name ])
+		equals: before
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testContextAsksForCooperativeMatrixExactlyWhenItsDeviceOffersIt [
+	"The capability in a module is invalid unless the feature was enabled at device
+	 creation, and asking for the extension on a device without it fails device creation,
+	 so the two have to follow the device rather than a flag chosen by hand."
+	self
+		assert: (ctx enabledDeviceExtensionNames includes:
+				 VkPhysicalDevice cooperativeMatrixExtensionName)
+		equals: ctx cooperativeMatrixAvailable.
+	self
+		assert: (ctx featureChainStructureNames includes:
+				 #physicalDeviceCooperativeMatrixFeaturesKHR)
+		equals: ctx cooperativeMatrixAvailable
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testContextEnablesTheVulkanMemoryModelWhereItAsksForCooperativeMatrix [
+	"spirv-val refuses a module that declares Shader and CooperativeMatrixKHR without
+	 VulkanMemoryModel, and that capability needs the matching device feature, so the two
+	 have to be enabled together. The default context may well land on a device without the
+	 extension, so a context built by requiring the capability is checked too."
+
+	| survey |
+	self
+		assert: (ctx featureChainStructureNames includes:
+				 #physicalDeviceVulkanMemoryModelFeatures)
+		equals:
+			(ctx cooperativeMatrixAvailable and: [ ctx vulkanMemoryModelAvailable ]).
+	survey := PVCooperativeMatrixSurvey new setContext: ctx.
+	survey availableSomewhere ifFalse: [ ^ self ].
+	VkContext cooperativeMatrixContext ifNotNil: [ :coopContext |
+		[
+		self assert: coopContext cooperativeMatrixAvailable.
+		self assert: coopContext vulkanMemoryModelAvailable.
+		self assert: (coopContext featureChainStructureNames includes:
+				 #physicalDeviceVulkanMemoryModelFeatures).
+		self assert: (coopContext featureChainStructureNames includes:
+				 #physicalDeviceCooperativeMatrixFeaturesKHR) ] ensure: [
+			coopContext destroy ] ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testContextRequiringACapabilityNoDeviceCanBeAskedAboutFailsNamingIt [
+	| error |
+	error := [
+	         VkContext computeContextRequiring:
+		         #( #supportsSomethingNoDeviceAnswers ) ]
+		         on: VkError
+		         do: [ :signal | signal ].
+	self assert: (error messageText includesSubstring:
+			 'supportsSomethingNoDeviceAnswers')
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testContextRequiringCooperativeMatrixPicksADeviceThatSupportsIt [
+	"Consistency rather than this machine's device list: where some device offers the
+	 extension the context must land on one of those, and where none does the request must
+	 fail instead of falling back to a device that cannot run the kernel."
+	| offeredSomewhere |
+	offeredSomewhere := (Vk enumeratePhysicalDevices: ctx instance) anySatisfy: [
+		                    :handle |
+		                    (VkPhysicalDevice on: handle)
+			                    supportsCooperativeMatrix ].
+	offeredSomewhere
+		ifTrue: [
+			| required |
+			required := VkContext cooperativeMatrixContext.
+			[ self assert: required physicalDevice supportsCooperativeMatrix ] ensure: [
+				required destroy ] ]
+		ifFalse: [ self should: [ VkContext cooperativeMatrixContext ] raise: VkError ]
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testCooperativeMatrixAvailabilityOnTheContextAgreesWithItsDevice [
 	"VkContext answers for the device it actually runs kernels on, which is what a kernel
 	 path would have to gate on."
@@ -178,6 +292,19 @@ VkCoreTest >> testCooperativeMatrixAvailabilityOnTheContextAgreesWithItsDevice [
 	self
 		assert: ctx cooperativeMatrixAvailable
 		equals: ctx physicalDevice supportsCooperativeMatrix
+]
+
+{ #category : 'tests-cooperative-matrix' }
+VkCoreTest >> testCooperativeMatrixConfigurationsAreEmptyWhereTheExtensionIsAbsent [
+	"A device that never reported the extension has nothing to offer, and the query must
+	 answer that rather than reading a count the driver never wrote."
+
+	| devices |
+	devices := (Vk enumeratePhysicalDevices: ctx instance) collect: [ :each |
+		           VkPhysicalDevice on: each ].
+	(devices reject: [ :each | each supportsCooperativeMatrix ]) do: [ :each |
+		self assert:
+			(each cooperativeMatrixConfigurationsOn: ctx instance) isEmpty ]
 ]
 
 { #category : 'tests' }
@@ -256,6 +383,32 @@ VkCoreTest >> testCooperativeMatrixSurveyReportsAfterItsContextIsGone [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testDeviceChoiceRowsNameEveryRequirementAsked [
+	| context asked |
+	context := VkContext computeContextRequiring:
+		           #( #supportsSubgroupArithmetic ).
+	context destroy.
+	asked := context deviceChoiceRows collect: [ :each |
+		         each at: #requirement ].
+	self assert: (asked includes: #supportsSubgroupArithmetic)
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testDeviceChoiceRowsNameTheDeviceAfterTheContextIsGone [
+	"The rows are what the inspector tab shows, and the example destroys its context before
+	 handing it over, so the choice has to be recorded rather than re-queried."
+	| context rows |
+	context := VkContext computeContext.
+	context destroy.
+	rows := context deviceChoiceRows.
+	self assert: rows size equals: context deviceRequirements size + 1.
+	self deny: context chosenDeviceName isEmpty.
+	self
+		assert: (rows collect: [ :each | each at: #satisfiedBy ])
+		equals: (rows collect: [ :each | context chosenDeviceName ])
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension [
 	"Reads back the struct handed to vkCreateDevice: an extension the context says it enables
 	 counts for nothing unless it reaches that field."
@@ -297,6 +450,109 @@ VkCoreTest >> testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs [
 			ctx freeDeviceCreateInfo: info.
 			(queueInfo pointerAt: 33) free.
 			queueInfo free ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testDeviceRequiredForCooperativeMatrixComesUpWithTheFeatureEnabled [
+	"Consistency rather than this machine's device list: where some device offers the
+	 extension, the context that demanded it must create its device with the extension and
+	 the feature struct both in place."
+	| offeredSomewhere required |
+	offeredSomewhere := (Vk enumeratePhysicalDevices: ctx instance) anySatisfy: [
+		                    :handle |
+		                    (VkPhysicalDevice on: handle)
+			                    supportsCooperativeMatrix ].
+	offeredSomewhere ifFalse: [ ^ self deny: ctx cooperativeMatrixAvailable ].
+	required := VkContext cooperativeMatrixContext.
+	[
+	self assert: (required enabledDeviceExtensionNames includes:
+			 VkPhysicalDevice cooperativeMatrixExtensionName).
+	self assert: (required featureChainStructureNames includes:
+			 #physicalDeviceCooperativeMatrixFeaturesKHR).
+	self deny: required device handle isNull ] ensure: [ required destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testErrorDescribesItselfWhetherItCarriesAResultOrAText [
+	"Both ways of raising a VkError exist in this package, and a description that raises a
+	 second error hides whichever failure came first."
+	| fromText fromResult |
+	fromText := [ VkError signal: 'plain explanation' ]
+		            on: VkError
+		            do: [ :signal | signal messageText ].
+	fromResult := [ (VkResult withCode: VkResult vkErrorDeviceLost) signal ]
+		              on: VkError
+		              do: [ :signal | signal messageText ].
+	self assert: fromText equals: 'plain explanation'.
+	self assert: (fromResult includesSubstring: 'VK_ERROR_DEVICE_LOST')
+]
+
+{ #category : 'tests-cooperative-matrix' }
+VkCoreTest >> testEveryCooperativeMatrixConfigurationNamesShapesAndTypesTheSpecificationDefines [
+	"A misread offset answers a plausible-looking number, so each field is checked against
+	 what the specification allows. A device that reports the extension must offer at least
+	 one combination, since a kernel has to match one of them exactly."
+
+	| devices |
+	devices := (Vk enumeratePhysicalDevices: ctx instance) collect: [ :each |
+		           VkPhysicalDevice on: each ].
+	(devices select: [ :each | each supportsCooperativeMatrix ]) do: [ :device |
+		| configurations |
+		configurations := device cooperativeMatrixConfigurationsOn: ctx instance.
+		self deny: configurations isEmpty.
+		configurations do: [ :each |
+			self assert: each mSize > 0.
+			self assert: each nSize > 0.
+			self assert: each kSize > 0.
+			self assert: (VkScope isDefined: each scope).
+			self assert: (VkComponentType isDefined: each aType).
+			self assert: (VkComponentType isDefined: each bType).
+			self assert: (VkComponentType isDefined: each cType).
+			self assert: (VkComponentType isDefined: each resultType) ] ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testEveryDeviceAnswersWhetherItSupportsTheVulkanMemoryModel [
+	"The answer comes from vkGetPhysicalDeviceFeatures2, a core command, so it needs no
+	 instance handle and must come back as a boolean for every device on the machine,
+	 including one that offers no cooperative matrix."
+
+	(Vk enumeratePhysicalDevices: ctx instance) do: [ :handle |
+		self assert:
+			({ true. false } includes:
+				 (VkPhysicalDevice on: handle) supportsVulkanMemoryModel) ]
+]
+
+{ #category : 'tests-extension-commands' }
+VkCoreTest >> testExtensionCommandIsUnavailableWhenTheLoaderHasNoSuchSymbol [
+	"An unresolved command must say so rather than call address zero, which would take the
+	 whole image down instead of raising."
+
+	| command |
+	command := VkExtensionCommand on: ctx instance named: 'vkThereIsNoSuchCommandKHR'.
+	self deny: command isAvailable.
+	self
+		should: [
+			command
+				callWithArguments: #( )
+				parameterTypes: #( )
+				returnType: #int32 ]
+		raise: VkError
+]
+
+{ #category : 'tests-extension-commands' }
+VkCoreTest >> testExtensionCommandReachesASymbolLibvulkanDoesNotExport [
+	"libvulkan.so.1 exports no cooperative matrix entry point — 269 vk symbols, none of them
+	 this one — so the only route to it is vkGetInstanceProcAddr. The command resolves here
+	 because lavapipe is installed; what the test asks is whether the loader hands back an
+	 address at all."
+
+	| command |
+	command := VkExtensionCommand
+		           on: ctx instance
+		           named: VkPhysicalDevice cooperativeMatrixPropertiesCommandName.
+	self assert: command isAvailable.
+	self deny: command address isNull
 ]
 
 { #category : 'tests' }

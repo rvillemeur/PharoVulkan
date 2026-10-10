@@ -9,7 +9,9 @@ Class {
 		'physicalDevice',
 		'device',
 		'computeQueue',
-		'computeQueueFamily'
+		'computeQueueFamily',
+		'deviceRequirements',
+		'chosenDeviceName'
 	],
 	#category : 'PharoVulkan-Graphics',
 	#package : 'PharoVulkan',
@@ -21,9 +23,48 @@ VkContext class >> computeContext [
     ^ self new initializeCompute
 ]
 
+{ #category : 'instance creation' }
+VkContext class >> computeContextRequiring: aCollectionOfSelectors [
+	"Each selector is a unary predicate a VkPhysicalDevice answers, for instance
+	 #supportsCooperativeMatrix. Device selection then stops being a matter of position."
+	^ self new initializeComputeRequiring: aCollectionOfSelectors
+]
+
+{ #category : 'instance creation' }
+VkContext class >> cooperativeMatrixContext [
+	"On this machine the device that offers VK_KHR_cooperative_matrix is not the first one
+	 enumerated, so a cooperative matrix kernel cannot use the plain compute context. Both
+	 capabilities are required, not just the extension: a module declaring CooperativeMatrixKHR
+	 must also declare VulkanMemoryModel, which needs the matching device feature."
+
+	^ self computeContextRequiring: #( #supportsCooperativeMatrix #supportsVulkanMemoryModel )
+]
+
+{ #category : 'constants' }
+VkContext class >> cooperativeMatrixFeaturesSize [
+	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR (24 bytes): 0:sType 8:pNext
+	 16:cooperativeMatrix 20:cooperativeMatrixRobustBufferAccess."
+	^ 24
+]
+
 { #category : 'constants' }
 VkContext class >> deviceCreateInfoSize [
     ^ 72
+]
+
+{ #category : 'examples' }
+VkContext class >> exampleDeviceChosenByCapabilityOnThisMachine [
+	"One click: the context a cooperative matrix kernel would run on, destroyed before it is
+	 handed over. The Device choice tab names the requirement and the device that met it,
+	 which on this machine is not the first device enumerated. Falls back to the plain
+	 compute context where no device offers the extension."
+	<sampleInstance>
+	| context |
+	context := [ self cooperativeMatrixContext ]
+		           on: VkError
+		           do: [ :signal | self computeContext ].
+	context destroy.
+	^ context
 ]
 
 { #category : 'constants' }
@@ -74,6 +115,22 @@ VkContext >> allocateCString: aString [
 	buf := ExternalAddress allocate: bytes size.
 	bytes doWithIndex: [ :byte :i | buf byteAt: i put: byte ].
 	^ buf
+]
+
+{ #category : 'initialization' }
+VkContext >> buildCooperativeMatrixFeatures [
+	"ExternalAddress allocate: hands back uninitialised memory, so the robust buffer access
+	 field is written too, even though this context does not ask for it."
+	| features |
+	features := ExternalAddress allocate:
+		            self class cooperativeMatrixFeaturesSize.
+	features
+		unsignedLongAt: 1
+		put: VkStructureType physicalDeviceCooperativeMatrixFeaturesKHR.
+	features pointerAt: 9 put: ExternalAddress null.
+	features unsignedLongAt: 17 put: self class featureEnabled.
+	features unsignedLongAt: 21 put: 0.
+	^ features
 ]
 
 { #category : 'private' }
@@ -132,20 +189,17 @@ VkContext >> buildExtensionNameArray: aNameCollection [
 	^ array
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 VkContext >> buildFeatureChain [
 	"VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType 8:pNext 16:synchronization2.
-	 Synchronization2 is the project's only sync API, so it is always asked for; half precision
-	 hangs off it when the device has the extensions."
-
+	 Synchronization2 is the project's only sync API, so it is always asked for; the optional
+	 structs hang off it, each only where the device has the matching extension."
 	| sync2 |
 	sync2 := ExternalAddress allocate: self class synchronization2FeaturesSize.
 	sync2
 		unsignedLongAt: 1
 		put: VkStructureType physicalDeviceSynchronization2Features.
-	sync2 pointerAt: 9 put: (self halfPrecisionAvailable
-			 ifTrue: [ self buildHalfPrecisionFeatures ]
-			 ifFalse: [ ExternalAddress null ]).
+	sync2 pointerAt: 9 put: self buildOptionalFeatureChain.
 	sync2 unsignedLongAt: 17 put: self class featureEnabled.
 	^ sync2
 ]
@@ -179,6 +233,58 @@ VkContext >> buildHalfPrecisionFeatures [
 	float16 unsignedLongAt: 17 put: self class featureEnabled.
 	float16 unsignedLongAt: 21 put: 0.
 	^ float16
+]
+
+{ #category : 'initialization' }
+VkContext >> buildOptionalFeatureChain [
+	"The structs that depend on what the device offers, linked in the order they are built.
+	 The memory model goes in only beside cooperative matrix, which is the one path in this
+	 project that needs the capability. Answers a null pointer when the device offers none of
+	 them."
+
+	| head |
+	head := ExternalAddress null.
+	self halfPrecisionAvailable ifTrue: [
+		head := self chain: self buildHalfPrecisionFeatures onto: head ].
+	(self cooperativeMatrixAvailable and: [ self vulkanMemoryModelAvailable ])
+		ifTrue: [
+			head := self chain: self buildVulkanMemoryModelFeatures onto: head.
+			head := self chain: self buildCooperativeMatrixFeatures onto: head ].
+	^ head
+]
+
+{ #category : 'initialization' }
+VkContext >> buildVulkanMemoryModelFeatures [
+	"Built through the structure class rather than from hand-written offsets, so the size and
+	 the field positions come from the member list. externalInstance zeroes the block, which
+	 leaves the device scope and availability-visibility chains flags off: this context asks
+	 only for the memory model itself."
+
+	| features |
+	features := VkPhysicalDeviceVulkanMemoryModelFeatures externalInstance.
+	features sType: VkPhysicalDeviceVulkanMemoryModelFeatures structureType.
+	features pNext: ExternalAddress null.
+	features vulkanMemoryModel: self class featureEnabled.
+	^ features getHandle
+]
+
+{ #category : 'private' }
+VkContext >> chain: aStruct onto: aSuccessor [
+	"Links one struct in front of a chain. buildHalfPrecisionFeatures answers a pair already
+	 linked together, so the successor goes at the end of what is handed in, not at offset 8
+	 of its head."
+	| last next |
+	last := aStruct.
+	[
+	next := last pointerAt: 9.
+	next isNull ] whileFalse: [ last := next ].
+	last pointerAt: 9 put: aSuccessor.
+	^ aStruct
+]
+
+{ #category : 'accessing' }
+VkContext >> chosenDeviceName [
+	^ chosenDeviceName ifNil: [ '' ]
 ]
 
 { #category : 'accessing' }
@@ -289,34 +395,68 @@ VkContext >> device [
 ]
 
 { #category : 'reporting' }
-VkContext >> deviceFeatureReport [
-	"Reads the pNext chain back out of a chain built for this context instead of restating what
-	 buildFeatureChain writes, and frees it again, so inspecting a context leaves it untouched."
+VkContext >> deviceChoiceRowFor: aSelector [
+	| row |
+	row := Dictionary new.
+	row
+		at: #requirement put: aSelector;
+		at: #satisfiedBy put: self chosenDeviceName.
+	^ row beReadOnlyObject
+]
 
-	| chain names |
+{ #category : 'reporting' }
+VkContext >> deviceChoiceRows [
+	"One row for the compute queue, which every context demands, then one per extra
+	 requirement. The list is the one selection actually used, so the tab cannot drift from
+	 it, and the rows survive destroy because the device name was copied at selection time."
+	^ { self deviceChoiceRowFor: #findComputeQueueFamily }
+	  , (self deviceRequirements collect: [ :selector |
+			   self deviceChoiceRowFor: selector ])
+]
+
+{ #category : 'reporting' }
+VkContext >> deviceFeatureReport [
+	"Reads the chain back out instead of restating what buildFeatureChain writes."
 	physicalDevice ifNil: [ ^ { ('Device' -> 'destroyed') } ].
-	chain := self buildFeatureChain.
-	names := [
-	         (self featureChainTypesIn: chain) collect: [ :each |
-		         (VkStructureType nameForValue: each)
-			         ifNil: [ each printString ]
-			         ifNotNil: [ :name | name asString ] ] ] ensure: [
-		         self freeFeatureChain: chain ].
 	^ {
 		  ('Half precision available' -> self halfPrecisionAvailable printString).
+		  ('Cooperative matrix available'
+		   -> self cooperativeMatrixAvailable printString).
 		  ('Enabled extensions'
 		   -> (', ' join: self enabledDeviceExtensionNames)).
-		  ('Feature chain' -> (', ' join: names)) }
+		  ('Feature chain' -> (', ' join:
+			    (self featureChainStructureNames collect: [ :each |
+				     each asString ]))) }
+]
+
+{ #category : 'accessing' }
+VkContext >> deviceRequirements [
+	"No requirement at all is the plain compute case: any device with a compute queue."
+	^ deviceRequirements ifNil: [ #() ]
+]
+
+{ #category : 'private' }
+VkContext >> deviceSatisfiesRequirements: aPhysicalDevice [
+	"A requirement the device cannot even be asked about is a mistake in the caller, not a
+	 device that fails to qualify, so it is raised rather than answered false."
+	^ self deviceRequirements allSatisfy: [ :selector |
+		  (aPhysicalDevice respondsTo: selector) ifFalse: [
+			  VkError signal:
+				  'A physical device cannot be asked about: ' , selector ].
+		  aPhysicalDevice perform: selector ]
 ]
 
 { #category : 'querying' }
 VkContext >> enabledDeviceExtensionNames [
-	"The device extensions this context asks for, which is the half precision pair where the
-	 device has them and nothing at all where it does not."
-
-	^ self halfPrecisionAvailable
-		  ifTrue: [ self class halfPrecisionExtensionNames ]
-		  ifFalse: [ #() ]
+	"The device extensions this context asks for: each one only where the chosen device
+	 reports it, because device creation fails on an extension the device does not have."
+	^ (self halfPrecisionAvailable
+		   ifTrue: [ self class halfPrecisionExtensionNames ]
+		   ifFalse: [ #() ])
+	  ,
+	  (self cooperativeMatrixAvailable
+		   ifTrue: [ { VkPhysicalDevice cooperativeMatrixExtensionName } ]
+		   ifFalse: [ #() ])
 ]
 
 { #category : 'private' }
@@ -333,6 +473,19 @@ VkContext >> extensionNamesIn: aCreateInfo [
 		  VkPhysicalDevice
 			  extensionNameIn: (array pointerAt: i - 1 * stride + 1)
 			  at: 0 ]
+]
+
+{ #category : 'reporting' }
+VkContext >> featureChainStructureNames [
+	"The structures the chain this context asks for actually contains, read back out of a
+	 freshly built chain and freed again, so asking does not disturb the live device. A
+	 structure type this image has no constant for reads as its raw number."
+	| chain |
+	chain := self buildFeatureChain.
+	^ [
+	  (self featureChainTypesIn: chain) collect: [ :each |
+		  (VkStructureType nameForValue: each) ifNil: [ each ] ] ] ensure: [
+		  self freeFeatureChain: chain ]
 ]
 
 { #category : 'private' }
@@ -465,6 +618,12 @@ VkContext >> initializeCompute [
 ]
 
 { #category : 'initialization' }
+VkContext >> initializeComputeRequiring: aCollectionOfSelectors [
+	deviceRequirements := aCollectionOfSelectors.
+	^ self initializeCompute
+]
+
+{ #category : 'initialization' }
 VkContext >> initializeGraphicsWithExtensions: extNames [
     | appInfo info extPtrs extArray buf result |
     appInfo := ExternalAddress allocate: 48.
@@ -507,6 +666,21 @@ VkContext >> initializeGraphicsWithExtensions: extNames [
 ]
 
 { #category : 'inspector' }
+VkContext >> inspectorDeviceChoice: aBuilder [
+	"Why this device and not the first one enumerated: the requirements asked for, each
+	 beside the device that satisfied them. Reflects the list selection used, and reads
+	 nothing from the driver, so it also answers after the context is destroyed."
+	<inspectorPresentationOrder: 20 title: 'Device choice'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Requirement' evaluated: [ :each |
+					   each at: #requirement ]);
+		  addColumn: (SpStringTableColumn title: 'Satisfied by' evaluated: [ :each |
+					   each at: #satisfiedBy ]);
+		  items: self deviceChoiceRows;
+		  yourself
+]
+
+{ #category : 'inspector' }
 VkContext >> inspectorDeviceFeatures: aBuilder [
 	<inspectorPresentationOrder: 10 title: 'Device features'>
 	^ aBuilder newTable
@@ -545,18 +719,24 @@ VkContext >> selectGraphicsPhysicalDevice [
 
 { #category : 'initialization' }
 VkContext >> selectPhysicalDevice [
-    | handles |
-    handles := Vk enumeratePhysicalDevices: instance.
-    handles isEmpty ifTrue: [ VkError signal: 'No Vulkan physical devices found' ].
-    "Pick first device that has a compute queue"
-    handles do: [ :h |
-        | pd |
-        pd := VkPhysicalDevice on: h.
-        pd findComputeQueueFamily ifNotNil: [ :idx |
-            physicalDevice := pd.
-            computeQueueFamily := idx.
-            ^ self ] ].
-    VkError signal: 'No device with compute queue found'
+	"A device qualifies when it has a compute queue and answers true to every requirement
+	 the context was asked for. Position in the enumeration decides nothing by itself. The
+	 chosen name is copied out now, because the handle it comes from dies with the instance."
+	| handles |
+	handles := Vk enumeratePhysicalDevices: instance.
+	handles isEmpty ifTrue: [
+		VkError signal: 'No Vulkan physical devices found' ].
+	handles do: [ :handle |
+		| candidate queueFamily |
+		candidate := VkPhysicalDevice on: handle.
+		queueFamily := candidate findComputeQueueFamily.
+		(queueFamily notNil and: [ self deviceSatisfiesRequirements: candidate ])
+			ifTrue: [
+				physicalDevice := candidate.
+				computeQueueFamily := queueFamily.
+				chosenDeviceName := candidate properties deviceNameString.
+				^ self ] ].
+	VkError signal: self unsatisfiedRequirementsMessage
 ]
 
 { #category : 'querying' }
@@ -565,4 +745,25 @@ VkContext >> subgroupArithmeticAvailable [
 	 arithmetic operations, which a device may leave out while still reporting a subgroup."
 
 	^ physicalDevice supportsSubgroupArithmetic
+]
+
+{ #category : 'private' }
+VkContext >> unsatisfiedRequirementsMessage [
+	"Names what was asked for, because 'no suitable device' tells the reader nothing about
+	 which capability the machine is missing."
+	^ String streamContents: [ :stream |
+		  stream nextPutAll: 'No device with a compute queue'.
+		  self deviceRequirements do: [ :selector |
+			  stream
+				  nextPutAll: ' and ';
+				  nextPutAll: selector ] ]
+]
+
+{ #category : 'querying' }
+VkContext >> vulkanMemoryModelAvailable [
+	"Asked of the device this context runs on. A cooperative matrix kernel needs it as much as
+	 the extension: spirv-val refuses Shader plus CooperativeMatrixKHR without the
+	 VulkanMemoryModel capability, and that capability needs this feature enabled."
+
+	^ physicalDevice supportsVulkanMemoryModel
 ]

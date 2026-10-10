@@ -57,6 +57,11 @@ VkStructureType class >> constantSelectors [
 ]
 
 { #category : 'structure-types' }
+VkStructureType class >> cooperativeMatrixPropertiesKHR [
+	^ 1000506001
+]
+
+{ #category : 'structure-types' }
 VkStructureType class >> descriptorPoolCreateInfo [  ^ 33
 ]
 
@@ -120,6 +125,16 @@ VkStructureType class >> physicalDevice16BitStorageFeatures [
 ]
 
 { #category : 'structure-types' }
+VkStructureType class >> physicalDeviceCooperativeMatrixFeaturesKHR [
+	^ 1000506000
+]
+
+{ #category : 'structure-types' }
+VkStructureType class >> physicalDeviceFeatures2 [
+	^ 1000059000
+]
+
+{ #category : 'structure-types' }
 VkStructureType class >> physicalDeviceProperties2 [
 	^ 1000059001
 ]
@@ -137,6 +152,11 @@ VkStructureType class >> physicalDeviceSubgroupProperties [
 { #category : 'structure-types' }
 VkStructureType class >> physicalDeviceSynchronization2Features [
     ^ 1000314007
+]
+
+{ #category : 'structure-types' }
+VkStructureType class >> physicalDeviceVulkanMemoryModelFeatures [
+	^ 1000211000
 ]
 
 { #category : 'structure-types' }

@@ -47,6 +47,34 @@ self at: 'at:put:' receiverType: #bufferOf_i32 put: (PVSelectorMapping spirvOp: 
 ]
 
 { #category : 'private' }
+PVSelectorTable >> initializeCooperativeMatrixMappings [
+	"Three selectors reach the three cooperative matrix instructions. The operand role is
+	 carried by the receiver type rather than by an argument: a cooperative matrix type is
+	 fixed to one role in SPIR-V, so a load of the A factor and a load of the B factor
+	 build different types and cannot share one mapping. The product accumulates in f32
+	 from f16 factors, which is the configuration the device here reports."
+
+	self
+		at: 'coopMatLoad:'
+		receiverType: #matrixABufferOf_f16
+		put: (PVSelectorMapping spirvOp: #coopMatrixLoad resultType: #coopMatrixA_f16).
+	self
+		at: 'coopMatLoad:'
+		receiverType: #matrixBBufferOf_f16
+		put: (PVSelectorMapping spirvOp: #coopMatrixLoad resultType: #coopMatrixB_f16).
+	self
+		at: 'coopMatMulAdd:'
+		receiverType: #coopMatrixA_f16
+		put: (PVSelectorMapping
+				 spirvOp: #coopMatrixMulAdd
+				 resultType: #coopMatrixAccumulator_f32).
+	self
+		at: 'coopMatStore:'
+		receiverType: #accumulatorBufferOf_f32
+		put: (PVSelectorMapping spirvOp: #coopMatrixStore resultType: #void)
+]
+
+{ #category : 'private' }
 PVSelectorTable >> initializeGLSLMappings [
 self at: 'normalize' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslNormalize resultType: #vec3).
 self at: 'length' receiverType: #vec3 put: (PVSelectorMapping spirvOp: #glslLength resultType: #f32).
@@ -115,14 +143,15 @@ PVSelectorTable >> initializeSharedMappings [
 		put: (PVSelectorMapping spirvOp: #sharedStore resultType: #void)
 ]
 
-{ #category : 'initialization' }
+{ #category : 'private' }
 PVSelectorTable >> initializeStandardMappings [
 	self initializeScalarMappings.
 	self initializeWorkItemMappings.
 	self initializeBufferMappings.
 	self initializeSharedMappings.
 	self initializeHalfMappings.
-	self initializeSubgroupMappings
+	self initializeSubgroupMappings.
+	self initializeCooperativeMatrixMappings
 ]
 
 { #category : 'private' }

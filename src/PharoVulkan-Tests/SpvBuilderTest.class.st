@@ -193,6 +193,19 @@ SpvBuilderTest >> testArrayTypeOfTheSameShapeIsDeduplicated [
 		equals: (types arrayType: f32 length: 32) id
 ]
 
+{ #category : 'tests - cooperative matrix' }
+SpvBuilderTest >> testBuilderCanBeOpenedOnAModuleSomeoneElseOwns [
+	"PVSPIRVEmitter owns its module and still has to build the cooperative matrix
+	 instructions, whose operand assembly lives in this class. A builder opened on an
+	 existing module writes into it rather than into one of its own."
+
+	| module builder |
+	module := SpvModule new.
+	builder := SpvBuilder on: module.
+	self assert: builder module identicalTo: module.
+	self assert: (builder types floatType: 32) id equals: (module typeRegistry floatType: 32) id
+]
+
 { #category : 'tests' }
 SpvBuilderTest >> testConstantDeduplication [
     "Requesting the same constant twice must return the same result id."
@@ -201,6 +214,40 @@ SpvBuilderTest >> testConstantDeduplication [
     id1 := m constantPool constantFloat32: 1.0.
     id2 := m constantPool constantFloat32: 1.0.
     self assert: id1 equals: id2
+]
+
+{ #category : 'tests - cooperative matrix' }
+SpvBuilderTest >> testCooperativeMatrixTypeIsOnePerShapeAndRole [
+	"The registry keys a cooperative matrix on its component type and its whole shape, so
+	 asking twice for the same one answers the same type, while a different use is a
+	 different type even with everything else equal. A key that missed would emit a second
+	 OpTypeCooperativeMatrixKHR for a type the module already has."
+
+	| builder f16 shapeOf |
+	builder := SpvBuilder new.
+	f16 := builder types floatType: 16.
+	shapeOf := [ :use |
+	           SpvCooperativeMatrixShape
+		           rows: 8
+		           columns: 8
+		           scope: SpvScope subgroup
+		           use: use ].
+	self
+		assert:
+		(builder types
+			 cooperativeMatrixType: f16
+			 shape: (shapeOf value: SpvCooperativeMatrixType matrixAUse)) id
+		equals: (builder types
+				 cooperativeMatrixType: f16
+				 shape: (shapeOf value: SpvCooperativeMatrixType matrixAUse)) id.
+	self
+		deny:
+		(builder types
+			 cooperativeMatrixType: f16
+			 shape: (shapeOf value: SpvCooperativeMatrixType matrixAUse)) id
+		equals: (builder types
+				 cooperativeMatrixType: f16
+				 shape: (shapeOf value: SpvCooperativeMatrixType matrixBUse)) id
 ]
 
 { #category : 'tests' }
@@ -234,6 +281,27 @@ SpvBuilderTest >> testModuleAnswersTheSameBarrierTheBuilderDoes [
 	fromModule := b module workgroupBarrierInstruction.
 	self assert: fromModule opcode equals: fromBuilder opcode.
 	self assert: fromModule operands equals: fromBuilder operands
+]
+
+{ #category : 'tests - cooperative matrix' }
+SpvBuilderTest >> testNullConstantOfACooperativeMatrixTypeIsDeclaredOnce [
+	"A zero accumulator is OpConstantNull of the matrix type. Asking twice answers the same
+	 id, and the constant must come after the type it is null of, which the ascending id
+	 order of the declaration section gives for free."
+
+	| builder matrixType first second |
+	builder := SpvBuilder new.
+	matrixType := builder types
+		              cooperativeMatrixType: (builder types floatType: 32)
+		              shape: (SpvCooperativeMatrixShape
+				               rows: PVCooperativeMatrixKernel matrixOrder
+				               columns: PVCooperativeMatrixKernel matrixOrder
+				               scope: SpvScope subgroup
+				               use: SpvCooperativeMatrixType matrixAccumulatorUse).
+	first := builder constants constantNullOfType: matrixType.
+	second := builder constants constantNullOfType: matrixType.
+	self assert: first equals: second.
+	self assert: first > matrixType id
 ]
 
 { #category : 'tests' }

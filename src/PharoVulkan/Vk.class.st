@@ -23,6 +23,19 @@ Vk class >> acquireNextImageKHR: device swapchain: swapchain timeout: timeout se
         void* pImageIndex ) )
 ]
 
+{ #category : 'utilities' }
+Vk class >> allocateCString: aString [
+	"Vulkan takes names as NUL-terminated C strings; the caller owns the memory and frees
+	 it. VkContext has its own instance-side copy of this, which is older and used while
+	 building create-infos; this one is here so a class with no context can ask too."
+
+	| bytes buf |
+	bytes := aString asByteArray copyWith: 0.
+	buf := ExternalAddress allocate: bytes size.
+	bytes doWithIndex: [ :byte :i | buf byteAt: i put: byte ].
+	^ buf
+]
+
 { #category : 'generated-api' }
 Vk class >> allocateCommandBuffers: device allocateInfo: pAllocateInfo commandBuffers: pCommandBuffers [
     ^ self ffiCall: #( VkResult vkAllocateCommandBuffers (
@@ -437,6 +450,17 @@ Vk class >> getDeviceQueue: device queueFamilyIndex: familyIndex queueIndex: que
         VkDevice_H device, uint32 familyIndex, uint32 queueIndex, void* pQueue ) )
 ]
 
+{ #category : 'physical devices' }
+Vk class >> getPhysicalDeviceFeatures2: physDevice into: pFeatures2 [
+	"pFeatures2 points at a VkPhysicalDeviceFeatures2 whose pNext chain the driver walks, so
+	 it must be memory outside the image: a ByteArray may move while the driver holds a
+	 pointer into it."
+
+	^ self ffiCall: #( void vkGetPhysicalDeviceFeatures2 (
+			   VkPhysicalDevice_H physDevice,
+			   void* pFeatures2 ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> getPhysicalDeviceMemoryProperties: physDevice memoryProperties: pMemProps [
     ^ self ffiCall: #( void vkGetPhysicalDeviceMemoryProperties (
@@ -565,6 +589,13 @@ Vk class >> primEnumeratePhysicalDevices: instance count: pCount devices: pDevic
         VkInstance_H instance,
         void* pCount,
         void* pDevices ) )
+]
+
+{ #category : 'primitives' }
+Vk class >> primGetInstanceProcAddr: instance name: pName [
+	^ self ffiCall: #( void* vkGetInstanceProcAddr (
+			   VkInstance_H instance,
+			   void* pName ) )
 ]
 
 { #category : 'ffi-primitives' }

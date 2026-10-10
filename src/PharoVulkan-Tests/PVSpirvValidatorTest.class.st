@@ -22,6 +22,32 @@ PVSpirvValidatorTest >> testBuiltInsFromWordsNamesWhatTheKernelReads [
 		equals: #( 'globalInvocationId' ) asSet
 ]
 
+{ #category : 'tests - validating' }
+PVSpirvValidatorTest >> testCooperativeMatrixKernelFromPharoSourceValidates [
+	"The compiled twin of testCooperativeMatrixModuleValidates. The emitter declares the
+	 capability, its extension and the Vulkan memory model from the instructions
+	 themselves, so a module that reaches one cooperative matrix instruction carries all
+	 three and one that reaches none keeps the GLSL450 memory model."
+
+	self
+		validateSpirv: (PVKernelCompiler new
+				 method: PVKernelExamples >> #coopMatrixProductOf:by:into:;
+				 compile)
+		description: 'cooperative matrix matmul from Pharo source'
+]
+
+{ #category : 'tests - validating' }
+PVSpirvValidatorTest >> testCooperativeMatrixModuleValidates [
+	"The hand-built cooperative matrix module. spirv-val knows the rules the extension adds:
+	 it refused this module while the two half bindings shared one runtime array decorated
+	 with ArrayStride twice, and it refuses CooperativeMatrixKHR declared without
+	 VulkanMemoryModel."
+
+	self
+		validateSpirv: PVCooperativeMatrixKernel new spirv
+		description: 'cooperative matrix matmul'
+]
+
 { #category : 'tests' }
 PVSpirvValidatorTest >> testCountOfOpcodeCountsEveryInstructionOfThatOpcode [
 	"Counted from the bytes, so the figure is what the module holds rather than what the

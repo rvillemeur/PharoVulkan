@@ -90,6 +90,16 @@ PVSpirvValidator class >> exampleValidatorOnComputeSelectionKernel [
 ]
 
 { #category : 'examples' }
+PVSpirvValidator class >> exampleValidatorOnCooperativeMatrixKernel [
+	"One click: spirv-val on the hand-built cooperative matrix module. The tool knows the
+	 rules the extension adds, which is how the two half bindings sharing one runtime array
+	 decorated with ArrayStride twice came to light."
+
+	<sampleInstance>
+	^ self on: PVCooperativeMatrixKernel new spirv
+]
+
+{ #category : 'examples' }
 PVSpirvValidator class >> exampleValidatorOnHalfVectorAddKernel [
 	"One click: the half precision vector add. spirv-val refuses a 16-bit float in a
 	 storage buffer unless the module declares Float16 and StorageBuffer16BitAccess, so the

@@ -65,6 +65,26 @@ SpvConstantPool >> constantInt32: anInteger [
 ]
 
 { #category : 'constants' }
+SpvConstantPool >> constantNullOfType: aSpvType [
+	"The zero value of a type, which for a cooperative matrix is the only way to name a
+	 zero matrix: there is no composite constant of one, because the component layout
+	 across the subgroup is the device's business."
+
+	| key id instruction |
+	key := Array with: #null with: aSpvType id.
+	^ (constants
+		   at: key
+		   ifAbsent: [
+			   id := module newId.
+			   instruction := SpvInstruction
+				                  opcode: SpvOpcode opConstantNull
+				                  resultType: aSpvType id
+				                  resultId: id
+				                  operands: #( ).
+			   self register: instruction key: key ]) resultId
+]
+
+{ #category : 'constants' }
 SpvConstantPool >> constantUInt32: anInteger [
     | key typeId id instr |
     key := Array with: #uint32 with: anInteger.

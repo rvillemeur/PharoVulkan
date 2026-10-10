@@ -131,6 +131,24 @@ PVCompilerTest >> executionModeLiteralsIn: bytes [
 	^ #( )
 ]
 
+{ #category : 'helpers' }
+PVCompilerTest >> extensionsIn: bytes [
+	"The names the module's OpExtension instructions carry. A SPIR-V literal string packs
+	 four bytes per word and ends at the first zero byte, so the words are unpacked and cut
+	 there."
+
+	^ (self operandsOf: SpvOpcode opExtension in: bytes) collect: [ :words |
+		  | characters |
+		  characters := OrderedCollection new.
+		  words do: [ :word |
+			  0 to: 3 do: [ :shift |
+				  | byte |
+				  byte := word bitShift: shift * -8.
+				  byte := byte bitAnd: 16rFF.
+				  byte = 0 ifFalse: [ characters add: (Character value: byte) ] ] ].
+		  String withAll: characters ]
+]
+
 { #category : 'private - cfg shapes' }
 PVCompilerTest >> opcodeCountsIn: bytes [
 	"Decode the instruction stream of a SPIR-V module and count opcodes. A test about
@@ -387,6 +405,78 @@ PVCompilerTest >> testComputeSequentialSelectionsRejected [
 	self assertShapeRejected: #computeTwoSequentialSelections:data:out:
 ]
 
+{ #category : 'tests - cooperative matrix' }
+PVCompilerTest >> testCooperativeMatrixKernelCompilesFromPharoSource [
+	"The DSL route to the module PVCooperativeMatrixKernel builds by hand: three
+	 cooperative matrix types, one load per factor of the product and one mul-add. The
+	 accumulator is a zero matrix rather than a third load, so there are two loads where
+	 the hand-built kernel has three."
+
+	| counts bytes |
+	bytes := PVKernelCompiler new
+		         method: PVKernelExamples >> #coopMatrixProductOf:by:into:;
+		         compile.
+	counts := self opcodeCountsIn: bytes.
+	self
+		assert: (counts at: SpvOpcode opTypeCooperativeMatrixKHR ifAbsent: [ 0 ])
+		equals: PVCooperativeMatrixKernel matrixOperandCount.
+	self
+		assert: (counts at: SpvOpcode opCooperativeMatrixLoadKHR ifAbsent: [ 0 ])
+		equals: 2.
+	self
+		assert: (counts at: SpvOpcode opCooperativeMatrixMulAddKHR ifAbsent: [ 0 ])
+		equals: 1.
+	self
+		assert: (counts at: SpvOpcode opCooperativeMatrixStoreKHR ifAbsent: [ 0 ])
+		equals: 1
+]
+
+{ #category : 'tests - cooperative matrix' }
+PVCompilerTest >> testCooperativeMatrixModuleDeclaresWhatTheCapabilityRequires [
+	"A cooperative matrix module is only legal with three declarations together: the
+	 CooperativeMatrixKHR capability, the SPV_KHR_cooperative_matrix extension, and the
+	 VulkanMemoryModel capability with the Vulkan memory model. spirv-val refuses Shader plus
+	 CooperativeMatrixKHR without the last of them, so the three are asserted as one fact."
+
+	| bytes capabilities |
+	bytes := PVCooperativeMatrixKernel new spirv.
+	capabilities := self capabilitiesIn: bytes.
+	self assert:
+		(capabilities includes: PVSPIRVEmitter cooperativeMatrixCapability).
+	self assert:
+		(capabilities includes: PVSPIRVEmitter vulkanMemoryModelCapability).
+	self assert: ((self extensionsIn: bytes) includes:
+			 PVSPIRVEmitter cooperativeMatrixExtensionName).
+	self
+		assert: (self operandsOf: SpvOpcode opMemoryModel in: bytes) first
+		equals: {
+				SpvModule logicalAddressingModel.
+				SpvModule vulkanMemoryModel }
+]
+
+{ #category : 'tests - cooperative matrix' }
+PVCompilerTest >> testCooperativeMatrixModuleHasOneTypePerOperandAndOneMulAdd [
+	"The three matrix types are distinct: A, B and the accumulator differ in their Use
+	 operand even where the component type is the same, and a kernel cannot reuse one for
+	 another. One load per operand, one multiply-accumulate, one store."
+
+	| counts bytes |
+	bytes := PVCooperativeMatrixKernel new spirv.
+	counts := self opcodeCountsIn: bytes.
+	self
+		assert: (counts at: SpvOpcode opTypeCooperativeMatrixKHR ifAbsent: [ 0 ])
+		equals: PVCooperativeMatrixKernel matrixOperandCount.
+	self
+		assert: (counts at: SpvOpcode opCooperativeMatrixLoadKHR ifAbsent: [ 0 ])
+		equals: PVCooperativeMatrixKernel matrixOperandCount.
+	self
+		assert: (counts at: SpvOpcode opCooperativeMatrixMulAddKHR ifAbsent: [ 0 ])
+		equals: 1.
+	self
+		assert: (counts at: SpvOpcode opCooperativeMatrixStoreKHR ifAbsent: [ 0 ])
+		equals: 1
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testDecoderHandlesInstVarAndDup [
 | ops opcodes |
@@ -639,20 +729,6 @@ PVCompilerTest >> testNestedLoopNodeRolesReadEverySlotWithoutMovingAnything [
 	self
 		assert: (node coveredBlocks collect: [ :each | each id ])
 		equals: idsBefore
-]
-
-{ #category : 'tests' }
-PVCompilerTest >> testNoCooperativeMatrixSelectorIsMappedYet [
-	"The skip is deliberate, and this states it. No cooperative matrix type or selector is in
-	 the dispatch table, because none of it has run on a device yet. Delete this test in the
-	 same change that adds the first mapping, and say in that change which device ran it."
-
-	| names |
-	names := PVSelectorTable standard table keys.
-	self deny: (names anySatisfy: [ :each |
-			 each asLowercase includesSubstring: 'coopmat' ]).
-	self deny: (names anySatisfy: [ :each |
-			 each asLowercase includesSubstring: 'cooperative' ])
 ]
 
 { #category : 'tests' }

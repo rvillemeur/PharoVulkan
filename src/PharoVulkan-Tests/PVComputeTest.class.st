@@ -248,6 +248,20 @@ PVComputeTest >> runCompiledTiledMatmulOfOrder: n [
 		  bufOut destroy ]
 ]
 
+{ #category : 'running - matmul' }
+PVComputeTest >> runCooperativeMatrixMatmulOn: aContext [
+	"The same asymmetric inputs the other matmul tests use, flattened row by row, run
+	 through the kernel's own dispatch so the test exercises the API the examples use."
+
+	| n |
+	n := PVCooperativeMatrixKernel matrixOrder.
+	^ PVCooperativeMatrixKernel new
+		  productOf:
+		  (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ])
+		  by: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ])
+		  on: aContext
+]
+
 { #category : 'private' }
 PVComputeTest >> runMatmulOfOrder: n groups: groupCount [
 	^ self runMatmulOfOrder: n groups: groupCount elementType: #f32
@@ -493,6 +507,105 @@ PVComputeTest >> testComputeSelectionClampOnDevice [
 	kernel destroy ] ensure: [
 		bufIn destroy.
 		bufOut destroy ]
+]
+
+{ #category : 'tests - matmul' }
+PVComputeTest >> testCooperativeMatrixKernelFromPharoSourceMatchesTheHandBuiltOne [
+	"The DSL closes 7-H: the same product, compiled from Pharo source rather than built
+	 instruction by instruction. Both modules are checked against the CPU reference, and
+	 against each other, on the one device here that offers the extension. The two agree
+	 exactly or not at all: they run the same instructions over the same halves, so any
+	 difference would be a difference in what the emitter wrote, not rounding."
+
+	| comparison coopContext |
+	(PVCooperativeMatrixSurvey new setContext: ctx) availableSomewhere ifFalse: [
+		^ self skip ].
+	coopContext := VkContext cooperativeMatrixContext.
+	comparison := [ (PVCooperativeMatrixComparison on: coopContext) run ]
+		              ensure: [ coopContext destroy ].
+	comparison referenceResult doWithIndex: [ :expected :index |
+		self
+			assertHalf: (comparison handBuiltResult at: index)
+			matchesReference: expected.
+		self
+			assertHalf: (comparison compiledResult at: index)
+			matchesReference: expected ].
+	self assert: comparison compiledResult equals: comparison handBuiltResult
+]
+
+{ #category : 'tests - matmul' }
+PVComputeTest >> testCooperativeMatrixKernelSourceRunsOnTheHost [
+	"A kernel body has to mean the same thing in the image as on the device, which is what
+	 makes the three selectors readable Pharo rather than markers for the compiler. On the
+	 host there is one process and no subgroup, so a cooperative matrix is just an eight by
+	 eight matrix of floats and the product is exact."
+
+	| order left right output |
+	order := PVCooperativeMatrixKernel matrixOrder.
+	left := self flatMatrixOfOrder: order with: [ :r :c | self aAtRow: r col: c ].
+	right := self flatMatrixOfOrder: order with: [ :r :c | self bAtRow: r col: c ].
+	output := Array new: order * order withAll: 0.0.
+	PVKernelExamples new coopMatrixProductOf: left by: right into: output.
+	0 to: order - 1 do: [ :row |
+		0 to: order - 1 do: [ :col |
+			self
+				assert: (output at: row * order + col + 1)
+				closeTo: (self referenceAtRow: row col: col order: order) ] ]
+]
+
+{ #category : 'tests - matmul' }
+PVComputeTest >> testCooperativeMatrixLoadThenStoreAnswersWhatWasLoaded [
+	"The host load and store are each other's inverse, and the load copies: writing the
+	 buffer afterwards must not change the matrix read out of it."
+
+	| order buffer matrix destination |
+	order := PVCooperativeMatrixKernel matrixOrder.
+	buffer := (1 to: order * order) collect: [ :each | each asFloat ].
+	matrix := buffer coopMatLoad: 0.
+	buffer atAllPut: 0.0.
+	destination := Array new: order * order withAll: 0.0.
+	destination coopMatStore: matrix.
+	self
+		assert: destination
+		equals: ((1 to: order * order) collect: [ :each | each asFloat ]) asArray.
+	self assert: (matrix atRow: 1 col: 0) equals: order + 1.0
+]
+
+{ #category : 'tests - matmul' }
+PVComputeTest >> testCooperativeMatrixMatmulOnDeviceMatchesTheReference [
+	"The point of 7-H: a cooperative matrix multiply-accumulate that answers the same matrix
+	 product the CPU does. The device is chosen by capability, not by position, because the
+	 one device here that offers the extension is not the first enumerated. Half precision
+	 inputs cannot carry the reference exactly, so the fact is the distance from it."
+
+	| n result coopContext |
+	(PVCooperativeMatrixSurvey new setContext: ctx) availableSomewhere ifFalse: [
+		^ self skip ].
+	coopContext := VkContext cooperativeMatrixContext.
+	result := [ self runCooperativeMatrixMatmulOn: coopContext ] ensure: [
+		          coopContext destroy ].
+	n := PVCooperativeMatrixKernel matrixOrder.
+	0 to: n - 1 do: [ :row |
+		0 to: n - 1 do: [ :col |
+			self
+				assertHalf: (result at: row * n + col + 1)
+				matchesReference: (self referenceAtRow: row col: col order: n) ] ]
+]
+
+{ #category : 'tests - matmul' }
+PVComputeTest >> testCooperativeMatrixRefusesAnElementCountThatIsNotSquare [
+	"A matrix built from the wrong number of elements would read past its own rows and
+	 answer plausible nonsense, so it is refused where it is built."
+
+	self
+		should: [ PVCooperativeMatrix order: 8 elements: (Array new: 63 withAll: 0.0) ]
+		raise: PVTypeError.
+	self
+		should: [
+			(PVCooperativeMatrix order: 8 elements: (Array new: 64 withAll: 1.0))
+				coopMatMulAdd:
+					(PVCooperativeMatrix order: 4 elements: (Array new: 16 withAll: 1.0)) ]
+		raise: PVTypeError
 ]
 
 { #category : 'tests' }

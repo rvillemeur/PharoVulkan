@@ -49,6 +49,27 @@ SpvTypeRegistry >> boolType [
     ^ types at: #bool ifAbsent: [ self register: SpvBoolType new ]
 ]
 
+{ #category : 'types' }
+SpvTypeRegistry >> cooperativeMatrixType: aComponentType shape: aShape [
+	"The shape operands are declared as constants before the type is registered, because the
+	 type names them by id and a use must follow its definition. The key is the one the type
+	 spells for itself, which is what lets a second matrix of the same shape and role find
+	 the first."
+
+	| key |
+	key := Array
+		       with: #cooperativeMatrix
+		       with: aComponentType id
+		       with: aShape key.
+	^ types at: key ifAbsent: [
+		  aShape constantValues do: [ :each |
+			  module constantPool constantUInt32: each ].
+		  self register: (SpvCooperativeMatrixType new
+				   componentType: aComponentType;
+				   shape: aShape;
+				   yourself) ]
+]
+
 { #category : 'type-factories' }
 SpvTypeRegistry >> floatType: width [
     | key |

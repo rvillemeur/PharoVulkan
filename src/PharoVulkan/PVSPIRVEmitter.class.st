@@ -22,11 +22,19 @@ PVSPIRVEmitter class >> bufferElementTypes [
 	"The element type symbol each kernel buffer type holds. One source for the type the
 	 emitter declares, the stride it decorates the runtime array with, the capabilities a
 	 half buffer needs and the parameter types PVKernelCompiler takes for compute."
+	 
+	"The three role types hold the same elements as a plain buffer and differ only in
+	 which cooperative matrix operand they feed. The role belongs to the type because a
+	 cooperative matrix type is fixed to one role in SPIR-V, so a load has to know the
+	 role before it knows anything else."
 
 	^ Dictionary newFrom: {
 			  (#bufferOf_f32 -> #f32).
 			  (#bufferOf_i32 -> #i32).
-			  (#bufferOf_f16 -> #f16) }
+			  (#bufferOf_f16 -> #f16).
+			  (#matrixABufferOf_f16 -> #f16).
+			  (#matrixBBufferOf_f16 -> #f16).
+			  (#accumulatorBufferOf_f32 -> #f32) }
 ]
 
 { #category : 'constants' }
@@ -534,6 +542,66 @@ PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann sel
 ]
 
 { #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixCapability [
+	"CooperativeMatrixKHR = 6022. Read back out of a module spirv-as assembled, not recalled.
+	 It may only be declared where the device has the cooperativeMatrix feature enabled."
+
+	^ 6022
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixExtensionName [
+	"The SPIR-V extension VK_KHR_cooperative_matrix enables. A module declaring the
+	 CooperativeMatrixKHR capability must name it."
+
+	^ 'SPV_KHR_cooperative_matrix'
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixLayout [
+	"Row major, the orientation every buffer in this project is written in."
+
+	^ SpvCooperativeMatrixType rowMajorLayout
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixOrder [
+	"A kernel must use one of the M, N, K combinations the device reports, exactly.
+	 PVCooperativeMatrixKernel holds the one this machine offers, so both the hand-built
+	 kernel and a compiled one take their shape from the same place."
+
+	^ PVCooperativeMatrixKernel matrixOrder
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixScope [
+	^ SpvScope subgroup
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixStoreElementIndex [
+	"A store writes the matrix at the start of its buffer. A kernel that needs an offset
+	 would need a two-argument selector, which the DSL does not have."
+
+	^ 0
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> cooperativeMatrixValueTypes [
+	"The component type and the operand role of each cooperative matrix value type. A
+	 matrix type carries its role as an operand, so A, B and the accumulator are three
+	 different types even where two of them share a component type."
+
+	^ Dictionary newFrom: {
+			  (#coopMatrixA_f16
+			   -> { #f16. SpvCooperativeMatrixType matrixAUse }).
+			  (#coopMatrixB_f16
+			   -> { #f16. SpvCooperativeMatrixType matrixBUse }).
+			  (#coopMatrixAccumulator_f32
+			   -> { #f32. SpvCooperativeMatrixType matrixAccumulatorUse }) }
+]
+
+{ #category : 'constants' }
 PVSPIRVEmitter class >> elementTypeOf: aBufferTypeSymbol [
 	"Raises rather than defaulting: a wrong element type emits a module that validates and
 	 reads the wrong addresses."
@@ -680,6 +748,27 @@ PVSPIRVEmitter class >> inspectorBufferTypes: aBuilder [
 						   ((self capabilitiesDeclaredFor: each) collect: [ :one |
 							    one printString ]) ]);
 		  items: self bufferElementTypes keys asSortedCollection asArray;
+		  yourself
+]
+
+{ #category : 'inspector' }
+PVSPIRVEmitter class >> inspectorCooperativeMatrixTypes: aBuilder [
+	<inspectorPresentationOrder: 20 title: 'Cooperative matrix types'>
+	"One row per cooperative matrix value type. The component type and the shape are
+	 asked of the type an emitter actually builds, not restated, so the tab cannot claim
+	 a shape the emitted module does not carry. The shape prints its own role, which is
+	 what makes three types out of two component types."
+
+	| emitter |
+	emitter := self new.
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Value type' evaluated: [ :each | each ]);
+		  addColumn: (SpStringTableColumn title: 'Component' evaluated: [ :each |
+					   (emitter cooperativeMatrixTypeFor: each) componentType key printString ]);
+		  addColumn: (SpStringTableColumn title: 'Shape' evaluated: [ :each |
+					   (emitter cooperativeMatrixTypeFor: each) shape printString ]);
+		  items: self cooperativeMatrixValueTypes keys asSortedCollection asArray;
 		  yourself
 ]
 
@@ -831,6 +920,14 @@ PVSPIRVEmitter class >> storageBufferArrayStrideFor: aBufferTypeSymbol [
 	^ self scalarByteWidths at: (self elementTypeOf: aBufferTypeSymbol)
 ]
 
+{ #category : 'constants' }
+PVSPIRVEmitter class >> vulkanMemoryModelCapability [
+	"VulkanMemoryModel = 5345. spirv-val refuses a module that declares Shader and
+	 CooperativeMatrixKHR without it, so the two travel together."
+
+	^ 5345
+]
+
 { #category : 'accessing' }
 PVSPIRVEmitter >> annotation [
 ^ annotation
@@ -887,6 +984,32 @@ PVSPIRVEmitter >> captureLatchIdsFor: aLoopLevel [
 				 self spvIdFor: ((phis at: #latch) at: k) ])
 ]
 
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> cooperativeMatrixBuilderOn: aBlock [
+	"The three cooperative matrix instructions are assembled in SpvBuilder, whose operand
+	 order differs from its own selector order for the store. Two producers of that order
+	 would drift apart, so this emitter borrows the one that is already tested."
+
+	^ (SpvBuilder on: module)
+		  currentBlock: aBlock;
+		  yourself
+]
+
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> cooperativeMatrixTypeFor: aTypeSymbol [
+	"The matrix type a value type symbol names, built from the shape the device reports."
+
+	| description |
+	description := self class cooperativeMatrixValueTypes at: aTypeSymbol.
+	^ module typeRegistry
+		  cooperativeMatrixType: (self spvTypeFor: description first)
+		  shape: (SpvCooperativeMatrixShape
+				   rows: self class cooperativeMatrixOrder
+				   columns: self class cooperativeMatrixOrder
+				   scope: self class cooperativeMatrixScope
+				   use: description second)
+]
+
 { #category : 'emitting' }
 PVSPIRVEmitter >> declareCapabilitiesFor: aBufferTypeSymbol [
 	"A half buffer needs Float16 for the arithmetic and StorageBuffer16BitAccess for the
@@ -895,6 +1018,21 @@ PVSPIRVEmitter >> declareCapabilitiesFor: aBufferTypeSymbol [
 	(self class elementTypeOf: aBufferTypeSymbol) = #f16 ifFalse: [ ^ self ].
 	module addCapability: self class float16Capability.
 	module addCapability: self class storageBuffer16BitAccessCapability
+]
+
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> declareCooperativeMatrixCapabilities [
+	"The capability needs its SPIR-V extension, and spirv-val refuses the capability in a
+	 Shader module unless the Vulkan memory model is declared too, which in turn needs the
+	 device feature. Declared from the instructions rather than from the module prologue, so
+	 a kernel holding no cooperative matrix keeps the GLSL450 memory model."
+
+	module addCapability: self class vulkanMemoryModelCapability.
+	module addCapability: self class cooperativeMatrixCapability.
+	module addExtension: self class cooperativeMatrixExtensionName.
+	module
+		setAddressingModel: SpvModule logicalAddressingModel
+		memoryModel: SpvModule vulkanMemoryModel
 ]
 
 { #category : 'emitting - shared memory' }
@@ -1140,6 +1278,69 @@ PVSPIRVEmitter >> emitComputeSelectionFrom: sims selectorTable: st [
 	self emitSelectionArmsIn: ctx.
 	self emitSelectionMergeIn: ctx.
 	^ spvFunc
+]
+
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> emitCooperativeMatrixLoad: op resultTypeSymbol: aTypeSymbol typeMap: typeMap block: blk [
+	"coopMatLoad: answers the matrix that starts at the element its argument names. The
+	 role comes from the buffer's own type, so the load knows which of the three matrix
+	 types it is building."
+
+	| pointerId |
+	self declareCooperativeMatrixCapabilities.
+	pointerId := self
+		             pointerInto: (self spvIdFor: op inputs first)
+		             ofType: (typeMap at: op inputs first)
+		             at: (self spvIdFor: op inputs second)
+		             block: blk.
+	regMap
+		at: op result
+		put: ((self cooperativeMatrixBuilderOn: blk)
+				 emitCooperativeMatrixLoad: pointerId
+				 type: (self cooperativeMatrixTypeFor: aTypeSymbol)
+				 layout: self class cooperativeMatrixLayout
+				 stride: (module constantPool constantUInt32:
+							  self class cooperativeMatrixOrder))
+]
+
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> emitCooperativeMatrixMulAdd: op resultTypeSymbol: aTypeSymbol block: blk [
+	"coopMatMulAdd: multiplies its receiver by its argument and adds a zero accumulator, so
+	 the result is the product alone. The zero is OpConstantNull of the accumulator type:
+	 how a matrix is spread over the subgroup is the device's business, so a kernel cannot
+	 build a zero matrix out of components."
+
+	| accumulatorType |
+	self declareCooperativeMatrixCapabilities.
+	accumulatorType := self cooperativeMatrixTypeFor: aTypeSymbol.
+	regMap
+		at: op result
+		put: ((self cooperativeMatrixBuilderOn: blk)
+				 emitCooperativeMatrixMulAdd: (self spvIdFor: op inputs first)
+				 by: (self spvIdFor: op inputs second)
+				 into: (module constantPool constantNullOfType: accumulatorType)
+				 type: accumulatorType)
+]
+
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> emitCooperativeMatrixStore: op typeMap: typeMap block: blk [
+	"coopMatStore: writes its argument into the receiver's buffer, at element zero. The
+	 register of the store answers the pointer it wrote through, as the buffer store does."
+
+	| pointerId |
+	self declareCooperativeMatrixCapabilities.
+	pointerId := self
+		             pointerInto: (self spvIdFor: op inputs first)
+		             ofType: (typeMap at: op inputs first)
+		             at: (module constantPool constantUInt32:
+					              self class cooperativeMatrixStoreElementIndex)
+		             block: blk.
+	(self cooperativeMatrixBuilderOn: blk)
+		emitCooperativeMatrixStore: (self spvIdFor: op inputs second)
+		at: pointerId
+		layout: self class cooperativeMatrixLayout
+		stride: (module constantPool constantUInt32: self class cooperativeMatrixOrder).
+	regMap at: op result put: pointerId
 ]
 
 { #category : 'emit' }
@@ -1538,6 +1739,9 @@ PVSPIRVEmitter >> emitRegOp: op typeMap: typeMap selectorTable: st block: blk [
         mapping spirvOp = #bufferStore      ifTrue: [ self emitBufferStore: op typeMap: typeMap block: blk. ^ self ].
         mapping spirvOp = #sharedLoad       ifTrue: [ self emitSharedLoad: op typeMap: typeMap block: blk. ^ self ].
         mapping spirvOp = #sharedStore      ifTrue: [ self emitSharedStore: op typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #coopMatrixLoad    ifTrue: [ self emitCooperativeMatrixLoad: op resultTypeSymbol: mapping resultTypeSymbol typeMap: typeMap block: blk. ^ self ].
+        mapping spirvOp = #coopMatrixMulAdd  ifTrue: [ self emitCooperativeMatrixMulAdd: op resultTypeSymbol: mapping resultTypeSymbol block: blk. ^ self ].
+        mapping spirvOp = #coopMatrixStore   ifTrue: [ self emitCooperativeMatrixStore: op typeMap: typeMap block: blk. ^ self ].
         mapping spirvOp = #workgroupBarrier ifTrue: [ self emitWorkgroupBarrier: op block: blk. ^ self ].
         mapping spirvOp = #workItemX        ifTrue: [ self emitWorkItemComponent: 0 op: op block: blk. ^ self ].
         mapping spirvOp = #workItemY        ifTrue: [ self emitWorkItemComponent: 1 op: op block: blk. ^ self ].
@@ -2062,6 +2266,29 @@ PVSPIRVEmitter >> outputVarIds [ ^ outputVarIds
 PVSPIRVEmitter >> outputVarIds: x [ outputVarIds := x
 ]
 
+{ #category : 'emitting - cooperative matrix' }
+PVSPIRVEmitter >> pointerInto: aBufferVarId ofType: aBufferTypeSymbol at: anIndexId block: blk [
+	"The pointer to one element of a buffer, which is what a cooperative matrix load or
+	 store addresses: the instruction reads or writes a whole matrix from there, using the
+	 stride to find each row."
+
+	| elemType ptrType pointerId |
+	elemType := self bufferElementTypeFor: aBufferTypeSymbol.
+	ptrType := module typeRegistry
+		           pointerType: SpvStorageClass storageBuffer
+		           type: elemType.
+	pointerId := module newId.
+	blk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opAccessChain
+			 resultType: ptrType id
+			 resultId: pointerId
+			 operands: {
+					 aBufferVarId.
+					 (module constantPool constantUInt32: self class bufferMemberIndex).
+					 anIndexId }).
+	^ pointerId
+]
+
 { #category : 'compiling' }
 PVSPIRVEmitter >> prependLoopPhisIn: ctx [
 	"A phi must be the first instruction of its block, and both its incoming ids are only
@@ -2195,6 +2422,8 @@ PVSPIRVEmitter >> spvIdFor: regId [
 
 { #category : 'private' }
 PVSPIRVEmitter >> spvTypeFor: typeSymbol [
+    (self class cooperativeMatrixValueTypes includesKey: typeSymbol) ifTrue: [
+        ^ self cooperativeMatrixTypeFor: typeSymbol ].
     typeSymbol = #f32  ifTrue: [ ^ module typeRegistry floatType: 32 ].
     typeSymbol = #f16  ifTrue: [ ^ module typeRegistry floatType: 16 ].
     typeSymbol = #i32  ifTrue: [ ^ module typeRegistry intType: 32 signed: true ].

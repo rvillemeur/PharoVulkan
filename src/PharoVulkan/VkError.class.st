@@ -15,7 +15,12 @@ Class {
 
 { #category : 'accessing' }
 VkError >> messageText [
-    ^ 'Vulkan error: ' , result name
+	"A VkError either carries a VkResult code or a plain explanation. Without this fallback
+	 every error signalled with a text raised a second error on being described, because
+	 nil has no name."
+	^ result
+		  ifNil: [ super messageText ]
+		  ifNotNil: [ 'Vulkan error: ' , result name ]
 ]
 
 { #category : 'accessing' }
