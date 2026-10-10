@@ -46,6 +46,17 @@ VkPhysicalDevice class >> exampleExtensionsOfThisMachine [
             yourself ] ensure: [ context destroy ]
 ]
 
+{ #category : 'examples' }
+VkPhysicalDevice class >> exampleMemoryTypesOfThisMachine [
+	"One click: the memory-type table of whatever device this image finds. The properties
+	 buffer is read once at construction and never freed by the context, which is why the
+	 example can hand back a device whose context has gone."
+	<sampleInstance>
+	| context |
+	context := VkContext computeContext.
+	^ [ context physicalDevice ] ensure: [ context destroy ]
+]
+
 { #category : 'decoding' }
 VkPhysicalDevice class >> extensionNameIn: aBuffer at: anOffset [
     "The name field is a fixed 256 bytes holding a NUL-terminated string, so stop at the
@@ -222,17 +233,11 @@ VkPhysicalDevice >> findGraphicsQueueFamily [
 
 { #category : 'querying' }
 VkPhysicalDevice >> findMemoryType: typeFilter properties: requiredFlags [
-    "memoryTypes array starts at offset 4 in VkPhysicalDeviceMemoryProperties,"
-    "each VkMemoryType = 8 bytes: propertyFlags(4) + heapIndex(4)"
-    | typeCount |
-    typeCount := memoryProperties unsignedLongAt: 1.
-    0 to: typeCount - 1 do: [ :i |
-        ((typeFilter bitAnd: (1 bitShift: i)) ~= 0) ifTrue: [
-            | propFlags |
-            propFlags := memoryProperties unsignedLongAt: 5 + (i * 8).
-            (propFlags bitAnd: requiredFlags) = requiredFlags
-                ifTrue: [ ^ i ] ] ].
-    VkError signal: 'No suitable memory type found'
+	0 to: self memoryTypeCount - 1 do: [ :i |
+		((typeFilter bitAnd: (1 bitShift: i)) ~= 0) ifTrue: [
+			((self memoryPropertyFlagsOfType: i) bitAnd: requiredFlags) = requiredFlags
+				ifTrue: [ ^ i ] ] ].
+	VkError signal: 'No suitable memory type found'
 ]
 
 { #category : 'reporting' }
@@ -297,6 +302,22 @@ VkPhysicalDevice >> inspectorHalfPrecision: aBuilder [
 		  yourself
 ]
 
+{ #category : 'inspector' }
+VkPhysicalDevice >> inspectorMemoryTypes: aBuilder [
+	"The Chosen column calls findMemoryType:properties: itself for hostVisibleAndCoherent,
+	 so it cannot drift from what VkBuffer allocate actually gets."
+	<inspectorPresentationOrder: 20 title: 'Memory types'>
+	^ aBuilder newTable
+		addColumn: (SpStringTableColumn title: 'Index' evaluated: [ :each | each first printString ]);
+		addColumn: (SpStringTableColumn title: 'Properties' evaluated: [ :each | each second ]);
+		addColumn: (SpStringTableColumn title: 'Heap' evaluated: [ :each | each third printString ]);
+		addColumn: (SpStringTableColumn
+			title: 'Chosen for hostVisibleAndCoherent'
+			evaluated: [ :each | each fourth printString ]);
+		items: self memoryTypeRows;
+		yourself
+]
+
 { #category : 'accessing' }
 VkPhysicalDevice >> limits [
 	"The VkPhysicalDeviceLimits block of this device's properties, reached through its own
@@ -324,6 +345,47 @@ VkPhysicalDevice >> maxComputeWorkGroupSize [
 	"The per dimension ceiling on a local size, x, y and z, as plain integers."
 
 	^ (1 to: 3) collect: [ :i | self limits maxComputeWorkGroupSize at: i ]
+]
+
+{ #category : 'querying' }
+VkPhysicalDevice >> memoryHeapIndexOfType: anIndex [
+	"memoryTypes array starts at offset 4 in VkPhysicalDeviceMemoryProperties, each
+	 VkMemoryType = 8 bytes: propertyFlags(4) + heapIndex(4); heapIndex follows the flags."
+	^ memoryProperties unsignedLongAt: 9 + (anIndex * 8)
+]
+
+{ #category : 'querying' }
+VkPhysicalDevice >> memoryPropertyFlagsOfType: anIndex [
+	"memoryTypes array starts at offset 4 in VkPhysicalDeviceMemoryProperties,
+	 each VkMemoryType = 8 bytes: propertyFlags(4) + heapIndex(4)"
+	^ memoryProperties unsignedLongAt: 5 + (anIndex * 8)
+]
+
+{ #category : 'querying' }
+VkPhysicalDevice >> memoryTypeCount [
+	"VkPhysicalDeviceMemoryProperties: memoryTypeCount is the first field, offset 1."
+	^ memoryProperties unsignedLongAt: 1
+]
+
+{ #category : 'accessing' }
+VkPhysicalDevice >> memoryTypeRows [
+	"One row per memory type this device reports, each fact read through the same
+	 accessors findMemoryType:properties: uses, so the table cannot drift from the
+	 allocator. Chosen asks findMemoryType:properties: itself rather than restating its
+	 rule, with every index allowed in the filter so only the property requirement decides."
+	| typeCount allBits chosenIndex rows |
+	typeCount := self memoryTypeCount.
+	allBits := (1 bitShift: typeCount) - 1.
+	chosenIndex := [ self findMemoryType: allBits properties: VkMemoryProperty hostVisibleAndCoherent ]
+		on: VkError do: [ :e | nil ].
+	rows := OrderedCollection new.
+	0 to: typeCount - 1 do: [ :i |
+		rows add: {
+			i.
+			VkMemoryProperty nameForFlags: (self memoryPropertyFlagsOfType: i).
+			self memoryHeapIndexOfType: i.
+			i = chosenIndex } ].
+	^ rows asArray
 ]
 
 { #category : 'accessing' }

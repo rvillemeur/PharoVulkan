@@ -605,6 +605,17 @@ VkCoreTest >> testHalfPrecisionReportAgreesWithTheGate [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testHostVisibleAndCoherentAsksForBothProperties [
+	"The constant must assert both bits its name promises, not just host-visible."
+	self
+		assert: (VkMemoryProperty hostVisibleAndCoherent bitAnd: VkMemoryProperty hostVisibleBit)
+		equals: VkMemoryProperty hostVisibleBit.
+	self
+		assert: (VkMemoryProperty hostVisibleAndCoherent bitAnd: VkMemoryProperty hostCoherentBit)
+		equals: VkMemoryProperty hostCoherentBit
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testPhysicalDeviceNamesEveryExtensionItSupports [
 	"Every name the driver reports must be a plain String the gate can match on, and the gate
 	 must agree with the list it was built from."
@@ -649,6 +660,30 @@ VkCoreTest >> testStorageBufferByElementTypeRoundtripsBothWidths [
 	self assert: (floats elementsAs: #f32) equals: values ] ensure: [
 		halves destroy.
 		floats destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testStorageBufferMemoryTypeIsCoherent [
+	"VkBuffer allocate picks its memory type with hostVisibleAndCoherent; the type it picks
+	 must actually carry the coherent bit, or map/unmap can read stale bytes on hardware
+	 where host-visible memory need not also be coherent."
+	| buffer memReqs typeFilter typeIndex |
+	buffer := VkBuffer storageBuffer: 4 on: ctx device.
+	[ memReqs := ExternalAddress allocate: 24.
+	  [ Vk
+	  	getBufferMemoryRequirements: ctx device handle
+	  	buffer: buffer handle
+	  	memoryRequirements: memReqs.
+	    typeFilter := memReqs unsignedLongAt: 17.
+	    typeIndex := ctx device physicalDevice
+	  	findMemoryType: typeFilter
+	  	properties: VkMemoryProperty hostVisibleAndCoherent.
+	    self
+	  	assert: ((ctx device physicalDevice memoryPropertyFlagsOfType: typeIndex)
+	  			bitAnd: VkMemoryProperty hostCoherentBit)
+	  	equals: VkMemoryProperty hostCoherentBit
+	  ] ensure: [ memReqs free ]
+	] ensure: [ buffer destroy ]
 ]
 
 { #category : 'tests' }
