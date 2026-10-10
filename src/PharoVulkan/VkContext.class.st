@@ -191,6 +191,15 @@ VkContext >> computeQueueFamily [
     ^ computeQueueFamily
 ]
 
+{ #category : 'querying' }
+VkContext >> cooperativeMatrixAvailable [
+	"Answers for the device this context runs kernels on, which is the device a kernel path
+	 would have to gate on. Another device on the same machine may well answer differently —
+	 PVCooperativeMatrixSurvey is the one that looks at them all."
+
+	^ physicalDevice supportsCooperativeMatrix
+]
+
 { #category : 'initialization' }
 VkContext >> createGraphicsDevice [
     | queueInfo sync2Feat extNameBytes extName extPtrBuf deviceInfo devBuf result devHandle |

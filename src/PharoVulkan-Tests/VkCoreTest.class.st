@@ -171,6 +171,91 @@ VkCoreTest >> testComputeLimitsOfThisDeviceAgreeWithTheDriver [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixAvailabilityOnTheContextAgreesWithItsDevice [
+	"VkContext answers for the device it actually runs kernels on, which is what a kernel
+	 path would have to gate on."
+
+	self
+		assert: ctx cooperativeMatrixAvailable
+		equals: ctx physicalDevice supportsCooperativeMatrix
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixExtensionNameIsTheKhrOne [
+	"The name is a constant rather than a literal at each call site, and it must be the name a
+	 driver can report: every Vulkan extension name carries the prefix."
+
+	self
+		assert: VkPhysicalDevice cooperativeMatrixExtensionName
+		equals: VkPhysicalDevice extensionNamePrefix , 'KHR_cooperative_matrix'
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixSkipReasonNamesTheExtensionWhenTheContextDeviceLacksIt [
+	"The skip must say why it happened, and nothing is skipped on a device that has the
+	 extension. The test states the implication rather than this machine's answer, so it
+	 holds on a device of either kind."
+
+	| survey |
+	survey := PVCooperativeMatrixSurvey on: ctx.
+	survey availableOnContextDevice
+		ifTrue: [ self assert: survey skipReason isNil ]
+		ifFalse: [
+			self assert: (survey skipReason includesSubstring:
+					 VkPhysicalDevice cooperativeMatrixExtensionName) ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixSupportAgreesWithTheExtensionList [
+	"The predicate asks the extension list the driver reported, so it cannot answer yes on a
+	 device whose list lacks the extension."
+
+	self
+		assert: ctx physicalDevice supportsCooperativeMatrix
+		equals: (ctx physicalDevice extensionNames includes:
+				 VkPhysicalDevice cooperativeMatrixExtensionName)
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixSurveyCoversEveryPhysicalDevice [
+	"The survey asks every device the loader offers, not only the one the context chose. On
+	 this machine the chosen device and the supporting device are not the same one."
+
+	| survey |
+	survey := PVCooperativeMatrixSurvey on: ctx.
+	self
+		assert: survey deviceReports size
+		equals: (Vk enumeratePhysicalDevices: ctx instance) size
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixSurveyNamesTheDevicesThatSupportIt [
+	"Availability anywhere on the machine and availability on the device the context runs on
+	 are different facts, and the survey answers both. Every supporting name must come from a
+	 report that says so, so the two cannot disagree."
+
+	| survey |
+	survey := PVCooperativeMatrixSurvey on: ctx.
+	self
+		assert: survey availableSomewhere
+		equals: survey supportingDeviceNames notEmpty.
+	survey supportingDeviceNames do: [ :each |
+		self assert: (survey deviceReports anySatisfy: [ :report |
+				 (report at: #name) = each and: [ report at: #supported ] ]) ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testCooperativeMatrixSurveyReportsAfterItsContextIsGone [
+	"The example destroys the context it built, and a destroyed context enumerates nothing, so
+	 the survey must hold what it read rather than ask again when the table is drawn."
+
+	| survey |
+	survey := PVCooperativeMatrixSurvey exampleSurveyOfThisMachine.
+	self assert: survey deviceReports notEmpty.
+	self assert: (survey reportRows last at: #name) equals: 'Verdict'
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension [
 	"Reads back the struct handed to vkCreateDevice: an extension the context says it enables
 	 counts for nothing unless it reaches that field."

@@ -584,6 +584,20 @@ PVCompilerTest >> testMatmulKernelOfEachElementTypeUsesBuffersOfThatType [
 ]
 
 { #category : 'tests' }
+PVCompilerTest >> testNoCooperativeMatrixSelectorIsMappedYet [
+	"The skip is deliberate, and this states it. No cooperative matrix type or selector is in
+	 the dispatch table, because none of it has run on a device yet. Delete this test in the
+	 same change that adds the first mapping, and say in that change which device ran it."
+
+	| names |
+	names := PVSelectorTable standard table keys.
+	self deny: (names anySatisfy: [ :each |
+			 each asLowercase includesSubstring: 'coopmat' ]).
+	self deny: (names anySatisfy: [ :each |
+			 each asLowercase includesSubstring: 'cooperative' ])
+]
+
+{ #category : 'tests' }
 PVCompilerTest >> testNormalizeCompiles [
     | bytes |
     bytes := PVKernelCompiler compile: (PVKernelExamples >> #normalizeV:).

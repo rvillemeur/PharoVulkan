@@ -17,6 +17,14 @@ Class {
 	#tag : 'Core'
 }
 
+{ #category : 'constants' }
+VkPhysicalDevice class >> cooperativeMatrixExtensionName [
+	"The extension a cooperative matrix kernel needs. Built from extensionNamePrefix so the
+	 name cannot drift from the form a driver reports."
+
+	^ self extensionNamePrefix , 'KHR_cooperative_matrix'
+]
+
 { #category : 'examples' }
 VkPhysicalDevice class >> exampleExtensionsOfThisMachine [
     "One click: the extension list of whatever device this image finds. The names are cached
@@ -316,6 +324,15 @@ VkPhysicalDevice >> subgroupSize [
 	"Invocations in one subgroup. A subgroup reduction can only be written against this width."
 
 	^ self subgroupProperties subgroupSize
+]
+
+{ #category : 'querying' }
+VkPhysicalDevice >> supportsCooperativeMatrix [
+	"Asks the extension list the driver reported. A cooperative matrix kernel needs more than
+	 the extension — the shapes and types it offers have to be queried too — but without the
+	 extension there is nothing to query."
+
+	^ self supportsExtension: self class cooperativeMatrixExtensionName
 ]
 
 { #category : 'querying' }
