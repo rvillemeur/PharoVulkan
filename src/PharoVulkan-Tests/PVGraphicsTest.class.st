@@ -9,6 +9,140 @@ Class {
 	#tag : 'Graphics'
 }
 
+{ #category : 'coverage' }
+PVGraphicsTest class >> addNew: someClasses to: aSet frontier: aQueue [
+	"Add each class the set does not hold yet, and queue only those, so the walk visits every
+	 class once however many methods name it."
+
+	someClasses do: [ :each |
+		(aSet includes: each) ifFalse: [
+			aSet add: each.
+			aQueue add: each ] ]
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> deviceGatewaySelectors [
+	"Every test that touches a real device gets there by building a VkContext, and these are the
+	 four factories that build one. A test that sends none of them cannot have reached the
+	 hardware, so this is the honest definition of a device-touching test method."
+
+	^ #( #offscreenGraphicsContext #graphicsContextForExtensions:
+	     #computeContextRequiring: #cooperativeMatrixContext )
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> deviceReachableClasses [
+	"The project classes a device test can reach: start at the classes the device test methods
+	 name, then follow the classes those name, until nothing new arrives. The walk never leaves
+	 the project package, so the answer stays a statement about this code rather than about the
+	 image."
+
+	| reached frontier |
+	reached := Set new.
+	frontier := OrderedCollection new.
+	self deviceTestMethods do: [ :method |
+		self
+			addNew: (self projectClassesReferencedBy: method)
+			to: reached
+			frontier: frontier ].
+	[ frontier isEmpty ] whileFalse: [
+		self
+			addNew: (self projectClassesNamedBy: frontier removeFirst)
+			to: reached
+			frontier: frontier ].
+	^ reached
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> deviceTestMethods [
+	"Every method of the test package that builds a device context, test and helper alike. The
+	 helpers count: a test reaches the device through windowSceneDo: and its siblings."
+
+	^ ((PackageOrganizer default packageNamed: self testPackageName)
+		   definedClasses gather: [ :each | each methods , each class methods ])
+		  select: [ :method |
+			  self deviceGatewaySelectors anySatisfy: [ :selector |
+				  method messages includes: selector ] ]
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> graphicsClassNamesWithoutDeviceCoverage [
+	"Graphics classes that no device test can reach, each paired with the reason. The list is
+	 empty today, and an entry is a decision a reader can argue with rather than an omission
+	 nobody notices. A name here that a device test does reach is a stale exemption, which the
+	 coverage test also refuses."
+
+	^ {  }
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> graphicsClasses [
+	"The classes tagged Graphics. A class answers its own tag with packageTag name, because
+	 RPackageOrganizer is gone in Pharo 13 and Package does not answer its tags."
+
+	^ self projectClasses select: [ :each |
+		  each packageTag name = self graphicsTagName ]
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> graphicsTagName [
+
+	^ 'Graphics'
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> projectClasses [
+
+	^ (PackageOrganizer default packageNamed: self projectPackageName)
+		  definedClasses asSet
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> projectClassesNamedBy: aClass [
+	"The project classes aClass leads to: the ones its methods name, plus its superclass, which
+	 nothing has to name for the subclass to depend on it."
+
+	| named |
+	named := OrderedCollection new.
+	(self projectClasses includes: aClass superclass) ifTrue: [
+		named add: aClass superclass ].
+	(aClass methods , aClass class methods) do: [ :method |
+		named addAll: (self projectClassesReferencedBy: method) ].
+	^ named
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> projectClassesReferencedBy: aCompiledMethod [
+	"The project classes named in aCompiledMethod, read from its syntax tree rather than from
+	 its literals, because a class named only inside a nested block does not appear among the
+	 literals of the enclosing method."
+
+	| classes |
+	classes := aCompiledMethod ast allChildren
+		           select: [ :node |
+		           node isVariable and: [ node isGlobalVariable ] ]
+		           thenCollect: [ :node |
+		           Smalltalk at: node name ifAbsent: [ nil ] ].
+	^ classes
+		  select: [ :each |
+			  each notNil and: [
+				  each isBehavior and: [
+					  self projectClasses includes: each instanceSide ] ] ]
+		  thenCollect: [ :each | each instanceSide ]
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> projectPackageName [
+
+	^ #PharoVulkan
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> testPackageName [
+
+	^ #'PharoVulkan-Tests'
+]
+
 { #category : 'private' }
 PVGraphicsTest >> assertValidSpirv: bytes description: aDescription [
 	"A magic-number check only proves the first four bytes. Ask spirv-val for the verdict
@@ -192,6 +326,32 @@ PVGraphicsTest >> testDriverInstallDuringRestoresDriverOnException [
 		raise: Error.
 	self assert: entered.
 	self assert: OSWindowDriver driverClass equals: original
+]
+
+{ #category : 'tests - coverage' }
+PVGraphicsTest >> testEveryGraphicsClassIsExercisedOnADeviceOrSaysWhyNot [
+	"The gap this plan closed was silent: a graphics class could be added, and nothing but a
+	 human running the triangle would notice that no test ever put it on a device. Every class
+	 tagged Graphics must therefore be reachable from a test that builds a device context, or be
+	 named with its reason in graphicsClassNamesWithoutDeviceCoverage.
+
+	 Reachability is static: it says a device test leads to the class through project code, not
+	 that every one of its methods ran. That is the fact this test can state honestly, and it is
+	 enough to make a new graphics class with no device path fail here."
+
+	| reachable exempt uncovered |
+	reachable := self class deviceReachableClasses.
+	exempt := (self class graphicsClassNamesWithoutDeviceCoverage collect: [
+			           :each | each key ]) asSet.
+	uncovered := (self class graphicsClasses
+		              reject: [ :each | reachable includes: each ])
+		             collect: [ :each | each name ].
+	self
+		assertCollection: (uncovered reject: [ :each | exempt includes: each ])
+		hasSameElements: #(  ).
+	self
+		assertCollection: (exempt reject: [ :each | uncovered includes: each ])
+		hasSameElements: #(  )
 ]
 
 { #category : 'tests' }

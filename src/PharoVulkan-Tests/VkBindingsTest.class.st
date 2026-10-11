@@ -83,6 +83,19 @@ VkBindingsTest >> testEnumeratePhysicalDevices [
 		Vk destroyInstance: instance allocator: ExternalAddress null ]
 ]
 
+{ #category : 'tests - results' }
+VkBindingsTest >> testEveryDeclaredResultCodeAnswersItsName [
+	"Every code VkResult declares must have a name, and the name must be the declaring
+	 selector's own spelling: a hand-written lookup table had drifted from the constants and
+	 reported VK_SUBOPTIMAL_KHR as VK_UNKNOWN(1000001003)."
+
+	VkResult resultCodeSelectors do: [ :selector |
+		| name |
+		name := VkResult nameForCode: (VkResult perform: selector).
+		self deny: (name beginsWith: 'VK_UNKNOWN').
+		self assert: name equals: (VkResult nameForSelector: selector) ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testFloat16ClassifiesEveryKindOfHalf [
 	| expected |
@@ -374,6 +387,22 @@ VkBindingsTest >> testQueueFlagsConstants [
     self assert: VkQueueFlags transferBit equals: 4
 ]
 
+{ #category : 'tests - results' }
+VkBindingsTest >> testResultCodesViewMarksTheInspectedCodeAndNothingElse [
+	"The view has to carry every declared code, mark exactly the one being inspected, and leave
+	 that code untouched."
+
+	| result view marked |
+	result := VkResult exampleSuboptimalPresentResult.
+	view := result inspectorResultCodes: SpPresenter new.
+	self assert: view items size equals: VkResult resultCodeSelectors size.
+	marked := view items select: [ :each | each code = result code ].
+	self assert: marked size equals: 1.
+	self assert: marked first name equals: 'VK_SUBOPTIMAL_KHR'.
+	self deny: result isError.
+	self assert: result code equals: VkResult vkSuboptimalKHR
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testStructureCopyIntoObjectMemoryDetachesFromItsSource [
 	"A structure the driver filled in memory outside the image has to be copied before that
@@ -420,6 +449,30 @@ VkBindingsTest >> testSubgroupFeaturePredicateMatchesTheOperationBits [
 	self assert: supported value isEmpty.
 	block supportedOperations: everyBit.
 	self assert: supported value equals: VkSubgroupFeature featureSelectors
+]
+
+{ #category : 'tests - results' }
+VkBindingsTest >> testSuboptimalPresentIsNotTreatedAsAFailure [
+	"VK_SUBOPTIMAL_KHR says the swapchain still works but no longer matches the surface
+	 perfectly, which the specification lists among the success codes: an acquire or a present
+	 that answers it has done its job. Raising there turned a compositor resize into a test
+	 error during G-6."
+
+	| suboptimal |
+	suboptimal := VkResult withCode: VkResult vkSuboptimalKHR.
+	self deny: suboptimal isError.
+	self
+		shouldnt: [
+			Vk
+				checkResult: VkResult vkSuboptimalKHR
+				acceptable: { VkResult vkSuboptimalKHR } ]
+		raise: VkError.
+	self
+		should: [
+			Vk
+				checkResult: VkResult vkErrorDeviceLost
+				acceptable: { VkResult vkSuboptimalKHR } ]
+		raise: VkError
 ]
 
 { #category : 'tests - constants' }

@@ -19,26 +19,35 @@ Class {
 	#tag : 'Graphics'
 }
 
+{ #category : 'constants' }
+VkSwapchain class >> acceptablePresentResults [
+	"Codes an acquire or a present may answer that are not failures. VK_SUBOPTIMAL_KHR means the
+	 swapchain still presents but no longer matches the surface, usually after a resize; with no
+	 recreation path in this project the only honest response is to carry on with the frame."
+
+	^ { VkResult vkSuboptimalKHR }
+]
+
 { #category : 'instance creation' }
 VkSwapchain class >> on: aVkDevice surface: aVkSurface extent: aPoint [
     ^ self new initializeDevice: aVkDevice surface: aVkSurface extent: aPoint
 ]
 
-{ #category : 'operations' }
+{ #category : 'rendering' }
 VkSwapchain >> acquireNextImage: semaphore fence: fence [
 
 	| idxBuf result |
 	idxBuf := ExternalAddress allocate: 4.
 	^ [
-		  result := Vk
-			            acquireNextImageKHR: device handle
-			            swapchain: handle
-			            timeout: 18446744073709551615
-			            semaphore: semaphore
-			            fence: fence
-			            pImageIndex: idxBuf.
-		  Vk checkResult: result.
-		  idxBuf unsignedLongAt: 1 ] ensure: [ idxBuf free ]
+	  result := Vk
+		            acquireNextImageKHR: device handle
+		            swapchain: handle
+		            timeout: 18446744073709551615
+		            semaphore: semaphore
+		            fence: fence
+		            pImageIndex: idxBuf.
+	  Vk checkResult: result acceptable: self class acceptablePresentResults.
+	  idxBuf unsignedLongAt: 1 ] ensure: [ idxBuf free ]
 ]
 
 { #category : 'initialization' }
@@ -235,7 +244,8 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
 { #category : 'rendering' }
 VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
     "VkPresentInfoKHR (64 bytes):
-     0:sType  8:pNext  16:waitSemaphoreCount  20:pWaitSemaphores(ptr)  28:swapchainCount  32:pSwapchains(ptr)  40:pImageIndices(ptr)  48:pResults(ptr)"
+     0:sType  8:pNext  16:waitSemaphoreCount  20:pWaitSemaphores(ptr)
+     28:swapchainCount  32:pSwapchains(ptr)  40:pImageIndices(ptr)  48:pResults(ptr)"
     | semBuf presentInfo result |
     semBuf := ExternalAddress allocate: 8.
     [ semBuf pointerAt: 1 put: semaphore getHandle.
@@ -254,7 +264,7 @@ VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
           presentInfo pointerAt:   49 put: idxBuf.
           presentInfo pointerAt:   57 put: ExternalAddress null.
           result := Vk queuePresentKHR: aVkQueue handle pPresentInfo: presentInfo.
-          Vk checkResult: result
+          Vk checkResult: result acceptable: self class acceptablePresentResults
         ] ensure: [ idxBuf free. swapBuf free ]
       ] ensure: [ presentInfo free ]
     ] ensure: [ semBuf free ]

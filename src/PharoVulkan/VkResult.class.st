@@ -19,27 +19,61 @@ VkResult class >> asExternalTypeOn: aFFICallout [
 	^ FFIInt32 asExternalTypeOn: aFFICallout
 ]
 
+{ #category : 'examples' }
+VkResult class >> exampleSuboptimalPresentResult [
+	"The code a present answers after the window has been resized: not a failure, which is the
+	 distinction the Result codes inspector tab makes visible."
+
+	<sampleInstance>
+	^ self withCode: self vkSuboptimalKHR
+]
+
 { #category : 'result-codes' }
 VkResult class >> nameForCode: anInteger [
-    "Returns a human-readable name for the given Vulkan result code."
-    | table |
-    table := Dictionary new.
-    table at: self vkSuccess put: 'VK_SUCCESS'.
-    table at: self vkNotReady put: 'VK_NOT_READY'.
-    table at: self vkTimeout put: 'VK_TIMEOUT'.
-    table at: self vkEventSet put: 'VK_EVENT_SET'.
-    table at: self vkEventReset put: 'VK_EVENT_RESET'.
-    table at: self vkIncomplete put: 'VK_INCOMPLETE'.
-    table at: self vkErrorOutOfHostMemory put: 'VK_ERROR_OUT_OF_HOST_MEMORY'.
-    table at: self vkErrorOutOfDeviceMemory put: 'VK_ERROR_OUT_OF_DEVICE_MEMORY'.
-    table at: self vkErrorInitializationFailed put: 'VK_ERROR_INITIALIZATION_FAILED'.
-    table at: self vkErrorDeviceLost put: 'VK_ERROR_DEVICE_LOST'.
-    table at: self vkErrorLayerNotPresent put: 'VK_ERROR_LAYER_NOT_PRESENT'.
-    table at: self vkErrorExtensionNotPresent put: 'VK_ERROR_EXTENSION_NOT_PRESENT'.
-    table at: self vkErrorIncompatibleDriver put: 'VK_ERROR_INCOMPATIBLE_DRIVER'.
-    table at: self vkErrorSurfaceLostKHR put: 'VK_ERROR_SURFACE_LOST_KHR'.
-    table at: self vkErrorOutOfDateKHR put: 'VK_ERROR_OUT_OF_DATE_KHR'.
-    ^ table at: anInteger ifAbsent: [ 'VK_UNKNOWN(' , anInteger printString , ')' ]
+	"The Vulkan spelling of a result code, derived from the declaring selectors rather than
+	 from a second hand-written table: the table had drifted and answered VK_UNKNOWN for
+	 VK_SUBOPTIMAL_KHR, a code this project's swapchain really does receive."
+
+	^ self resultCodeSelectors
+		  detect: [ :each | (self perform: each) = anInteger ]
+		  ifFound: [ :each | self nameForSelector: each ]
+		  ifNone: [ 'VK_UNKNOWN(' , anInteger printString , ')' ]
+]
+
+{ #category : 'reflecting' }
+VkResult class >> nameForSelector: aSelector [
+	"The Vulkan spelling of a declaring selector: vkErrorOutOfDateKHR answers
+	 VK_ERROR_OUT_OF_DATE_KHR. A run of capitals is one word, so the KHR suffix does not come
+	 back as K_H_R."
+
+	| words current |
+	words := OrderedCollection new.
+	current := WriteStream on: String new.
+	aSelector asString doWithIndex: [ :character :index |
+		(character isUppercase and: [
+			 index > 1 and: [ (aSelector at: index - 1) isUppercase not ] ]) ifTrue: [
+			words add: current contents.
+			current := WriteStream on: String new ].
+		current nextPut: character asUppercase ].
+	words add: current contents.
+	^ '_' join: words
+]
+
+{ #category : 'reflecting' }
+VkResult class >> resultCodeProtocol [
+
+	^ #'result-codes'
+]
+
+{ #category : 'reflecting' }
+VkResult class >> resultCodeSelectors [
+	"The declared codes, selected by protocol and by taking no argument, so nameForCode: and
+	 withCode: are left out. Selecting by protocol rather than by performing every candidate
+	 follows VkValueConstants, where performing them all would recurse."
+
+	^ (self class selectors select: [ :each |
+		   (self class >> each) protocolName = self resultCodeProtocol and: [
+			   each numArgs = 0 ] ]) asSortedCollection asArray
 ]
 
 { #category : 'result-codes' }
@@ -138,6 +172,34 @@ VkResult >> code [ ^ code
 { #category : 'private' }
 VkResult >> code: anInteger [
     code := anInteger
+]
+
+{ #category : 'inspecting' }
+VkResult >> inspectorResultCodes: aBuilder [
+	"Every code VkResult declares, with the name and the error verdict asked of the real rules
+	 rather than restated, and the inspected code marked. Each row is a fresh VkResult, so
+	 nothing here touches the code being inspected."
+
+	<inspectorPresentationOrder: 10 title: 'Result codes'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn
+				   title: 'Name'
+				   evaluated: [ :each | each name ]);
+		  addColumn: (SpStringTableColumn
+				   title: 'Code'
+				   evaluated: [ :each | each code printString ]);
+		  addColumn: (SpStringTableColumn
+				   title: 'Error'
+				   evaluated: [ :each | each isError ifTrue: [ 'yes' ] ifFalse: [ 'no' ] ]);
+		  addColumn: (SpStringTableColumn
+				   title: 'This one'
+				   evaluated: [ :each |
+					   each code = code
+						   ifTrue: [ 'yes' ]
+						   ifFalse: [ '' ] ]);
+		  items: (self class resultCodeSelectors collect: [ :selector |
+					   self class withCode: (self class perform: selector) ]);
+		  yourself
 ]
 
 { #category : 'testing' }

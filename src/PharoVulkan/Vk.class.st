@@ -80,6 +80,17 @@ Vk class >> checkResult: anInteger [
     result isSuccess ifFalse: [ result signal ]
 ]
 
+{ #category : 'error handling' }
+Vk class >> checkResult: anInteger acceptable: aCollection [
+	"Raise VkError unless the code is VK_SUCCESS or one the caller names as a result it can
+	 carry on from. The swapchain needs this: VK_SUBOPTIMAL_KHR is a success code the
+	 specification allows acquire and present to answer, and this project has no resize path to
+	 react to it with, so the frame continues."
+
+	(aCollection includes: anInteger) ifTrue: [ ^ self ].
+	self checkResult: anInteger
+]
+
 { #category : 'ffi-calls' }
 Vk class >> cmdBeginRenderPass: cmdBuf pRenderPassBegin: pBeginInfo contents: contents [
     ^ self ffiCall: #( void vkCmdBeginRenderPass (
