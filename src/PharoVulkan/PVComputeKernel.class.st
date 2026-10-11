@@ -8,9 +8,6 @@ Class {
 		'context',
 		'spirvBytes',
 		'buffers',
-		'workgroupX',
-		'workgroupY',
-		'workgroupZ',
 		'commandPool',
 		'descriptorPool',
 		'shaderModule',
@@ -24,6 +21,57 @@ Class {
 	#tag : 'Compute'
 }
 
+{ #category : 'labels' }
+PVComputeKernel class >> bindingRowPrefix [
+	^ 'binding '
+]
+
+{ #category : 'examples' }
+PVComputeKernel class >> exampleBufferCount [
+	"One buffer per storage-buffer parameter of exampleKernelMethod: a, b and the output."
+	^ 3
+]
+
+{ #category : 'examples' }
+PVComputeKernel class >> exampleElementCount [
+	"The example dispatches one workgroup, so it sizes the buffers to one workgroup's worth
+	 of elements: the local size the module declares."
+	^ 64
+]
+
+{ #category : 'examples' }
+PVComputeKernel class >> exampleKernelMethod [
+	^ PVKernelExamples >> #vectorAdd:a:b:out:
+]
+
+{ #category : 'examples' }
+PVComputeKernel class >> exampleVectorAddKernelOnThisMachine [
+	"One click: the kernel the README's playground builds, prepared and dispatched once on
+	 whichever device is here, then released with its buffers and its context, as every
+	 example here does. The pipeline tab reads the binding list and the SPIR-V module the
+	 instance keeps, so the kernel still answers afterwards. Where no device is available it
+	 answers the same kernel unprepared, which is what the inspector should show on such a
+	 machine."
+	<sampleInstance>
+	| context kernel buffers |
+	context := [ VkContext computeContext ]
+		           on: VkError
+		           do: [ :error | nil ].
+	context ifNil: [ ^ self fromMethod: self exampleKernelMethod on: nil ].
+	^ [
+	  kernel := self fromMethod: self exampleKernelMethod on: context.
+	  buffers := (1 to: self exampleBufferCount) collect: [ :each |
+		             VkBuffer
+			             storageBuffer: self exampleElementCount
+			             on: context device ].
+	  buffers do: [ :each | kernel bindBuffer: each ].
+	  kernel prepare.
+	  kernel dispatch: 1 y: 1 z: 1.
+	  kernel destroy.
+	  buffers do: [ :each | each destroy ].
+	  kernel ] ensure: [ context destroy ]
+]
+
 { #category : 'factory' }
 PVComputeKernel class >> fromMethod: aCompiledMethod on: aContext [
 	| spirv |
@@ -31,20 +79,77 @@ PVComputeKernel class >> fromMethod: aCompiledMethod on: aContext [
 	^ self on: aContext spirv: spirv
 ]
 
+{ #category : 'labels' }
+PVComputeKernel class >> invocationsRowName [
+	^ 'Invocations per group'
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> localSizeRowName [
+	^ 'Local size'
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> moduleBindingRowName [
+	^ 'Buffer bindings in the module'
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> moduleRowNames [
+	"The rows read out of the SPIR-V module, so a kernel with no module names the same rows
+	 as one with a module instead of dropping them."
+	^ {
+		  self moduleBindingRowName.
+		  self localSizeRowName.
+		  self invocationsRowName }
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> noModuleLabel [
+	^ 'no module'
+]
+
 { #category : 'instance creation' }
 PVComputeKernel class >> on: aContext spirv: bytes [
+
 	| k |
 	k := self new.
 	k context: aContext.
 	k spirvBytes: bytes.
 	k buffers: OrderedCollection new.
-	k workgroupX: 1 workgroupY: 1 workgroupZ: 1.
 	^ k
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> pipelineAbsentLabel [
+	"One label for both kernels without a pipeline, because the instance cannot tell a kernel
+	 that was never prepared from one whose pipeline destroy has already released."
+	^ 'not built: prepare has not run, or destroy has released it'
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> pipelineBuiltLabel [
+	^ 'built'
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> pipelineRowName [
+	^ 'Pipeline'
 ]
 
 { #category : 'accessing' }
 PVComputeKernel >> bindBuffer: aBuffer [
 	buffers add: aBuffer
+]
+
+{ #category : 'reporting' }
+PVComputeKernel >> bindingRows [
+	"The binding index is the position in the bind order, which is what prepare writes into
+	 the descriptor set, so the row cannot name a binding the set does not use."
+	^ (1 to: (buffers ifNil: [ #(  ) ]) size) collect: [ :index |
+		  self
+			  rowNamed: self class bindingRowPrefix , (index - 1) printString
+			  value: (buffers at: index) size printString , ' bytes' ]
 ]
 
 { #category : 'accessing' }
@@ -94,30 +199,98 @@ PVComputeKernel >> dispatch: x y: y z: z [
 	context computeQueue submit: cmd andWait: true
 ]
 
+{ #category : 'inspector' }
+PVComputeKernel >> inspectorPipeline: aBuilder [
+	"What this kernel will dispatch. The rows are built from the kernel's own state and from
+	 the emitted module, so the tab cannot claim a binding or a workgroup shape the dispatch
+	 would not use."
+	<inspectorPresentationOrder: 10 title: 'Pipeline'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
+					   each at: #name ]);
+		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
+					   each at: #value ]);
+		  items: self pipelineReport;
+		  yourself
+]
+
+{ #category : 'reporting' }
+PVComputeKernel >> moduleRows [
+	"Read back out of the emitted SPIR-V rather than from the pragma that asked for it: a
+	 local size the compiler did not emit shows here as the shape the dispatch really runs."
+	| module localSize |
+	spirvBytes ifNil: [
+		^ self class moduleRowNames collect: [ :each |
+			  self rowNamed: each value: self class noModuleLabel ] ].
+	module := PVSpirvValidator on: spirvBytes.
+	localSize := module localSizeFromWords.
+	^ {
+		  (self
+			   rowNamed: self class moduleBindingRowName
+			   value:
+			   (module variableCountInStorageClass: SpvStorageClass storageBuffer)
+				   printString).
+		  (self rowNamed: self class localSizeRowName value: localSize printString).
+		  (self
+			   rowNamed: self class invocationsRowName
+			   value: (localSize inject: 1 into: [ :all :each | all * each ]) printString) }
+]
+
+{ #category : 'reporting' }
+PVComputeKernel >> pipelineReport [
+	"One row per fact about this dispatch, each asked of the kernel's own state or of the
+	 module it will run rather than restated. A buffer bound that the shader does not declare
+	 shows up as two different counts."
+	^ { self pipelineRow } , self bindingRows , self moduleRows
+]
+
+{ #category : 'reporting' }
+PVComputeKernel >> pipelineRow [
+	^ self
+		  rowNamed: self class pipelineRowName
+		  value: (pipeline
+				   ifNil: [ self class pipelineAbsentLabel ]
+				   ifNotNil: [ self class pipelineBuiltLabel ])
+]
+
 { #category : 'lifecycle' }
 PVComputeKernel >> prepare [
 	"Build shader module, DSL, pipeline layout, pipeline, descriptor pool/set, command pool"
+
 	shaderModule := VkShaderModule fromBytes: spirvBytes device: context device.
 	descriptorSetLayout := VkDescriptorSetLayout on: context device.
-	0 to: buffers size - 1 do: [:i |
-		descriptorSetLayout addStorageBufferBinding: i stageFlags: 32].
+	0 to: buffers size - 1 do: [ :i |
+		descriptorSetLayout
+			addStorageBufferBinding: i
+			stageFlags: VkShaderStage computeBit ].
 	descriptorSetLayout create.
-	pipelineLayout := VkPipelineLayout on: context device setLayouts: (Array with: descriptorSetLayout).
-	pipeline := VkComputePipeline on: shaderModule layout: pipelineLayout device: context device.
+	pipelineLayout := VkPipelineLayout
+		                  on: context device
+		                  setLayouts: (Array with: descriptorSetLayout).
+	pipeline := VkComputePipeline
+		            on: shaderModule
+		            layout: pipelineLayout
+		            device: context device.
 	"Pool needs descriptorCount = total bindings across all sets"
-	descriptorPool := VkDescriptorPool on: context device maxSets: buffers size.
+	descriptorPool := VkDescriptorPool
+		                  on: context device
+		                  maxSets: buffers size.
 	descriptorSet := descriptorPool allocateSet: descriptorSetLayout.
-	buffers doWithIndex: [:buf :i |
-		descriptorSet updateStorageBuffer: buf atBinding: i - 1].
-	commandPool := VkCommandPool on: context device queueFamilyIndex: context computeQueueFamily
+	buffers doWithIndex: [ :buf :i |
+		descriptorSet updateStorageBuffer: buf atBinding: i - 1 ].
+	commandPool := VkCommandPool
+		               on: context device
+		               queueFamilyIndex: context computeQueueFamily
+]
+
+{ #category : 'reporting' }
+PVComputeKernel >> rowNamed: aString value: aValueString [
+	^ Dictionary newFrom: {
+			  (#name -> aString).
+			  (#value -> aValueString) }
 ]
 
 { #category : 'accessing' }
 PVComputeKernel >> spirvBytes: bytes [
 	spirvBytes := bytes
-]
-
-{ #category : 'accessing' }
-PVComputeKernel >> workgroupX: x workgroupY: y workgroupZ: z [
-	workgroupX := x. workgroupY := y. workgroupZ := z
 ]

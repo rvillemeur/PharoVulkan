@@ -453,6 +453,94 @@ PVComputeTest >> testCompiledTiledMatmulMatchesTheReferenceAtOrder64 [
 					, ' is ' , (result at: r * n + c + 1) printString ] ]
 ]
 
+{ #category : 'tests - kernel' }
+PVComputeTest >> testComputeKernelDeclaresNoSlotNothingReads [
+	"A slot that is written and never read is not merely unused, it is misleading: workgroupX,
+	 workgroupY and workgroupZ read like the workgroup size, which actually lives in
+	 PVTypeAnnotation, while dispatch:y:z: uses its own arguments. Stated as the rule rather
+	 than as three names, this keeps catching dead state added later."
+
+	| unread |
+	unread := PVComputeKernel slots reject: [ :slot |
+		          PVComputeKernel methods anySatisfy: [ :method |
+			          slot isReadIn: method ] ].
+	self
+		assertCollection: (unread collect: [ :slot | slot name ])
+		hasSameElements: #(  )
+]
+
+{ #category : 'tests - kernel' }
+PVComputeTest >> testComputeKernelPipelineExampleReportsEveryBindingAfterItsContextIsGone [
+	"The example destroys the kernel and its context, as every example here does, so the
+	 pipeline report must carry the binding list and the SPIR-V module the instance keeps.
+	 The module's own storage-buffer count is the cross-check: a buffer bound that the shader
+	 does not declare would show up as two different numbers. The invocation count is read
+	 back from the module's OpExecutionMode, so it cannot drift from the group the example
+	 dispatches."
+	| kernel rows bindings |
+	kernel := PVComputeKernel exampleVectorAddKernelOnThisMachine.
+	rows := kernel pipelineReport.
+	bindings := rows select: [ :each |
+		            (each at: #name) beginsWith: PVComputeKernel bindingRowPrefix ].
+	self assert: bindings size equals: PVComputeKernel exampleBufferCount.
+	bindings doWithIndex: [ :each :index |
+		self
+			assert: (each at: #name)
+			equals: PVComputeKernel bindingRowPrefix , (index - 1) printString ].
+	self
+		assert: (self valueOfRowNamed: PVComputeKernel moduleBindingRowName in: rows)
+		equals: PVComputeKernel exampleBufferCount printString.
+	self
+		assert: (self valueOfRowNamed: PVComputeKernel invocationsRowName in: rows)
+		equals: PVComputeKernel exampleElementCount printString.
+	self
+		assert: (self valueOfRowNamed: PVComputeKernel pipelineRowName in: rows)
+		equals: PVComputeKernel pipelineAbsentLabel
+]
+
+{ #category : 'tests - kernel' }
+PVComputeTest >> testComputeKernelPipelineViewShowsAPreparedPipelineWithoutMutatingIt [
+	"A kernel in the middle of a session is the interesting state: the pipeline is built and
+	 the bindings are live. Building the tab must not change what the kernel reports, and a
+	 kernel that has never been prepared must say so rather than reporting nothing."
+	| buffers kernel before |
+	buffers := (1 to: PVComputeKernel exampleBufferCount) collect: [ :each |
+		           VkBuffer
+			           storageBuffer: PVComputeKernel exampleElementCount
+			           on: ctx device ].
+	kernel := PVComputeKernel
+		          fromMethod: PVComputeKernel exampleKernelMethod
+		          on: ctx.
+	[
+	buffers do: [ :each | kernel bindBuffer: each ].
+	kernel prepare.
+	before := kernel pipelineReport.
+	self
+		assert: (self valueOfRowNamed: PVComputeKernel pipelineRowName in: before)
+		equals: PVComputeKernel pipelineBuiltLabel.
+	kernel inspectorPipeline: SpPresenter new.
+	self
+		assertCollection: (kernel pipelineReport collect: [ :each | each at: #value ])
+		hasSameElements: (before collect: [ :each | each at: #value ]) ] ensure: [
+		kernel destroy.
+		buffers do: [ :each | each destroy ] ].
+	self
+		assert: (self
+				 valueOfRowNamed: PVComputeKernel pipelineRowName
+				 in: PVComputeKernel new pipelineReport)
+		equals: PVComputeKernel pipelineAbsentLabel
+]
+
+{ #category : 'tests - kernel' }
+PVComputeTest >> testComputeKernelUsesNoBareStageFlagLiteral [
+	"prepare bound its descriptors with stageFlags: 32. A test asserting the value the layout
+	 binds with would pass before the fix, because 32 is what VkShaderStage computeBit answers,
+	 so it would prove nothing. The literal scan is the honest form of the no-magic-values rule."
+
+	self deny:
+		((PVComputeKernel >> #prepare) literals includes: VkShaderStage computeBit)
+]
+
 { #category : 'tests' }
 PVComputeTest >> testComputeLoopSumOnDevice [
 	"The loop kernel must produce the right numbers on the device. spirv-val cannot see a
@@ -1175,4 +1263,9 @@ PVComputeTest >> testVectorAddFromCompiledMethod [
 		kernel destroy
 	] ensure: [
 		bufA destroy. bufB destroy. bufC destroy ]
+]
+
+{ #category : 'support' }
+PVComputeTest >> valueOfRowNamed: aString in: someRows [
+	^ (someRows detect: [ :each | (each at: #name) = aString ]) at: #value
 ]
