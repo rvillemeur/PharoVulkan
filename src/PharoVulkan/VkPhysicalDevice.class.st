@@ -367,7 +367,10 @@ VkPhysicalDevice >> maxComputeWorkGroupSize [
 { #category : 'querying' }
 VkPhysicalDevice >> memoryHeapIndexOfType: anIndex [
 	"memoryTypes array starts at offset 4 in VkPhysicalDeviceMemoryProperties, each
-	 VkMemoryType = 8 bytes: propertyFlags(4) + heapIndex(4); heapIndex follows the flags."
+	 VkMemoryType = 8 bytes: propertyFlags(4) + heapIndex(4); heapIndex follows the flags.
+	 The flags half of that stride is confirmed by the property names decoding sensibly;
+	 this half is not confirmed on this machine, which reports one heap, so every type
+	 answers 0 whether the offset is right or not."
 	^ memoryProperties unsignedLongAt: 9 + (anIndex * 8)
 ]
 

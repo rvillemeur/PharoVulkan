@@ -1,12 +1,13 @@
 "
 Named constants for VkMemoryPropertyFlagBits combinations used when allocating device
-memory. Key methods: deviceLocalBit, hostVisibleBit, hostCoherentBit (the single bits),
-hostVisibleAndCoherent (hostVisibleBit | hostCoherentBit = 6), nameForFlags: (decodes a
-property-flag word back to names for the inspector).
+memory. Key methods: deviceLocalBit, hostVisibleBit, hostCoherentBit, hostCachedBit (the
+single bits), hostVisibleAndCoherent (hostVisibleBit | hostCoherentBit = 6, what every
+mapped buffer in this project asks for), namedBits (the table VkFlagConstants decodes a
+driver's flags word with).
 "
 Class {
 	#name : 'VkMemoryProperty',
-	#superclass : 'Object',
+	#superclass : 'VkFlagConstants',
 	#category : 'PharoVulkan-Constants',
 	#package : 'PharoVulkan',
 	#tag : 'Constants'
@@ -19,6 +20,12 @@ VkMemoryProperty class >> deviceLocalBit [
 ]
 
 { #category : 'constants' }
+VkMemoryProperty class >> hostCachedBit [
+	"VK_MEMORY_PROPERTY_HOST_CACHED_BIT"
+	^ 8
+]
+
+{ #category : 'constants' }
 VkMemoryProperty class >> hostCoherentBit [
 	"VK_MEMORY_PROPERTY_HOST_COHERENT_BIT"
 	^ 4
@@ -28,7 +35,10 @@ VkMemoryProperty class >> hostCoherentBit [
 VkMemoryProperty class >> hostVisibleAndCoherent [
 	"Mapped memory must be readable without an explicit flush, which needs both bits:
 	 host-visible alone (the previous value, 3 = DEVICE_LOCAL | HOST_VISIBLE) let a readback
-	 see stale bytes on hardware where that memory type is not also coherent."
+	 see stale bytes on hardware where that memory type is not also coherent.
+	 Device-local is deliberately not asked for: every buffer in this project is mapped from
+	 the host, and demanding it as well would refuse a device that offers coherent host
+	 memory outside its device-local heap."
 	^ self hostVisibleBit bitOr: self hostCoherentBit
 ]
 
@@ -39,22 +49,10 @@ VkMemoryProperty class >> hostVisibleBit [
 ]
 
 { #category : 'decoding' }
-VkMemoryProperty class >> nameForFlags: flags [
-	"Joins the names of the bits this project names; a bit no constant here carries is shown
-	 as its raw hex rather than silently dropped, so the view can never hide a property it
-	 does not yet know the name of."
-	| known remainder names |
-	known := {
+VkMemoryProperty class >> namedBits [
+	^ {
 		self deviceLocalBit -> 'DeviceLocal'.
 		self hostVisibleBit -> 'HostVisible'.
-		self hostCoherentBit -> 'HostCoherent' }.
-	names := OrderedCollection new.
-	remainder := flags.
-	known do: [ :assoc |
-		(flags bitAnd: assoc key) = assoc key ifTrue: [
-			names add: assoc value.
-			remainder := remainder bitAnd: assoc key bitInvert ] ].
-	remainder ~= 0 ifTrue: [ names add: (remainder printPaddedWith: $0 to: 1 base: 16) , 'h' ].
-	^ String streamContents: [ :s |
-		names do: [ :n | s nextPutAll: n ] separatedBy: [ s nextPutAll: '|' ] ]
+		self hostCoherentBit -> 'HostCoherent'.
+		self hostCachedBit -> 'HostCached' }
 ]

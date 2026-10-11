@@ -556,6 +556,27 @@ VkCoreTest >> testExtensionCommandReachesASymbolLibvulkanDoesNotExport [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testFlagNamesJoinEveryNamedBitAndSurfaceAnUnnamedOne [
+	"A flags word decodes to the names of the bits it carries, and a bit no constant names
+	 is surfaced as raw hex rather than dropped, so a view can never hide a property the
+	 driver reported. Stated over the named bits each class declares, so a bit added later
+	 is covered without editing this test."
+	{ VkMemoryProperty. VkQueueFlag } do: [ :flagClass |
+		| allNamed |
+		self assert: (flagClass nameForFlags: 0) equals: ''.
+		flagClass namedBits do: [ :each |
+			self assert: (flagClass nameForFlags: each key) equals: each value ].
+		allNamed := flagClass namedBits
+			            inject: 0
+			            into: [ :bits :each | bits bitOr: each key ].
+		flagClass namedBits do: [ :each |
+			self assert: ((flagClass nameForFlags: allNamed) includesSubstring: each value) ].
+		self
+			assert: (flagClass nameForFlags: (allNamed bitOr: 16r8000))
+			equals: (flagClass nameForFlags: allNamed) , '|8000h' ]
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testHalfBufferHoldsTwiceAsManyValuesAsAFloatBuffer [
 	| halves floats |
 	halves := VkBuffer storageBufferOfHalves: 8 on: ctx device.
@@ -616,6 +637,32 @@ VkCoreTest >> testHostVisibleAndCoherentAsksForBothProperties [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testMemoryTypeRowsNameEveryTypeTheDriverReports [
+	"The Memory types view must cover the whole table and agree with the allocator: one
+	 row per type the driver reports, each row's flags and heap read from the device, and
+	 the Chosen column marking exactly the type findMemoryType:properties: picks for
+	 hostVisibleAndCoherent. Asking for the rows must not change the device."
+	| device rows chosen |
+	device := ctx physicalDevice.
+	rows := device memoryTypeRows.
+	self assert: rows size equals: device memoryTypeCount.
+	rows doWithIndex: [ :row :i |
+		self assert: row first equals: i - 1.
+		self
+			assert: row second
+			equals: (VkMemoryProperty nameForFlags: (device memoryPropertyFlagsOfType: i - 1)).
+		self assert: row third equals: (device memoryHeapIndexOfType: i - 1) ].
+	chosen := rows select: [ :row | row fourth ].
+	self assert: chosen size equals: 1.
+	self
+		assert: chosen first first
+		equals: (device
+				 findMemoryType: (1 bitShift: device memoryTypeCount) - 1
+				 properties: VkMemoryProperty hostVisibleAndCoherent).
+	self assert: device memoryTypeRows equals: rows
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testOffscreenGraphicsContextQueueCanDraw [
 	"The context handed back must be able to draw with no window and no surface
 	 extensions: its one queue family must be a graphics-capable one."
@@ -625,6 +672,25 @@ VkCoreTest >> testOffscreenGraphicsContextQueueCanDraw [
 	  self
 	  	assert: context computeQueueFamily
 	  	equals: context physicalDevice findGraphicsQueueFamily ] ensure: [ context destroy ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testOffscreenRequirementAgreesWithTheQueueFamiliesOfEveryDevice [
+	"Consistency on whatever devices the loader offers, not this machine's list: the
+	 predicate the offscreen context selects on must answer exactly what the two family
+	 finders say, for every device, or selection could accept a device whose single
+	 queue cannot take a draw."
+	(Vk enumeratePhysicalDevices: ctx instance) do: [ :handle |
+		| device graphics compute |
+		device := VkPhysicalDevice on: handle.
+		graphics := device findGraphicsQueueFamily.
+		compute := device findComputeQueueFamily.
+		self
+			assert: device supportsGraphics
+			equals: graphics notNil.
+		self
+			assert: device supportsGraphicsAndComputeOnOneQueue
+			equals: (graphics notNil and: [ graphics = compute ]) ]
 ]
 
 { #category : 'tests' }
@@ -655,6 +721,55 @@ VkCoreTest >> testPhysicalDeviceSelection [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testQueueFamilyRowsNameEveryFamilyAndAgreeWithTheFinders [
+	"The Queue families view must cover every family and agree with the finders a context
+	 selects on, including on layouts this machine does not have."
+	| layout rows |
+	layout := PVQueueFamilyStub withQueueFlags: {
+			          VkQueueFlag graphicsBit.
+			          VkQueueFlag computeBit bitOr: VkQueueFlag transferBit }.
+	rows := layout queueFamilyRows.
+	self assert: rows size equals: 2.
+	self assert: (rows collect: [ :row | row first ]) asArray equals: #( 0 1 ).
+	self assert: rows first second equals: 'Graphics'.
+	self assert: rows second second equals: 'Compute|Transfer'.
+	self assert: (rows detect: [ :row | row third ]) first equals: layout findGraphicsQueueFamily.
+	self assert: (rows detect: [ :row | row fourth ]) first equals: layout findComputeQueueFamily.
+	self assert: (rows select: [ :row | row third ]) size equals: 1.
+	self assert: (rows select: [ :row | row fourth ]) size equals: 1.
+	self assert: (PVQueueFamilyStub withQueueFlags: #( )) queueFamilyRows isEmpty
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testQueueFamilyRulesHoldForEveryFamilyLayout [
+	"The layouts this machine cannot show, stated as the rule rather than as one sample.
+	 A single family carrying both bits qualifies; graphics and compute on separate
+	 families does not, because the offscreen context creates one queue and submits both
+	 kinds of work on it. The flags words are built from the named bits, so the table
+	 states the rule in the same terms the predicates read."
+	| graphics compute both split none |
+	none := PVQueueFamilyStub withQueueFlags: #( ).
+	graphics := PVQueueFamilyStub withQueueFlags: { VkQueueFlag graphicsBit }.
+	compute := PVQueueFamilyStub withQueueFlags: { VkQueueFlag computeBit }.
+	both := PVQueueFamilyStub withQueueFlags:
+		        { VkQueueFlag graphicsBit bitOr: VkQueueFlag computeBit }.
+	split := PVQueueFamilyStub withQueueFlags:
+		         { VkQueueFlag graphicsBit. VkQueueFlag computeBit }.
+	self assert: both supportsGraphics.
+	self assert: both supportsGraphicsAndComputeOnOneQueue.
+	self assert: graphics supportsGraphics.
+	self deny: graphics supportsGraphicsAndComputeOnOneQueue.
+	self deny: compute supportsGraphics.
+	self deny: compute supportsGraphicsAndComputeOnOneQueue.
+	self assert: split supportsGraphics.
+	self deny: split supportsGraphicsAndComputeOnOneQueue.
+	self deny: none supportsGraphics.
+	self deny: none supportsGraphicsAndComputeOnOneQueue.
+	self assert: none findGraphicsQueueFamily isNil.
+	self assert: none findComputeQueueFamily isNil
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testStorageBufferByElementTypeRoundtripsBothWidths [
 	"One entry point for both element widths, so a caller that works in either precision
 	 holds one branch instead of three. The sizes differ by two, and each width answers the
@@ -678,7 +793,11 @@ VkCoreTest >> testStorageBufferByElementTypeRoundtripsBothWidths [
 VkCoreTest >> testStorageBufferMemoryTypeIsCoherent [
 	"VkBuffer allocate picks its memory type with hostVisibleAndCoherent; the type it picks
 	 must actually carry the coherent bit, or map/unmap can read stale bytes on hardware
-	 where host-visible memory need not also be coherent."
+	 where host-visible memory need not also be coherent.
+	 This cannot go red on this machine: both the old constant 3 and the correct 6 select
+	 memory type 1, which is coherent here, so the test guards other hardware rather than
+	 proving the fix. What proves the fix is
+	 testHostVisibleAndCoherentAsksForBothProperties."
 	| buffer memReqs typeFilter typeIndex |
 	buffer := VkBuffer storageBuffer: 4 on: ctx device.
 	[ memReqs := ExternalAddress allocate: 24.
@@ -741,14 +860,16 @@ VkCoreTest >> testSubgroupPropertiesOfThisDeviceAgreeWithTheDriver [
 ]
 
 { #category : 'tests' }
-VkCoreTest >> testUnsatisfiableGraphicsRequirementNamesItself [
-	"A predicate no device answers true to raises rather than silently refusing to pick a
-	 device, and the message names the selector so the reader knows which capability the
-	 machine is missing."
-	| error |
-	error := [
-		VkContext computeContextRequiring: #( #supportsSomeGraphicsCapabilityNoDeviceHas ) ]
-		on: VkError
-		do: [ :signal | signal ].
-	self assert: (error messageText includesSubstring: 'supportsSomeGraphicsCapabilityNoDeviceHas')
+VkCoreTest >> testUnsatisfiedRequirementsMessageNamesEveryRequirementAsked [
+	"What a failed selection would say. The builder reads only the requirement list, so it
+	 can be asked of a context whose selection succeeded — which is the only way to reach
+	 it on a machine that does satisfy the requirement. An unaskable selector raises
+	 elsewhere, in deviceSatisfiesRequirements:, and is pinned by its own test."
+	| context message |
+	context := VkContext computeContextRequiring:
+		           #( #supportsGraphicsAndComputeOnOneQueue #supportsGraphics ).
+	message := [ context unsatisfiedRequirementsMessage ] ensure: [ context destroy ].
+	self assert: (message includesSubstring: 'compute queue').
+	self assert: (message includesSubstring: 'supportsGraphicsAndComputeOnOneQueue').
+	self assert: (message includesSubstring: 'supportsGraphics')
 ]
