@@ -10,6 +10,20 @@ Class {
 }
 
 { #category : 'constants' }
+VkPipelineStage2 class >> allTransferBit [
+	"VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, bit 12."
+
+	^ 4096
+]
+
+{ #category : 'constants' }
 VkPipelineStage2 class >> colorAttachmentOutputBit [
 	^ 1024
+]
+
+{ #category : 'constants' }
+VkPipelineStage2 class >> hostBit [
+	"VK_PIPELINE_STAGE_2_HOST_BIT, bit 14."
+
+	^ 16384
 ]

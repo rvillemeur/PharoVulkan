@@ -112,6 +112,19 @@ Vk class >> cmdBindVertexBuffers: cmdBuf firstBinding: firstBinding bindingCount
         void* pOffsets ) )
 ]
 
+{ #category : 'ffi-calls' }
+Vk class >> cmdCopyImageToBuffer: cmdBuf srcImage: image srcImageLayout: imageLayout dstBuffer: buffer regionCount: count pRegions: pRegions [
+    "imageLayout, not layout: Vk carries a class-side layout variable that the shorter name
+     would shadow."
+    ^ self ffiCall: #( void vkCmdCopyImageToBuffer (
+        VkCommandBuffer_H cmdBuf,
+        VkImage_H image,
+        int32 imageLayout,
+        VkBuffer_H buffer,
+        uint32 count,
+        void* pRegions ) )
+]
+
 { #category : 'generated-api' }
 Vk class >> cmdDispatch: cmdBuf groupCountX: x groupCountY: y groupCountZ: z [
     ^ self ffiCall: #( void vkCmdDispatch (
@@ -131,6 +144,15 @@ Vk class >> cmdDraw: cmdBuf vertexCount: vertexCount instanceCount: instanceCoun
 { #category : 'ffi' }
 Vk class >> cmdEndRenderPass: cmdBuf [
     ^ self ffiCall: #( void vkCmdEndRenderPass ( VkCommandBuffer_H cmdBuf ) )
+]
+
+{ #category : 'ffi-calls' }
+Vk class >> cmdPipelineBarrier2: cmdBuf pDependencyInfo: pDependencyInfo [
+    "The core 1.3 entry point, not the KHR alias: initializeCompute creates the instance with
+     VkApiVersion vulkan13."
+    ^ self ffiCall: #( void vkCmdPipelineBarrier2 (
+        VkCommandBuffer_H cmdBuf,
+        void* pDependencyInfo ) )
 ]
 
 { #category : 'ffi' }

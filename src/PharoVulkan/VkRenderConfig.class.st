@@ -10,6 +10,13 @@ Class {
 }
 
 { #category : 'constants' }
+VkRenderConfig class >> clearColorBlackOpaque [
+	"The clear colour the window path has always used, as r, g, b, a floats."
+
+	^ #( 0.0 0.0 0.0 1.0 )
+]
+
+{ #category : 'constants' }
 VkRenderConfig class >> colorWriteMaskRGBA [
 	^ 15
 ]

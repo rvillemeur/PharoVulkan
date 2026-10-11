@@ -53,6 +53,11 @@ VkStructureType class >> cooperativeMatrixPropertiesKHR [
 ]
 
 { #category : 'structure-types' }
+VkStructureType class >> dependencyInfo [
+	^ 1000314003
+]
+
+{ #category : 'structure-types' }
 VkStructureType class >> descriptorPoolCreateInfo [  ^ 33
 ]
 
@@ -105,6 +110,11 @@ VkStructureType class >> instanceCreateInfo [        ^ 1
 
 { #category : 'structure-types' }
 VkStructureType class >> memoryAllocateInfo [        ^ 5
+]
+
+{ #category : 'structure-types' }
+VkStructureType class >> memoryBarrier2 [
+	^ 1000314000
 ]
 
 { #category : 'structure-types' }
