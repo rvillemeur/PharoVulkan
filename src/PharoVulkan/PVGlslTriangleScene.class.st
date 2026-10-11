@@ -26,10 +26,10 @@ PVGlslTriangleScene class >> windowTitle [
 
 { #category : 'private' }
 PVGlslTriangleScene >> buildFragmentShader [
-	^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:)
+	^ PVGlslTriangleShaders fragmentShaderBytes
 ]
 
 { #category : 'private' }
 PVGlslTriangleScene >> buildVertexShader [
-	^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:)
+	^ PVGlslTriangleShaders vertexShaderBytes
 ]

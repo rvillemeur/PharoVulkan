@@ -235,6 +235,14 @@ PVOffscreenTarget >> pixels [
 	^ pixelBytes
 ]
 
+{ #category : 'accessing' }
+PVOffscreenTarget >> renderPass [
+	"The target owns this render pass; a pipeline drawn into the target must be built against
+	 it, so a scene needs to see it."
+
+	^ renderPass
+]
+
 { #category : 'rendering' }
 PVOffscreenTarget >> renderWith: aBlock on: aQueue pool: aCommandPool [
 	"Records one frame, submits it, waits, and reads the pixels back. aBlock is evaluated with

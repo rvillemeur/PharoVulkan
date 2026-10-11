@@ -13,7 +13,8 @@ Class {
 VkBufferUsage class >> namedBits [
 	^ {
 		  (self transferDstBit -> 'TransferDst').
-		  (self storageBufferBit -> 'StorageBuffer') }
+		  (self storageBufferBit -> 'StorageBuffer').
+		  (self vertexBufferBit -> 'VertexBuffer') }
 ]
 
 { #category : 'constants' }
@@ -28,4 +29,11 @@ VkBufferUsage class >> transferDstBit [
 	"VK_BUFFER_USAGE_TRANSFER_DST_BIT, bit 1."
 
 	^ 2
+]
+
+{ #category : 'constants' }
+VkBufferUsage class >> vertexBufferBit [
+	"VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, bit 7."
+
+	^ 128
 ]

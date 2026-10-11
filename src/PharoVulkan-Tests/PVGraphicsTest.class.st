@@ -45,6 +45,48 @@ PVGraphicsTest >> offscreenTargetExtent: aPoint do: aBlock [
 		pool destroy ] ] ensure: [ context destroy ]
 ]
 
+{ #category : 'running' }
+PVGraphicsTest >> renderedOffscreenTriangleDo: aBlock [
+	"Draws the hello triangle once into an offscreen target and passes the scene to the block,
+	 which can then probe pixels. Drawing needs a device that can do graphics, which the plain
+	 compute context does not ask for. The scene and the context are released afterwards even
+	 if the block raises."
+
+	| context scene |
+	context := VkContext offscreenGraphicsContext.
+	[
+	scene := nil.
+	[
+	scene := PVOffscreenTriangleScene
+		         on: context
+		         extent: PVOffscreenTriangleScene exampleExtent.
+	scene renderOnce.
+	aBlock value: scene ] ensure: [ scene ifNotNil: [ scene destroy ] ] ]
+		ensure: [ context destroy ]
+]
+
+{ #category : 'running' }
+PVGraphicsTest >> renderedOffscreenTrianglePairDo: aBlock [
+	"Renders the same triangle twice at the same extent, once with the hand-built SPIR-V and
+	 once with the shaders the DSL compiles, and passes both scenes to the block. One context
+	 and one extent serve both, so the two renders can differ only in their shaders."
+
+	| context handBuilt fromDsl extent |
+	context := VkContext offscreenGraphicsContext.
+	extent := PVOffscreenTriangleScene exampleExtent.
+	[
+	handBuilt := nil.
+	fromDsl := nil.
+	[
+	handBuilt := PVOffscreenTriangleScene on: context extent: extent.
+	handBuilt renderOnce.
+	fromDsl := PVGlslOffscreenTriangleScene on: context extent: extent.
+	fromDsl renderOnce.
+	aBlock value: handBuilt value: fromDsl ] ensure: [
+		fromDsl ifNotNil: [ fromDsl destroy ].
+		handBuilt ifNotNil: [ handBuilt destroy ] ] ] ensure: [ context destroy ]
+]
+
 { #category : 'tests' }
 PVGraphicsTest >> testBothColorPassVariantsBuildOnTheDevice [
 	"The window and offscreen render passes now share one body, so this states that both final
@@ -116,6 +158,39 @@ PVGraphicsTest >> testFragmentShaderBuilds [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testGlslSceneColoursTheTriangleWithItsOwnWhiteMix [
+	"Inside the triangle the two renders do not agree, and must not: the DSL fragment shader
+	 mixes white into the interpolated colour, so every channel sits half way between the
+	 hand-built value and full brightness. Measured on 11 October 2026 at the centroid of a 32
+	 by 32 render: 76, 92, 88 by hand against 165, 173, 171 from the DSL. Asserting the
+	 relation rather than equality is what makes this a test of the DSL's arithmetic instead of
+	 a test that two shaders happen to be identical."
+
+	self renderedOffscreenTrianglePairDo: [ :handBuilt :fromDsl |
+		handBuilt coveredPixelCoordinates do: [ :coordinate |
+			| expected measured |
+			expected := handBuilt pixelAt: coordinate.
+			measured := fromDsl pixelAt: coordinate.
+			1 to: 3 do: [ :channel |
+				self assert: (PVGlslOffscreenTriangleScene
+						 channel: (measured at: channel)
+						 matchesMixOf: (expected at: channel)) ] ] ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testGlslSceneCoversTheSamePixelsAsTheHandBuiltShaders [
+	"The DSL's vertex shader computes the clip position the same way the hand-built one does,
+	 so the two renders must cover exactly the same pixels. This is the geometric half of the
+	 comparison, and it is what turns the DSL claim from emitting SPIR-V the validator accepts
+	 into rasterising the same triangle."
+
+	self renderedOffscreenTrianglePairDo: [ :handBuilt :fromDsl |
+		self
+			assert: fromDsl coveredPixelCoordinates
+			equals: handBuilt coveredPixelCoordinates ]
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testGlslSceneFragmentShaderBuilds [
 	self
 		assertValidSpirv: PVGlslTriangleScene new buildFragmentShader
@@ -127,6 +202,16 @@ PVGraphicsTest >> testGlslSceneVertexShaderBuilds [
 	self
 		assertValidSpirv: PVGlslTriangleScene new buildVertexShader
 		description: 'PVGlslTriangleScene buildVertexShader'
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testGlslWhiteMixFactorIsTheOneItsShaderSourceUses [
+	"The pixel comparison needs the factor the DSL fragment shader mixes white with, and a
+	 constant restating it would make the comparison lie the moment the shader source changed.
+	 This test ties the constant to the literal in the method the shader is compiled from."
+
+	self assert: ((PVKernelExamples >> #glslTriFragment:) literals includes:
+			 PVGlslTriangleShaders whiteMixFactor)
 ]
 
 { #category : 'tests - lifecycle report' }
@@ -239,6 +324,111 @@ PVGraphicsTest >> testOffscreenTargetPixelRowsAgreeWithTheReadbackAndChangeNothi
 				self assert: ((pair key * 255) rounded - pair value) abs <= 1 ] ].
 		self assert: target pixels equals: before.
 		self assert: target clearColor equals: clear ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleCentroidMixesAllThreeVertexColours [
+	"The barycentric coordinates of the centroid are a third each, so the interpolated colour
+	 there carries all three vertex colours and none of them dominates. Measured on 11 October
+	 2026: pixel 16@18 of a 32 by 32 render reads 76, 92, 88. A centroid showing one pure
+	 colour means the fragment shader dropped the interpolated input."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		self assert: (PVOffscreenTriangleScene isEvenlyMixed: scene centroidPixel) ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleCoversTheCentroid [
+	"The centroid of the three vertices is inside the triangle by definition, so the pixel
+	 there must not be the clear colour. This is the assertion that fails when nothing is
+	 drawn at all, which is the failure a human eye catches first and no other test caught."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		self deny: (PVOffscreenTriangleScene isCleared: scene centroidPixel) ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleIsBlueNearItsBlueVertex [
+	"Vertex 3 carries blue and is the apex, at the top of the picture because its y is
+	 negative. Measured on 11 October 2026: pixel 16@10 of a 32 by 32 render reads 12, 28,
+	 215. Together with the red and green tests this fixes the whole orientation of the
+	 picture, which until now only a human looking at the window could confirm."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		self
+			assert: (PVOffscreenTriangleScene dominantChannelOfColour:
+					 (scene vertexColourAt: 3))
+			equals: #blue.
+		self assert: (scene dominantChannelNearVertex: 3) equals: #blue ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleIsGreenNearItsGreenVertex [
+	"Vertex 2 carries green and sits at the bottom right of the triangle. Measured on 11
+	 October 2026: pixel 22@22 of a 32 by 32 render reads 12, 219, 24. Swapping two vertex
+	 positions, or flipping the y axis, moves green somewhere else and this test fails."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		self
+			assert: (PVOffscreenTriangleScene dominantChannelOfColour:
+					 (scene vertexColourAt: 2))
+			equals: #green.
+		self assert: (scene dominantChannelNearVertex: 2) equals: #green ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleIsOpaqueEverywhere [
+	"Every pixel of the render, inside the triangle and outside it, has full alpha: the clear
+	 colour sets it and the fragment shader writes it. A pixel with alpha 0 would be invisible
+	 once composited, and nothing else here would notice, because the colour channels would
+	 still read correctly."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		self assert: scene nonOpaquePixelCoordinates isEmpty ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleIsRedNearItsRedVertex [
+	"Vertex 1 carries red. In Vulkan clip space y points down, so a y of 0.5 is the bottom of
+	 the picture and this vertex lands in the bottom left corner of the triangle. Measured on
+	 11 October 2026: pixel 10@22 of a 32 by 32 render reads 203, 28, 24. Both halves of the
+	 claim are asserted, so the test pins the winding and the y direction rather than assuming
+	 them: the vertex data is asked which colour vertex 1 carries, and the render is asked
+	 which colour arrived near it."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		self
+			assert: (PVOffscreenTriangleScene dominantChannelOfColour:
+					 (scene vertexColourAt: 1))
+			equals: #red.
+		self assert: (scene dominantChannelNearVertex: 1) equals: #red ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleLeavesTheCornersCleared [
+	"The triangle spans half the clip volume, so no corner of the picture is inside it. A
+	 corner that is not the clear colour means the draw covered the whole target, which is how
+	 a broken vertex buffer or a missing viewport looks."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		scene cornerPixels do: [ :pixel |
+			self assert: (PVOffscreenTriangleScene isCleared: pixel) ] ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTrianglePixelRulesAllPassAndChangeNothing [
+	"The comparison view's verdict column is this list of rules, so a rule that fails on a
+	 correct render would show a red picture in the inspector where the suite is green. Reading
+	 the rules must also leave the pixels alone: a view that re-mapped the buffer would be a
+	 view that changes what it inspects."
+
+	self renderedOffscreenTriangleDo: [ :scene |
+		| before |
+		before := scene target pixels copy.
+		self deny: scene pixelRules isEmpty.
+		scene pixelRules do: [ :rule |
+			self assert: (rule third value: (scene pixelAt: rule first)) ].
+		self assert: scene target pixels equals: before ]
 ]
 
 { #category : 'tests - driver lifecycle' }
