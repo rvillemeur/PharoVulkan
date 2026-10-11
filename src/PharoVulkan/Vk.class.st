@@ -66,6 +66,12 @@ Vk class >> bindBufferMemory: device buffer: buffer memory: memory memoryOffset:
         VkDevice_H device, VkBuffer_H buffer, VkDeviceMemory_H memory, uint64 offset ) )
 ]
 
+{ #category : 'images' }
+Vk class >> bindImageMemory: device image: image memory: memory memoryOffset: offset [
+	^ self ffiCall: #( VkResult vkBindImageMemory (
+		VkDevice_H device, VkImage_H image, VkDeviceMemory_H memory, uint64 offset ) )
+]
+
 { #category : 'error handling' }
 Vk class >> checkResult: anInteger [
     "Wrap the raw Vulkan result code. Raise VkError if it is not VK_SUCCESS."
@@ -214,6 +220,15 @@ Vk class >> createGraphicsPipelines: device pipelineCache: cache createInfoCount
         void* pPipelines ) )
 ]
 
+{ #category : 'images' }
+Vk class >> createImage: device createInfo: pCreateInfo allocator: pAllocator pImage: pImage [
+	^ self ffiCall: #( int32 vkCreateImage (
+		VkDevice_H device,
+		void* pCreateInfo,
+		void* pAllocator,
+		void* pImage ) )
+]
+
 { #category : 'ffi' }
 Vk class >> createImageView: device createInfo: pCreateInfo allocator: pAllocator pView: pView [
     ^ self ffiCall: #( int32 vkCreateImageView (
@@ -322,6 +337,14 @@ Vk class >> destroyFramebuffer: device framebuffer: framebuffer allocator: pAllo
         VkDevice_H device,
         VkFramebuffer_H framebuffer,
         void* pAllocator ) )
+]
+
+{ #category : 'images' }
+Vk class >> destroyImage: device image: image allocator: pAllocator [
+	^ self ffiCall: #( void vkDestroyImage (
+		VkDevice_H device,
+		VkImage_H image,
+		void* pAllocator ) )
 ]
 
 { #category : 'ffi' }
@@ -448,6 +471,12 @@ Vk class >> getBufferMemoryRequirements: device buffer: buffer memoryRequirement
 Vk class >> getDeviceQueue: device queueFamilyIndex: familyIndex queueIndex: queueIndex queue: pQueue [
     ^ self ffiCall: #( void vkGetDeviceQueue (
         VkDevice_H device, uint32 familyIndex, uint32 queueIndex, void* pQueue ) )
+]
+
+{ #category : 'images' }
+Vk class >> getImageMemoryRequirements: device image: image memoryRequirements: pMemReqs [
+	^ self ffiCall: #( void vkGetImageMemoryRequirements (
+		VkDevice_H device, VkImage_H image, void* pMemReqs ) )
 ]
 
 { #category : 'physical devices' }

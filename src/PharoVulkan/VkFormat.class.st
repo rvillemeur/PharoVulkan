@@ -3,7 +3,7 @@ Named constants for VkFormat enum values covering the surface and vertex-attribu
 "
 Class {
 	#name : 'VkFormat',
-	#superclass : 'Object',
+	#superclass : 'VkValueConstants',
 	#category : 'PharoVulkan-Constants',
 	#package : 'PharoVulkan',
 	#tag : 'Constants'
@@ -12,6 +12,11 @@ Class {
 { #category : 'constants' }
 VkFormat class >> b8g8r8a8Unorm [
 	^ 44
+]
+
+{ #category : 'reflecting' }
+VkFormat class >> constantProtocol [
+	^ #constants
 ]
 
 { #category : 'constants' }

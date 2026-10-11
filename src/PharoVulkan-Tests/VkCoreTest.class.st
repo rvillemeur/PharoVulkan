@@ -555,14 +555,19 @@ VkCoreTest >> testExtensionCommandReachesASymbolLibvulkanDoesNotExport [
 	self deny: command address isNull
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - constants' }
 VkCoreTest >> testFlagNamesJoinEveryNamedBitAndSurfaceAnUnnamedOne [
 	"A flags word decodes to the names of the bits it carries, and a bit no constant names
 	 is surfaced as raw hex rather than dropped, so a view can never hide a property the
-	 driver reported. Stated over the named bits each class declares, so a bit added later
-	 is covered without editing this test."
-	{ VkMemoryProperty. VkQueueFlag } do: [ :flagClass |
+	 driver reported. Stated over the subclasses, and over the named bits each one declares,
+	 so a bit or a whole class added later is covered without editing this test."
+
+	| classes |
+	classes := VkFlagConstants subclasses.
+	self deny: classes isEmpty.
+	classes do: [ :flagClass |
 		| allNamed |
+		self deny: flagClass namedBits isEmpty.
 		self assert: (flagClass nameForFlags: 0) equals: ''.
 		flagClass namedBits do: [ :each |
 			self assert: (flagClass nameForFlags: each key) equals: each value ].

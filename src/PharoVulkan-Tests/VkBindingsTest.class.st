@@ -404,23 +404,6 @@ VkBindingsTest >> testStructureTypeConstants [
 ]
 
 { #category : 'tests' }
-VkBindingsTest >> testStructureTypeNamesEveryConstantItDefines [
-	"The reverse lookup is reflective, so it must answer, for every constant the class declares,
-	 a name that carries that same value, and nothing for a value no constant carries."
-
-	| names |
-	names := VkStructureType constantSelectors.
-	self deny: names isEmpty.
-	names do: [ :each |
-		| value |
-		value := VkStructureType perform: each.
-		self
-			assert: (VkStructureType perform: (VkStructureType nameForValue: value))
-			equals: value ].
-	self assert: (VkStructureType nameForValue: -1) isNil
-]
-
-{ #category : 'tests' }
 VkBindingsTest >> testSubgroupFeaturePredicateMatchesTheOperationBits [
 	"VkPhysicalDevice and the Features view read supportedOperations through one predicate. The
 	 device only ever reports the mask it has, so the two degenerate masks are stated here: an
@@ -437,6 +420,29 @@ VkBindingsTest >> testSubgroupFeaturePredicateMatchesTheOperationBits [
 	self assert: supported value isEmpty.
 	block supportedOperations: everyBit.
 	self assert: supported value equals: VkSubgroupFeature featureSelectors
+]
+
+{ #category : 'tests - constants' }
+VkBindingsTest >> testValueConstantsNameEveryConstantTheyDeclare [
+	"The reverse lookup is reflective and shared, so for every class that inherits it, and
+	 for every constant that class declares, it must answer a name carrying that same value,
+	 and nothing for a value no constant carries. Reflecting over the subclasses rather than
+	 naming them keeps a class added later covered without editing this test."
+
+	| classes |
+	classes := VkValueConstants subclasses.
+	self deny: classes isEmpty.
+	classes do: [ :each |
+		| names |
+		names := each constantSelectors.
+		self deny: names isEmpty.
+		names do: [ :selector |
+			| value |
+			value := each perform: selector.
+			self
+				assert: (each perform: (each nameForValue: value))
+				equals: value ].
+		self assert: (each nameForValue: -1) isNil ]
 ]
 
 { #category : 'tests' }
