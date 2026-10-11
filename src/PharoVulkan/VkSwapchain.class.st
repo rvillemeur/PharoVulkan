@@ -259,3 +259,24 @@ VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
       ] ensure: [ presentInfo free ]
     ] ensure: [ semBuf free ]
 ]
+
+{ #category : 'accessing' }
+VkSwapchain >> presentMode [
+	"The swapchain is always created with VkRenderConfig presentModeFifo, so this reads that
+	 same constant rather than a copy stored at creation: the two cannot disagree."
+
+	^ VkRenderConfig presentModeFifo
+]
+
+{ #category : 'accessing' }
+VkSwapchain >> presentModeName [
+	"The name of the present mode, found by asking VkRenderConfig which of its present-mode
+	 constants carries the value, so an inspector showing it cannot name a mode the creation
+	 code stopped using. Answers the number itself where no constant matches."
+
+	^ (VkRenderConfig class selectors
+		   detect: [ :each |
+			   ('presentMode*' match: each) and: [
+				   (VkRenderConfig perform: each) = self presentMode ] ]
+		   ifNone: [ ^ self presentMode printString ]) asString
+]

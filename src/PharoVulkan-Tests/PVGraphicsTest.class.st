@@ -108,6 +108,50 @@ PVGraphicsTest >> testBothColorPassVariantsBuildOnTheDevice [
 	offscreen destroy ] ensure: [ context destroy ]
 ]
 
+{ #category : 'tests' }
+PVGraphicsTest >> testDisplayAvailabilityAndItsReasonAgreeOnThisMachine [
+	"Whatever this machine offers, exactly one of the two answers holds: a display and no
+	 reason, or no display and a reason. The window tests rely on that, because they skip on
+	 the predicate and report the reason."
+
+	PVHelloTriangleScene displayAvailable
+		ifTrue: [ self assert: PVHelloTriangleScene displayUnavailableReason isNil ]
+		ifFalse: [
+		self deny: PVHelloTriangleScene displayUnavailableReason isNil ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testDisplayAvailabilityFollowsTheDisplayEnvironment [
+	"The window tests are skipped where no display exists, so the predicate that decides it is
+	 worth stating as a rule rather than trusting on one machine. It is asked of a dictionary
+	 so the degenerate cases can be put to it: no variable at all, and a variable that is set
+	 but empty, which is what a stripped environment leaves behind."
+
+	self deny: (PVHelloTriangleScene displayAvailableIn: Dictionary new).
+	self assert: (PVHelloTriangleScene displayAvailableIn:
+			 (Dictionary with: 'DISPLAY' -> ':0')).
+	self assert: (PVHelloTriangleScene displayAvailableIn:
+			 (Dictionary with: 'WAYLAND_DISPLAY' -> 'wayland-0')).
+	self deny: (PVHelloTriangleScene displayAvailableIn:
+			 (Dictionary with: 'DISPLAY' -> ''))
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testDisplayUnavailableReasonNamesWhatIsMissing [
+	"A skipped test that says nothing is a test that silently stops covering the window path,
+	 so the reason names the two variables that were looked at. Where a display does exist
+	 there is nothing to report, and the reason is nil."
+
+	| reason |
+	reason := PVHelloTriangleScene displayUnavailableReasonIn: Dictionary new.
+	self assert: (reason includesSubstring: 'DISPLAY').
+	self assert: (reason includesSubstring: 'WAYLAND_DISPLAY').
+	self
+		assert: (PVHelloTriangleScene displayUnavailableReasonIn:
+				 (Dictionary with: 'DISPLAY' -> ':0'))
+		equals: nil
+]
+
 { #category : 'tests - driver lifecycle' }
 PVGraphicsTest >> testDriverInstallDuringKeepsUiManagerAndDoesNotPrompt [
 
@@ -226,6 +270,36 @@ PVGraphicsTest >> testInspectorLifecycleViewReportsEverySlotWithoutMutating [
 		assert: (scene instVarNamed: 'ctx') notNil
 		description: 'building the view must not touch the inspected scene'.
 	self assert: (scene instVarNamed: 'ctx') waitIdleCount equals: 0
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testInterruptedFrameStrandsNothing [
+	"The 9 October crash: a raise in the middle of the render loop skipped the teardown, left a
+	 live VkInstance and an SDL window registered with a swapped-out driver, and the next run
+	 segfaulted. Only the stub covers that today. Here the raise happens against a real window:
+	 afterwards the OSWindow driver must be the one that was installed before, and every owned
+	 slot of the scene must be released."
+
+	| driverBefore scene raised |
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	driverBefore := OSWindowDriver driverClass.
+	raised := false.
+	scene := nil.
+	[
+	self windowSceneDo: [ :each :backendWindow |
+		scene := each.
+		each renderFrame.
+		Error signal: 'interrupted mid-loop' ] ]
+		on: Error
+		do: [ :error | raised := error messageText = 'interrupted mid-loop' ].
+	self assert: raised.
+	self assert: OSWindowDriver driverClass equals: driverBefore.
+	scene lifecycleReport do: [ :slot |
+		(PVHelloTriangleScene unownedSlotNames includes: slot key) ifFalse: [
+			self
+				assert: slot value
+				equals: PVHelloTriangleScene releasedLabel ] ]
 ]
 
 { #category : 'tests - lifecycle report' }
@@ -445,6 +519,25 @@ PVGraphicsTest >> testPrepareReleasesSceneWhenInitialisationFails [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testRenderFrameCyclesThroughTheSwapchainImages [
+	"Phase 6 claimed stable frames; this asserts it. Rendering more frames than the swapchain
+	 has images must acquire every image at least once, which is what says the acquire, submit
+	 and present cycle really is a cycle and not one image presented over and over. A fence or
+	 semaphore left unsignalled shows up here as a hang or as a repeated index."
+
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	self windowSceneDo: [ :scene :backendWindow |
+		| acquired |
+		acquired := Set new.
+		1 to: scene swapchain imageCount * 2 + 1 do: [ :frame |
+			acquired add: scene renderFrame ].
+		self
+			assert: acquired size
+			equals: scene swapchain imageCount ]
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testRenderPassClearsToTheColourItWasGiven [
 	"The clear colour the render pass is given must reach the pixels, which is what makes a
 	 readback proof that the GPU wrote them. Unorm rounding is driver-defined, so each channel
@@ -481,6 +574,33 @@ PVGraphicsTest >> testSceneDestroyIsIdempotent [
 	self assert: (scene instVarNamed: 'swapchain') isNil
 ]
 
+{ #category : 'tests' }
+PVGraphicsTest >> testSceneDestroyReleasesEverySlotOnARealDevice [
+	"The same claim PVRecordingContextStub covers, against a device and a surface instead. The
+	 stub cannot catch a slot that only the window path fills, so this asks the scene after
+	 teardown: every owned slot released, and only the context still held, because the scene
+	 does not own it."
+
+	| scene report |
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	scene := self windowSceneDo: [ :each :backendWindow |
+		         self
+			         assert: (each lifecycleReport allSatisfy: [ :slot |
+					          slot value = PVHelloTriangleScene liveLabel ])
+			         description: 'a prepared scene holds every slot' ].
+	report := scene lifecycleReport.
+	self
+		assert: report size
+		equals: PVHelloTriangleScene allInstVarNames size.
+	report do: [ :slot |
+		self
+			assert: slot value
+			equals: ((PVHelloTriangleScene unownedSlotNames includes: slot key)
+					 ifTrue: [ PVHelloTriangleScene liveLabel ]
+					 ifFalse: [ PVHelloTriangleScene releasedLabel ]) ]
+]
+
 { #category : 'tests - driver lifecycle' }
 PVGraphicsTest >> testSceneDestroyWaitsForGpu [
 	"destroy must wait for the GPU itself. Relying on the caller to send
@@ -496,6 +616,56 @@ PVGraphicsTest >> testSceneDestroyWaitsForGpu [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testSwapchainHasAnImageViewForEveryImage [
+	"What only a surface can exercise: the swapchain the driver actually gave us. Presentation
+	 needs at least two images to alternate between, every image needs a view for its
+	 framebuffer, and the extent must be the one the window drawable reported, not the size
+	 asked for. This says nothing about what appears on screen; the pixels are proven offscreen
+	 in the triangle tests."
+
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	self windowSceneDo: [ :scene :backendWindow |
+		| swapchain |
+		swapchain := scene swapchain.
+		self assert: swapchain imageCount >= 2.
+		self assert: swapchain imageViews size equals: swapchain imageCount.
+		self
+			assert: swapchain extent
+			equals: backendWindow vulkanDrawableExtent ]
+]
+
+{ #category : 'tests - window' }
+PVGraphicsTest >> testSwapchainViewReportsEveryImageWithoutMutating [
+	"The view is the only place that states what the driver handed us for this window, so it has
+	 to carry a row for every swapchain image with both of that image's objects, and building it
+	 must not disturb the scene it reports on."
+
+	| scene expected |
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	expected := PVHelloTriangleScene attachmentSeparator join: {
+			            PVHelloTriangleScene viewLabel.
+			            PVHelloTriangleScene framebufferLabel }.
+	scene := self windowSceneDo: [ :aScene :backendWindow |
+		         | before view imageRows |
+		         before := aScene swapchainReport.
+		         view := aScene inspectorSwapchain: SpPresenter new.
+		         imageRows := view items select: [ :each |
+			                      each key beginsWith:
+				                      PVHelloTriangleScene imageRowPrefix ].
+		         self assert: imageRows size equals: aScene swapchain imageCount.
+		         imageRows do: [ :each | self assert: each value equals: expected ].
+		         self
+			         assert: aScene swapchainReport = before
+			         description: 'building the view must not change what the scene reports' ].
+	self
+		assert: scene swapchainReport
+			  = { 'swapchain' -> PVHelloTriangleScene releasedLabel }
+		description: 'a released scene must report the release, not a swapchain it dropped'
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testVertexDataSize [
 
 	| data |
@@ -508,4 +678,37 @@ PVGraphicsTest >> testVertexShaderBuilds [
 	self
 		assertValidSpirv: PVHelloTriangleScene new buildVertexShader
 		description: 'PVHelloTriangleScene buildVertexShader'
+]
+
+{ #category : 'running' }
+PVGraphicsTest >> windowSceneDo: aBlock [
+	"Open a real window, build a context and a scene against it, pass the scene and the
+	 backend window to the block, and answer the scene once everything is released. The
+	 teardown mirrors PVHelloTriangleScene class >> renderTriangle exactly: scene, context,
+	 window, driver, each released by its own ensure:, because a raise that strands a live
+	 VkInstance or an SDL window still registered with the driver resurfaces as a segfault on
+	 the next run with the validation layers off. The scene is answered after teardown so a
+	 test can assert on what destroy left behind."
+
+	| attributes |
+	attributes := PVWindowAttributes newVulkan.
+	attributes
+		title: PVHelloTriangleScene windowTitle;
+		extent: PVHelloTriangleScene exampleExtent;
+		windowCentered: true.
+	^ PVVulkanDriver installDuring: [
+		  | window |
+		  window := OSWindow createWithAttributes: attributes.
+		  [
+		  | backendWindow context |
+		  backendWindow := window backendWindow.
+		  context := VkContext graphicsContextForExtensions:
+			             backendWindow requiredInstanceExtensions.
+		  [
+		  | scene |
+		  scene := PVHelloTriangleScene
+			           prepare: context
+			           backendWindow: backendWindow.
+		  [ aBlock value: scene value: backendWindow ] ensure: [ scene destroy ].
+		  scene ] ensure: [ context destroy ] ] ensure: [ window destroy ] ]
 ]

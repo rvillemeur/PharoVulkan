@@ -245,6 +245,10 @@ PVTriangleScene >> destroy [
 	vertexShaderModule ifNotNil: [
 		vertexShaderModule destroy.
 		vertexShaderModule := nil ].
+	commandBuffer := nil.
+	"The pool frees its buffers, so there is nothing to destroy for the command buffer, but the
+	 slot has to be cleared with the pool or the scene keeps a handle to freed memory and
+	 lifecycleReport reports it live."
 	commandPool ifNotNil: [
 		commandPool destroy.
 		commandPool := nil ].
