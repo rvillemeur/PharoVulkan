@@ -541,6 +541,24 @@ PVComputeTest >> testComputeKernelUsesNoBareStageFlagLiteral [
 		((PVComputeKernel >> #prepare) literals includes: VkShaderStage computeBit)
 ]
 
+{ #category : 'tests - kernel' }
+PVComputeTest >> testComputeKernelWithNoBuffersIsRefusedClearly [
+	"A compute kernel taking only a work item and a shared tile is reachable, so prepare must
+	 say what is missing. Observed on this device before the fix: a pool built for zero sets
+	 was created happily, and the failure surfaced one call later out of allocateSet: as
+	 VK_ERROR_OUT_OF_POOL_MEMORY, which named neither the kernel nor the buffers."
+	| kernel raised |
+	kernel := PVComputeKernel
+		          fromMethod: PVComputeKernel exampleKernelMethod
+		          on: ctx.
+	raised := [
+	          kernel prepare.
+	          nil ]
+		          on: VkError
+		          do: [ :error | error messageText ].
+	self assert: raised equals: PVComputeKernel noBuffersErrorMessage
+]
+
 { #category : 'tests' }
 PVComputeTest >> testComputeLoopSumOnDevice [
 	"The loop kernel must produce the right numbers on the device. spirv-val cannot see a

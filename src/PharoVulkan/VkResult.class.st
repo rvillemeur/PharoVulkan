@@ -125,6 +125,13 @@ VkResult class >> vkErrorOutOfHostMemory [       ^ -1
 ]
 
 { #category : 'result-codes' }
+VkResult class >> vkErrorOutOfPoolMemory [
+	"VK_KHR_maintenance1, promoted to core in 1.1; answered when a descriptor set does not
+	 fit the pool it is allocated from."
+	^ -1000069000
+]
+
+{ #category : 'result-codes' }
 VkResult class >> vkErrorSurfaceLostKHR [        ^ -1000000000
 ]
 

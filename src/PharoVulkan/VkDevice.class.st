@@ -43,8 +43,11 @@ VkDevice >> createCommandPool: queueFamilyIndex [
 ]
 
 { #category : 'factory' }
-VkDevice >> createDescriptorPool: maxSets [
-    ^ VkDescriptorPool on: self maxSets: maxSets
+VkDevice >> createDescriptorPool: aMaxSetCount descriptorCount: aDescriptorCount [
+    ^ VkDescriptorPool
+	      on: self
+	      maxSets: aMaxSetCount
+	      descriptorCount: aDescriptorCount
 ]
 
 { #category : 'factory' }

@@ -382,6 +382,81 @@ VkCoreTest >> testCooperativeMatrixSurveyReportsAfterItsContextIsGone [
 	self assert: (survey reportRows last at: #name) equals: 'Verdict'
 ]
 
+{ #category : 'tests - descriptors' }
+VkCoreTest >> testDescriptorPoolCountsSetsAndDescriptorsSeparately [
+	"One set holding three storage-buffer descriptors is the shape every compute kernel here
+	 allocates, and it needs two different numbers: maxSets 1, descriptorCount 3. A pool that
+	 takes one number asks the driver for three sets where one is enough, and a kernel with no
+	 buffers asks it for none."
+	| layout pool set buffers |
+	set := nil.
+	buffers := (1 to: VkDescriptorPool exampleDescriptorCount) collect: [ :each |
+		           VkBuffer
+			           storageBuffer: VkDescriptorPool exampleElementCount
+			           on: ctx device ].
+	layout := VkDescriptorSetLayout on: ctx device.
+	0 to: VkDescriptorPool exampleDescriptorCount - 1 do: [ :binding |
+		layout
+			addStorageBufferBinding: binding
+			stageFlags: VkShaderStage computeBit ].
+	layout create.
+	pool := VkDescriptorPool
+		        on: ctx device
+		        maxSets: VkDescriptorPool exampleMaxSets
+		        descriptorCount: VkDescriptorPool exampleDescriptorCount.
+	[
+	set := pool allocateSet: layout.
+	buffers doWithIndex: [ :buffer :index |
+		set updateStorageBuffer: buffer atBinding: index - 1 ].
+	self assert: pool maxSets equals: VkDescriptorPool exampleMaxSets.
+	self
+		assert: pool descriptorCount
+		equals: VkDescriptorPool exampleDescriptorCount.
+	self assert: pool setsAllocated equals: VkDescriptorPool exampleMaxSets ]
+		ensure: [
+			set ifNotNil: [ set handle invalidate ].
+			pool destroy.
+			layout destroy.
+			buffers do: [ :each | each destroy ] ]
+]
+
+{ #category : 'tests - descriptors' }
+VkCoreTest >> testDescriptorPoolViewNamesBothCountsAndTheTypeItRequests [
+	"The example releases the pool, its set and its context, as every example here does, so
+	 the Pool tab must read the counts the instance kept. The descriptor type row is found by
+	 asking VkDescriptorType which constant answers the value the create info writes, so it
+	 cannot name a type the pool does not request. Building the tab must not change what the
+	 pool reports."
+	| pool rows |
+	pool := VkDescriptorPool exampleStorageBufferPoolForThreeBuffers.
+	rows := pool poolReport.
+	self
+		assert: (self valueOfRowNamed: VkDescriptorPool maxSetsRowName in: rows)
+		equals: VkDescriptorPool exampleMaxSets printString.
+	self
+		assert:
+		(self valueOfRowNamed: VkDescriptorPool descriptorCountRowName in: rows)
+		equals: VkDescriptorPool exampleDescriptorCount printString.
+	self
+		assert:
+		(self valueOfRowNamed: VkDescriptorPool setsAllocatedRowName in: rows)
+		equals: VkDescriptorPool exampleMaxSets printString.
+	self
+		assert:
+		(self valueOfRowNamed: VkDescriptorPool descriptorTypeRowName in: rows)
+		equals: #storageBuffer asString.
+	pool inspectorPool: SpPresenter new.
+	self
+		assertCollection: (pool poolReport collect: [ :each | each at: #value ])
+		hasSameElements: (rows collect: [ :each | each at: #value ]).
+	self
+		assert:
+		(self
+			 valueOfRowNamed: VkDescriptorPool setsAllocatedRowName
+			 in: VkDescriptorPool new poolReport)
+		equals: 0 printString
+]
+
 { #category : 'tests' }
 VkCoreTest >> testDeviceChoiceRowsNameEveryRequirementAsked [
 	| context asked |
@@ -877,4 +952,9 @@ VkCoreTest >> testUnsatisfiedRequirementsMessageNamesEveryRequirementAsked [
 	self assert: (message includesSubstring: 'compute queue').
 	self assert: (message includesSubstring: 'supportsGraphicsAndComputeOnOneQueue').
 	self assert: (message includesSubstring: 'supportsGraphics')
+]
+
+{ #category : 'support' }
+VkCoreTest >> valueOfRowNamed: aString in: someRows [
+	^ (someRows detect: [ :each | (each at: #name) = aString ]) at: #value
 ]

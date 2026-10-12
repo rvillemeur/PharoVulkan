@@ -26,6 +26,13 @@ PVComputeKernel class >> bindingRowPrefix [
 	^ 'binding '
 ]
 
+{ #category : 'constants' }
+PVComputeKernel class >> descriptorSetCount [
+	"prepare allocates one descriptor set and puts every binding in it, so the pool needs
+	 room for exactly one set however many buffers are bound."
+	^ 1
+]
+
 { #category : 'examples' }
 PVComputeKernel class >> exampleBufferCount [
 	"One buffer per storage-buffer parameter of exampleKernelMethod: a, b and the output."
@@ -102,6 +109,11 @@ PVComputeKernel class >> moduleRowNames [
 		  self moduleBindingRowName.
 		  self localSizeRowName.
 		  self invocationsRowName }
+]
+
+{ #category : 'labels' }
+PVComputeKernel class >> noBuffersErrorMessage [
+	^ 'A compute kernel with no storage buffer has nothing to bind: send bindBuffer: before prepare'
 ]
 
 { #category : 'labels' }
@@ -253,10 +265,10 @@ PVComputeKernel >> pipelineRow [
 				   ifNotNil: [ self class pipelineBuiltLabel ])
 ]
 
-{ #category : 'lifecycle' }
+{ #category : 'pipeline' }
 PVComputeKernel >> prepare [
 	"Build shader module, DSL, pipeline layout, pipeline, descriptor pool/set, command pool"
-
+	buffers ifEmpty: [ VkError signal: self class noBuffersErrorMessage ].
 	shaderModule := VkShaderModule fromBytes: spirvBytes device: context device.
 	descriptorSetLayout := VkDescriptorSetLayout on: context device.
 	0 to: buffers size - 1 do: [ :i |
@@ -271,10 +283,12 @@ PVComputeKernel >> prepare [
 		            on: shaderModule
 		            layout: pipelineLayout
 		            device: context device.
-	"Pool needs descriptorCount = total bindings across all sets"
+	"One set holds every binding, so the pool holds one set and as many descriptors as there
+	 are buffers"
 	descriptorPool := VkDescriptorPool
 		                  on: context device
-		                  maxSets: buffers size.
+		                  maxSets: self class descriptorSetCount
+		                  descriptorCount: buffers size.
 	descriptorSet := descriptorPool allocateSet: descriptorSetLayout.
 	buffers doWithIndex: [ :buf :i |
 		descriptorSet updateStorageBuffer: buf atBinding: i - 1 ].

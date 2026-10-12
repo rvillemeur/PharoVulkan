@@ -275,6 +275,17 @@ VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
 	self assert: Float infinity asF16 equals: Float infinity
 ]
 
+{ #category : 'tests - result codes' }
+VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
+	"Observed on this device: allocating a set out of a pool built for zero sets answers
+	 -1000069000, which printed as VK_UNKNOWN because the code was never declared. A code the
+	 driver here really returns must name itself."
+	self
+		assert: (VkResult nameForCode: VkResult vkErrorOutOfPoolMemory)
+		equals: (VkResult nameForSelector: #vkErrorOutOfPoolMemory).
+	self assert: (VkResult withCode: VkResult vkErrorOutOfPoolMemory) isError
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testPhysicalDeviceLimitsFillsTheLimitsFieldExactly [
 	"The limits block is read through its own structure rather than as a byte blob, so every
