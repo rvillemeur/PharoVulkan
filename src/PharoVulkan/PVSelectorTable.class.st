@@ -123,24 +123,21 @@ self at: '*' receiverType: #u32 put: (PVSelectorMapping spirvOp: #OpIMul resultT
 { #category : 'initialization' }
 PVSelectorTable >> initializeSharedMappings [
 	"A workgroup tile is indexed like a buffer but reaches a different storage class, so it
-	 needs its own receiver types rather than reusing the buffer mappings."
+	 needs its own receiver types rather than reusing the buffer mappings. Read off the
+	 emitter's shared element types, so a tile type the emitter can declare cannot be one a
+	 kernel body is unable to index."
 
-	self
-		at: 'at:'
-		receiverType: #sharedOf_f32
-		put: (PVSelectorMapping spirvOp: #sharedLoad resultType: #f32).
-	self
-		at: 'at:'
-		receiverType: #sharedOf_i32
-		put: (PVSelectorMapping spirvOp: #sharedLoad resultType: #i32).
-	self
-		at: 'at:put:'
-		receiverType: #sharedOf_f32
-		put: (PVSelectorMapping spirvOp: #sharedStore resultType: #void).
-	self
-		at: 'at:put:'
-		receiverType: #sharedOf_i32
-		put: (PVSelectorMapping spirvOp: #sharedStore resultType: #void)
+	PVSPIRVEmitter sharedElementTypes keysAndValuesDo: [
+		:sharedType
+		:elementType |
+		self
+			at: 'at:'
+			receiverType: sharedType
+			put: (PVSelectorMapping spirvOp: #sharedLoad resultType: elementType).
+		self
+			at: 'at:put:'
+			receiverType: sharedType
+			put: (PVSelectorMapping spirvOp: #sharedStore resultType: #void) ]
 ]
 
 { #category : 'private' }

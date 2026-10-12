@@ -889,6 +889,25 @@ PVCompilerTest >> testSelectorTableMapsHalfBufferAccess [
 		equals: #void
 ]
 
+{ #category : 'tests - selector table' }
+PVCompilerTest >> testSharedMappingsCoverEveryTileTypeTheEmitterCanDeclare [
+	"A kernel body reaches a tile with at: and at:put: and nothing else, so every shared type
+	 the emitter can declare needs both mappings. Stated over the shared element types rather
+	 than over a list written here, so a type added to one and forgotten in the other fails."
+
+	| table |
+	table := PVSelectorTable standard.
+	PVSPIRVEmitter sharedElementTypes keysAndValuesDo: [
+		:sharedType
+		:elementType |
+		self
+			assert: (table at: 'at:' receiverType: sharedType) resultTypeSymbol
+			equals: elementType.
+		self
+			assert: (table at: 'at:put:' receiverType: sharedType) spirvOp
+			equals: #sharedStore ]
+]
+
 { #category : 'tests - shared memory' }
 PVCompilerTest >> testSharedPragmaRefusesAnElementTypeTheEmitterCannotDeclare [
 	"A <shared:named:count:> pragma naming an element type with no shared array type is
@@ -1022,6 +1041,39 @@ PVCompilerTest >> testSubgroupSumOnTheHostAnswersTheValueItself [
 	 it is the value. A kernel body has to mean something when it runs in the image."
 
 	self assert: 3.5 subgroupSum equals: 3.5
+]
+
+{ #category : 'tests - half precision' }
+PVCompilerTest >> testTiledHalfMatmulHoldsHalfTilesAndAccumulatesInFloat [
+	"The tiled kernel in half precision, read back out of the bytes it emits: one shared tile
+	 per input matrix, a barrier on each side of the accumulation loop, and both float widths,
+	 because the tiles hold halves while the dot product accumulates in float."
+
+	| bytes module widths |
+	bytes := PVKernelCompiler compile: (PVKernelExamples tiledMatmulFor: #f16).
+	module := PVSpirvValidator on: bytes.
+	self
+		assert: (module variableCountInStorageClass: SpvStorageClass workgroup)
+		equals: 2.
+	self assert: (module countOfOpcode: SpvOpcode opControlBarrier) equals: 2.
+	widths := (self operandsOf: SpvOpcode opTypeFloat in: bytes) collect: [ :each |
+		          each second ].
+	self assert: widths asSortedCollection asArray equals: #( 16 32 ).
+	self deny: (self operandsOf: SpvOpcode opFConvert in: bytes) isEmpty
+]
+
+{ #category : 'tests - half precision' }
+PVCompilerTest >> testTiledHalfMatmulModuleIsValidSpirv [
+	"Half precision in the Workgroup storage class is not the same thing as half precision in
+	 a storage buffer: the validator is the only thing here that checks the module declares
+	 what the tiles need."
+
+	| validator |
+	PVSpirvValidator isAvailable ifFalse: [ ^ self skip ].
+	validator := PVSpirvValidator on:
+		             (PVKernelCompiler compile:
+			              (PVKernelExamples tiledMatmulFor: #f16)).
+	self assert: validator isValid description: validator validationOutput
 ]
 
 { #category : 'tests' }

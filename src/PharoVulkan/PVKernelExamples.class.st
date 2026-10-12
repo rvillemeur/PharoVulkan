@@ -13,12 +13,44 @@ Class {
 	#tag : 'Example'
 }
 
-{ #category : 'kernels' }
+{ #category : 'accessing' }
+PVKernelExamples class >> defaultMatmulFamily [
+	"The plain row-times-column product, which every other family is read against."
+
+	^ #naive
+]
+
+{ #category : 'accessing' }
+PVKernelExamples class >> matmulFamilies [
+	"The matmul kernels by family. A caller measuring one family against another names both
+	 the family and the precision, so neither is picked out of a list kept by hand."
+
+	^ Dictionary newFrom: {
+			  (self defaultMatmulFamily -> self matmulKernels).
+			  (self tiledMatmulFamily -> self tiledMatmulKernels) }
+]
+
+{ #category : 'accessing' }
 PVKernelExamples class >> matmulFor: anElementTypeSymbol [
-	^ self >> (self matmulKernels
+	^ self matmulFor: anElementTypeSymbol family: self defaultMatmulFamily
+]
+
+{ #category : 'accessing' }
+PVKernelExamples class >> matmulFor: anElementTypeSymbol family: aFamilySymbol [
+	"The matmul of one precision in one family. Both an unknown family and a precision the
+	 family has no kernel for raise, because either way there is nothing to dispatch and a
+	 fallback would report the wrong kernel's number."
+
+	| kernels |
+	kernels := self matmulFamilies
+		           at: aFamilySymbol
+		           ifAbsent: [
+		           PVTypeError signal: 'No matmul family named ' , aFamilySymbol ].
+	^ self >> (kernels
 		   at: anElementTypeSymbol
 		   ifAbsent: [
-		   PVTypeError signal: 'No matmul kernel for ' , anElementTypeSymbol ])
+			   PVTypeError signal: 'No ' , aFamilySymbol , ' matmul kernel for '
+				   , anElementTypeSymbol ])
 ]
 
 { #category : 'kernels' }
@@ -29,6 +61,28 @@ PVKernelExamples class >> matmulKernels [
 	^ Dictionary newFrom: {
 			  (#f32 -> #matmulF32:a:b:out:).
 			  (#f16 -> #matmulF16:a:b:out:) }
+]
+
+{ #category : 'accessing' }
+PVKernelExamples class >> tiledMatmulFamily [
+	"The family holding a 16 by 16 block of each input in shared memory."
+
+	^ #tiled
+]
+
+{ #category : 'accessing' }
+PVKernelExamples class >> tiledMatmulFor: anElementTypeSymbol [
+	^ self matmulFor: anElementTypeSymbol family: self tiledMatmulFamily
+]
+
+{ #category : 'accessing' }
+PVKernelExamples class >> tiledMatmulKernels [
+	"The tiled matmul written for each element width, keyed the way matmulKernels is, so a
+	 caller naming a precision gets the tiled kernel of that precision or nothing at all."
+
+	^ Dictionary newFrom: {
+			  (#f32 -> #tiledMatmulF32:a:b:out:tileA:tileB:).
+			  (#f16 -> #tiledMatmulF16:a:b:out:tileA:tileB:) }
 ]
 
 { #category : 'examples' }
@@ -365,6 +419,51 @@ PVKernelExamples >> taggedLocalSizeAdd: wi data: data out: output [
 	<param: #bufferOf_f32 named: #data>
 	<param: #bufferOf_f32 named: #output>
 	output at: wi x put: (data at: wi x) * 2.0
+]
+
+{ #category : 'examples - compute' }
+PVKernelExamples >> tiledMatmulF16: wi a: a b: b out: output tileA: tileA tileB: tileB [
+	"The half precision twin of tiledMatmulF32:a:b:out:tileA:tileB:. The tiles hold halves, so
+	 a tile pair costs half the shared memory of the float kernel's and each tile load moves
+	 half the bytes; the dot product still accumulates in float, because the error of a sum
+	 accumulated in half grows with the number of terms rather than with the storage format.
+	 This is the kernel half precision has to be measured on: the naive matmul is bound by
+	 global memory traffic, so narrowing the loads there buys almost nothing.
+
+	 The tile width appears as the literal 16 and the tile size as the literal 256, which is
+	 16 by 16: a kernel body carries no message sends beyond those the DSL maps, so it cannot
+	 ask a class-side constant for them. The matrix order comes from the dispatch
+	 (wi gridWidth), so the grid must cover the matrix exactly: N / 16 groups along each of
+	 x and y. Row-major storage throughout."
+
+	<gpu>
+	<localSize: #( 16 16 1 )>
+	<param: #workItem named: #wi>
+	<param: #bufferOf_f16 named: #a>
+	<param: #bufferOf_f16 named: #b>
+	<param: #bufferOf_f16 named: #output>
+	<shared: #f16 named: #tileA count: 256>
+	<shared: #f16 named: #tileB count: 256>
+	| row col n lx ly acc tileBase k |
+	row := wi x.
+	col := wi y.
+	n := wi gridWidth.
+	lx := wi localX.
+	ly := wi localY.
+	acc := 0.0.
+	tileBase := 0.
+	[ tileBase < n ] whileTrue: [
+		tileA at: lx * 16 + ly put: (a at: row * n + (tileBase + ly)).
+		tileB at: lx * 16 + ly put: (b at: (tileBase + lx) * n + col).
+		wi barrier.
+		k := 0.
+		[ k < 16 ] whileTrue: [
+			acc := acc
+			       + ((tileA at: lx * 16 + k) asF32 * (tileB at: k * 16 + ly) asF32).
+			k := k + 1 ].
+		wi barrier.
+		tileBase := tileBase + 16 ].
+	output at: row * n + col put: acc asF16
 ]
 
 { #category : 'kernels' }

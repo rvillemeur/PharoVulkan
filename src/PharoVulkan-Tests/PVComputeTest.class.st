@@ -133,6 +133,24 @@ PVComputeTest >> dispatchCompiledTiledMatmulOn: buffers groups: groupCount [
 	  buffers last elementsAs: #f32 ] ensure: [ kernel destroy ]
 ]
 
+{ #category : 'running' }
+PVComputeTest >> dispatchCompiledTiledMatmulOn: buffers groups: groupCount elementType: anElementTypeSymbol [
+	"Bind the compiled tiled kernel's three buffers in binding order and answer the last
+	 one's contents. Its two shared tiles take no binding, which is the whole point of
+	 declaring them with <shared:named:count:> rather than as buffers. The kernel is asked
+	 of the precision, so the module dispatched and the buffers bound hold the same width."
+
+	| kernel |
+	kernel := PVComputeKernel
+		          fromMethod: (PVKernelExamples tiledMatmulFor: anElementTypeSymbol)
+		          on: ctx.
+	^ [
+	  buffers do: [ :each | kernel bindBuffer: each ].
+	  kernel prepare.
+	  kernel dispatch: groupCount y: groupCount z: 1.
+	  buffers last elementsAs: anElementTypeSymbol ] ensure: [ kernel destroy ]
+]
+
 { #category : 'helpers' }
 PVComputeTest >> dispatchMatmulOn: buffers groups: groupCount [
 	^ self
@@ -220,29 +238,46 @@ PVComputeTest >> referenceAtRow: r col: c order: n [
 		  acc + ((self aAtRow: r col: k) * (self bAtRow: k col: c)) ]
 ]
 
-{ #category : 'running - matmul' }
+{ #category : 'running' }
 PVComputeTest >> runCompiledTiledMatmulOfOrder: n [
-	"The same inputs the other two matmul kernels are checked against, so all three are
-	 compared on identical data."
+	^ self
+		  runCompiledTiledMatmulOfOrder: n
+		  elementType: PVBenchmark defaultElementType
+]
+
+{ #category : 'running' }
+PVComputeTest >> runCompiledTiledMatmulOfOrder: n elementType: anElementTypeSymbol [
+	"The same inputs the other matmul kernels are checked against, held in the precision
+	 under test, so every kernel is compared on identical data."
 
 	| bufA bufB bufOut |
-	bufA := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
-	bufB := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
-	bufOut := VkBuffer storageBuffer: n * n of: #f32 on: ctx device.
+	bufA := VkBuffer
+		        storageBuffer: n * n
+		        of: anElementTypeSymbol
+		        on: ctx device.
+	bufB := VkBuffer
+		        storageBuffer: n * n
+		        of: anElementTypeSymbol
+		        on: ctx device.
+	bufOut := VkBuffer
+		          storageBuffer: n * n
+		          of: anElementTypeSymbol
+		          on: ctx device.
 	^ [
 	  bufA
 		  put: (self flatMatrixOfOrder: n with: [ :r :c | self aAtRow: r col: c ])
-		  as: #f32.
+		  as: anElementTypeSymbol.
 	  bufB
 		  put: (self flatMatrixOfOrder: n with: [ :r :c | self bAtRow: r col: c ])
-		  as: #f32.
-	  bufOut put: (Array new: n * n withAll: 0.0) as: #f32.
+		  as: anElementTypeSymbol.
+	  bufOut put: (Array new: n * n withAll: 0.0) as: anElementTypeSymbol.
 	  self
 		  dispatchCompiledTiledMatmulOn: {
 				  bufA.
 				  bufB.
 				  bufOut }
-		  groups: n // PVTiledMatmulKernel tileWidth ] ensure: [
+		  groups: n // PVTiledMatmulKernel tileWidth
+		  elementType: anElementTypeSymbol ] ensure: [
 		  bufA destroy.
 		  bufB destroy.
 		  bufOut destroy ]
@@ -352,6 +387,27 @@ PVComputeTest >> testBenchmarkOfEachElementTypeDispatchesTheKernelOfThatWidth [
 		self assert: benchmark workgroupWidth equals: 16 ]
 ]
 
+{ #category : 'tests - benchmark' }
+PVComputeTest >> testBenchmarkRefusesAKernelItCannotFillBuffersFor [
+	"A benchmark fills three buffers of one width, so a kernel declaring buffers of two widths
+	 is refused rather than measured at one of them. The cooperative matrix kernel is such a
+	 kernel: half inputs, a float accumulator. An unknown family is refused the same way,
+	 before anything is dispatched, because there is no kernel to time."
+
+	self
+		should: [
+			PVBenchmark
+				on: ctx
+				order: 64
+				repeats: 1
+				kernel: PVKernelExamples >> #coopMatrixProductOf:by:into: ]
+		raise: PVTypeError.
+	self
+		should: [
+		PVPrecisionComparison on: ctx order: 64 repeats: 1 family: #nosuchfamily ]
+		raise: PVTypeError
+]
+
 { #category : 'tests' }
 PVComputeTest >> testBenchmarkRefusesAnUnknownElementType [
 	"There is no matmul kernel of that width, so there is nothing to measure. Falling back to
@@ -370,6 +426,21 @@ PVComputeTest >> testBenchmarkRejectsOrderThatTheGridCannotCover [
 	self
 		should: [ PVBenchmark on: ctx order: 100 repeats: 1 ]
 		raise: PVTypeError
+]
+
+{ #category : 'tests - benchmark' }
+PVComputeTest >> testBenchmarkReportNamesTheKernelItDispatched [
+	"Two rates at one matrix order and one precision mean nothing beside each other unless
+	 each table says which kernel produced it. The row is read off the method the benchmark
+	 dispatches, so it cannot name a kernel other than the one that ran."
+
+	| kernel rows |
+	kernel := PVKernelExamples tiledMatmulFor: PVBenchmark defaultElementType.
+	rows := (PVBenchmark on: ctx order: 64 repeats: 1 kernel: kernel)
+		        run;
+		        reportRows.
+	self assert: (rows anySatisfy: [ :row |
+			 (row at: #value) = kernel selector asString ])
 ]
 
 { #category : 'tests' }
@@ -432,6 +503,52 @@ PVComputeTest >> testBenchmarkRunsMatmulAndReportsTime [
 	result milliseconds = 0
 		ifTrue: [ self assert: result gigaflopsPerSecond isNil ]
 		ifFalse: [ self assert: result gigaflopsPerSecond > 0 ]
+]
+
+{ #category : 'tests - benchmark' }
+PVComputeTest >> testBenchmarkTakesPrecisionAndWidthFromTheKernelItWasGiven [
+	"A benchmark is told which kernel to time and reads everything else off it: the precision
+	 of the buffers it fills and the workgroup width the grid is built from. Stated over every
+	 family and precision the examples hold, so a kernel added later is covered without a test
+	 being written for it. A benchmark asked for a precision alone measures the naive matmul,
+	 the baseline every other family is read against."
+
+	PVKernelExamples matmulFamilies keysDo: [ :family |
+		PVBenchmark elementTypes do: [ :elementType |
+			| kernel benchmark |
+			kernel := PVKernelExamples matmulFor: elementType family: family.
+			benchmark := PVBenchmark
+				             on: ctx
+				             order: 64
+				             repeats: 1
+				             kernel: kernel.
+			self assert: benchmark kernelMethod equals: kernel.
+			self assert: benchmark elementType equals: elementType.
+			self assert: benchmark workgroupWidth equals: 16 ] ].
+	self
+		assert: (PVBenchmark on: ctx order: 64 repeats: 1) kernelMethod
+		equals: (PVKernelExamples
+				 matmulFor: PVBenchmark defaultElementType
+				 family: PVKernelExamples defaultMatmulFamily)
+]
+
+{ #category : 'tests - half precision' }
+PVComputeTest >> testCompiledTiledMatmulF16MatchesTheReferenceAtOrder64 [
+	"The half precision tiled kernel on the device, element by element. The tiles round the
+	 inputs to half and the stored result is a half, while the dot product itself accumulates
+	 in float, so the distance from the reference is the one the storage format forces and no
+	 more. Order 64 walks the tile loop four times rather than once."
+
+	| n result |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	n := 64.
+	result := self runCompiledTiledMatmulOfOrder: n elementType: #f16.
+	self assert: result size equals: n * n.
+	0 to: n - 1 do: [ :row |
+		0 to: n - 1 do: [ :col |
+			self
+				assertHalf: (result at: row * n + col + 1)
+				matchesReference: (self referenceAtRow: row col: col order: n) ] ]
 ]
 
 { #category : 'tests - matmul' }
@@ -873,6 +990,55 @@ PVComputeTest >> testNestedLoopsOnDevice [
 	kernel destroy ] ensure: [
 		bufIn destroy.
 		bufOut destroy ]
+]
+
+{ #category : 'tests - benchmark' }
+PVComputeTest >> testPrecisionComparisonOnTheTiledFamilyMeasuresTiledKernels [
+	"The measurement half precision was missing: the naive matmul is bound by global memory
+	 traffic, so a precision ratio taken there says little about the format. The tiled kernel
+	 reads each tile from shared memory sixteen times, so narrowing the tiles is visible in
+	 the time. Both precisions are measured in the one run, at one order and one repeat
+	 count."
+
+	| comparison |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	comparison := PVPrecisionComparison
+		              on: ctx
+		              order: 128
+		              repeats: 2
+		              family: PVKernelExamples tiledMatmulFamily.
+	self
+		assert: comparison family
+		equals: PVKernelExamples tiledMatmulFamily.
+	PVBenchmark elementTypes do: [ :elementType |
+		| benchmark |
+		benchmark := comparison benchmarkFor: elementType.
+		self
+			assert: benchmark kernelMethod
+			equals: (PVKernelExamples tiledMatmulFor: elementType).
+		self assert: benchmark result order equals: 128.
+		self assert: benchmark result milliseconds >= 0 ]
+]
+
+{ #category : 'tests - benchmark' }
+PVComputeTest >> testPrecisionComparisonReportNamesTheKernelBesideEachPrecision [
+	"A precision table holds one row per precision, so the kernel belongs in the row rather
+	 than in the title: the same comparison reads either family, and a row taken from the
+	 benchmark that produced it cannot name the other one."
+
+	| comparison rows |
+	ctx halfPrecisionAvailable ifFalse: [ ^ self skip ].
+	comparison := PVPrecisionComparison
+		              on: ctx
+		              order: 128
+		              repeats: 1
+		              family: PVKernelExamples tiledMatmulFamily.
+	rows := comparison reportRows.
+	PVBenchmark elementTypes doWithIndex: [ :elementType :index |
+		self
+			assert: ((rows at: index) at: #kernel)
+			equals:
+			(PVKernelExamples tiledMatmulFor: elementType) selector asString ]
 ]
 
 { #category : 'tests' }
