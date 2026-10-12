@@ -7,8 +7,7 @@ Two goals:
 1. **Full Vulkan API** exposed via uFFI with named constants (no magic numbers)
 2. **Pharo→SPIR-V compiler** — annotate a Pharo method with `<gpu>` and
    `<param:named:>` pragmas and it compiles to SPIR-V: a compute shader when
-   the parameters include a `WorkItem` and storage buffers, a plain function
-   otherwise
+   the parameters include storage buffers, a plain function otherwise
 
 ---
 
@@ -19,7 +18,8 @@ Two goals:
 | Pharo | 13.1.0 | Tested on 13.1.0 SNAPSHOT |
 | libvulkan.so.1 | Vulkan 1.3 | Or 1.2 + VK_KHR_synchronization2 |
 | libSDL2.so | 2.0.6+ | Graphics path only |
-| GPU | Any with Vulkan 1.3 compute | Tested on AMD/NVIDIA on Linux |
+| GPU | Any with Vulkan 1.3 compute | Developed against an Intel Iris Plus (ICL GT2) and Mesa lavapipe on Linux |
+| SPIRV-Tools | v2026.1 | Optional. `PVSpirvValidator` finds `spirv-val` on `PATH`; without it the validation tests report the tool as missing rather than failing |
 
 Linux only at this stage (uFFI library paths are Linux-specific).
 
@@ -27,16 +27,22 @@ Linux only at this stage (uFFI library paths are Linux-specific).
 
 ## Package layout
 
-| Package | What it contains |
+Two packages exist on disk, `PharoVulkan` and `PharoVulkan-Tests`. The names
+below are class tags inside them, not separate packages.
+
+| Tag | What it contains |
 |---|---|
-| `PharoVulkan-Bindings` | uFFI Vulkan commands, handle wrappers, named constant classes |
-| `PharoVulkan-Core` | VkContext, VkDevice, VkQueue, VkBuffer, VkCommandPool/Buffer, VkShaderModule |
-| `PharoVulkan-Compute` | Descriptor set layout, pipeline layout, compute pipeline, descriptor pool/set |
-| `Pharovulkan-graphics` | Swapchain, render pass, framebuffer, graphics pipeline, sync wrappers, hello-triangle scene |
-| `PharoVulkan-SPIRV` | SPIR-V IR builder (SpvModule, SpvBuilder, SpvFunction, SpvBlock, types, constants, serialiser) |
-| `PharoVulkan-Compiler` | Pharo bytecode → SPIR-V: 9-stage pipeline (decode, CFG, SSA, type inference, emit) |
-| `PharoVulkan-SDL2` | SDL2 Vulkan surface integration, window driver override |
-| `PharoVulkan-Generator` | Reads vk.xml / spirv.core.grammar.json and emits binding classes |
+| `Bindings` | uFFI Vulkan commands, handle wrappers, named constant classes |
+| `Constants` | Generated enumeration and bitmask constant classes |
+| `Core` | VkContext, VkDevice, VkQueue, VkBuffer, VkCommandPool/Buffer, VkShaderModule, device capability survey |
+| `Compute` | Descriptor set layout, pipeline layout, compute pipeline, descriptor pool/set, kernels, benchmarks |
+| `Graphics` | Swapchain, render pass, framebuffer, graphics pipeline, sync wrappers, hello-triangle scene |
+| `SPIRV` | SPIR-V IR builder (SpvModule, SpvBuilder, SpvFunction, SpvBlock, types, constants, serialiser) |
+| `Compiler`, `Compiler-Pipeline` | Pharo bytecode → SPIR-V: decode, CFG, recogniser, SSA, type inference, emit, plus the spirv-val wrapper |
+| `SDL2` | SDL2 Vulkan surface integration, window driver override |
+| `Generator` | Reads vk.xml / spirv.core.grammar.json and emits binding classes |
+| `Example` | `PVKernelExamples`, the 32 annotated kernels and shaders the tests compile |
+| `Exceptions` | `VkError`, `PVTypeError` |
 
 See `doc/architecture.md` for the full layer diagram and class descriptions.
 
@@ -119,18 +125,157 @@ mode, no descriptor bindings. `PVComputeKernel` cannot load it, and `spirv-val`
 rejects it on its own with `No OpEntryPoint instruction was found`. An entry
 point is emitted only for
 
-- a compute kernel: one `#workItem` parameter plus `#bufferOf_f32` or
-  `#bufferOf_i32` parameters, as in `vectorAdd:a:b:out:` above, or
+- a compute kernel: at least one storage buffer parameter, usually with a
+  `#workItem` parameter beside it, as in `vectorAdd:a:b:out:` above, or
 - a `<gpuVertex>` or `<gpuFragment>` shader.
+
+`PVKernelCompiler class >> computeParamTypes` is the list that decides, and it
+derives from the emitter's own tables rather than being written out by hand:
+`#workItem`, the buffer types `#bufferOf_f32`, `#bufferOf_i32`, `#bufferOf_f16`,
+`#matrixABufferOf_f16`, `#matrixBBufferOf_f16`, `#accumulatorBufferOf_f32`, and
+the shared-memory types `#sharedOf_f32`, `#sharedOf_i32`, `#sharedOf_f16`.
 
 Scalar `<gpu>` methods are lowering targets for those, not standalone shaders.
 Giving them an entry point would mean inventing a descriptor-binding convention
 for scalar parameters, which the `WorkItem`-plus-storage-buffer kernel ABI
-deliberately does not have. This is also why `PVSpirvValidatorTest` validates 5
-of the 19 kernel examples and not all 19: the other 14 are scalar functions with
-no entry point for the validator to start from.
+deliberately does not have. Of the 32 methods in `PVKernelExamples`, 21 get an
+entry point and 11 are scalar functions with no entry point for the validator to
+start from. `PVSpirvValidatorTest` runs spirv-val over 10 of the 21, plus
+`relu:` as the negative case that must be rejected with
+`No OpEntryPoint instruction was found`.
 
 For a full walkthrough see `doc/compute-tutorial.md`.
+
+---
+
+## Compute features beyond vector add
+
+Everything in this section is covered by `PVComputeTest` on the device, not only
+by compiler tests.
+
+### Control flow
+
+A compute kernel may contain one `ifTrue:ifFalse:`, one `whileTrue:`, or an
+outer `whileTrue:` whose body is an inner `whileTrue:` and nothing else. See
+"Known limitations" below for what is refused.
+
+### Work item
+
+`#workItem` parameters answer `x`, `y`, `z` for the global invocation id,
+`localX`, `localY`, `localZ` for the position inside the workgroup, `gridWidth`
+for the dispatch width in invocations, and `barrier` for a workgroup barrier.
+`PVWorkItem` is the host-side class, so a kernel body also runs in the image.
+
+### Workgroup size
+
+`<localSize: #( 16 16 1 )>` on the kernel. The default is `#( 64 1 1 )`. The
+grid must cover the problem exactly: a benchmark whose order is not a multiple
+of the local size raises `PVTypeError`.
+
+### Half precision
+
+`#f16` and `#bufferOf_f16`, with `asF16` and `asF32` for conversion, and on the
+host `VkBuffer storageBufferOfHalves:on:`, `storageBuffer:of:on:`, `put:as:` and
+`elementsAs:`. `PVFloat16` does the IEEE-754 binary16 encode and decode.
+`VkContext` enables `VK_KHR_shader_float16_int8` and `VK_KHR_16bit_storage`
+where the device reports them.
+
+### Subgroup reduction
+
+`subgroupSum` on an `#f32` value, which lowers to
+`OpGroupNonUniformFAdd … Reduce`. `PVSubgroupDotProduct` reduces a 1024 element
+dot product in hardware and agrees with the host exactly.
+
+The subgroup size a device reports is the **widest** subgroup it offers, not the
+width a shader runs at — this driver reports 32 and ran the kernel 16 wide. The
+kernel therefore measures its own width with a second reduction instead of
+dividing by the reported number.
+
+### Shared memory
+
+`<shared: #f32 named: #tileA count: 256>` declares a Workgroup array. It is a
+kernel parameter the host never binds; the pragma order says which arguments are
+buffers and which are tiles. `PVTiledMatmulKernel` and
+`PVKernelExamples >> tiledMatmulF32:a:b:out:tileA:tileB:` are the hand-built and
+the compiled form of the same tiled matmul, and
+`tiledMatmulF16:a:b:out:tileA:tileB:` is the half precision twin, with
+`<shared: #f16 …>` tiles and the dot product still accumulated in float.
+
+### Cooperative matrix
+
+`coopMatLoad:`, `coopMatMulAdd:` and `coopMatStore:`, with the operand role
+carried by the parameter type (`#matrixABufferOf_f16`, `#matrixBBufferOf_f16`,
+`#accumulatorBufferOf_f32`), because one cooperative matrix type is fixed to one
+role in SPIR-V. `VkContext cooperativeMatrixContext` selects a device by
+capability rather than by position, and
+`PVCooperativeMatrixSurvey` reports which devices offer the extension.
+
+On this machine only Mesa lavapipe does, so this path is correctness only; see
+the performance table.
+
+### Benchmarks
+
+`PVBenchmark on: ctx order: n repeats: k kernel: aCompiledMethod` times that
+kernel and derives 2·N³/t GFLOP/s. The element width and the workgroup width are
+read out of the kernel's own `<param:>` and `<localSize:>` pragmas, so the
+buffers filled and the module dispatched cannot disagree; a kernel declaring
+buffers of more than one width is refused. `on:order:repeats:elementType:` and
+`on:order:repeats:` are the shorthands that pick a kernel out of
+`PVKernelExamples matmulFor:`.
+
+`PVPrecisionComparison on: ctx order: n repeats: k family: aFamily` times every
+element type at one order within one kernel family — `PVKernelExamples
+defaultMatmulFamily` for the naive kernels, `tiledMatmulFamily` for the tiled
+ones. `PVTiledMatmulComparison` times naive, hand-built tiled and compiled tiled
+on one set of buffers, and `PVCooperativeMatrixComparison` compares the
+hand-built and compiled cooperative matrix kernels against a CPU reference.
+
+Measured on the Intel Iris Plus, f32 matmul, host wall clock around a dispatch
+that waits on the queue:
+
+| Kernel | N | Time | Rate |
+|---|---|---|---|
+| Naive | 128 | 2.7 ms | 1.6 GFLOP/s |
+| Naive | 256 | 6.0 ms | 5.6 GFLOP/s |
+| Naive | 512 | 34.8 ms | 7.7 GFLOP/s |
+| Tiled, hand-built | 512 | 7.5 ms | 35.8 GFLOP/s |
+| Tiled, compiled from Pharo | 512 | 7.5 ms | 35.8 GFLOP/s |
+
+Tiling is **4.6× faster** than the naive kernel, and going through the DSL costs
+1.0 — the two tiled modules produce bit-identical output.
+
+What half precision earns depends on the kernel, and the two kernels disagree.
+
+On the naive kernel it earns nothing: 1.0 to 1.1, not the 1.5 to 2 that was
+expected. N=256 6.8→6.2 ms, N=512 40.9→38.8 ms, N=1024 311.4→311.4 ms. The dot
+product accumulates in f32, so only the loads and the store are narrower, and
+the naive kernel re-reads each row and column N times, so traffic and latency
+dominate the element width.
+
+On the tiled kernel it earns 1.3 to 1.5, which is the comparison worth making,
+because a tile held in shared memory is half the bytes in half precision and the
+f32 kernel's own 4.6× says that this kernel is the one the memory system limits:
+
+| Kernel | N | f32 | f16 | Ratio |
+|---|---|---|---|---|
+| Tiled | 256 | 2.2–2.4 ms | 1.6 ms | 1.38–1.50 |
+| Tiled | 512 | 7.7–8.7 ms | 5.6–5.9 ms | 1.32–1.55 |
+| Tiled | 1024 | 58.0–58.2 ms | 38.8 ms | 1.49–1.50 |
+
+In rates, tiled f16 reaches 46.3 GFLOP/s at N=512 and 55.3 at N=1024, against
+34.4 and 37.0 for tiled f32. Against the naive f32 baseline tiled f16 is 6.0× at
+N=512 and 7.1× at N=1024, but that is not the same computation — the inputs and
+the result are halves — so the project's like-for-like speedup claim stays the
+4.6× above.
+
+So quote a half-precision win for the tiled kernel only, and quote none for the
+naive one.
+
+The cooperative matrix kernel is 2 ms hand-built and 3 ms compiled for one 8×8
+dispatch, both 6.7e-4 from the float reference and identical to each other.
+Those numbers show only that it runs: the one device here offering the extension
+is a CPU implementation, so no ratio measured on it says anything about a matrix
+unit.
 
 ---
 
@@ -168,6 +313,11 @@ PVVulkanDriver uninstall.
 
 For a full walkthrough see `doc/graphics-tutorial.md`.
 
+The same path is covered by tests on the device: `PVGraphicsTest` asserts the
+rendered pixels offscreen and opens a real window for the swapchain, frame and
+teardown tests. See "Known limitations and gotchas" for what those tests prove
+and what they cannot.
+
 ---
 
 ## Documentation
@@ -177,6 +327,11 @@ For a full walkthrough see `doc/graphics-tutorial.md`.
 | `doc/architecture.md` | Layer diagram, all key classes, compute and graphics flows |
 | `doc/compute-tutorial.md` | Step-by-step compute: context, buffers, kernel annotation, compiler, dispatch, readback |
 | `doc/graphics-tutorial.md` | Step-by-step graphics: window, surface, swapchain, shaders, pipeline, render loop |
+| `doc/glsl-api-tutorial.md` | The GLSL-like vector and matrix DSL |
+| `PHASE7-PLAN.md` | Device measurements, and the write-up of every Phase 7 item from the capability query to cooperative matrix |
+| `CFG-PLAN.md` | What the CFG recogniser accepts and refuses, and why |
+| `GRAPHICS-GPU-PLAN.md` | How the graphics path got device coverage: offscreen rendering, the pixels asserted, the window tests, and what none of them can prove |
+| `DEFECTS-PLAN.md` | The three incidental defects recorded during Phase 7, each with the verification behind it, and what is deliberately left out of scope |
 
 ---
 
@@ -212,7 +367,11 @@ VkBuffer storageBufferUsage      "= 32 — VK_BUFFER_USAGE_STORAGE_BUFFER_BIT"
 VkImageUsage colorAttachmentBit  "= 16 — VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT"
 ```
 Prefer `VkBuffer storageBuffer: elementCount on: aDevice`, which applies the
-usage flag and converts the element count to bytes. Other flags (transfer
+usage flag and converts the element count to bytes, or
+`storageBuffer: elementCount of: #f16 on: aDevice` when the elements are not
+f32 — that form, with `put:as:` and `elementsAs:`, is the element-type front
+door, and it asks the emitter's own table for the element size rather than
+assuming 4 bytes. Other flags (transfer
 source and destination, vertex buffer = 128) have no named constant yet; add
 one to `VkBuffer` or `VkImageUsage` when you first need it instead of writing
 the integer at the call site.
@@ -241,6 +400,25 @@ named emit methods (`emitLoad:type:`, `emitBinaryOp:...`, etc.).
 instructions that `SpvBuilder` does not yet wrap. Both serialize to the same
 binary format via `mod serialize`.
 
+### Device selection is by position unless you ask for capability
+`VkContext computeContext` takes the first device with a compute queue, which on
+a machine with a software rasteriser installed beside a real GPU may not be the
+device you want. `VkContext computeContextRequiring: #( #supportsCooperativeMatrix )`
+takes the first device answering true to every named `VkPhysicalDevice`
+predicate instead. `PVCooperativeMatrixSurvey` and `VkContext deviceFeatureReport`
+show what each device offers.
+
+### Validate every module you emit
+`PVSpirvValidator on: aByteArray` finds `spirv-val` on `PATH` and answers
+`isValid`, `validationOutput` and `validationReport`, with a Validation
+inspector tab. Treat a validation failure as a compiler bug.
+
+Validation cannot see a *flattened* control-flow graph, though: a module whose
+loop was silently dropped still validates. Assert on decoded opcode counts
+(`OpLoopMerge`, `OpSelectionMerge`, `OpPhi`) whenever a change could flatten
+control flow — `PVCompilerTest >> opcodeCountsIn:` does this, and
+`PVSpirvValidator >> inspectorControlFlow:` shows the same per block.
+
 ### No Vulkan validation layers in the current setup
 The context creation does not enable `VK_LAYER_KHRONOS_validation`. If you
 hit a strange crash or incorrect result, add `VK_KHRONOS_validation` to the
@@ -251,33 +429,45 @@ temporarily to get driver-level error messages.
 
 ## Known limitations and gotchas
 
-### Pharo→SPIR-V compiler (Phase 1–6 scope)
+### Pharo→SPIR-V compiler
 
 - **Scalar `<gpu>` methods are functions, not shader modules.** Only a compute
-  kernel (a `#workItem` parameter plus `#bufferOf_*` parameters) or a
+  kernel (a storage buffer parameter, usually with a `#workItem` beside it) or a
   `<gpuVertex>`/`<gpuFragment>` shader gets an `OpEntryPoint`. See
   "`<gpu>` alone does not produce a shader module" above.
-- **Integer literals beyond 0.** Pharo `SmallInteger` literals in a `<gpu>`
-  method may not round-trip cleanly through the type inferencer for all
-  operators. `0`, `1`, `0.0`, `1.0` are safe; arbitrary literals may cause
-  `PVTypeError`.
-- **Exactly one control-flow construct per method.** The CFG recogniser matches
-  one `ifTrue:ifFalse:` or one `whileTrue:`, and the node it returns must cover
-  every basic block of the method. Anything else — nested conditions, nested
-  loops, a condition inside a loop body, *and also* two constructs in sequence —
-  raises `PVTypeError signal: 'Unrecognized CFG shape'`. The sequential cases
-  were silently miscompiled before 2026-10-09; `PVCfgShapeFixture` pins all seven
-  shapes.
+- **One control-flow construct per method, plus one nesting pattern.** The CFG
+  recogniser matches one `ifTrue:ifFalse:`, one `whileTrue:`, or an outer
+  `whileTrue:` whose body is an inner `whileTrue:`, and the node it returns must
+  cover every basic block of the method. Anything else — nested conditions, a
+  condition inside a loop body, a loop followed by a condition, *and also* two
+  constructs in sequence — raises
+  `PVTypeError signal: 'Unrecognized CFG shape'`. The sequential cases were
+  silently miscompiled before 2026-10-09; `PVCfgShapeFixture` pins every shape
+  with its expected verdict.
+- **No scalars passed to a kernel.** There are no push constants and no
+  specialisation constants. A kernel learns its geometry from `wi gridWidth` or
+  reads the value out of a `#bufferOf_i32`. This is why the matmul kernels take
+  no order argument.
+- **A kernel body may not send a message the selector table does not map**,
+  which includes asking a class for a named constant. Tile width therefore
+  appears as a literal in the tiled matmul, with a comment saying why.
+  Arbitrary `#f32` and `#i32` literals are fine: a kernel adding `7` or
+  multiplying by `2.5` compiles and passes spirv-val.
 - **No cross-method calls.** The compiler does not inline callees. Each
   kernel must be self-contained.
+- **No GPU-side timing.** There is no query pool and no `vkCmdWriteTimestamp`.
+  Every benchmark number is host wall clock around a dispatch that waits on the
+  queue — honest for whole-dispatch comparisons, useless for anything finer.
 
 ### Graphics path
 
 - **No resize handling.** The swapchain is created once for the initial
-  extent. If the window is resized, `vkAcquireNextImageKHR` or
-  `vkQueuePresentKHR` will return `VK_ERROR_OUT_OF_DATE_KHR` and
-  `VkError` will be signalled. Recreating the swapchain is not yet
-  implemented.
+  extent. A resize makes `vkAcquireNextImageKHR` or `vkQueuePresentKHR`
+  answer `VK_SUBOPTIMAL_KHR`, which is a success code and is tolerated —
+  the frame carries on with a swapchain that no longer matches the surface.
+  Once the swapchain is genuinely out of date they answer
+  `VK_ERROR_OUT_OF_DATE_KHR` and `VkError` is signalled. Recreating the
+  swapchain is not yet implemented.
 - **Single queue.** Both graphics and compute work go through
   `ctx computeQueue` (the graphics+compute queue family). Separate
   transfer or async-compute queues are not used.
@@ -288,6 +478,28 @@ temporarily to get driver-level error messages.
   graphics pipeline uses an empty layout. Adding uniforms requires a
   descriptor set layout, pool, and set — see the compute pipeline as the
   pattern to follow, using bind point 0 (graphics) instead of 1 (compute).
+- **What the graphics tests do and do not prove.** The graphics path is now
+  tested on the device. Offscreen, `PVOffscreenTriangleScene` renders into an
+  image it owns and reads the pixels back, so the triangle's shape,
+  orientation, colours and opacity are asserted pixel by pixel, and the
+  DSL-compiled shaders are compared with the hand-built ones. On a window,
+  `PVGraphicsTest` opens a real one and asserts the swapchain's image views,
+  that rendering visits every swapchain image, and that teardown — including
+  an interrupted frame — releases every handle. The stub tests
+  (`PVRecordingContextStub`, `PVFailingTriangleSceneStub`) are kept for the
+  failure branches a working device will not produce on demand. **What no test
+  asserts is what appears on screen:** reading back a presented image needs
+  another copy, so the window tests prove the loop runs and the handles are
+  managed, and the offscreen tests are where pixels are proven. Where no
+  display server is available the window tests skip and state the reason.
+- **Run graphics examples in a fresh image before GPU tests.** A triangle
+  example that is interrupted used to strand a live instance, device, surface
+  and swapchain, and `VkCoreTest` then created a second device against it and
+  segfaulted. `PVVulkanDriver class >> installDuring:` and `ensure:`-nested
+  teardown fixed that, but `VkHandle >> finalize` is deliberately a no-op, so
+  only an explicit `destroy` ever reclaims a stray handle. If an image dies
+  during GPU tests, ask first whether a graphics example ran earlier in the
+  session.
 
 ### General
 

@@ -250,7 +250,7 @@ VkPipelineLayout on: ctx device setLayouts: (Array with: descriptorSetLayout)
     │
 VkComputePipeline on: shaderModule layout: pipelineLayout device: ctx device
     │
-VkDescriptorPool on: ctx device maxSets: buffers size
+VkDescriptorPool on: ctx device maxSets: 1 descriptorCount: buffers size
     │ allocateSet: descriptorSetLayout
     │
 descriptorSet updateStorageBuffer: buf atBinding: i   (for each buffer)
@@ -445,14 +445,21 @@ stage=`VkShaderStage computeBit`, entry point = `'main'`).
 
 ```smalltalk
 | pool descriptorSet |
-pool := VkDescriptorPool on: ctx device maxSets: 2.
-"maxSets = total storage buffer count"
+pool := VkDescriptorPool on: ctx device maxSets: 1 descriptorCount: 2.
+"maxSets = sets allocated out of the pool; descriptorCount = storage buffers they hold"
 
 descriptorSet := pool allocateSet: dsl.
 ```
 
-`VkDescriptorPool>>create:` creates one `VkDescriptorPoolSize` entry of
-type `VkDescriptorType storageBuffer` with `descriptorCount = maxSets`.
+`VkDescriptorPool>>create:descriptorCount:` creates one
+`VkDescriptorPoolSize` entry of type `VkDescriptorType storageBuffer` with
+that `descriptorCount`, and bounds the pool at `maxSets` sets. The two
+numbers are independent: a compute kernel puts every binding in one set, so
+it asks for one set holding as many descriptors as it has buffers. Asking
+for `maxSets` 0 — which the old one-argument API did for a kernel with no
+buffers — is accepted by the driver here and then fails one call later in
+`allocateSet:` with `VK_ERROR_OUT_OF_POOL_MEMORY`; `PVComputeKernel >>
+prepare` now refuses a kernel with no bound buffer instead.
 
 ### 6. Bind buffers to descriptor set
 

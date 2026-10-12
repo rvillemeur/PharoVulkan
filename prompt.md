@@ -627,7 +627,7 @@ Instance variables: `handle` (VkDevice_H), `physicalDevice`
 Key methods:
 - `getQueue: familyIndex index: queueIndex` → `VkQueue`.
 - `createCommandPool: queueFamilyIndex` → `VkCommandPool`.
-- `createDescriptorPool: maxSets` → `VkDescriptorPool`.
+- `createDescriptorPool: maxSets descriptorCount: descriptorCount` → `VkDescriptorPool`.
 - `allocateBuffer: size usage: usageFlags` → `VkBuffer`.
 - `createShaderModule: spirvBytes` → `VkShaderModule`.
 - `destroy` — calls `vkDestroyDevice`.
@@ -1749,16 +1749,74 @@ subgroup reductions.
 
 **Packages**: extend `PharoVulkan-Compute`, extend `PharoVulkan-Compiler`
 
-**Done when**: cooperative matmul produces correct output and benchmarks
-show speedup over Phase 5 scalar matmul.
+**Done when** (rewritten 10 October 2026, after the device probe of 7-A; the
+original wording is kept below it): device capabilities are queried and
+reported; compute kernels support one control-flow construct; a float32 matmul
+produces correct output and a benchmark number; a float16 matmul produces
+correct output and is benchmarked against it; a subgroup reduction produces
+correct output; cooperative matrix support is queried per device, the hardware
+device here is skipped with a stated reason because it lacks the extension, and
+the cooperative matrix path runs for correctness on the one device that does
+offer it.
 
-This phase is open-ended. Design when Phase 6 is complete.
+Original wording, not deliverable on this machine: *cooperative matmul produces
+correct output and benchmarks show speedup over Phase 5 scalar matmul.* The
+hardware device here, an Intel Iris Plus (ICL GT2), reports no
+`VK_KHR_cooperative_matrix` and no `VK_NV_cooperative_matrix`, and it has no
+matrix unit, so no speedup claim could be honest even if a path existed.
 
-Minimum spec:
-- Query `VK_KHR_cooperative_matrix` support; skip on devices that lack it.
-- Add `CoopMatrix` type to `PVSelectorTable`.
-- Add `coopMatLoad:`, `coopMatStore:`, `coopMatMulAdd:` selectors.
-- Benchmark 512×512 float16 matmul vs Phase 5 float32 scalar baseline.
+Minimum spec, with what was delivered:
+- ✅ Query `VK_KHR_cooperative_matrix` support; skip on devices that lack it.
+  `VkPhysicalDevice >> supportsCooperativeMatrix`, `VkContext >>
+  cooperativeMatrixAvailable` and `PVCooperativeMatrixSurvey`, which surveys
+  every device the loader offers and states the reason for the skip.
+- ✅ Add the cooperative matrix types to `PVSelectorTable` (7-H, 10 October 2026).
+  Mesa's `lavapipe` (`llvmpipe`) on this machine reports the extension, so the
+  correctness-only target was taken. The operand role rides on the parameter
+  type — `#matrixABufferOf_f16`, `#matrixBBufferOf_f16`,
+  `#accumulatorBufferOf_f32` — because one cooperative matrix type is fixed to
+  one role in SPIR-V, so a load of the A factor and a load of the B factor are
+  different types and cannot share one mapping.
+- ✅ Add `coopMatLoad:`, `coopMatStore:`, `coopMatMulAdd:` selectors (7-H).
+  `PVKernelExamples >> coopMatrixProductOf:by:into:` is the kernel in Pharo
+  source; it validates under spirv-val, runs on lavapipe, and matches both the
+  CPU reference and the hand-built module. `PVCooperativeMatrix` and two
+  extension methods on `SequenceableCollection` give the same three selectors an
+  honest meaning in the image, so the kernel body is runnable Pharo and not a
+  set of markers for the compiler.
+- ⏸ Benchmark 512×512 float16 matmul against the scalar baseline — the float16
+  matmul is benchmarked against float32 in 7-D (1.0 to 1.1, not the expected
+  1.5 to 2), but not through cooperative matrix. The only device here offering
+  cooperative matrix is a CPU implementation, and its fixed configurations are
+  all M8 N8 K8, so a 512×512 figure from it would measure llvmpipe rather than a
+  matrix unit.
+
+See `PHASE7-PLAN.md` §7-F for the device survey and §7-H for the cooperative
+matrix work it opened.
+
+Beyond the minimum spec, 7-G delivered the tiled matmul with shared memory
+(10 October 2026). The emitter gained the `Workgroup` storage class, fixed-length
+array types and `OpControlBarrier`; the DSL gained `<shared: #f32 named: #tile
+count: n>`, `wi localX/localY/localZ` and `wi barrier`; and the recogniser gained
+exactly one nesting pattern, an outer loop whose body is an inner loop
+(`PVNestedLoopNode`). At N = 512 on the Intel Iris Plus the tiled kernel runs
+7.5 ms against 34.8 ms for the naive baseline — **4.6× faster** — and the kernel
+written in Pharo source matches the hand-built module to the millisecond and to
+the last bit of output, so going through the DSL costs 1.0.
+
+7-H then closed the cooperative matrix path for correctness (10 October 2026).
+`VkContext class >> cooperativeMatrixContext` selects a device by capability
+rather than by position; `VkPhysicalDeviceCooperativeMatrixFeaturesKHR` and
+`VkPhysicalDeviceVulkanMemoryModelFeatures` are enabled together, because
+spirv-val refuses `CooperativeMatrixKHR` in a Shader module without
+`VulkanMemoryModel`; the reported configurations are read rather than assumed,
+and the kernel uses the f16 × f16 + f32 → f32 one at M8 N8 K8 subgroup scope
+that lavapipe offers. The emitter gained `SpvCooperativeMatrixShape`,
+`SpvCooperativeMatrixType` and the load, store and mul-add instructions. One
+dispatch each: 2 ms hand-built, 3 ms compiled, both 6.7e-4 from the float
+reference and identical to each other. Those numbers show only that the kernel
+runs; the device is a CPU implementation, so the 4.6× from 7-G on real hardware
+remains this project's only speedup claim.
 
 ---
 
