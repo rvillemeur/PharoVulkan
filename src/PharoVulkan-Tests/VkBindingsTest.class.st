@@ -72,6 +72,147 @@ VkBindingsTest >> testCreateDestroyInstance [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testDescriptorPoolCreateInfoCarriesItsOwnStructureType [
+	"Observed, not assumed: FFIStructure class >> fromHandle: sends initialize after setting
+	 the store, so externalInstance answers a block of memory outside the image that already
+	 names its structure type, exactly as new does inside the image. create:descriptorCount:
+	 relies on that and writes only the two counts and the pointer, so this test is what stops
+	 initialize from quietly dropping sType."
+
+	| external |
+	#( #new #externalInstance ) do: [ :creator |
+		| info |
+		info := VkDescriptorPoolCreateInfo perform: creator.
+		self
+			assert: info sType
+			equals: VkStructureType descriptorPoolCreateInfo.
+		self assert: info maxSets equals: 0.
+		self assert: info poolSizeCount equals: 0.
+		creator = #externalInstance ifTrue: [ info getHandle free ] ].
+	external := VkDescriptorPoolSize externalInstance.
+	[
+	self assert: external type equals: 0.
+	self assert: external descriptorCount equals: 0 ]
+		ensure: [ external getHandle free ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorPoolCreateInfoLayoutMatchesTheCLayout [
+	"VkDescriptorPoolCreateInfo is declared field by field. The offsets to pin are the ones
+	 the driver reads: the two pointer members sit on eight byte boundaries, which puts a four
+	 byte hole between poolSizeCount and pPoolSizes, and the struct is forty bytes. A field
+	 whose offset uFFI computed differently would be written where the driver does not look."
+
+	| rows |
+	rows := VkDescriptorPoolCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #maxSets #poolSizeCount #pPoolSizes ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 ).
+	self assert: VkDescriptorPoolCreateInfo byteSize equals: 40.
+	rows do: [ :each |
+		self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorPoolCreateInfoLayoutRowsReadTheStoreAndLeaveItAlone [
+	"The Layout tab the structures inherit prints one row per declared field, read from this
+	 instance's own store. The facts to state are that a row's head really is the bytes at that
+	 field's offset, little end first, and that building every row leaves the store untouched:
+	 a view that moved a byte of a create info would change what the driver reads. The expected
+	 head is derived from the count the example sets, so it follows a change to the example."
+
+	| info before rows maxSetsRow expected |
+	info := VkDescriptorPoolCreateInfo exampleForOneSetOfThreeDescriptors.
+	before := info getHandle copy.
+	rows := VkDescriptorPoolCreateInfo layoutRows.
+	rows do: [ :each | info headOfFieldAt: each second size: each third ].
+	self assert: info getHandle equals: before.
+	self assert: info maxSets equals: VkDescriptorPool exampleMaxSets.
+	self assert: VkDescriptorPool exampleMaxSets < 256.
+	maxSetsRow := rows detect: [ :each | each first = #maxSets ].
+	expected := (VkDescriptorPool exampleMaxSets
+		             printPaddedWith: $0
+		             to: 2
+		             base: 16) , ' 00 00 00'.
+	self
+		assert: (info headOfFieldAt: maxSetsRow second size: maxSetsRow third)
+		equals: expected
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorPoolCreateInfoPointsAtThePoolSizeItWasGiven [
+	"pPoolSizes is a pointer field: the create info must hold the address of the pool size, not
+	 a copy of its bytes, because the driver follows it. Both stores are allocated outside
+	 object memory, which is the arrangement create:descriptorCount: uses, and the read back
+	 goes through the pointer."
+
+	| size info |
+	size := VkDescriptorPoolSize externalInstance.
+	[
+	size type: VkDescriptorType storageBuffer.
+	size descriptorCount: VkDescriptorPool exampleDescriptorCount.
+	info := VkDescriptorPoolCreateInfo externalInstance.
+	[
+	info maxSets: VkDescriptorPool exampleMaxSets.
+	info poolSizeCount: VkDescriptorPool poolSizeCount.
+	info pPoolSizes: size.
+	self assert: info pPoolSizes getHandle equals: size getHandle.
+	self
+		assert: info pPoolSizes descriptorCount
+		equals: VkDescriptorPool exampleDescriptorCount.
+	self assert: info pPoolSizes type equals: VkDescriptorType storageBuffer.
+	self assert: info maxSets equals: VkDescriptorPool exampleMaxSets ]
+		ensure: [ info getHandle free ] ] ensure: [ size getHandle free ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorPoolCreateWritesThroughDeclaredFields [
+	"The pool size and the create info are filled through the accessors uFFI generated from
+	 their field specifications. The fact to state is that no method building either one pokes
+	 a raw offset into a block of bytes: a reintroduced unsignedLongAt:put: is a hand counted
+	 offset again, and one counted short of the struct writes outside it. The methods are found
+	 by the classes they mention rather than listed, so splitting the method further keeps them
+	 covered, and the count is asserted so a rename cannot leave nothing tested.
+	 allocateSet: is deliberately outside this: it still writes VkDescriptorSetAllocateInfo as
+	 a byte block, which is its own unit of work."
+
+	| structures builders pokes |
+	structures := #( #VkDescriptorPoolSize #VkDescriptorPoolCreateInfo ).
+	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
+	            #byteAt:put: #unsignedShortAt:put: ).
+	builders := VkDescriptorPool methods select: [ :each |
+		            each literals anySatisfy: [ :literal |
+			            literal isVariableBinding and: [
+				            structures includes: literal key ] ] ].
+	self assert: builders size >= 2.
+	builders do: [ :each |
+		self
+			assertEmpty: (each messages select: [ :message |
+					 pokes includes: message ]) ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorPoolSizeLayoutMatchesTheCLayout [
+	"VkDescriptorPoolSize is declared field by field, so the two offsets come from the
+	 specification uFFI compiled rather than from bytes counted by hand in the method that
+	 writes it. The C layout is two uint32 members in one eight byte struct."
+
+	| rows |
+	rows := VkDescriptorPoolSize layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #type #descriptorCount ).
+	self assert: (rows collect: [ :each | each second ]) asArray equals: #( 0 4 ).
+	self assert: (rows collect: [ :each | each third ]) asArray equals: #( 4 4 ).
+	self assert: VkDescriptorPoolSize byteSize equals: 8
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testEnumeratePhysicalDevices [
 
 	| info instance devices |

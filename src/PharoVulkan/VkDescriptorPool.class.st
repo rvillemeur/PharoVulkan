@@ -155,40 +155,19 @@ VkDescriptorPool >> allocateSet: aSetLayout [
 
 { #category : 'lifecycle' }
 VkDescriptorPool >> create: aMaxSetCount descriptorCount: aDescriptorCount [
-	"VkDescriptorPoolSize 8 bytes + VkDescriptorPoolCreateInfo 40 bytes, sType=descriptorPoolCreateInfo.
-	 The two counts are different numbers: maxSets bounds the sets allocated out of the pool,
-	 descriptorCount the descriptors they hold between them."
-	| sizeBuf info poolBuf result |
+	"The two counts are different numbers: maxSets bounds the sets allocated out of the pool,
+	 descriptorCount the descriptors they hold between them. Both are kept in the instance, so
+	 the Pool tab still answers after the handle has gone.
+	 The pool size outlives the create info that points at it and is freed here, after the
+	 driver has read both."
+
+	| size |
 	maxSets := aMaxSetCount.
 	descriptorCount := aDescriptorCount.
 	setsAllocated := 0.
-	sizeBuf := ExternalAddress allocate: 8.
-	handle := [
-	          sizeBuf
-		          unsignedLongAt: 1
-		          put: self class descriptorType.
-	          sizeBuf unsignedLongAt: 5 put: descriptorCount.
-	          info := ExternalAddress allocate: 40.
-	          [
-	          info
-		          unsignedLongAt: 1
-		          put: VkStructureType descriptorPoolCreateInfo.
-	          info pointerAt: 9 put: ExternalAddress null.
-	          info unsignedLongAt: 17 put: 0.
-	          info unsignedLongAt: 21 put: maxSets.
-	          info unsignedLongAt: 25 put: self class poolSizeCount.
-	          info pointerAt: 33 put: sizeBuf.
-	          poolBuf := ExternalAddress allocate: 8.
-	          [
-	          result := Vk
-		                    createDescriptorPool: device handle
-		                    createInfo: info
-		                    allocator: ExternalAddress null
-		                    descriptorPoolOut: poolBuf.
-	          Vk checkResult: result.
-	          VkDescriptorPool_H fromHandle: (poolBuf pointerAt: 1) ]
-		          ensure: [ poolBuf free ] ] ensure: [ info free ] ]
-		          ensure: [ sizeBuf free ]
+	size := self poolSizeOutsideObjectMemory.
+	handle := [ self handleForPoolSize: size ]
+		          ensure: [ size getHandle free ]
 ]
 
 { #category : 'accessing' }
@@ -216,6 +195,41 @@ VkDescriptorPool >> device: aDevice [
 { #category : 'accessing' }
 VkDescriptorPool >> handle [
 	^ handle
+]
+
+{ #category : 'private' }
+VkDescriptorPool >> handleForCreateInfo: aCreateInfo [
+	"vkCreateDescriptorPool writes the new pool's handle into an eight byte block outside the
+	 image. The result is checked before that block is read, because a failed call leaves it
+	 holding whatever was there."
+
+	| poolBuf result |
+	poolBuf := ExternalAddress allocate: 8.
+	^ [
+	  result := Vk
+		            createDescriptorPool: device handle
+		            createInfo: aCreateInfo getHandle
+		            allocator: ExternalAddress null
+		            descriptorPoolOut: poolBuf.
+	  Vk checkResult: result.
+	  VkDescriptorPool_H fromHandle: (poolBuf pointerAt: 1) ]
+		  ensure: [ poolBuf free ]
+]
+
+{ #category : 'private' }
+VkDescriptorPool >> handleForPoolSize: aPoolSize [
+	"The create info, filled through the accessors uFFI generated, so no offset is counted
+	 here. externalInstance runs initialize, so the structure type and the null chain pointer
+	 are already in place and only the counts and the pointer are written. Its store is freed
+	 as soon as the driver has read it; the pool size it points at belongs to the caller."
+
+	| info |
+	info := VkDescriptorPoolCreateInfo externalInstance
+		        maxSets: maxSets;
+		        poolSizeCount: self class poolSizeCount;
+		        pPoolSizes: aPoolSize;
+		        yourself.
+	^ [ self handleForCreateInfo: info ] ensure: [ info getHandle free ]
 ]
 
 { #category : 'inspector' }
@@ -261,6 +275,19 @@ VkDescriptorPool >> poolReport [
 		  (self
 			   rowNamed: self class descriptorTypeRowName
 			   value: self class descriptorTypeName) }
+]
+
+{ #category : 'private' }
+VkDescriptorPool >> poolSizeOutsideObjectMemory [
+	"The one VkDescriptorPoolSize this pool asks for, declared field by field so uFFI computes
+	 its two offsets. Its store is outside object memory because the create info holds a
+	 pointer to it: a store inside the image could be moved by the garbage collector between
+	 that pointer being written and the driver reading it. The caller frees it."
+
+	^ VkDescriptorPoolSize externalInstance
+		  type: self class descriptorType;
+		  descriptorCount: descriptorCount;
+		  yourself
 ]
 
 { #category : 'reporting' }

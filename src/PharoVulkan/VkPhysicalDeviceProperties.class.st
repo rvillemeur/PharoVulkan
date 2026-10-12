@@ -62,29 +62,6 @@ VkPhysicalDeviceProperties class >> fieldsDesc [
 	)
 ]
 
-{ #category : 'constants' }
-VkPhysicalDeviceProperties class >> headByteCount [
-	"Enough bytes to recognise a field in a table row, few enough that the long array fields do
-	 not push the other columns off the view."
-
-	^ 8
-]
-
-{ #category : 'accessing' }
-VkPhysicalDeviceProperties class >> layoutRows [
-	"The layout read back from the field specification the class compiled, never a second copy
-	 of the declaration: name, byte offset and byte count per field. uFFI keeps offsets as
-	 one based indices into the store, so each one is shifted to the C offset the driver uses."
-
-	| spec |
-	spec := self fieldSpec.
-	^ spec fieldNames with: spec types collect: [ :fieldName :type |
-		  {
-			  fieldName.
-			  (self classVariableNamed: (self offsetVariableNameFor: fieldName)) value - 1.
-			  type externalTypeSize } ]
-]
-
 { #category : 'accessing - structure variables' }
 VkPhysicalDeviceProperties >> apiVersion [
 	"This method was automatically generated"
@@ -159,44 +136,6 @@ VkPhysicalDeviceProperties >> driverVersion [
 VkPhysicalDeviceProperties >> driverVersion: anObject [
 	"This method was automatically generated"
 	handle unsignedLongAt: OFFSET_DRIVERVERSION put: anObject
-]
-
-{ #category : 'accessing' }
-VkPhysicalDeviceProperties >> headOfFieldAt: anOffset size: aSize [
-	"The first bytes of a field as this instance's store really holds them. A field longer than
-	 the shown head ends in an ellipsis, so a row cannot read as if the field were that short."
-
-	| store shown |
-	store := self getHandle.
-	shown := aSize min: self class headByteCount.
-	^ String streamContents: [ :out |
-		  (1 to: shown)
-			  do: [ :i |
-				  out nextPutAll: ((store at: anOffset + i) printPaddedWith: $0 to: 2 base: 16) ]
-			  separatedBy: [ out space ].
-		  aSize > shown ifTrue: [ out nextPutAll: ' ...' ] ]
-]
-
-{ #category : 'inspector' }
-VkPhysicalDeviceProperties >> inspectorLayout: aBuilder [
-	"Every row is read back from the compiled field specification and from this instance's own
-	 store, so the table cannot state a layout the struct does not have. The store is only read,
-	 never written, so inspecting a populated struct leaves its bytes alone."
-
-	<inspectorPresentationOrder: 10 title: 'Layout'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Field' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Offset' evaluated: [ :each |
-					   each second printString ]);
-		  addColumn: (SpStringTableColumn title: 'Bytes' evaluated: [ :each |
-					   each third printString ]);
-		  addColumn: (SpStringTableColumn title: 'Next offset' evaluated: [ :each |
-					   (each second + each third) printString ]);
-		  addColumn: (SpStringTableColumn title: 'Head' evaluated: [ :each |
-					   self headOfFieldAt: each second size: each third ]);
-		  items: self class layoutRows;
-		  yourself
 ]
 
 { #category : 'accessing - structure variables' }
