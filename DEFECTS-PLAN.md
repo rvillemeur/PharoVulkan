@@ -22,6 +22,10 @@ subclasses. Then hand over a prose Iceberg commit message.
 next. What each one turned out to need is recorded under its own heading below; the one
 finding worth reading before touching the descriptor path again is in C, step 1.
 
+**Defect E was added and fixed on 13 October 2026.** It is the hand-counted allocate info D's
+write-up had left as the next unit, taken the same way: red tests first, the structure declared
+field by field, the long method split, and `VkCoreTest` and `PVComputeTest` as the driver leg.
+
 **Defect D was added and fixed on 12 October 2026.** It is the hand-counted byte layout C's
 write-up had left out of scope, and it is the same kind of unit: one failing test per claim, the
 structures declared field by field, and the driver leg taken by the device tests that already
@@ -186,6 +190,75 @@ clean on `VkDescriptorPoolSize`, `VkDescriptorPoolCreateInfo`, `VkStructure` and
 
 Committed as 49547ac, "Declare the descriptor pool create info field by field".
 
+## E — the descriptor set allocate info was a block of hand-counted bytes
+
+Recorded as out of scope under D on 12 October 2026, taken as its own unit on 13 October 2026.
+
+`VkDescriptorPool >> allocateSet:` wrote `VkDescriptorSetAllocateInfo` as a forty-byte
+`ExternalAddress` block with the offsets 1, 9, 17, 25 and 33 counted by hand, three nested
+`ensure:` blocks deep, and it carried the `ReLongMethodsRule` critique `create:descriptorCount:`
+had just lost. Same hazard class as D: an offset counted short of the struct writes outside it,
+and nothing says so until an unrelated object changes.
+
+**Fixed.** `VkDescriptorSetAllocateInfo` is declared field by field, so uFFI computes every
+offset. The compiled layout comes out 0, 8, 16, 24, 32 over forty bytes — the C layout the
+driver reads, with the four-byte hole between `descriptorSetCount` and the eight-byte-aligned
+`pSetLayouts` put there by uFFI rather than by us. `descriptorPool` is declared
+`VkDescriptorPool_H*`, because a Vulkan handle is pointer wide and not a count; declaring it as
+a `uint32` would have been the silent short write.
+
+`initialize` names the structure type and clears the chain pointer, as the pool create info
+does, so an instance from `externalInstance` arrives ready and the allocating code writes only
+the pool, the count and the layout array.
+
+`allocateSet:` is now four short methods, each owning one step and one `ensure:`:
+
+- `allocateSet:` builds the layout handle array and frees it after the driver has read it.
+- `layoutArrayOutsideObjectMemory:` builds that array. This is the one block of bytes the pool
+  still indexes by hand, because an array of pointers has no field specification for uFFI to
+  compute offsets from; it is indexed by `handleByteCount` and sized from
+  `setAllocationCount`, so the array and the count the driver is given cannot disagree.
+- `setForLayoutArray:layout:` fills the allocate info through the generated accessors and frees
+  its store once the driver has read it.
+- `setForAllocateInfo:layout:` makes the call, checks the result before reading the handle block,
+  and counts the allocation only after the call succeeded.
+
+Two new class-side constants replace the literals that were inline: `setAllocationCount`, one
+set per call, and `handleByteCount`, `ExternalAddress wordSize`, which `handleForCreateInfo:`
+now uses as well instead of its literal 8.
+
+Three tests, all red first:
+
+- `testDescriptorSetAllocateInfoLayoutMatchesTheCLayout` pins the field names, the offsets, the
+  struct size, each field's self-alignment and the absence of overlap, all read back from the
+  compiled field specification. Red by undeclared variable before the class existed.
+- `testDescriptorSetAllocateInfoCarriesItsOwnStructureType` pins what `new` and
+  `externalInstance` each leave in the store, with the zero set count as the degenerate case: a
+  count left at zero asks the driver for no set at all.
+- `testDescriptorPoolCreateWritesThroughDeclaredFields`, the reflective poke test from D, now
+  covers all three structures and asserts at least three builder methods. Red while
+  `allocateSet:` was still the only method mentioning the allocate info and still poking
+  offsets into it. The layout handle array is outside its reach on purpose, because the method
+  that writes it names no structure class, which keeps the test about structure fields.
+
+A fourth test, `testDescriptorSetAllocateInfoRequestReportReadsItsFieldsAndLeavesThemAlone`,
+came with the view rather than before it: it asserts the Request rows follow the compiled field
+specification, maps the structure type row's name back to the constant so a second constant of
+the same value cannot make it pass by accident, and asserts the store is byte-identical after
+the report is built.
+
+The driver leg is again the suite that already existed: `VkCoreTest` allocates a descriptor set
+against a three-binding layout through this path, and `PVComputeTest` dispatches kernels that
+bind those sets, so the declared layout is accepted by the driver and not only by uFFI.
+
+Example: `VkDescriptorSetAllocateInfo class >> exampleForOneSetOfThreeBindings`, built in object
+memory so a click frees nothing, with the pool handle and the layout array left null on purpose.
+View: the Layout tab comes free from `VkStructure`, and `inspectorRequest:` adds a Request tab
+that shows what each declared field asks the driver for — the structure type named by asking
+`VkStructureType` which constant answers the value in the store, counts as themselves, pointers
+as set or not set. Its rows come from `layoutRows` and the generated accessors, so a field added
+to `fieldsDesc` appears by itself.
+
 ## Out of scope, recorded rather than fixed
 
 The hand-written byte offsets inside `VkDescriptorPool >> create:` — 8, 40, 9, 17, 21, 25, 33.
@@ -193,8 +266,12 @@ They were the struct-writing style used throughout the bindings where no uFFI st
 generated. Fixed as defect D above, on its own, with its own layout tests, measured against the
 driver the way `VkPhysicalDeviceProperties` was.
 
-`VkDescriptorPool >> allocateSet:` still writes `VkDescriptorSetAllocateInfo` as a byte block
-with the offsets 1, 9, 17, 25 and 33 counted by hand, and it carries the `ReLongMethodsRule`
-critique that `create:descriptorCount:` just lost. It is the same hazard class as D and the
-obvious next unit of work: declare `VkDescriptorSetAllocateInfo` field by field, with its own
-layout test, and let the existing device tests be the driver leg.
+The hand-counted offsets in `VkDescriptorPool >> allocateSet:` — 1, 9, 17, 25 and 33 — and the
+long-method critique it carried. Fixed as defect E above, on its own, the same way D was.
+
+Every other structure the bindings write as a block of bytes rather than through a declared
+field specification. The descriptor path is now clean, so what is left is elsewhere: the
+remaining hand-written offsets live in the core and graphics paths, each one the same hazard
+class, each one its own unit with its own layout test and its own driver leg. They are worth
+taking one at a time rather than in a sweep, because the layout test is what makes each one
+safe and a sweep would land them all untested at once.
