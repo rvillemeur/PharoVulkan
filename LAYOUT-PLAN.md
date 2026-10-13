@@ -58,6 +58,20 @@ are the ones that call into the driver.
   `ExternalData`, which is not indexable, so the array behind it is read through `getHandle` by a
   named stride. Allocate it in its own method and free it in the method paired with the builder,
   never in the caller: a caller that frees the structure and forgets the array leaks.
+- **A family of structures that differ only in their flags earns a superclass.** The five device
+  feature structures are a chain header plus a run of `VkBool32` flags, so `VkFeatureStructure`
+  holds the one `initializeConstantFields` and the one flag view, and a subclass declares only its
+  fields and its class-side `structureType`.
+- **A read-only view over someone else's structure declares no constant field.** `fromHandle:`
+  sends `initialize`, so a constant `sType` on `VkBaseOutStructure` would overwrite the type of
+  whatever structure a chain walker is reading.
+- **A declared structure answers its own size.** Every `…Size` constant that duplicated a struct
+  size became dead on conversion and was deleted rather than kept and asserted against.
+- **A tab that explains a hierarchy needs a `…Context:` companion.** A class-side
+  `inspectorPresentationOrder:title:` method shows on every subclass until a companion method of
+  the same name plus `Context:` answers `aContext active:` with the position in the hierarchy,
+  asked as a real question — `self subclasses isNotEmpty` — not as a comparison against a class
+  name.
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -74,9 +88,9 @@ chains, where a short write lands in another structure rather than in slack.
 | `VkContext >> initializeCompute` | 9 | device and queue create infos |
 | `VkContext >> initializeGraphicsWithExtensions:` | 9 | same, with extensions |
 | ~~`VkContext >> createGraphicsDevice`~~ | ~~10~~ | same — **done 13 October 2026** |
-| `VkContext >> buildFeatureChain` | 3 | `VkPhysicalDeviceSynchronization2Features` |
-| `VkContext >> buildHalfPrecisionFeatures` | 6 | `VkPhysicalDeviceShaderFloat16Int8Features` |
-| `VkContext >> buildCooperativeMatrixFeatures` | 4 | cooperative matrix features |
+| ~~`VkContext >> buildFeatureChain`~~ | ~~3~~ | `VkPhysicalDeviceSynchronization2Features` — **done 13 October 2026** |
+| ~~`VkContext >> buildHalfPrecisionFeatures`~~ | ~~6~~ | `VkPhysicalDeviceShaderFloat16Int8Features` — **done 13 October 2026** |
+| ~~`VkContext >> buildCooperativeMatrixFeatures`~~ | ~~4~~ | cooperative matrix features — **done 13 October 2026** |
 
 `VkDeviceQueueCreateInfo` had a stub class whose `fieldsDesc` was in a syntax uFFI could not
 resolve; it was deleted under defect F, so this unit declares it properly.
@@ -123,9 +137,9 @@ array by hand, and splitting it belongs to the unit that declares those.
 
 `VkDeviceCreateInfo` is declared field by field: seventy two bytes over offsets 0, 8, 16, 20, 24,
 32, 40, 48, 56 and 64, each `uint32` count sitting in the four bytes before a pointer and padded
-to it. The layout test asserts the struct size against `VkContext class >> deviceCreateInfoSize`
-as well as against seventy two, so the old hand-written size cannot drift from the declaration
-while both exist.
+to it. The layout test asserted the struct size against `VkContext class >> deviceCreateInfoSize`
+as well as against seventy two, so that the old hand-written size could not drift from the
+declaration while both existed; unit 1c deleted that constant and the assertion with it.
 
 Only `sType` is constant for the type, so `initializeConstantFields` writes nothing else: `pNext`
 carries the feature chain, which differs per device, and the structure-type test asserts the
@@ -162,14 +176,85 @@ Three tests red first — layout, structure type with the zeroed store, and the 
 reading the struct the driver gets. Example `exampleGraphicsDeviceRequest`; Layout and Fields tabs
 inherited.
 
-### 1c — the feature chain
+### 1c — the feature chain, done 13 October 2026
 
-`buildFeatureChain`, `buildOptionalFeatureChain`, `buildHalfPrecisionFeatures`,
-`buildCooperativeMatrixFeatures` and `buildSynchronization2Features` still write their structures
-as blocks. `featureChainTypesIn:` and `freeFeatureChain:` walk a chain of structures whose types
-are not known at that point, reading `sType` at 0 and `pNext` at 8 — the common header every
-Vulkan structure starts with. The specification has a type for exactly that, `VkBaseOutStructure`,
-so declaring it gives both walkers accessors instead of two hand-written offsets.
+Five structures are declared field by field and one is new in the hierarchy:
+
+- `VkPhysicalDeviceSynchronization2Features`, twenty four bytes over offsets 0, 8 and 16.
+- `VkPhysicalDeviceShaderFloat16Int8Features`, twenty four bytes over 0, 8, 16 and 20.
+- `VkPhysicalDevice16BitStorageFeatures`, thirty two bytes over 0, 8, 16, 20, 24 and 28.
+- `VkPhysicalDeviceCooperativeMatrixFeaturesKHR`, twenty four bytes over 0, 8, 16 and 20.
+- `VkBaseOutStructure`, sixteen bytes over 0 and 8: the header every structure in a `pNext`
+  chain starts with.
+
+`VkPhysicalDeviceVulkanMemoryModelFeatures` was already declared, from the unit that added the
+cooperative matrix path, so this unit only moved it into the new hierarchy.
+
+**The five feature structures now share one superclass, `VkFeatureStructure`.** A feature
+structure is a chain header followed by a run of `VkBool32` flags, and nothing else, so what was
+duplicated five times — `initializeConstantFields`, which stamps the one structure type the class
+names, and the `Flags` tab with the `flagRows` that feed it — lives once. A concrete subclass
+declares `fieldsDesc` and the class-side `structureType`, and inherits the rest. The rows are
+reflected out of the compiled field specification with `headerFieldNames` removed, so a flag added
+to a `fieldsDesc` appears in that structure's view with no other method touched;
+`testEveryFeatureStructureShowsEveryFlagItDeclares` asserts exactly that, over every subclass
+rather than over a list written out here.
+
+**A read-only view over someone else's structure may declare no constant field.**
+`VkBaseOutStructure` deliberately has no `initializeConstantFields`: `FFIStructure class >>
+fromHandle:` sends `initialize`, so a constant `sType` here would stamp this class's own type over
+the type of whichever structure is being read, and that type is the one thing a chain walker is
+there to find out. `testBaseOutStructureViewLeavesTheStructureItReadsAlone` pins it down, and it
+caught the real failure in this unit: `VkPhysicalDeviceVulkanMemoryModelFeatures` was writing its
+`sType` in the builder rather than in initialization, so the header read zero where the test
+expected a type, which is how it came to have an `initializeConstantFields` of its own — now
+inherited.
+
+Both chain walkers and the five builders go through accessors:
+
+- `chain:onto:`, `featureChainTypesIn:` and `freeFeatureChain:` read `sType` and `pNext` through
+  `VkBaseOutStructure fromHandle:` instead of at offsets 0 and 8. `freeFeatureChain:` still reads
+  the successor out of each block before freeing that block, which is the one ordering that
+  matters here.
+- `buildFeatureChain`, `buildSynchronization2Features`, `buildHalfPrecisionFeatures`,
+  `buildCooperativeMatrixFeatures` and `buildVulkanMemoryModelFeatures` fill their structures
+  through the generated accessors and answer `getHandle`. Each one leaves the flags this project
+  does not ask for alone, because `externalInstance` zeroes the block, and that is what writes
+  them off.
+
+**Five size constants became dead and were deleted:** `VkContext class >>
+synchronization2FeaturesSize`, `shaderFloat16Int8FeaturesSize`, `storage16BitFeaturesSize`,
+`cooperativeMatrixFeaturesSize` and `deviceCreateInfoSize`. A declared structure answers its own
+`byteSize`, so a second copy of the number is a copy that can drift. The assertion in
+`testDeviceCreateInfoLayoutMatchesTheCLayout` that compared the two went with it.
+
+**A tab that explains a hierarchy needs a companion context method.** The class-side
+`inspectorFeatureStructures:` on `VkFeatureStructure` lists each subclass with its structure type
+and its flags; `inspectorFeatureStructuresContext:` answers `aContext active: self subclasses
+isNotEmpty`, which is the real rule — show the tab where there is a hierarchy to explain — rather
+than a comparison against the class name, which Renraku flags and which would not follow a rename.
+`testFeatureStructureHierarchyViewShowsOnTheAbstractClassOnly` asks both the abstract class and
+every subclass.
+
+Three tests red first — the shared-superclass test, the flag-rows test and the hierarchy-tab test
+— on top of the layout and builder tests the structures already had.
+`VkCoreTest >> testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs` is the driver leg: it
+reads the chain back out of the create info the driver is given. Examples: one per structure,
+`exampleSynchronization2OfThisMachine`, `exampleShaderArithmeticWidthsOfThisMachine`,
+`exampleSixteenBitStorageOfThisMachine` and `exampleCooperativeMatrixOfThisMachine`, each querying
+the device a plain compute context lands on and copying the answer out of the chain before that
+memory is freed; `VkBaseOutStructure class >> exampleHeaderOfAFeatureStructure` reads the header of
+a synchronization2 structure; and `VkFeatureStructure class >>
+exampleFlagsEveryFeatureStructureDeclares` answers the flags of every declared feature structure
+out of zeroed blocks, asking no device at all.
+
+`VkFeatureStructure` keeps five critiques, all one root and all accepted:
+`ReMissingSubclassResponsibilityRule` on `sType`, `sType:`, `pNext` and `pNext:` and
+`ReSelfSentNotImplementedRule` on `initializeConstantFields`. Those four accessors are generated
+by `defineFields` in each concrete subclass from its own offsets; the abstract class declares no
+fields and so cannot have them, and the superclass sending `sType:` to a field every subclass
+declares is the whole point of putting the constant there. The suite is 352 tests over the nine
+concrete test classes.
 
 ### 1d — the instance create info
 
