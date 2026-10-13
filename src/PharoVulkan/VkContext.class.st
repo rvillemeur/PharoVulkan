@@ -93,6 +93,15 @@ VkContext class >> graphicsContextForExtensions: extNames [
 ]
 
 { #category : 'constants' }
+VkContext class >> graphicsExtensionNames [
+	"What the graphics path asks of the device beyond the core: presenting to a surface. The
+	 compute path asks for none of these and the half precision names are optional and device
+	 dependent, which is why they are a list of their own."
+
+	^ #( 'VK_KHR_swapchain' )
+]
+
+{ #category : 'constants' }
 VkContext class >> halfPrecisionExtensionNames [
     "Both are needed before a kernel may declare an f16 storage buffer: one for the type,
      one for 16-bit access to a buffer."
@@ -190,27 +199,23 @@ VkContext >> buildCooperativeMatrixFeatures [
 
 { #category : 'initialization' }
 VkContext >> buildDeviceCreateInfo: aQueueCreateInfo [
-	"VkDeviceCreateInfo (72 bytes): 0:sType 8:pNext 16:flags 20:queueCreateInfoCount
-	 24:pQueueCreateInfos 32:enabledLayerCount 40:ppEnabledLayerNames 48:enabledExtensionCount
-	 56:ppEnabledExtensionNames 64:pEnabledFeatures.
-	 Everything allocated here is released by freeDeviceCreateInfo:; the queue create info is
+	"The structure is declared field by field, so the driver reads what the accessors wrote.
+	 Its store lives outside object memory, because the driver holds the pointer until
+	 vkCreateDevice returns. Everything allocated here — the feature chain and the extension
+	 name array with its names — is released by freeDeviceCreateInfo:; the queue create info is
 	 the caller's and is released by freeDeviceQueueCreateInfo:."
 
-	| buf names array |
+	| names array |
 	names := self enabledDeviceExtensionNames.
 	array := self buildExtensionNameArray: names.
-	buf := ExternalAddress allocate: self class deviceCreateInfoSize.
-	buf unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
-	buf pointerAt: 9 put: self buildFeatureChain.
-	buf unsignedLongAt: 17 put: 0.
-	buf unsignedLongAt: 21 put: self class queueCreateInfosPerDevice.
-	buf pointerAt: 25 put: aQueueCreateInfo getHandle.
-	buf unsignedLongAt: 33 put: 0.
-	buf pointerAt: 41 put: ExternalAddress null.
-	buf unsignedLongAt: 49 put: names size.
-	buf pointerAt: 57 put: (array ifNil: [ ExternalAddress null ]).
-	buf pointerAt: 65 put: ExternalAddress null.
-	^ buf
+	^ VkDeviceCreateInfo externalInstance
+		  pNext: self buildFeatureChain;
+		  queueCreateInfoCount: self class queueCreateInfosPerDevice;
+		  pQueueCreateInfos: aQueueCreateInfo getHandle;
+		  enabledExtensionCount: names size;
+		  ppEnabledExtensionNames:
+			  (array ifNil: [ ExternalAddress null ]);
+		  yourself
 ]
 
 { #category : 'initialization' }
@@ -253,6 +258,23 @@ VkContext >> buildFeatureChain [
 	sync2 pointerAt: 9 put: self buildOptionalFeatureChain.
 	sync2 unsignedLongAt: 17 put: self class featureEnabled.
 	^ sync2
+]
+
+{ #category : 'initialization' }
+VkContext >> buildGraphicsDeviceCreateInfo: aQueueCreateInfo [
+	"The graphics device asks for the swapchain extension and nothing else, so the name array
+	 holds one name. Everything allocated here is released by freeGraphicsDeviceCreateInfo:."
+
+	| names array |
+	names := self class graphicsExtensionNames.
+	array := self buildExtensionNameArray: names.
+	^ VkDeviceCreateInfo externalInstance
+		  pNext: self buildSynchronization2Features;
+		  queueCreateInfoCount: self class queueCreateInfosPerDevice;
+		  pQueueCreateInfos: aQueueCreateInfo getHandle;
+		  enabledExtensionCount: names size;
+		  ppEnabledExtensionNames: array;
+		  yourself
 ]
 
 { #category : 'private' }
@@ -302,6 +324,23 @@ VkContext >> buildOptionalFeatureChain [
 			head := self chain: self buildVulkanMemoryModelFeatures onto: head.
 			head := self chain: self buildCooperativeMatrixFeatures onto: head ].
 	^ head
+]
+
+{ #category : 'initialization' }
+VkContext >> buildSynchronization2Features [
+	"VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType 8:pNext 16:synchronization2.
+	 The chain the graphics device asks for holds this one structure: the optional half
+	 precision structs are a compute concern and buildFeatureChain hangs them off its own copy.
+	 Released by freeFeatureChain:, which walks whatever is on the chain."
+
+	| sync2 |
+	sync2 := ExternalAddress allocate: self class synchronization2FeaturesSize.
+	sync2
+		unsignedLongAt: 1
+		put: VkStructureType physicalDeviceSynchronization2Features.
+	sync2 pointerAt: 9 put: ExternalAddress null.
+	sync2 unsignedLongAt: 17 put: self class featureEnabled.
+	^ sync2
 ]
 
 { #category : 'initialization' }
@@ -358,77 +397,51 @@ VkContext >> cooperativeMatrixAvailable [
 ]
 
 { #category : 'initialization' }
-VkContext >> createGraphicsDevice [
+VkContext >> createDeviceFromCreateInfo: aCreateInfo [
+	"The one call both device paths make. The out parameter is a single handle and not a
+	 structure, so it is one pointer wide and read at its only index."
 
-	| queueInfo sync2Feat extNameBytes extName extPtrBuf deviceInfo devBuf result devHandle |
+	| devBuf result devHandle |
+	devBuf := ExternalAddress allocate: self class pointerSize.
+	^ [
+	  result := Vk
+		            createDevice: physicalDevice handle
+		            createInfo: aCreateInfo getHandle
+		            allocator: ExternalAddress null
+		            deviceOut: devBuf.
+	  Vk checkResult: result.
+	  devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+	  device := VkDevice
+		            on: devHandle
+		            physicalDevice: physicalDevice
+		            context: self ] ensure: [ devBuf free ]
+]
+
+{ #category : 'initialization' }
+VkContext >> createGraphicsDevice [
+	"The graphics path asks for the swapchain extension and for synchronization2, and nothing
+	 the device happens to offer besides, so it builds its own create info rather than the one
+	 buildDeviceCreateInfo: assembles from what the device supports."
+
+	| queueInfo deviceInfo |
 	queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
 	[
-	sync2Feat := ExternalAddress allocate: self class synchronization2FeaturesSize.
-	[
-	sync2Feat
-		unsignedLongAt: 1
-		put: VkStructureType physicalDeviceSynchronization2Features.
-	sync2Feat pointerAt: 9 put: ExternalAddress null.
-	sync2Feat unsignedLongAt: 17 put: self class featureEnabled.
-	extNameBytes := 'VK_KHR_swapchain' asByteArray copyWith: 0.
-	extName := ExternalAddress allocate: extNameBytes size.
-	[
-	1 to: extNameBytes size do: [ :i |
-		extName byteAt: i put: (extNameBytes at: i) ].
-	extPtrBuf := ExternalAddress allocate: self class pointerSize.
-	[
-	extPtrBuf pointerAt: 1 put: extName.
-	deviceInfo := ExternalAddress allocate: self class deviceCreateInfoSize.
-	[
-	deviceInfo unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
-	deviceInfo pointerAt: 9 put: sync2Feat.
-	deviceInfo unsignedLongAt: 17 put: 0.
-	deviceInfo unsignedLongAt: 21 put: self class queueCreateInfosPerDevice.
-	deviceInfo pointerAt: 25 put: queueInfo getHandle.
-	deviceInfo unsignedLongAt: 33 put: 0.
-	deviceInfo pointerAt: 41 put: ExternalAddress null.
-	deviceInfo unsignedLongAt: 49 put: 1.
-	deviceInfo pointerAt: 57 put: extPtrBuf.
-	deviceInfo pointerAt: 65 put: ExternalAddress null.
-	devBuf := ExternalAddress allocate: self class pointerSize.
-	[
-	result := Vk
-		          createDevice: physicalDevice handle
-		          createInfo: deviceInfo
-		          allocator: ExternalAddress null
-		          deviceOut: devBuf.
-	Vk checkResult: result.
-	devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-	device := VkDevice
-		          on: devHandle
-		          physicalDevice: physicalDevice
-		          context: self ] ensure: [ devBuf free ] ] ensure: [
-		deviceInfo free ] ] ensure: [ extPtrBuf free ] ] ensure: [
-		extName free ] ] ensure: [ sync2Feat free ] ] ensure: [
+	deviceInfo := self buildGraphicsDeviceCreateInfo: queueInfo.
+	[ self createDeviceFromCreateInfo: deviceInfo ] ensure: [
+		self freeDeviceCreateInfo: deviceInfo ] ] ensure: [
 		self freeDeviceQueueCreateInfo: queueInfo ]
 ]
 
 { #category : 'initialization' }
 VkContext >> createLogicalDevice [
+	"The compute path asks the device what it offers and chains the optional feature structs
+	 accordingly, which is what buildDeviceCreateInfo: assembles."
 
-	| queueInfo deviceInfo devBuf result devHandle |
+	| queueInfo deviceInfo |
 	queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
 	[
 	deviceInfo := self buildDeviceCreateInfo: queueInfo.
-	[
-	devBuf := ExternalAddress allocate: self class pointerSize.
-	[
-	result := Vk
-		          createDevice: physicalDevice handle
-		          createInfo: deviceInfo
-		          allocator: ExternalAddress null
-		          deviceOut: devBuf.
-	Vk checkResult: result.
-	devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-	device := VkDevice
-		          on: devHandle
-		          physicalDevice: physicalDevice
-		          context: self ] ensure: [ devBuf free ] ] ensure: [
+	[ self createDeviceFromCreateInfo: deviceInfo ] ensure: [
 		self freeDeviceCreateInfo: deviceInfo ] ] ensure: [
 		self freeDeviceQueueCreateInfo: queueInfo ]
 ]
@@ -523,19 +536,21 @@ VkContext >> enabledDeviceExtensionNames [
 		   ifFalse: [ #() ])
 ]
 
-{ #category : 'private' }
+{ #category : 'querying' }
 VkContext >> extensionNamesIn: aCreateInfo [
 	"Decodes the enabled extension names back out of a create info, reusing the physical
-	 device's decoder so there is one place that walks a Vulkan name."
+	 device's decoder so there is one place that walks a Vulkan name. The count and the array
+	 come through the declared accessors; the array itself is an array of C strings and has no
+	 field specification, so it is walked by the named stride."
 
 	| count array stride |
-	count := aCreateInfo unsignedLongAt: 49.
-	array := aCreateInfo pointerAt: 57.
+	count := aCreateInfo enabledExtensionCount.
+	array := aCreateInfo ppEnabledExtensionNames getHandle.
 	(count = 0 or: [ array isNull ]) ifTrue: [ ^ #() ].
 	stride := self class pointerSize.
-	^ (1 to: count) collect: [ :i |
+	^ (1 to: count) collect: [ :index |
 		  VkPhysicalDevice
-			  extensionNameIn: (array pointerAt: i - 1 * stride + 1)
+			  extensionNameIn: (array pointerAt: index - 1 * stride + 1)
 			  at: 0 ]
 ]
 
@@ -600,20 +615,17 @@ VkContext >> fetchGraphicsQueue [
 		                buf free ]
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 VkContext >> freeDeviceCreateInfo: aCreateInfo [
-	"Releases everything buildDeviceCreateInfo: allocated, the create info included: the pNext
-	 chain, the name array, and each name in it."
+	"Releases everything buildDeviceCreateInfo: allocated, the create info's own store
+	 included: the pNext chain, the extension name array with each name in it, and the store.
+	 Every field it needs is read through an accessor, so no offset is counted here."
 
-	| count array stride |
-	self freeFeatureChain: (aCreateInfo pointerAt: 9).
-	count := aCreateInfo unsignedLongAt: 49.
-	array := aCreateInfo pointerAt: 57.
-	stride := self class pointerSize.
-	array isNull ifFalse: [
-		1 to: count do: [ :i | (array pointerAt: i - 1 * stride + 1) free ].
-		array free ].
-	aCreateInfo free
+	self freeFeatureChain: aCreateInfo pNext getHandle.
+	self
+		freeExtensionNameArray: aCreateInfo ppEnabledExtensionNames getHandle
+		count: aCreateInfo enabledExtensionCount.
+	aCreateInfo getHandle free
 ]
 
 { #category : 'initialization' }
@@ -624,6 +636,20 @@ VkContext >> freeDeviceQueueCreateInfo: aQueueCreateInfo [
 
 	aQueueCreateInfo pQueuePriorities free.
 	aQueueCreateInfo getHandle free
+]
+
+{ #category : 'initialization' }
+VkContext >> freeExtensionNameArray: anArray count: aCount [
+	"Paired with buildExtensionNameArray:, which allocated the array and every name in it. The
+	 array of C strings is an array and not a structure, so it has no field specification and is
+	 walked by the named stride; nil stands for the empty list the builder answers nothing for."
+
+	| stride |
+	(anArray isNil or: [ anArray isNull ]) ifTrue: [ ^ self ].
+	stride := self class pointerSize.
+	1 to: aCount do: [ :index |
+		(anArray pointerAt: index - 1 * stride + 1) free ].
+	anArray free
 ]
 
 { #category : 'private' }

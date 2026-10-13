@@ -326,6 +326,76 @@ VkBindingsTest >> testDescriptorSetAllocateInfoLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testDeviceCreateInfoCarriesItsOwnStructureTypeAndNoChain [
+	"The structure type is the only constant field: pNext carries the feature chain, which is
+	 data and differs per device, so initialization may not write it. The degenerate state is
+	 what externalInstance answers — a device asked for with no queues, no layers and no
+	 extensions — because a zeroed count beside a null pointer is what tells the driver there
+	 are none of something, and only the caller knows how many there are."
+
+	| info |
+	info := VkDeviceCreateInfo externalInstance.
+	[
+	self assert: info sType equals: VkStructureType deviceCreateInfo.
+	self assert: info pNext isNull.
+	self assert: info queueCreateInfoCount equals: 0.
+	self assert: info pQueueCreateInfos isNull.
+	self assert: info enabledExtensionCount equals: 0.
+	self assert: info ppEnabledExtensionNames isNull.
+	self assert: (VkDeviceCreateInfo includesSelector: #initialize) not ]
+		ensure: [ info getHandle free ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDeviceCreateInfoLayoutMatchesTheCLayout [
+	"VkDeviceCreateInfo is declared field by field. Each count is a uint32 sitting in the four
+	 bytes before a pointer, so uFFI pads four bytes after every one of them and the struct is
+	 seventy two bytes over ten fields."
+
+	| rows |
+	rows := VkDeviceCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #queueCreateInfoCount #pQueueCreateInfos
+		   #enabledLayerCount #ppEnabledLayerNames #enabledExtensionCount
+		   #ppEnabledExtensionNames #pEnabledFeatures ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 48 56 64 ).
+	self assert: VkDeviceCreateInfo byteSize equals: 72.
+	self
+		assert: VkDeviceCreateInfo byteSize
+		equals: VkContext deviceCreateInfoSize.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDeviceCreateWritesAndReadsThroughDeclaredFields [
+	"Every method of VkContext that deals with a device create info goes through the accessors
+	 uFFI generated, reading included: the readers used to count offset 49 and offset 57 by
+	 hand, which is the same hazard as writing them. The methods are found by the class they
+	 mention rather than listed, and the count is asserted so a rename cannot leave nothing
+	 tested."
+
+	| pokes reads touchers |
+	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
+	            #byteAt:put: #unsignedShortAt:put: #floatAt:put: ).
+	reads := #( #unsignedLongAt: #unsignedLongLongAt: #pointerAt:
+	            #unsignedShortAt: ).
+	touchers := VkContext methods select: [ :each |
+		            each literals anySatisfy: [ :literal |
+			            literal isVariableBinding and: [
+				            literal key = #VkDeviceCreateInfo ] ] ].
+	self assert: touchers size >= 2.
+	touchers do: [ :each |
+		self
+			assertEmpty: (each messages select: [ :message |
+					 (pokes , reads) includes: message ]) ]
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testDeviceQueueCreateInfoCarriesItsOwnStructureType [
 	"A zeroed store would ask the driver for queue family zero with zero queues, which is not a
 	 legal request, so the type is set by initialization and the counts are left to the caller:

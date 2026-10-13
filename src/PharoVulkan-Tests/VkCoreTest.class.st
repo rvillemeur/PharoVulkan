@@ -509,7 +509,7 @@ VkCoreTest >> testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs [
 	queueInfo := ctx buildDeviceQueueCreateInfo: ctx computeQueueFamily.
 	info := ctx buildDeviceCreateInfo: queueInfo.
 	[
-	types := ctx featureChainTypesIn: (info pointerAt: 9).
+	types := ctx featureChainTypesIn: info pNext getHandle.
 	half := {
 		        VkStructureType physicalDeviceShaderFloat16Int8Features.
 		        VkStructureType physicalDevice16BitStorageFeatures }.
