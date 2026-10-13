@@ -172,24 +172,28 @@ VkBindingsTest >> testDescriptorPoolCreateInfoPointsAtThePoolSizeItWasGiven [
 
 { #category : 'tests' }
 VkBindingsTest >> testDescriptorPoolCreateWritesThroughDeclaredFields [
-	"The pool size and the create info are filled through the accessors uFFI generated from
-	 their field specifications. The fact to state is that no method building either one pokes
-	 a raw offset into a block of bytes: a reintroduced unsignedLongAt:put: is a hand counted
-	 offset again, and one counted short of the struct writes outside it. The methods are found
-	 by the classes they mention rather than listed, so splitting the method further keeps them
-	 covered, and the count is asserted so a rename cannot leave nothing tested.
-	 allocateSet: is deliberately outside this: it still writes VkDescriptorSetAllocateInfo as
-	 a byte block, which is its own unit of work."
+	"The pool size, the pool create info and the set allocate info are filled through the
+	 accessors uFFI generated from their field specifications. The fact to state is that no
+	 method building one of them pokes a raw offset into a block of bytes: a reintroduced
+	 unsignedLongAt:put: is a hand counted offset again, and one counted short of the struct
+	 writes outside it. The methods are found by the classes they mention rather than listed,
+	 so splitting a method further keeps them covered, and the count is asserted so a rename
+	 cannot leave nothing tested.
+	 The one array a set allocation still writes by hand is the one element list of set layout
+	 handles, which is an array of pointers and not a structure; it lives in a method of its
+	 own that names no structure class, so it is outside this set and this test stays about
+	 structure fields."
 
 	| structures builders pokes |
-	structures := #( #VkDescriptorPoolSize #VkDescriptorPoolCreateInfo ).
+	structures := #( #VkDescriptorPoolSize #VkDescriptorPoolCreateInfo
+	                 #VkDescriptorSetAllocateInfo ).
 	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
 	            #byteAt:put: #unsignedShortAt:put: ).
 	builders := VkDescriptorPool methods select: [ :each |
 		            each literals anySatisfy: [ :literal |
 			            literal isVariableBinding and: [
 				            structures includes: literal key ] ] ].
-	self assert: builders size >= 2.
+	self assert: builders size >= 3.
 	builders do: [ :each |
 		self
 			assertEmpty: (each messages select: [ :message |
@@ -210,6 +214,79 @@ VkBindingsTest >> testDescriptorPoolSizeLayoutMatchesTheCLayout [
 	self assert: (rows collect: [ :each | each second ]) asArray equals: #( 0 4 ).
 	self assert: (rows collect: [ :each | each third ]) asArray equals: #( 4 4 ).
 	self assert: VkDescriptorPoolSize byteSize equals: 8
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorSetAllocateInfoCarriesItsOwnStructureType [
+	"initialize names the structure type and clears the chain pointer, and FFIStructure class >>
+	 fromHandle: sends it, so an allocate info from externalInstance is as ready as one from
+	 new. The degenerate case is the one that matters: a count left at zero asks the driver for
+	 no set at all, so it must start at zero and be written by the allocating method."
+
+	#( #new #externalInstance ) do: [ :creator |
+		| info |
+		info := VkDescriptorSetAllocateInfo perform: creator.
+		self
+			assert: info sType
+			equals: VkStructureType descriptorSetAllocateInfo.
+		self assert: info descriptorSetCount equals: 0.
+		creator = #externalInstance ifTrue: [ info getHandle free ] ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorSetAllocateInfoLayoutMatchesTheCLayout [
+	"VkDescriptorSetAllocateInfo is declared field by field. The offsets to pin are the ones the
+	 driver reads: three pointer sized members on eight byte boundaries, which puts a four byte
+	 hole between descriptorSetCount and pSetLayouts, and forty bytes in total. descriptorPool
+	 is a handle, so it is pointer wide and not a count."
+
+	| rows |
+	rows := VkDescriptorSetAllocateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #descriptorPool #descriptorSetCount #pSetLayouts ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 ).
+	self assert: VkDescriptorSetAllocateInfo byteSize equals: 40.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorSetAllocateInfoRequestReportReadsItsFieldsAndLeavesThemAlone [
+	"The Request tab's rows come from the compiled field specification and are read through the
+	 generated accessors, so the tab follows fieldsDesc and cannot name a field the struct does
+	 not have. The structure type row is checked by mapping its name back to the constant, so a
+	 second constant of the same value cannot make it pass by accident, and a pointer nobody
+	 has set reads as not set. Building the report writes nothing, which is what lets a filled
+	 in structure be inspected while a driver still holds a pointer to it."
+
+	| info before rows nameOf |
+	info := VkDescriptorSetAllocateInfo exampleForOneSetOfThreeBindings.
+	before := (1 to: VkDescriptorSetAllocateInfo byteSize) collect: [ :i |
+		          info getHandle byteAt: i ].
+	rows := info requestReport.
+	nameOf := [ :fieldName |
+	           (rows detect: [ :each | each first = fieldName ]) second ].
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: (VkDescriptorSetAllocateInfo layoutRows collect: [ :each |
+				 each first asString ]) asArray.
+	self
+		assert: (VkStructureType perform: (nameOf value: 'sType') asSymbol)
+		equals: VkStructureType descriptorSetAllocateInfo.
+	self
+		assert: (nameOf value: 'descriptorSetCount')
+		equals: VkDescriptorPool setAllocationCount printString.
+	self
+		assert: (nameOf value: 'pSetLayouts')
+		equals: VkDescriptorSetAllocateInfo nullLabel.
+	self
+		assert: ((1 to: VkDescriptorSetAllocateInfo byteSize) collect: [ :i |
+				 info getHandle byteAt: i ])
+		equals: before
 ]
 
 { #category : 'tests' }

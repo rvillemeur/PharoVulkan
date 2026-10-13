@@ -92,6 +92,13 @@ VkDescriptorPool class >> exampleStorageBufferPoolForThreeBuffers [
 	  pool ] ensure: [ context destroy ]
 ]
 
+{ #category : 'constants' }
+VkDescriptorPool class >> handleByteCount [
+	"A Vulkan handle is pointer wide. The driver writes one handle per call into the block this
+	 class hands it, so the block is this many bytes per handle."
+	^ ExternalAddress wordSize
+]
+
 { #category : 'labels' }
 VkDescriptorPool class >> maxSetsRowName [
 	^ 'Sets the pool allows'
@@ -118,6 +125,14 @@ VkDescriptorPool class >> poolSizeCount [
 	^ 1
 ]
 
+{ #category : 'constants' }
+VkDescriptorPool class >> setAllocationCount [
+	"One set is allocated per call, so the allocate info asks for one and the layout array it
+	 points at holds one handle. The array builder asks this method too, so the count and the
+	 array it describes cannot disagree."
+	^ 1
+]
+
 { #category : 'labels' }
 VkDescriptorPool class >> setsAllocatedRowName [
 	^ 'Sets allocated so far'
@@ -125,32 +140,14 @@ VkDescriptorPool class >> setsAllocatedRowName [
 
 { #category : 'allocating' }
 VkDescriptorPool >> allocateSet: aSetLayout [
-    "VkDescriptorSetAllocateInfo 40 bytes, sType=descriptorSetAllocateInfo"
-    | layoutBuf info setHandleBuf result set |
-    layoutBuf := ExternalAddress allocate: 8.
-    [
-        layoutBuf pointerAt: 1 put: aSetLayout handle getHandle.
-        info := ExternalAddress allocate: 40.
-        [
-            info unsignedLongAt: 1 put: VkStructureType descriptorSetAllocateInfo.
-            info pointerAt: 9 put: ExternalAddress null.
-            info pointerAt: 17 put: handle getHandle.
-            info unsignedLongAt: 25 put: 1.
-            info pointerAt: 33 put: layoutBuf.
-            setHandleBuf := ExternalAddress allocate: 8.
-            [
-                result := Vk allocateDescriptorSets: device handle allocateInfo: info descriptorSets: setHandleBuf.
-                Vk checkResult: result.
-                set := VkDescriptorSet new.
-                set handle: (VkDescriptorSet_H fromHandle: (setHandleBuf pointerAt: 1)).
-                set pool: self.
-                set layout: aSetLayout.
-                set device: device.
-                setsAllocated := self setsAllocated + 1.
-                ^ set
-            ] ensure: [ setHandleBuf free ]
-        ] ensure: [ info free ]
-    ] ensure: [ layoutBuf free ]
+	"One descriptor set allocated out of this pool, bound to the given layout. The layout
+	 handle array outlives the allocate info that points at it and is freed here, after the
+	 driver has read both."
+
+	| layouts |
+	layouts := self layoutArrayOutsideObjectMemory: aSetLayout.
+	^ [ self setForLayoutArray: layouts layout: aSetLayout ]
+		  ensure: [ layouts free ]
 ]
 
 { #category : 'lifecycle' }
@@ -247,6 +244,26 @@ VkDescriptorPool >> inspectorPool: aBuilder [
 		  yourself
 ]
 
+{ #category : 'private' }
+VkDescriptorPool >> layoutArrayOutsideObjectMemory: aSetLayout [
+	"The array of set layout handles the allocate info points at. This one is an array of
+	 pointers rather than a structure, so uFFI has no field specification to compute offsets
+	 from and the element index is computed here. It is the only place in the pool that still
+	 indexes a block of bytes, and it indexes it by the handle width rather than by a counted
+	 constant. The store is outside object memory because the allocate info holds a pointer to
+	 it: a store inside the image could be moved by the garbage collector between that pointer
+	 being written and the driver reading it. The caller frees it."
+
+	| width layouts |
+	width := self class handleByteCount.
+	layouts := ExternalAddress allocate: self class setAllocationCount * width.
+	1 to: self class setAllocationCount do: [ :index |
+		layouts
+			pointerAt: index - 1 * width + 1
+			put: aSetLayout handle getHandle ].
+	^ layouts
+]
+
 { #category : 'accessing' }
 VkDescriptorPool >> maxSets [
 	^ maxSets
@@ -295,6 +312,48 @@ VkDescriptorPool >> rowNamed: aString value: aValueString [
 	^ Dictionary newFrom: {
 			  (#name -> aString).
 			  (#value -> aValueString) }
+]
+
+{ #category : 'private' }
+VkDescriptorPool >> setForAllocateInfo: anAllocateInfo layout: aSetLayout [
+	"vkAllocateDescriptorSets writes the new set's handle into a block outside the image. The
+	 result is checked before that block is read, because a failed call leaves it holding
+	 whatever was there, and because the pool answers VK_ERROR_OUT_OF_POOL_MEMORY once maxSets
+	 sets have been handed out. The allocation is counted only after the call succeeded."
+
+	| setBuf result set |
+	setBuf := ExternalAddress allocate: self class handleByteCount.
+	^ [
+	  result := Vk
+		            allocateDescriptorSets: device handle
+		            allocateInfo: anAllocateInfo getHandle
+		            descriptorSets: setBuf.
+	  Vk checkResult: result.
+	  set := VkDescriptorSet new.
+	  set handle: (VkDescriptorSet_H fromHandle: (setBuf pointerAt: 1)).
+	  set pool: self.
+	  set layout: aSetLayout.
+	  set device: device.
+	  setsAllocated := self setsAllocated + 1.
+	  set ] ensure: [ setBuf free ]
+]
+
+{ #category : 'private' }
+VkDescriptorPool >> setForLayoutArray: aLayoutArray layout: aSetLayout [
+	"The allocate info, filled through the accessors uFFI generated, so no offset is counted
+	 here. externalInstance runs initialize, so the structure type and the null chain pointer
+	 are already in place and only the pool, the count and the layout array are written. Its
+	 store is freed as soon as the driver has read it; the array it points at belongs to the
+	 caller."
+
+	| info |
+	info := VkDescriptorSetAllocateInfo externalInstance
+		        descriptorPool: handle;
+		        descriptorSetCount: self class setAllocationCount;
+		        pSetLayouts: aLayoutArray;
+		        yourself.
+	^ [ self setForAllocateInfo: info layout: aSetLayout ]
+		  ensure: [ info getHandle free ]
 ]
 
 { #category : 'accessing' }
