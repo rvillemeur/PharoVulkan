@@ -69,11 +69,11 @@ chains, where a short write lands in another structure rather than in slack.
 
 | Method | Offsets written | Structures |
 |---|---|---|
-| `VkContext >> buildDeviceCreateInfo:` | 10 | `VkDeviceCreateInfo` |
+| ~~`VkContext >> buildDeviceCreateInfo:`~~ | ~~10~~ | `VkDeviceCreateInfo` — **done 13 October 2026** |
 | ~~`VkContext >> buildDeviceQueueCreateInfo:`~~ | ~~8~~ | `VkDeviceQueueCreateInfo` — **done 13 October 2026** |
 | `VkContext >> initializeCompute` | 9 | device and queue create infos |
 | `VkContext >> initializeGraphicsWithExtensions:` | 9 | same, with extensions |
-| `VkContext >> createGraphicsDevice` | 10 | same |
+| ~~`VkContext >> createGraphicsDevice`~~ | ~~10~~ | same — **done 13 October 2026** |
 | `VkContext >> buildFeatureChain` | 3 | `VkPhysicalDeviceSynchronization2Features` |
 | `VkContext >> buildHalfPrecisionFeatures` | 6 | `VkPhysicalDeviceShaderFloat16Int8Features` |
 | `VkContext >> buildCooperativeMatrixFeatures` | 4 | cooperative matrix features |
@@ -118,6 +118,64 @@ through `getHandle` by a named stride, and `ExternalData >> free` (inherited fro
 `createGraphicsDevice` keeps its `ReLongMethodsRule` and `ReCyclomaticComplexityRule` critiques:
 it still writes the device create info, the synchronization2 features and the extension name
 array by hand, and splitting it belongs to the unit that declares those.
+
+### 1b — the device create info, done 13 October 2026
+
+`VkDeviceCreateInfo` is declared field by field: seventy two bytes over offsets 0, 8, 16, 20, 24,
+32, 40, 48, 56 and 64, each `uint32` count sitting in the four bytes before a pointer and padded
+to it. The layout test asserts the struct size against `VkContext class >> deviceCreateInfoSize`
+as well as against seventy two, so the old hand-written size cannot drift from the declaration
+while both exist.
+
+Only `sType` is constant for the type, so `initializeConstantFields` writes nothing else: `pNext`
+carries the feature chain, which differs per device, and the structure-type test asserts the
+class declares no `initialize` of its own. The degenerate state is what `externalInstance`
+answers, a device asked for with no queues, no layers and no extensions, which is why the builder
+no longer writes the zeros and nulls the hand-written version wrote out field by field.
+
+Both device paths now build and free through the accessors:
+
+- `buildDeviceCreateInfo:` keeps asking the physical device what it offers.
+- `buildGraphicsDeviceCreateInfo:` is new: the graphics path used to write its own seventy two
+  byte block inline, with the swapchain extension name spelled out mid-method. The name moved to
+  `VkContext class >> graphicsExtensionNames` and the single-structure chain to
+  `buildSynchronization2Features`.
+- `createDeviceFromCreateInfo:` is the one `vkCreateDevice` call both paths make; it was written
+  twice before, once in each.
+- `freeDeviceCreateInfo:` reads the chain and the name array back through the accessors, and
+  `freeExtensionNameArray:count:` is its pair for the array of C strings, which is an array and
+  not a structure.
+- `extensionNamesIn:` reads the count and the array through the accessors rather than at offsets
+  49 and 57. Reading at a hand-written offset is the same hazard as writing at one, so
+  `testDeviceCreateWritesAndReadsThroughDeclaredFields` bans both in any method that mentions the
+  class.
+
+`createGraphicsDevice` is four lines and its `ReLongMethodsRule` and `ReCyclomaticComplexityRule`
+critiques are gone. `VkDeviceCreateInfo` earns `ReExcessiveVariablesRule` on both sides, accepted
+as ten fields' worth of `OFFSET_` variables. `initializeCompute` and
+`initializeGraphicsWithExtensions:` keep their critiques: they still write the application info
+and the instance create info by hand, which is unit 1d.
+
+Three tests red first — layout, structure type with the zeroed store, and the poke-and-read test
+— with `VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension` and
+`testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs` as the driver legs, both already
+reading the struct the driver gets. Example `exampleGraphicsDeviceRequest`; Layout and Fields tabs
+inherited.
+
+### 1c — the feature chain
+
+`buildFeatureChain`, `buildOptionalFeatureChain`, `buildHalfPrecisionFeatures`,
+`buildCooperativeMatrixFeatures` and `buildSynchronization2Features` still write their structures
+as blocks. `featureChainTypesIn:` and `freeFeatureChain:` walk a chain of structures whose types
+are not known at that point, reading `sType` at 0 and `pNext` at 8 — the common header every
+Vulkan structure starts with. The specification has a type for exactly that, `VkBaseOutStructure`,
+so declaring it gives both walkers accessors instead of two hand-written offsets.
+
+### 1d — the instance create info
+
+`initializeCompute` and `initializeGraphicsWithExtensions:` each write a `VkApplicationInfo` and a
+`VkInstanceCreateInfo` inline, although both classes have been declared field by field since
+defect D. The two methods are near copies of each other and both carry long-method critiques.
 
 ## 2 — Buffers, memory and the small create infos
 
