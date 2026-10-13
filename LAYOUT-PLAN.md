@@ -36,7 +36,7 @@ The driver leg is the suite that already exercises the path: the structure being
 uFFI proves nothing by itself. `VkCoreTest`, `PVComputeTest`, `PVGraphicsTest` and `VkImageTest`
 are the ones that call into the driver.
 
-## Rules the first four units established
+## Rules the units so far established
 
 - **A pointer field is one pointer wide.** `FFIExternalStructureType` answers the pointed-to
   structure's size for `externalTypeSize`, so a layout read naively reports a pointer to a
@@ -54,6 +54,10 @@ are the ones that call into the driver.
 - **Name the constants.** The counts and sentinels that used to sit inline become class-side
   methods: `VkDescriptorPool class >> setAllocationCount`, `handleByteCount`,
   `VkDescriptorSet class >> descriptorsPerWrite`, `VkDescriptorBufferInfo class >> wholeSize`.
+- **An array field is not a structure.** A `void*` or `float*` field's getter answers an
+  `ExternalData`, which is not indexable, so the array behind it is read through `getHandle` by a
+  named stride. Allocate it in its own method and free it in the method paired with the builder,
+  never in the caller: a caller that frees the structure and forgets the array leaks.
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -66,7 +70,7 @@ chains, where a short write lands in another structure rather than in slack.
 | Method | Offsets written | Structures |
 |---|---|---|
 | `VkContext >> buildDeviceCreateInfo:` | 10 | `VkDeviceCreateInfo` |
-| `VkContext >> buildDeviceQueueCreateInfo:` | 8 | `VkDeviceQueueCreateInfo` |
+| ~~`VkContext >> buildDeviceQueueCreateInfo:`~~ | ~~8~~ | `VkDeviceQueueCreateInfo` — **done 13 October 2026** |
 | `VkContext >> initializeCompute` | 9 | device and queue create infos |
 | `VkContext >> initializeGraphicsWithExtensions:` | 9 | same, with extensions |
 | `VkContext >> createGraphicsDevice` | 10 | same |
@@ -76,6 +80,44 @@ chains, where a short write lands in another structure rather than in slack.
 
 `VkDeviceQueueCreateInfo` had a stub class whose `fieldsDesc` was in a syntax uFFI could not
 resolve; it was deleted under defect F, so this unit declares it properly.
+
+### 1a — the queue create info, done 13 October 2026
+
+`VkDeviceQueueCreateInfo` is declared field by field: forty bytes over offsets 0, 8, 16, 20, 24
+and 32, the three `uint32` members filling the twelve bytes after `pNext` and four bytes of
+padding before `pQueuePriorities`. `buildDeviceQueueCreateInfo:` fills it through the generated
+accessors, `queuePriorityArrayOutsideObjectMemory` builds the array of priorities, and
+`freeDeviceQueueCreateInfo:` releases both blocks. The counts and the priority became
+`VkContext class >> queuesPerFamily`, `queuePriority` and `queuePriorityByteCount`, and the count
+the device create info carries became `queueCreateInfosPerDevice`, which is a different number
+with a different meaning — one create info for one family, however many queues that family is
+asked for.
+
+**A real leak was fixed with it.** Both callers released the structure but reached
+`(queueInfo pointerAt: 33) free` — the priority array — only on the path where device creation
+succeeded, so every failed `vkCreateDevice` leaked four bytes outside object memory, and the two
+tests in `VkCoreTest` that build a create info by hand repeated the same pair of frees. The
+paired `freeDeviceQueueCreateInfo:` in an `ensure:` is what makes it impossible to free one and
+not the other; the hand-written offset 33 is gone from all four call sites.
+
+Three tests, red first: the layout test, a structure-type test whose degenerate state is the
+zeroed store (family zero with zero queues, which is not a legal request, so initialization may
+not fill it in), and `testDeviceQueueCreateWritesThroughDeclaredFields`, which finds every method
+of `VkContext` that mentions the class and asserts it pokes no raw offset.
+`VkCoreTest >> testDeviceQueueCreateInfoAsksForOneQueueAtFullPriority` is the driver leg: it reads
+the family, the count and each priority back out of the struct that goes to `vkCreateDevice`.
+Example `exampleOneQueueOnTheFirstFamily`, Layout and Fields tabs inherited from `VkStructure`,
+critics clean on the new class.
+
+**`void*` getters answer an `ExternalData` that is not indexable.** Declaring the field `float*`
+rather than `void*` did not help: the getter answers an `ExternalData` either way, and
+`at: 1` on it fails with `Instances of ExternalData are not indexable`. So an array field is read
+through `getHandle` by a named stride, and `ExternalData >> free` (inherited from
+`ExternalStructure`) frees the pointed-to block, which is what the paired free relies on.
+
+`createGraphicsDevice` keeps its `ReLongMethodsRule` and `ReCyclomaticComplexityRule` critiques:
+it still writes the device create info, the synchronization2 features and the extension name
+array by hand, and splitting it belongs to the unit that declares those.
 
 ## 2 — Buffers, memory and the small create infos
 
