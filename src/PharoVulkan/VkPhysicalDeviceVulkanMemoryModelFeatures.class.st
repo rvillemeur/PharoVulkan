@@ -3,7 +3,7 @@ The Vulkan memory model feature flags, chained onto a VkPhysicalDeviceFeatures2 
 "
 Class {
 	#name : 'VkPhysicalDeviceVulkanMemoryModelFeatures',
-	#superclass : 'VkStructure',
+	#superclass : 'VkFeatureStructure',
 	#classVars : [
 		'OFFSET_PNEXT',
 		'OFFSET_STYPE',
@@ -46,48 +46,9 @@ VkPhysicalDeviceVulkanMemoryModelFeatures class >> fieldsDesc [
 	)
 ]
 
-{ #category : 'accessing' }
+{ #category : 'constants' }
 VkPhysicalDeviceVulkanMemoryModelFeatures class >> structureType [
 	^ VkStructureType physicalDeviceVulkanMemoryModelFeatures
-]
-
-{ #category : 'accessing' }
-VkPhysicalDeviceVulkanMemoryModelFeatures >> flagRows [
-	"Reflected out of the declared layout and asked of the real accessors, so a member added
-	 to fieldsDesc shows up here without this method being touched. The rows are read only:
-	 reading a flag cannot change the structure."
-
-	^ (self class fieldSpec fieldNames reject: [ :each |
-		   self headerFieldNames includes: each ]) collect: [ :each |
-		  (Dictionary newFrom: {
-			   (#flag -> each).
-			   (#raw -> (self perform: each)).
-			   (#enabled -> ((self perform: each) ~= 0)) }) beReadOnlyObject ]
-]
-
-{ #category : 'accessing' }
-VkPhysicalDeviceVulkanMemoryModelFeatures >> headerFieldNames [
-	"sType and pNext describe the chain, not the device."
-
-	^ #( sType pNext )
-]
-
-{ #category : 'inspector' }
-VkPhysicalDeviceVulkanMemoryModelFeatures >> inspectorFlags: aBuilder [
-	"Each flag the layout declares, with the raw word the driver wrote and whether it counts
-	 as set. VkBool32 is a number, so the answer comes from comparing it, never from reading
-	 the word as a boolean."
-
-	<inspectorPresentationOrder: 10 title: 'Flags'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Flag' evaluated: [ :each |
-				   each at: #flag ]);
-		  addColumn: (SpStringTableColumn title: 'Raw' evaluated: [ :each |
-				   (each at: #raw) printString ]);
-		  addColumn: (SpStringTableColumn title: 'Set' evaluated: [ :each |
-				   (each at: #enabled) printString ]);
-		  items: self flagRows;
-		  yourself
 ]
 
 { #category : 'accessing - structure variables' }

@@ -63,6 +63,79 @@ VkBindingsTest >> spanWrittenByDevicePropertiesOf: aPhysicalDeviceHandle sentine
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testBaseOutStructureIsTheHeaderEveryChainedStructureStartsWith [
+	"VkBaseOutStructure is what the specification calls the two fields every structure in a
+	 pNext chain starts with, and it is what a chain walker reads when it does not know which
+	 structures are on the chain. Its own layout is asserted here, and so is the fact that it
+	 is a prefix of every chainable structure the image declares: sType and pNext at the same
+	 offsets and the same widths, which is what makes reading one through this view correct."
+
+	| rows chainable |
+	rows := VkBaseOutStructure layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 ).
+	self assert: VkBaseOutStructure byteSize equals: 16.
+	chainable := VkStructure allSubclasses select: [ :each |
+		             (each class includesSelector: #fieldsDesc) and: [
+			             each fieldSpec fieldNames includes: #pNext ] ].
+	self assert: chainable size >= 5.
+	chainable do: [ :each |
+		self
+			assert:
+				(each layoutRows first: rows size)
+			equals: rows ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testBaseOutStructureViewLeavesTheStructureItReadsAlone [
+	"A chain walker reads someone else's structure through this view, so the view may not
+	 declare a constant field of its own: FFIStructure class >> fromHandle: sends initialize,
+	 and an initializeConstantFields here would stamp its own structure type over the type of
+	 whatever structure is being read, which is the one thing the walker is there to find out."
+
+	| features header |
+	self
+		deny:
+			(VkBaseOutStructure includesSelector: #initializeConstantFields).
+	features := VkPhysicalDeviceVulkanMemoryModelFeatures externalInstance.
+	[
+	header := VkBaseOutStructure fromHandle: features getHandle.
+	self
+		assert: header sType
+		equals: VkPhysicalDeviceVulkanMemoryModelFeatures structureType.
+	self assert: features sType equals: header sType.
+	self assert: header pNext getHandle isNull ] ensure: [
+		features getHandle free ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testCooperativeMatrixFeaturesLayoutMatchesTheCLayout [
+	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR is declared field by field. The robust buffer
+	 access flag is the second of two VkBool32 members and is left off by this project, which
+	 is the reason it has to be declared rather than left to whatever was in the block."
+
+	| rows |
+	rows := VkPhysicalDeviceCooperativeMatrixFeaturesKHR layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #cooperativeMatrix
+		   #cooperativeMatrixRobustBufferAccess ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 ).
+	self
+		assert: VkPhysicalDeviceCooperativeMatrixFeaturesKHR byteSize
+		equals: 24.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testCreateDestroyInstance [
     | info instance |
     info := VkInstanceCreateInfo new.
@@ -346,7 +419,7 @@ VkBindingsTest >> testDeviceCreateInfoCarriesItsOwnStructureTypeAndNoChain [
 		ensure: [ info getHandle free ]
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - structures' }
 VkBindingsTest >> testDeviceCreateInfoLayoutMatchesTheCLayout [
 	"VkDeviceCreateInfo is declared field by field. Each count is a uint32 sitting in the four
 	 bytes before a pointer, so uFFI pads four bytes after every one of them and the struct is
@@ -363,9 +436,6 @@ VkBindingsTest >> testDeviceCreateInfoLayoutMatchesTheCLayout [
 		assert: (rows collect: [ :each | each second ]) asArray
 		equals: #( 0 8 16 20 24 32 40 48 56 64 ).
 	self assert: VkDeviceCreateInfo byteSize equals: 72.
-	self
-		assert: VkDeviceCreateInfo byteSize
-		equals: VkContext deviceCreateInfoSize.
 	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
 	rows overlappingPairsDo: [ :a :b |
 		self assert: a second + a third <= b second ]
@@ -478,6 +548,115 @@ VkBindingsTest >> testEveryDeclaredResultCodeAnswersItsName [
 		name := VkResult nameForCode: (VkResult perform: selector).
 		self deny: (name beginsWith: 'VK_UNKNOWN').
 		self assert: name equals: (VkResult nameForSelector: selector) ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testEveryFeatureStructureShowsEveryFlagItDeclares [
+	"The flag rows are reflected out of the declared layout, so a field added to any feature
+	 structure's fieldsDesc appears in that structure's view with nothing else touched."
+
+	VkFeatureStructure subclasses do: [ :cls |
+		| instance |
+		instance := cls externalInstance.
+		[
+		self
+			assert: (instance flagRows collect: [ :row | row at: #flag ])
+			equals: (cls fieldSpec fieldNames reject: [ :name |
+					 instance headerFieldNames includes: name ]).
+		self deny: instance flagRows isEmpty ] ensure: [
+			instance getHandle free ] ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testFeatureChainIsWalkedThroughDeclaredFields [
+	"The three methods of VkContext that walk a pNext chain — linking one on, reading the types
+	 off it, freeing it — go through VkBaseOutStructure's accessors rather than reading sType
+	 at offset 0 and pNext at offset 8 by hand. They are found by the class they mention rather
+	 than listed, and the count is asserted so a rename cannot leave nothing tested."
+
+	| pokes reads walkers |
+	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
+	            #byteAt:put: #unsignedShortAt:put: #floatAt:put: ).
+	reads := #( #unsignedLongAt: #unsignedLongLongAt: #pointerAt:
+	            #unsignedShortAt: ).
+	walkers := VkContext methods select: [ :each |
+		           each literals anySatisfy: [ :literal |
+			           literal isVariableBinding and: [
+				           literal key = #VkBaseOutStructure ] ] ].
+	self assert: walkers size >= 3.
+	walkers do: [ :each |
+		self
+			assertEmpty: (each messages select: [ :message |
+					 (pokes , reads) includes: message ]) ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testFeatureStructsAreBuiltThroughDeclaredFields [
+	"Every method of VkContext that builds a feature structure fills it through the accessors
+	 uFFI generated. The structures are found by the classes they mention rather than listed,
+	 and the count is asserted so a rename cannot leave nothing tested. Each flag a structure
+	 declares and this project leaves off still has to be written, because the block the
+	 structure sits in arrives holding whatever was there; externalInstance zeroes it, which is
+	 what makes leaving a flag unwritten the same as writing it off."
+
+	| structures pokes builders |
+	structures := #( #VkPhysicalDeviceSynchronization2Features
+	                 #VkPhysicalDeviceShaderFloat16Int8Features
+	                 #VkPhysicalDevice16BitStorageFeatures
+	                 #VkPhysicalDeviceCooperativeMatrixFeaturesKHR
+	                 #VkPhysicalDeviceVulkanMemoryModelFeatures ).
+	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
+	            #byteAt:put: #unsignedShortAt:put: #floatAt:put: ).
+	builders := VkContext methods select: [ :each |
+		            each literals anySatisfy: [ :literal |
+			            literal isVariableBinding and: [
+				            structures includes: literal key ] ] ].
+	self assert: builders size >= 4.
+	builders do: [ :each |
+		self
+			assertEmpty: (each messages select: [ :message |
+					 pokes includes: message ]) ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFeatureStructureHierarchyViewShowsOnTheAbstractClassOnly [
+	"The tab explains the hierarchy, so it belongs to the abstract class. A concrete feature
+	 structure answers no subclasses, and its own flags are already on its Flags tab."
+
+	| context |
+	context := StInspectionContext new.
+	VkFeatureStructure inspectorFeatureStructuresContext: context.
+	self assert: context isActive.
+	VkFeatureStructure subclasses do: [ :each |
+		context := StInspectionContext new.
+		each inspectorFeatureStructuresContext: context.
+		self deny: context isActive ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFeatureStructuresShareOneFlagView [
+	"Every device feature structure is a chain header followed by a set of boolean flags, so
+	 the flag rows, the header field names, the flag view and the constant structure type
+	 live once in VkFeatureStructure. A new feature structure declares its fields and its own
+	 structure type, and inherits the rest."
+
+	| shared |
+	shared := #( #flagRows #headerFieldNames #inspectorFlags:
+	             #initializeConstantFields ).
+	self assert: VkFeatureStructure superclass equals: VkStructure.
+	shared do: [ :each |
+		self assert: (VkFeatureStructure includesSelector: each) ].
+	self
+		assertCollection:
+			(VkFeatureStructure subclasses collect: [ :each | each name asSymbol ])
+		hasSameElements: #( #VkPhysicalDeviceSynchronization2Features
+			 #VkPhysicalDeviceShaderFloat16Int8Features
+			 #VkPhysicalDevice16BitStorageFeatures
+			 #VkPhysicalDeviceCooperativeMatrixFeaturesKHR
+			 #VkPhysicalDeviceVulkanMemoryModelFeatures ).
+	VkFeatureStructure subclasses do: [ :cls |
+		self assert: (cls class includesSelector: #structureType).
+		shared do: [ :each | self deny: (cls includesSelector: each) ] ]
 ]
 
 { #category : 'tests' }
@@ -631,6 +810,42 @@ VkBindingsTest >> testGeneratorIsIdempotent [
 	gen generateEnum: desc.
 	after := Smalltalk globals allClasses size.
 	self assert: after - before equals: 0
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testHalfPrecisionFeatureStructsLayoutMatchesTheCLayout [
+	"The two structures the half precision path chains together. The float16 struct carries two
+	 VkBool32 flags and is twenty four bytes; the storage struct carries four and is thirty two.
+	 Both are asserted here because the pair is only ever built together, and a short write in
+	 either lands in the other rather than in slack."
+
+	| float16 storage16 |
+	float16 := VkPhysicalDeviceShaderFloat16Int8Features layoutRows.
+	storage16 := VkPhysicalDevice16BitStorageFeatures layoutRows.
+	self
+		assert: (float16 collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #shaderFloat16 #shaderInt8 ).
+	self
+		assert: (float16 collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 ).
+	self
+		assert: VkPhysicalDeviceShaderFloat16Int8Features byteSize
+		equals: 24.
+	self
+		assert: (storage16 collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #storageBuffer16BitAccess
+		   #uniformAndStorageBuffer16BitAccess #storagePushConstant16
+		   #storageInputOutput16 ).
+	self
+		assert: (storage16 collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 28 ).
+	self assert: VkPhysicalDevice16BitStorageFeatures byteSize equals: 32.
+	float16 , storage16 do: [ :each |
+		self assert: each second \\ each third equals: 0 ].
+	float16 overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ].
+	storage16 overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
 ]
 
 { #category : 'tests' }
@@ -965,6 +1180,28 @@ VkBindingsTest >> testSuboptimalPresentIsNotTreatedAsAFailure [
 				checkResult: VkResult vkErrorDeviceLost
 				acceptable: { VkResult vkSuboptimalKHR } ]
 		raise: VkError
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testSynchronization2FeaturesLayoutMatchesTheCLayout [
+	"VkPhysicalDeviceSynchronization2Features is declared field by field. Its one feature flag
+	 is a VkBool32 in the four bytes after pNext, and the struct is padded to twenty four so an
+	 array of them would keep its pointer alignment."
+
+	| rows |
+	rows := VkPhysicalDeviceSynchronization2Features layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #synchronization2 ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 ).
+	self
+		assert: VkPhysicalDeviceSynchronization2Features byteSize
+		equals: 24.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
 ]
 
 { #category : 'tests - constants' }

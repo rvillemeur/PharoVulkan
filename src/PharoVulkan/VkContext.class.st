@@ -40,18 +40,6 @@ VkContext class >> cooperativeMatrixContext [
 	^ self computeContextRequiring: #( #supportsCooperativeMatrix #supportsVulkanMemoryModel )
 ]
 
-{ #category : 'constants' }
-VkContext class >> cooperativeMatrixFeaturesSize [
-	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR (24 bytes): 0:sType 8:pNext
-	 16:cooperativeMatrix 20:cooperativeMatrixRobustBufferAccess."
-	^ 24
-]
-
-{ #category : 'constants' }
-VkContext class >> deviceCreateInfoSize [
-    ^ 72
-]
-
 { #category : 'examples' }
 VkContext class >> exampleDeviceChosenByCapabilityOnThisMachine [
 	"One click: the context a cooperative matrix kernel would run on, destroyed before it is
@@ -155,21 +143,6 @@ VkContext class >> queuesPerFamily [
 	^ 1
 ]
 
-{ #category : 'constants' }
-VkContext class >> shaderFloat16Int8FeaturesSize [
-    ^ 24
-]
-
-{ #category : 'constants' }
-VkContext class >> storage16BitFeaturesSize [
-    ^ 32
-]
-
-{ #category : 'constants' }
-VkContext class >> synchronization2FeaturesSize [
-    ^ 24
-]
-
 { #category : 'private' }
 VkContext >> allocateCString: aString [
 	"Vulkan takes names as NUL-terminated C strings; the caller owns the memory and frees it."
@@ -183,18 +156,12 @@ VkContext >> allocateCString: aString [
 
 { #category : 'initialization' }
 VkContext >> buildCooperativeMatrixFeatures [
-	"ExternalAddress allocate: hands back uninitialised memory, so the robust buffer access
-	 field is written too, even though this context does not ask for it."
-	| features |
-	features := ExternalAddress allocate:
-		            self class cooperativeMatrixFeaturesSize.
-	features
-		unsignedLongAt: 1
-		put: VkStructureType physicalDeviceCooperativeMatrixFeaturesKHR.
-	features pointerAt: 9 put: ExternalAddress null.
-	features unsignedLongAt: 17 put: self class featureEnabled.
-	features unsignedLongAt: 21 put: 0.
-	^ features
+	"Robust buffer access is left off: a kernel here reads only inside the buffers it was
+	 given. externalInstance zeroes the block, which is what writes that flag off."
+
+	^ VkPhysicalDeviceCooperativeMatrixFeaturesKHR externalInstance
+		  cooperativeMatrix: self class featureEnabled;
+		  getHandle
 ]
 
 { #category : 'initialization' }
@@ -247,17 +214,15 @@ VkContext >> buildExtensionNameArray: aNameCollection [
 
 { #category : 'initialization' }
 VkContext >> buildFeatureChain [
-	"VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType 8:pNext 16:synchronization2.
-	 Synchronization2 is the project's only sync API, so it is always asked for; the optional
+	"Synchronization2 is the project's only sync API, so it is always asked for; the optional
 	 structs hang off it, each only where the device has the matching extension."
+
 	| sync2 |
-	sync2 := ExternalAddress allocate: self class synchronization2FeaturesSize.
-	sync2
-		unsignedLongAt: 1
-		put: VkStructureType physicalDeviceSynchronization2Features.
-	sync2 pointerAt: 9 put: self buildOptionalFeatureChain.
-	sync2 unsignedLongAt: 17 put: self class featureEnabled.
-	^ sync2
+	sync2 := VkPhysicalDeviceSynchronization2Features externalInstance
+		         synchronization2: self class featureEnabled;
+		         pNext: self buildOptionalFeatureChain;
+		         yourself.
+	^ sync2 getHandle
 ]
 
 { #category : 'initialization' }
@@ -277,35 +242,23 @@ VkContext >> buildGraphicsDeviceCreateInfo: aQueueCreateInfo [
 		  yourself
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 VkContext >> buildHalfPrecisionFeatures [
-	"VkPhysicalDeviceShaderFloat16Int8Features (24 bytes): 0:sType 8:pNext 16:shaderFloat16
-	 20:shaderInt8
-	 VkPhysicalDevice16BitStorageFeatures (32 bytes): 0:sType 8:pNext
-	 16:storageBuffer16BitAccess 20:uniformAndStorageBuffer16BitAccess 24:storagePushConstant16
-	 28:storageInputOutput16
-	 ExternalAddress allocate: hands back uninitialised memory, so every field is written,
-	 including the ones left off."
+	"The pair the half precision path asks for, already linked: sixteen bit storage buffers to
+	 hold the halves and shaderFloat16 to compute with them. Each structure declares flags this
+	 project leaves off — integer eight bit arithmetic, and sixteen bit uniforms, push
+	 constants and interface variables — and externalInstance zeroes the block, which is what
+	 writes them off."
 
 	| float16 storage16 |
-	storage16 := ExternalAddress allocate: self class storage16BitFeaturesSize.
-	storage16
-		unsignedLongAt: 1
-		put: VkStructureType physicalDevice16BitStorageFeatures.
-	storage16 pointerAt: 9 put: ExternalAddress null.
-	storage16 unsignedLongAt: 17 put: self class featureEnabled.
-	storage16 unsignedLongAt: 21 put: 0.
-	storage16 unsignedLongAt: 25 put: 0.
-	storage16 unsignedLongAt: 29 put: 0.
-	float16 := ExternalAddress allocate:
-		           self class shaderFloat16Int8FeaturesSize.
-	float16
-		unsignedLongAt: 1
-		put: VkStructureType physicalDeviceShaderFloat16Int8Features.
-	float16 pointerAt: 9 put: storage16.
-	float16 unsignedLongAt: 17 put: self class featureEnabled.
-	float16 unsignedLongAt: 21 put: 0.
-	^ float16
+	storage16 := VkPhysicalDevice16BitStorageFeatures externalInstance
+		             storageBuffer16BitAccess: self class featureEnabled;
+		             yourself.
+	float16 := VkPhysicalDeviceShaderFloat16Int8Features externalInstance
+		           shaderFloat16: self class featureEnabled;
+		           pNext: storage16 getHandle;
+		           yourself.
+	^ float16 getHandle
 ]
 
 { #category : 'initialization' }
@@ -328,47 +281,40 @@ VkContext >> buildOptionalFeatureChain [
 
 { #category : 'initialization' }
 VkContext >> buildSynchronization2Features [
-	"VkPhysicalDeviceSynchronization2Features (24 bytes): 0:sType 8:pNext 16:synchronization2.
-	 The chain the graphics device asks for holds this one structure: the optional half
+	"The chain the graphics device asks for holds this one structure: the optional half
 	 precision structs are a compute concern and buildFeatureChain hangs them off its own copy.
-	 Released by freeFeatureChain:, which walks whatever is on the chain."
+	 The store lives outside object memory and is released by freeFeatureChain:, which walks
+	 whatever is on the chain."
 
-	| sync2 |
-	sync2 := ExternalAddress allocate: self class synchronization2FeaturesSize.
-	sync2
-		unsignedLongAt: 1
-		put: VkStructureType physicalDeviceSynchronization2Features.
-	sync2 pointerAt: 9 put: ExternalAddress null.
-	sync2 unsignedLongAt: 17 put: self class featureEnabled.
-	^ sync2
+	^ VkPhysicalDeviceSynchronization2Features externalInstance
+		  synchronization2: self class featureEnabled;
+		  getHandle
 ]
 
 { #category : 'initialization' }
 VkContext >> buildVulkanMemoryModelFeatures [
-	"Built through the structure class rather than from hand-written offsets, so the size and
-	 the field positions come from the member list. externalInstance zeroes the block, which
-	 leaves the device scope and availability-visibility chains flags off: this context asks
-	 only for the memory model itself."
+	"The device scope and the availability-visibility chains are left off: this context asks
+	 only for the memory model itself, which is what a cooperative matrix kernel needs.
+	 externalInstance zeroes the block, which is what writes those two off."
 
-	| features |
-	features := VkPhysicalDeviceVulkanMemoryModelFeatures externalInstance.
-	features sType: VkPhysicalDeviceVulkanMemoryModelFeatures structureType.
-	features pNext: ExternalAddress null.
-	features vulkanMemoryModel: self class featureEnabled.
-	^ features getHandle
+	^ VkPhysicalDeviceVulkanMemoryModelFeatures externalInstance
+		  vulkanMemoryModel: self class featureEnabled;
+		  getHandle
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 VkContext >> chain: aStruct onto: aSuccessor [
 	"Links one struct in front of a chain. buildHalfPrecisionFeatures answers a pair already
-	 linked together, so the successor goes at the end of what is handed in, not at offset 8
-	 of its head."
+	 linked together, so the successor goes at the end of what is handed in, not behind its
+	 head. Each link is read and written through VkBaseOutStructure, the header every structure
+	 in a chain starts with, so no offset is counted here."
+
 	| last next |
-	last := aStruct.
+	last := VkBaseOutStructure fromHandle: aStruct.
 	[
-	next := last pointerAt: 9.
-	next isNull ] whileFalse: [ last := next ].
-	last pointerAt: 9 put: aSuccessor.
+	next := last pNext getHandle.
+	next isNull ] whileFalse: [ last := VkBaseOutStructure fromHandle: next ].
+	last pNext: aSuccessor.
 	^ aStruct
 ]
 
@@ -567,17 +513,21 @@ VkContext >> featureChainStructureNames [
 		  self freeFeatureChain: chain ]
 ]
 
-{ #category : 'private' }
+{ #category : 'querying' }
 VkContext >> featureChainTypesIn: aStruct [
-	"Every struct in a pNext chain starts with its sType and carries its successor at offset 8,
-	 so the chain can be read back without knowing which structs are on it."
+	"Every structure in a pNext chain starts with the VkBaseOutStructure header, so the chain
+	 can be read back without knowing which structures are on it. The view declares no
+	 constant field of its own, so reading a structure through it leaves that structure's own
+	 type alone."
 
 	| types current |
 	types := OrderedCollection new.
 	current := aStruct.
 	[ current isNull ] whileFalse: [
-		types add: (current unsignedLongAt: 1).
-		current := current pointerAt: 9 ].
+		| header |
+		header := VkBaseOutStructure fromHandle: current.
+		types add: header sType.
+		current := header pNext getHandle ].
 	^ types asArray
 ]
 
@@ -652,14 +602,15 @@ VkContext >> freeExtensionNameArray: anArray count: aCount [
 	anArray free
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 VkContext >> freeFeatureChain: aStruct [
-	"Walks the chain forward, keeping the successor before freeing the struct that holds it."
+	"Walks the chain forward through the VkBaseOutStructure header, keeping the successor
+	 before freeing the struct that holds it."
 
 	| current next |
 	current := aStruct.
 	[ current isNull ] whileFalse: [
-		next := current pointerAt: 9.
+		next := (VkBaseOutStructure fromHandle: current) pNext getHandle.
 		current free.
 		current := next ]
 ]
