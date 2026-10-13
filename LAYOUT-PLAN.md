@@ -76,17 +76,18 @@ are the ones that call into the driver.
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
 
-## 1 — Instance and device creation
+## 1 — Instance and device creation — **done 13 October 2026**
 
 Taken first: every test in the project goes through it, and it is the only place with `pNext`
-chains, where a short write lands in another structure rather than in slack.
+chains, where a short write lands in another structure rather than in slack. All five methods are
+converted, over units 1a to 1d; twenty-five of the original thirty-three remain, in groups 2 to 4.
 
 | Method | Offsets written | Structures |
 |---|---|---|
 | ~~`VkContext >> buildDeviceCreateInfo:`~~ | ~~10~~ | `VkDeviceCreateInfo` — **done 13 October 2026** |
 | ~~`VkContext >> buildDeviceQueueCreateInfo:`~~ | ~~8~~ | `VkDeviceQueueCreateInfo` — **done 13 October 2026** |
-| `VkContext >> initializeCompute` | 9 | device and queue create infos |
-| `VkContext >> initializeGraphicsWithExtensions:` | 9 | same, with extensions |
+| ~~`VkContext >> initializeCompute`~~ | ~~9~~ | `VkApplicationInfo`, `VkInstanceCreateInfo` — **done 13 October 2026** |
+| ~~`VkContext >> initializeGraphicsWithExtensions:`~~ | ~~9~~ | same, with extensions — **done 13 October 2026** |
 | ~~`VkContext >> createGraphicsDevice`~~ | ~~10~~ | same — **done 13 October 2026** |
 | ~~`VkContext >> buildFeatureChain`~~ | ~~3~~ | `VkPhysicalDeviceSynchronization2Features` — **done 13 October 2026** |
 | ~~`VkContext >> buildHalfPrecisionFeatures`~~ | ~~6~~ | `VkPhysicalDeviceShaderFloat16Int8Features` — **done 13 October 2026** |
@@ -256,11 +257,73 @@ fields and so cannot have them, and the superclass sending `sType:` to a field e
 declares is the whole point of putting the constant there. The suite is 352 tests over the nine
 concrete test classes.
 
-### 1d — the instance create info
+### 1d — the instance create info, done 13 October 2026
 
-`initializeCompute` and `initializeGraphicsWithExtensions:` each write a `VkApplicationInfo` and a
-`VkInstanceCreateInfo` inline, although both classes have been declared field by field since
-defect D. The two methods are near copies of each other and both carry long-method critiques.
+`VkApplicationInfo` (48 bytes, offsets 0, 8, 16, 24, 32, 40 and 44) and `VkInstanceCreateInfo`
+(64 bytes, offsets 0, 8, 16, 24, 32, 40, 48 and 56) were declared under defect D and the two
+instance paths wrote them as blocks all the same: `initializeCompute` and
+`initializeGraphicsWithExtensions:` were near copies of each other, forty-eight and sixty-four
+bytes each written field by field at counted offsets, with the graphics path spelling out its own
+copy of the C-string array loop as well.
+
+Both now come through one method:
+
+- `buildApplicationInfo` asks for the API version and nothing else. The application and engine
+  names are what a driver matches a workaround on, and this project wants none, so they stay the
+  null pointers a fresh store gives. `freeApplicationInfo:` is its pair; the structure owns no
+  other block precisely because those names were never allocated.
+- `VkContext class >> instanceApiVersion` names the version, which is not a free choice: the
+  device dispatch table carries `vkQueueSubmit2` only from Vulkan 1.3 on. The comment that fact
+  used to sit in has become the constant's comment.
+- `buildInstanceCreateInfo:extensions:` fills the create info through the accessors and reuses
+  `buildExtensionNameArray:`, the method the device path already had, so the graphics path's
+  inline loop over `byteAt:put:` is gone and `allocateCString:` is the one place a Pharo string
+  becomes a C string. `freeInstanceCreateInfo:` pairs with it through
+  `freeExtensionNameArray:count:` and leaves the application info to the caller that built it.
+- `createInstanceFromCreateInfo:` is the one `vkCreateInstance` call.
+- `createInstanceWithExtensions:` is the whole sequence with each block freed in an `ensure:` by
+  the method paired with the one that built it, so a refused `vkCreateInstance` leaks nothing.
+  `VkContext class >> computeInstanceExtensionNames` is the empty list the compute path passes:
+  it never presents to a surface. The graphics path passes what SDL names.
+
+`initializeCompute` and `initializeGraphicsWithExtensions:` are five lines each and their
+long-method and complexity critiques are gone; `VkContext` now has no critiques at all.
+
+**`pApplicationInfo` is declared `void*` although it is a `VkApplicationInfo*`.** uFFI's getter
+for a typed structure pointer answers that structure through `fromHandle:`, which sends
+`initialize`, so every read of the field would write this project's constant fields over memory
+the driver is about to read. `freeInstanceCreateInfo:` reads the field, so this is not
+hypothetical. The declaration is one pointer wide either way and the layout is unchanged.
+
+**`VkInstanceCreateInfo >> initializeConstantFields` was writing fields that are not constant for
+the type** — the flags, both counts and both name arrays, as zeros and nulls. A fresh store
+already reads as none of each, and anything written in initialization is written again on every
+`fromHandle:` read of the structure, which would clear a count the driver was meant to see. It
+writes `sType` only now, and `testInstanceCreateInfoInitializesOnlyWhatIsConstantForTheType`
+asserts the degenerate state field by field and then asks the method itself which setters it
+sends, so the rule cannot drift.
+
+Three tests red first: that test, `VkCoreTest >>
+testInstanceCreateInfoCarriesTheApplicationInfoAndTheExtensionsAskedFor`, which reads the struct
+`vkCreateInstance` is given, and `testInstanceCreateInfoWithoutExtensionsAsksForNone` for the
+degenerate state, where the count must read zero and the array pointer must be null, because a
+driver reads the array whenever the count says there is one. The poke test for this unit is
+`VkBindingsTest >> testVkContextWritesNoScalarFieldAtAHandCountedOffset`, which bans the scalar
+accessors — `unsignedLongAt:`, `unsignedShortAt:`, `unsignedLongLongAt:`, `signedLongAt:` and
+their setters — across every method of `VkContext`, rather than only in the methods that mention
+one class. Every scalar a Vulkan structure carries is a declared field, so a scalar written at a
+counted offset is a write outside a declaration; the pointer, float and byte accessors stay
+allowed, because an array of C strings, of priorities or of handles has no field specification
+and is walked by a named stride.
+
+Examples: `VkApplicationInfo class >> exampleApiVersionThisProjectAsksFor`, built in object
+memory, and `VkInstanceCreateInfo class >> exampleComputeInstanceRequest`, built by the real
+builder and copied into object memory before the external blocks go, so the click frees
+everything it allocated. Layout and Fields tabs inherited from `VkStructure`; the Fields tab
+reports a pointer as set or not set and never follows one, which is what makes it safe on a copy
+whose pointers are stale. The suite is 356 tests over the nine concrete test classes.
+
+**Group 1 is complete.** Every structure on the instance and device creation path is declared.
 
 ## 2 — Buffers, memory and the small create infos
 
