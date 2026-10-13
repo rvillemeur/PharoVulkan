@@ -20,7 +20,7 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'fields' }
+{ #category : 'field definition' }
 VkApplicationInfo class >> fieldsDesc [
     ^ #(
         int32  sType;
@@ -70,10 +70,12 @@ VkApplicationInfo >> engineVersion: anObject [
 ]
 
 { #category : 'initialization' }
-VkApplicationInfo >> initialize [
-    super initialize.
-    self sType: VkStructureType applicationInfo.
-    self pNext: ExternalAddress null
+VkApplicationInfo >> initializeConstantFields [
+	"The structure type and a cleared chain pointer. The names and versions are the caller's."
+
+	self
+		sType: VkStructureType applicationInfo;
+		pNext: ExternalAddress null
 ]
 
 { #category : 'accessing - structure variables' }

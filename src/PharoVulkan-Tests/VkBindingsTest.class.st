@@ -72,6 +72,49 @@ VkBindingsTest >> testCreateDestroyInstance [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testDescriptorBufferInfoLayoutMatchesTheCLayout [
+	"VkDescriptorBufferInfo is declared field by field. The buffer is a handle and therefore
+	 pointer wide; the offset and the range are VkDeviceSize, which is uint64, so the three
+	 members sit on eight byte boundaries and the struct is twenty four bytes with no hole."
+
+	| rows |
+	rows := VkDescriptorBufferInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #buffer #offset #range ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 ).
+	self assert: VkDescriptorBufferInfo byteSize equals: 24.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDescriptorBufferInfoWholeSizeFillsTheRangeField [
+	"VK_WHOLE_SIZE is every bit of a VkDeviceSize set, which is what tells the driver to use
+	 the buffer from the given offset to its end. The constant is the value the C header gives
+	 and is checked here against the declared width of the range field, so a field declared
+	 narrower than uint64 fails rather than truncating the sentinel into a real length.
+	 The degenerate state is the zeroed store: a range of zero is not a legal descriptor, so
+	 every path that builds one for the driver has to name the range itself. initialize may not
+	 do it, because a getter for a field pointing at this type writes back whatever initialize
+	 sets."
+
+	| rangeRow |
+	rangeRow := VkDescriptorBufferInfo layoutRows detect: [ :each |
+		            each first = #range ].
+	self
+		assert: VkDescriptorBufferInfo wholeSize
+		equals: (2 raisedTo: rangeRow third * 8) - 1.
+	self assert: VkDescriptorBufferInfo new range equals: 0.
+	self
+		assert: VkDescriptorBufferInfo exampleWholeStorageBuffer range
+		equals: VkDescriptorBufferInfo wholeSize
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testDescriptorPoolCreateInfoCarriesItsOwnStructureType [
 	"Observed, not assumed: FFIStructure class >> fromHandle: sends initialize after setting
 	 the store, so externalInstance answers a block of memory outside the image that already
@@ -234,6 +277,34 @@ VkBindingsTest >> testDescriptorSetAllocateInfoCarriesItsOwnStructureType [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testDescriptorSetAllocateInfoFieldReportNamesWhatItAsksFor [
+	"The Fields tab's rows come from the compiled field specification and are read through the
+	 generated accessors, so the tab follows fieldsDesc and cannot name a field the struct does
+	 not have. The structure type row is checked by mapping its name back to the constant, so a
+	 second constant of the same value cannot make it pass by accident, and a pointer nobody
+	 has set reads as not set."
+
+	| info rows valueOf |
+	info := VkDescriptorSetAllocateInfo exampleForOneSetOfThreeBindings.
+	rows := info fieldReport.
+	valueOf := [ :fieldName |
+	            (rows detect: [ :each | each first = fieldName ]) second ].
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: (VkDescriptorSetAllocateInfo layoutRows collect: [ :each |
+				 each first asString ]) asArray.
+	self
+		assert: (VkStructureType perform: (valueOf value: 'sType') asSymbol)
+		equals: VkStructureType descriptorSetAllocateInfo.
+	self
+		assert: (valueOf value: 'descriptorSetCount')
+		equals: VkDescriptorPool setAllocationCount printString.
+	self
+		assert: (valueOf value: 'pSetLayouts')
+		equals: VkDescriptorSetAllocateInfo nullLabel
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testDescriptorSetAllocateInfoLayoutMatchesTheCLayout [
 	"VkDescriptorSetAllocateInfo is declared field by field. The offsets to pin are the ones the
 	 driver reads: three pointer sized members on eight byte boundaries, which puts a four byte
@@ -252,41 +323,6 @@ VkBindingsTest >> testDescriptorSetAllocateInfoLayoutMatchesTheCLayout [
 	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
 	rows overlappingPairsDo: [ :a :b |
 		self assert: a second + a third <= b second ]
-]
-
-{ #category : 'tests' }
-VkBindingsTest >> testDescriptorSetAllocateInfoRequestReportReadsItsFieldsAndLeavesThemAlone [
-	"The Request tab's rows come from the compiled field specification and are read through the
-	 generated accessors, so the tab follows fieldsDesc and cannot name a field the struct does
-	 not have. The structure type row is checked by mapping its name back to the constant, so a
-	 second constant of the same value cannot make it pass by accident, and a pointer nobody
-	 has set reads as not set. Building the report writes nothing, which is what lets a filled
-	 in structure be inspected while a driver still holds a pointer to it."
-
-	| info before rows nameOf |
-	info := VkDescriptorSetAllocateInfo exampleForOneSetOfThreeBindings.
-	before := (1 to: VkDescriptorSetAllocateInfo byteSize) collect: [ :i |
-		          info getHandle byteAt: i ].
-	rows := info requestReport.
-	nameOf := [ :fieldName |
-	           (rows detect: [ :each | each first = fieldName ]) second ].
-	self
-		assert: (rows collect: [ :each | each first ]) asArray
-		equals: (VkDescriptorSetAllocateInfo layoutRows collect: [ :each |
-				 each first asString ]) asArray.
-	self
-		assert: (VkStructureType perform: (nameOf value: 'sType') asSymbol)
-		equals: VkStructureType descriptorSetAllocateInfo.
-	self
-		assert: (nameOf value: 'descriptorSetCount')
-		equals: VkDescriptorPool setAllocationCount printString.
-	self
-		assert: (nameOf value: 'pSetLayouts')
-		equals: VkDescriptorSetAllocateInfo nullLabel.
-	self
-		assert: ((1 to: VkDescriptorSetAllocateInfo byteSize) collect: [ :i |
-				 info getHandle byteAt: i ])
-		equals: before
 ]
 
 { #category : 'tests' }
@@ -312,6 +348,32 @@ VkBindingsTest >> testEveryDeclaredResultCodeAnswersItsName [
 		name := VkResult nameForCode: (VkResult perform: selector).
 		self deny: (name beginsWith: 'VK_UNKNOWN').
 		self assert: name equals: (VkResult nameForSelector: selector) ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testFieldReportReadsEveryDeclaredStructureAndLeavesItAlone [
+	"Building a field report writes nothing. That is what lets a filled in structure be
+	 inspected while a driver still holds a pointer to it, and it has to hold for every
+	 structure that declares a field specification rather than for the one being worked on, so
+	 the next one declared is covered too. Each report also names only fields the structure
+	 really has."
+
+	| structures |
+	structures := VkStructure allSubclasses select: [ :each |
+		              each class includesSelector: #fieldsDesc ].
+	self assert: structures size >= 2.
+	structures do: [ :each |
+		| instance before rows names |
+		instance := each new.
+		before := (1 to: each byteSize) collect: [ :i |
+			          instance getHandle byteAt: i ].
+		rows := instance fieldReport.
+		names := each layoutRows collect: [ :row | row first asString ].
+		rows do: [ :row | self assert: (names includes: row first) ].
+		self
+			assert: ((1 to: each byteSize) collect: [ :i |
+					 instance getHandle byteAt: i ])
+			equals: before ]
 ]
 
 { #category : 'tests' }
@@ -439,6 +501,28 @@ VkBindingsTest >> testGeneratorIsIdempotent [
 	gen generateEnum: desc.
 	after := Smalltalk globals allClasses size.
 	self assert: after - before equals: 0
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testLayoutRowsReportEveryPointerFieldAsOnePointerWide [
+	"A pointer field occupies a pointer, not the thing it points at. FFIExternalStructureType
+	 answers the pointed to structure's size for externalTypeSize, so layoutRows has to ask
+	 isPointer first; before it did, VkWriteDescriptorSet reported pBufferInfo as twenty four
+	 bytes wide and running over pTexelBufferView. Stated over every structure in the image
+	 that declares a field specification, so the next one declared is covered too: no field may
+	 run past the end of its struct, and no field may run into the next one."
+
+	| structures |
+	structures := VkStructure allSubclasses select: [ :each |
+		              each class includesSelector: #fieldsDesc ].
+	self assert: structures size >= 2.
+	structures do: [ :each |
+		| rows |
+		rows := each layoutRows.
+		rows do: [ :row |
+			self assert: row second + row third <= each byteSize ].
+		rows overlappingPairsDo: [ :a :b |
+			self assert: a second + a third <= b second ] ]
 ]
 
 { #category : 'tests' }
@@ -633,6 +717,55 @@ VkBindingsTest >> testResultCodesViewMarksTheInspectedCodeAndNothingElse [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testStorageBufferUpdateWritesThroughDeclaredFields [
+	"The buffer info and the write are filled through the accessors uFFI generated from their
+	 field specifications, so no method of VkDescriptorSet pokes a raw offset into a block of
+	 bytes. The methods are found by the classes they mention rather than listed, so splitting
+	 one further keeps the rule enforced, and the count is asserted so a rename cannot leave
+	 nothing tested."
+
+	| structures builders pokes |
+	structures := #( #VkDescriptorBufferInfo #VkWriteDescriptorSet ).
+	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
+	            #byteAt:put: #unsignedShortAt:put: ).
+	builders := VkDescriptorSet methods select: [ :each |
+		            each literals anySatisfy: [ :literal |
+			            literal isVariableBinding and: [
+				            structures includes: literal key ] ] ].
+	self assert: builders size >= 2.
+	builders do: [ :each |
+		self
+			assertEmpty: (each messages select: [ :message |
+					 pokes includes: message ]) ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testStructPointerFieldReadLeavesThePointeeAlone [
+	"Reading a field that points at another structure must not write through that pointer.
+	 uFFI's generated getter answers the pointed to structure through fromHandle:, and
+	 FFIStructure class >> fromHandle: sends initialize, so a structure whose initialize writes
+	 a data field rewrote the pointee on every read — a buffer info holding a real range came
+	 back holding VK_WHOLE_SIZE — and the same read over a null pointer failed in the FFI
+	 primitive. Both are stated here: the pointee keeps its own range, and a pointer nobody has
+	 set reads as null rather than raising."
+
+	| info write someRange |
+	someRange := VkDescriptorPool exampleElementCount * 4.
+	info := VkDescriptorBufferInfo externalInstance
+		        range: someRange;
+		        yourself.
+	write := VkWriteDescriptorSet externalInstance
+		         pBufferInfo: info;
+		         yourself.
+	[
+	self assert: write pBufferInfo getHandle equals: info getHandle.
+	self assert: info range equals: someRange.
+	self assert: VkWriteDescriptorSet new pBufferInfo isNull ] ensure: [
+		write getHandle free.
+		info getHandle free ]
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testStructureCopyIntoObjectMemoryDetachesFromItsSource [
 	"A structure the driver filled in memory outside the image has to be copied before that
 	 memory is freed. The copy must hold the same bytes, keep a store of its own so a later
@@ -803,6 +936,47 @@ VkBindingsTest >> testVkResultSuccess [
     self assert: r isSuccess.
     self deny: r isError.
     self assert: r name equals: 'VK_SUCCESS'
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testWriteDescriptorSetCarriesItsOwnStructureType [
+	"initialize names the structure type and clears the chain pointer, and fromHandle: sends
+	 it, so an instance from externalInstance is as ready as one from new. The degenerate state
+	 is the one that matters: descriptorCount left at zero updates no descriptor at all, and
+	 dstBinding left at zero is binding zero, a real binding, so the writing method must set
+	 both."
+
+	#( #new #externalInstance ) do: [ :creator |
+		| write |
+		write := VkWriteDescriptorSet perform: creator.
+		self assert: write sType equals: VkStructureType writeDescriptorSet.
+		self assert: write descriptorCount equals: 0.
+		self assert: write dstBinding equals: 0.
+		self assert: write dstArrayElement equals: 0.
+		creator = #externalInstance ifTrue: [ write getHandle free ] ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testWriteDescriptorSetLayoutMatchesTheCLayout [
+	"VkWriteDescriptorSet is declared field by field. dstSet is a handle and therefore pointer
+	 wide; the three counts and the type are uint32 and pack into the sixteen bytes between
+	 dstSet and the three pointer members, which are eight byte aligned. The struct is sixty
+	 four bytes, with no hole: the four uint32 members fill the gap exactly."
+
+	| rows |
+	rows := VkWriteDescriptorSet layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #dstSet #dstBinding #dstArrayElement
+		           #descriptorCount #descriptorType #pImageInfo #pBufferInfo
+		           #pTexelBufferView ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 28 32 36 40 48 56 ).
+	self assert: VkWriteDescriptorSet byteSize equals: 64.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
 ]
 
 { #category : 'path' }

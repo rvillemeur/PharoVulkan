@@ -21,7 +21,7 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'fields' }
+{ #category : 'field definition' }
 VkInstanceCreateInfo class >> fieldsDesc [
     ^ #(
         int32  sType;
@@ -72,15 +72,18 @@ VkInstanceCreateInfo >> flags: anObject [
 ]
 
 { #category : 'initialization' }
-VkInstanceCreateInfo >> initialize [
-    super initialize.
-    self sType: VkStructureType instanceCreateInfo.
-    self pNext: ExternalAddress null.
-    self flags: 0.
-    self enabledLayerCount: 0.
-    self ppEnabledLayerNames: ExternalAddress null.
-    self enabledExtensionCount: 0.
-    self ppEnabledExtensionNames: ExternalAddress null
+VkInstanceCreateInfo >> initializeConstantFields [
+	"The structure type and the cleared pointers and counts an instance create info needs
+	 before a caller asks for layers or extensions."
+
+	self
+		sType: VkStructureType instanceCreateInfo;
+		pNext: ExternalAddress null;
+		flags: 0;
+		enabledLayerCount: 0;
+		ppEnabledLayerNames: ExternalAddress null;
+		enabledExtensionCount: 0;
+		ppEnabledExtensionNames: ExternalAddress null
 ]
 
 { #category : 'accessing - structure variables' }

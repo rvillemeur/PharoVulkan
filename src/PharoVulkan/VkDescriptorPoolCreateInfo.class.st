@@ -59,17 +59,14 @@ VkDescriptorPoolCreateInfo >> flags: anObject [
 ]
 
 { #category : 'initialization' }
-VkDescriptorPoolCreateInfo >> initialize [
-	"A create info from new carries its own sType and no chained structure, so an instance is
-	 valid before any count is set. The two counts start at zero, which is a pool the driver
-	 refuses rather than one that looks usable."
+VkDescriptorPoolCreateInfo >> initializeConstantFields [
+	"A create info carries its own sType and no chained structure, so an instance is valid
+	 before any count is set. The counts and the flags are left as the zeroed store has them,
+	 which is a pool the driver refuses rather than one that looks usable."
 
-	super initialize.
-	self sType: VkStructureType descriptorPoolCreateInfo.
-	self pNext: ExternalAddress null.
-	self flags: 0.
-	self maxSets: 0.
-	self poolSizeCount: 0
+	self
+		sType: VkStructureType descriptorPoolCreateInfo;
+		pNext: ExternalAddress null
 ]
 
 { #category : 'accessing - structure variables' }

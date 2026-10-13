@@ -15,6 +15,49 @@ Class {
 	#tag : 'Compute'
 }
 
+{ #category : 'constants' }
+VkDescriptorSet class >> copiesPerUpdate [
+	"No descriptor is copied from another set, so vkUpdateDescriptorSets is told to read no
+	 copies and is given a null pointer for them."
+	^ 0
+]
+
+{ #category : 'constants' }
+VkDescriptorSet class >> descriptorsPerWrite [
+	"One descriptor is updated per write: a binding in this project holds one storage buffer,
+	 not an array of them. The write's descriptorCount and the number of buffer infos it
+	 points at are both this, so they cannot disagree."
+	^ 1
+]
+
+{ #category : 'constants' }
+VkDescriptorSet class >> firstBinding [
+	"Binding zero, the first binding of a set. Named because zero is a real binding here and
+	 not an absent value: a write that leaves dstBinding at zero updates this one."
+	^ 0
+]
+
+{ #category : 'constants' }
+VkDescriptorSet class >> writesPerUpdate [
+	"One VkWriteDescriptorSet is sent per call, so vkUpdateDescriptorSets is told to read one."
+	^ 1
+]
+
+{ #category : 'private' }
+VkDescriptorSet >> bufferInfoOutsideObjectMemoryFor: aBuffer [
+	"The buffer info this write points at, declared field by field so uFFI computes its three
+	 offsets. The whole buffer from its start is named here rather than in initialize, because
+	 a getter for a field pointing at this type would otherwise write the range back on every
+	 read. The store is outside object memory because the write holds a pointer to it: a store
+	 inside the image could be moved by the garbage collector between that pointer being
+	 written and the driver reading it. The caller frees it."
+
+	^ VkDescriptorBufferInfo externalInstance
+		  buffer: aBuffer handle;
+		  range: VkDescriptorBufferInfo wholeSize;
+		  yourself
+]
+
 { #category : 'accessing' }
 VkDescriptorSet >> device: aDevice [
 	device := aDevice
@@ -40,29 +83,40 @@ VkDescriptorSet >> pool: aPool [
 	pool := aPool
 ]
 
+{ #category : 'private' }
+VkDescriptorSet >> updateBinding: aBindingIndex fromBufferInfo: aBufferInfo [
+	"The write, filled through the accessors uFFI generated, so no offset is counted here.
+	 externalInstance runs initialize, so the structure type and the null chain pointer are
+	 already in place and only the set, the binding, the count, the type and the pointer are
+	 written. The descriptor type is the one the pool holds, asked rather than restated, so a
+	 write cannot name a type the set was never allocated for. Its store is freed as soon as
+	 the driver has read it; the buffer info it points at belongs to the caller."
+
+	| write |
+	write := VkWriteDescriptorSet externalInstance
+		         dstSet: handle;
+		         dstBinding: aBindingIndex;
+		         descriptorCount: self class descriptorsPerWrite;
+		         descriptorType: VkDescriptorPool descriptorType;
+		         pBufferInfo: aBufferInfo;
+		         yourself.
+	^ [
+	  Vk
+		  updateDescriptorSets: device handle
+		  descriptorWriteCount: self class writesPerUpdate
+		  pDescriptorWrites: write getHandle
+		  descriptorCopyCount: self class copiesPerUpdate
+		  pDescriptorCopies: ExternalAddress null ] ensure: [ write getHandle free ]
+]
+
 { #category : 'updating' }
-VkDescriptorSet >> updateStorageBuffer: aBuffer atBinding: bindingIndex [
-    "VkDescriptorBufferInfo 24 bytes + VkWriteDescriptorSet 64 bytes sType=writeDescriptorSet"
-    | bufInfo write |
-    bufInfo := ExternalAddress allocate: 24.
-    [
-        bufInfo pointerAt: 1 put: aBuffer handle getHandle.
-        bufInfo unsignedLongLongAt: 9 put: 0.
-        bufInfo unsignedLongLongAt: 17 put: 16rFFFFFFFFFFFFFFFF.
-        write := ExternalAddress allocate: 64.
-        [
-            write unsignedLongAt: 1 put: VkStructureType writeDescriptorSet.
-            write pointerAt: 9 put: ExternalAddress null.
-            write pointerAt: 17 put: handle getHandle.
-            write unsignedLongAt: 25 put: bindingIndex.
-            write unsignedLongAt: 29 put: 0.
-            write unsignedLongAt: 33 put: 1.
-            write unsignedLongAt: 37 put: VkDescriptorType storageBuffer.
-            write pointerAt: 41 put: ExternalAddress null.
-            write pointerAt: 49 put: bufInfo.
-            write pointerAt: 57 put: ExternalAddress null.
-            Vk updateDescriptorSets: device handle descriptorWriteCount: 1
-                pDescriptorWrites: write descriptorCopyCount: 0 pDescriptorCopies: ExternalAddress null
-        ] ensure: [ write free ]
-    ] ensure: [ bufInfo free ]
+VkDescriptorSet >> updateStorageBuffer: aBuffer atBinding: aBindingIndex [
+	"Point the descriptor at the given binding of this set at the whole of the given buffer.
+	 The buffer info outlives the write that points at it and is freed here, after the driver
+	 has read both."
+
+	| info |
+	info := self bufferInfoOutsideObjectMemoryFor: aBuffer.
+	^ [ self updateBinding: aBindingIndex fromBufferInfo: info ]
+		  ensure: [ info getHandle free ]
 ]

@@ -46,43 +46,6 @@ VkDescriptorSetAllocateInfo class >> fieldsDesc [
 	)
 ]
 
-{ #category : 'labels' }
-VkDescriptorSetAllocateInfo class >> nullLabel [
-	"A pointer field is reported as set or not set rather than as an address: the address tells
-	 a reader nothing and differs on every run."
-	^ 'not set'
-]
-
-{ #category : 'labels' }
-VkDescriptorSetAllocateInfo class >> setLabel [
-	^ 'set'
-]
-
-{ #category : 'labels' }
-VkDescriptorSetAllocateInfo class >> structureTypeNameFor: aValue [
-	"Found by asking VkStructureType which of its own constants answers the value the store
-	 holds, so the tab names the type the driver will read rather than restating a constant
-	 here. A value no constant answers is shown as the number it is."
-	^ (VkStructureType class selectors
-		   detect: [ :each |
-			   (VkStructureType class >> each) numArgs = 0 and: [
-				   (VkStructureType perform: each) = aValue ] ]
-		   ifNone: [ ^ aValue printString ]) asString
-]
-
-{ #category : 'reporting' }
-VkDescriptorSetAllocateInfo >> describeField: aFieldName value: aValue [
-	"What a row shows for one field. The structure type is named by asking VkStructureType, a
-	 count is the number itself, and a pointer is reported as set or not set."
-
-	aFieldName = #sType ifTrue: [
-		^ self class structureTypeNameFor: aValue ].
-	aValue isNumber ifTrue: [ ^ aValue printString ].
-	^ aValue isNull
-		  ifTrue: [ self class nullLabel ]
-		  ifFalse: [ self class setLabel ]
-]
-
 { #category : 'accessing - structure variables' }
 VkDescriptorSetAllocateInfo >> descriptorPool [
 	"This method was automatically generated"
@@ -108,33 +71,13 @@ VkDescriptorSetAllocateInfo >> descriptorSetCount: anObject [
 ]
 
 { #category : 'initialization' }
-VkDescriptorSetAllocateInfo >> initialize [
-	"The two members the driver reads before any of ours: the structure type that tells it what
-	 this block of bytes is, and a cleared chain pointer. FFIStructure class >> fromHandle:
-	 sends this, so an instance from externalInstance arrives as ready as one from new and the
-	 allocating method writes only the pool, the count and the layout array."
+VkDescriptorSetAllocateInfo >> initializeConstantFields [
+	"The structure type that tells the driver what this block of bytes is, and a cleared chain
+	 pointer. The pool, the count and the layout array are the caller's to write."
 
-	super initialize.
 	self
 		sType: VkStructureType descriptorSetAllocateInfo;
 		pNext: ExternalAddress null
-]
-
-{ #category : 'inspector' }
-VkDescriptorSetAllocateInfo >> inspectorRequest: aBuilder [
-	"The allocation this info asks for, in Vulkan's terms rather than in bytes: the Layout tab
-	 inherited from VkStructure shows where each field sits, this one shows what each field
-	 says. Every row is read back through the generated accessors, so the tab cannot claim a
-	 request the driver will not be given, and nothing is written."
-
-	<inspectorPresentationOrder: 20 title: 'Request'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Field' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each second ]);
-		  items: self requestReport;
-		  yourself
 ]
 
 { #category : 'accessing - structure variables' }
@@ -159,22 +102,6 @@ VkDescriptorSetAllocateInfo >> pSetLayouts [
 VkDescriptorSetAllocateInfo >> pSetLayouts: anObject [
 	"This method was automatically generated"
 	handle pointerAt: OFFSET_PSETLAYOUTS put: anObject getHandle.
-]
-
-{ #category : 'reporting' }
-VkDescriptorSetAllocateInfo >> requestReport [
-	"What this allocate info asks the driver for: one row per declared field, read through the
-	 accessor uFFI generated for it. The rows come from the compiled field specification rather
-	 than from a list kept here, so a field added to fieldsDesc appears by itself and the
-	 report cannot name a field the struct does not have. Reading only, so a report built on a
-	 filled in structure leaves its bytes alone."
-
-	^ self class layoutRows collect: [ :row |
-		  | fieldName |
-		  fieldName := row first.
-		  {
-			  fieldName asString.
-			  (self describeField: fieldName value: (self perform: fieldName)) } ]
 ]
 
 { #category : 'accessing - structure variables' }
