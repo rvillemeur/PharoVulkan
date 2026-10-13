@@ -1,0 +1,132 @@
+# Declared layout plan
+
+Every Vulkan structure this project hands to the driver should be declared field by field, so
+uFFI computes its offsets, rather than written as a block of bytes with the offsets counted by
+hand. Counting by hand has already cost this project one class of bug twice: an offset counted
+short of the struct writes outside it, and nothing says so until an unrelated object changes.
+`PHASE7-PLAN.md` §5 records the crash that came from it.
+
+Defects D, E and F in `DEFECTS-PLAN.md` converted the descriptor path — the pool create info,
+the set allocate info, the buffer info and the write — and established the shape each remaining
+unit should take. This plan records what is left, in the order it is worth taking.
+
+Written 13 October 2026. The inventory was taken from the exported sources, counting methods
+that write three or more distinct offsets into a block of bytes they allocated.
+
+## What a unit looks like
+
+One structure, or one small group of structures written by the same method:
+
+1. The failing layout test first. It reads the names, the offsets, the widths, each field's
+   self-alignment and the struct size back from the compiled field specification, never from a
+   second copy of the declaration. `VkStructure class >> layoutRows` is what it reads.
+2. A test for whatever the structure's own `initializeConstantFields` is supposed to leave in
+   the store, including the degenerate state: what a zeroed field would mean to the driver.
+3. The declaration, then `defineFields`, which generates both the offsets and the accessors.
+   `compileFields` generates offsets only — it compiles the specification `withAccessors:
+   #never` — so it is the wrong one.
+4. The writing method rewritten through the generated accessors, split so that each piece owns
+   one step and one `ensure:`. The reflective test that no method mentioning the structure
+   sends `unsignedLongAt:put:` and friends keeps it that way.
+5. A class-side `<sampleInstance>` example, built in object memory so a click frees nothing,
+   with any pointer to a store the example does not own left null.
+6. `run_critics` on everything that changed.
+
+The driver leg is the suite that already exercises the path: the structure being accepted by
+uFFI proves nothing by itself. `VkCoreTest`, `PVComputeTest`, `PVGraphicsTest` and `VkImageTest`
+are the ones that call into the driver.
+
+## Rules the first four units established
+
+- **A pointer field is one pointer wide.** `FFIExternalStructureType` answers the pointed-to
+  structure's size for `externalTypeSize`, so a layout read naively reports a pointer to a
+  twenty-four-byte struct as twenty-four bytes wide and overlapping the field after it.
+  `layoutRows` asks `isPointer` first.
+- **Nothing may be written in `initialize`.** `FFIStructure class >> fromHandle:` sends
+  `initialize` after setting the store, and uFFI's getter for a field that points at another
+  structure answers that structure through `fromHandle:`. So `initialize` runs on every read of
+  such a field, over the pointee's store or over a null pointer. `VkStructure >> initialize`
+  therefore guards on a null store and defers to `initializeConstantFields`, and what goes
+  there must be constant for the type — `sType` and a cleared `pNext`. A data field written
+  there is rewritten in the pointee on every read.
+- **Declare handles as handles.** A `VkFoo_H*` field is pointer wide; declaring it `uint32`
+  shifts every field after it.
+- **Name the constants.** The counts and sentinels that used to sit inline become class-side
+  methods: `VkDescriptorPool class >> setAllocationCount`, `handleByteCount`,
+  `VkDescriptorSet class >> descriptorsPerWrite`, `VkDescriptorBufferInfo class >> wholeSize`.
+- **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
+  what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
+  carry the critique and it is accepted, not worked around.
+
+## 1 — Instance and device creation
+
+Taken first: every test in the project goes through it, and it is the only place with `pNext`
+chains, where a short write lands in another structure rather than in slack.
+
+| Method | Offsets written | Structures |
+|---|---|---|
+| `VkContext >> buildDeviceCreateInfo:` | 10 | `VkDeviceCreateInfo` |
+| `VkContext >> buildDeviceQueueCreateInfo:` | 8 | `VkDeviceQueueCreateInfo` |
+| `VkContext >> initializeCompute` | 9 | device and queue create infos |
+| `VkContext >> initializeGraphicsWithExtensions:` | 9 | same, with extensions |
+| `VkContext >> createGraphicsDevice` | 10 | same |
+| `VkContext >> buildFeatureChain` | 3 | `VkPhysicalDeviceSynchronization2Features` |
+| `VkContext >> buildHalfPrecisionFeatures` | 6 | `VkPhysicalDeviceShaderFloat16Int8Features` |
+| `VkContext >> buildCooperativeMatrixFeatures` | 4 | cooperative matrix features |
+
+`VkDeviceQueueCreateInfo` had a stub class whose `fieldsDesc` was in a syntax uFFI could not
+resolve; it was deleted under defect F, so this unit declares it properly.
+
+## 2 — Buffers, memory and the small create infos
+
+| Method | Offsets written | Structures |
+|---|---|---|
+| `VkBuffer >> allocate` | 8 | `VkBufferCreateInfo`, `VkMemoryAllocateInfo` |
+| `VkImage >> allocate` | 4 | `VkMemoryRequirements`, allocate info |
+| `VkDescriptorSetLayout >> create` | 5 | `VkDescriptorSetLayoutBinding`, layout create info |
+| `VkShaderModule >> initializeFromBytes:` | 5 | `VkShaderModuleCreateInfo` |
+| `VkCommandPool class >> on:` and `VkDevice >> createCommandPool:` | 4 each | `VkCommandPoolCreateInfo` |
+| `VkCommandPool >> allocateBuffer` | 5 | `VkCommandBufferAllocateInfo` |
+| `VkFenceWrapper >> initializeDevice:` | 3 | `VkFenceCreateInfo` |
+| `VkSemaphoreWrapper >> initializeDevice:` | 3 | `VkSemaphoreCreateInfo` |
+
+The two command pool create infos are written twice, by two methods, from the same five values;
+the unit that declares the structure should leave one writer.
+
+## 3 — Command recording and submission
+
+| Method | Offsets written | Structures |
+|---|---|---|
+| `VkCommandBuffer >> begin` | 4 | `VkCommandBufferBeginInfo` |
+| `VkCommandBuffer >> barrierForHostRead` | 9 | memory barrier and dependency info |
+| `VkCommandBuffer >> copyImage:` | 13 | `VkBufferImageCopy` |
+| `VkCommandBuffer >> beginRenderPass:` | 10 | render pass begin info, `VkClearValue` |
+| `VkCommandBuffer >> setViewport:` | 6 | `VkViewport` |
+| `VkCommandBuffer >> setScissor:` | 4 | `VkRect2D` |
+| `VkQueue >> submit:` | 9 | `VkSubmitInfo2`, command buffer submit info |
+| `VkQueue >> submitGraphics:` | 9 | same, with `VkSemaphoreSubmitInfo` |
+
+`VkViewport` and `VkRect2D` are plain value structures with no `sType`, so they are the cheapest
+units in the plan and a good place to confirm the shape on a structure without a chain pointer.
+
+## 4 — Graphics
+
+Last, because the graphics path is the one the tests exercise least and the structures are the
+widest.
+
+| Method | Offsets written | Structures |
+|---|---|---|
+| `VkGraphicsPipeline >> initializeDevice:` | 29 | the whole pipeline create info tree |
+| `VkSwapchain >> initializeDevice:` | 19 | `VkSwapchainCreateInfoKHR`, surface capabilities |
+| `VkSwapchain >> createImageViews` | 15 | `VkImageViewCreateInfo` |
+| `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
+| `VkImage >> create` | 17 | `VkImageCreateInfo` |
+| `VkImage >> createView` | 15 | `VkImageViewCreateInfo` |
+| `VkRenderPass >> initializeDevice:` | 13 | attachment, subpass and render pass create infos |
+| `VkFramebuffer >> initializeDevice:` | 9 | `VkFramebufferCreateInfo` |
+| `VkComputePipeline >> create` | 13 | `VkComputePipelineCreateInfo`, shader stage create info |
+
+`VkImage >> createView` and `VkSwapchain >> createImageViews` write the same structure from two
+places, so declaring `VkImageViewCreateInfo` should leave one writer, as with the command pool.
+`VkGraphicsPipeline >> initializeDevice:` is a tree of nine structures written by one method;
+it is worth splitting into one unit per structure rather than taken whole.

@@ -22,6 +22,12 @@ subclasses. Then hand over a prose Iceberg commit message.
 next. What each one turned out to need is recorded under its own heading below; the one
 finding worth reading before touching the descriptor path again is in C, step 1.
 
+**Defect F was added and fixed on 13 October 2026**, after E and on the same day. It converted the
+descriptor write, which finishes the descriptor path, and it turned up two uFFI facts that affect
+every structure in the image: a pointer field was reported as the size of what it points at, and
+reading a field that points at a structure wrote through the pointer. Both are written up under F
+and both now have sweeping tests. The inventory of what is left moved to `LAYOUT-PLAN.md`.
+
 **Defect E was added and fixed on 13 October 2026.** It is the hand-counted allocate info D's
 write-up had left as the next unit, taken the same way: red tests first, the structure declared
 field by field, the long method split, and `VkCoreTest` and `PVComputeTest` as the driver leg.
@@ -223,9 +229,11 @@ the pool, the count and the layout array.
 - `setForAllocateInfo:layout:` makes the call, checks the result before reading the handle block,
   and counts the allocation only after the call succeeded.
 
-Two new class-side constants replace the literals that were inline: `setAllocationCount`, one
-set per call, and `handleByteCount`, `ExternalAddress wordSize`, which `handleForCreateInfo:`
-now uses as well instead of its literal 8.
+Two new class-side constants replace the literals that were inline on the allocate path:
+`setAllocationCount`, one set per call, and `handleByteCount`, `ExternalAddress wordSize`.
+`handleForCreateInfo:`, on the create path, still allocates its handle block from a literal 8;
+changing it is cosmetic and this project does not touch image code without a bug behind it, so it
+waits for the unit that declares the pool create info's own allocation.
 
 Three tests, all red first:
 
@@ -259,6 +267,102 @@ that shows what each declared field asks the driver for — the structure type n
 as set or not set. Its rows come from `layoutRows` and the generated accessors, so a field added
 to `fieldsDesc` appears by itself.
 
+## F — the descriptor write was a block of hand-counted bytes, and two uFFI facts came out of it
+
+Taken as its own unit on 13 October 2026, after an inventory of every method in the project that
+still writes a structure as a block of bytes. That inventory is now `LAYOUT-PLAN.md`; this unit
+is the one it starts from, and the descriptor path is clean after it.
+
+`VkDescriptorSet >> updateStorageBuffer:atBinding:` wrote `VkDescriptorBufferInfo` as a
+twenty-four-byte block and `VkWriteDescriptorSet` as a sixty-four-byte block, with the offsets
+1, 9, 17 and 1, 9, 17, 25, 29, 33, 37, 41, 49, 57 counted by hand, two nested `ensure:` blocks
+deep. Every compute dispatch in the project goes through it.
+
+**Fixed.** Both structures are declared field by field:
+
+- `VkDescriptorBufferInfo`, twenty-four bytes, offsets 0, 8, 16. The handle is pointer wide and
+  both `VkDeviceSize` members are `uint64`, so there is no hole.
+- `VkWriteDescriptorSet`, sixty-four bytes, offsets 0, 8, 16, 24, 28, 32, 36, 40, 48, 56. The
+  four `uint32` members fill the sixteen bytes between the pointer-wide `dstSet` and the three
+  eight-byte-aligned pointer members exactly, so uFFI needs no pad.
+
+`updateStorageBuffer:atBinding:` is now three methods: it builds the buffer info and frees it
+after the driver has read both, `bufferInfoOutsideObjectMemoryFor:` names the buffer and the
+whole range, and `updateBinding:fromBufferInfo:` fills the write through the generated accessors
+and makes the call. The descriptor type comes from `VkDescriptorPool class >> descriptorType`
+rather than from a literal, so a write cannot name a type the set was never allocated for, and
+the counts and the sentinel became `VkDescriptorSet class >> descriptorsPerWrite`,
+`writesPerUpdate`, `copiesPerUpdate`, `firstBinding` and
+`VkDescriptorBufferInfo class >> wholeSize`.
+
+Five tests were red first: the two layout tests, the structure-type test for the write with its
+zero count and zero binding as the degenerate states, the `VK_WHOLE_SIZE` test, and the
+reflective test that no method of `VkDescriptorSet` mentioning either structure pokes a raw
+offset. The driver leg is `VkCoreTest` and `PVComputeTest`, which update descriptor sets on
+every kernel they dispatch.
+
+### Two uFFI facts the unit uncovered, each with its own failing test first
+
+**A pointer field was reported as the size of what it points at.**
+`VkStructure class >> layoutRows` took each field's width from `type externalTypeSize`, and
+`FFIExternalStructureType` answers the pointed-to structure's size for that, not a pointer's.
+So `pBufferInfo` was reported as twenty-four bytes wide and running over `pTexelBufferView`; the
+layout test's overlap assertion caught it. It had been invisible until now only because the one
+other struct-pointer field in the image, `pPoolSizes`, points at an eight-byte structure.
+`layoutRows` now asks `isPointer` first. The fix is pinned by
+`testLayoutRowsReportEveryPointerFieldAsOnePointerWide`, which sweeps every structure in the
+image that declares a field specification and asserts no field runs past the end of its struct
+or into the next one, so the next structure declared is covered too. The Layout tab and
+`headOfFieldAt:size:` read the corrected widths.
+
+**Reading a struct-pointer field wrote through the pointer.**
+uFFI's generated getter answers the pointed-to structure through `fromHandle:`, and
+`FFIStructure class >> fromHandle:` sends `initialize`. `VkDescriptorBufferInfo >> initialize`
+set the range to `VK_WHOLE_SIZE`, so reading `aWrite pBufferInfo` rewrote the range of whatever
+buffer info the write pointed at — a real length came back as the sentinel — and the same read
+over a null pointer failed in the FFI primitive with `primitive
+#integerOfObject:at:put:size:signed: in TFFIBackend failed`. Both are stated by
+`testStructPointerFieldReadLeavesThePointeeAlone`.
+`VkStructure >> initialize` now guards on a null store and defers to
+`initializeConstantFields`, which subclasses override instead of `initialize`; what goes there
+must be constant for the type, which `sType` and a cleared `pNext` are. The six structures that
+overrode `initialize` — `VkApplicationInfo`, `VkInstanceCreateInfo`,
+`VkDescriptorPoolCreateInfo`, `VkDescriptorSetAllocateInfo`, `VkDescriptorBufferInfo` and
+`VkWriteDescriptorSet` — were converted, and the buffer info's range moved out of the
+initialization into the method that builds one for the driver. A zeroed range is not a legal
+descriptor, so that method names it explicitly and the test pins the zero as the degenerate
+state.
+
+### Lifted, deleted and accepted
+
+`requestReport`, `describeField:value:` and `inspectorRequest:` moved from
+`VkDescriptorSetAllocateInfo` up to `VkStructure` as `fieldReport`, `describeField:value:` and
+`inspectorFields:` — a Fields tab beside the Layout tab, for every structure declared field by
+field, showing what each field says rather than where it sits: the structure type named by
+asking `VkStructureType` which constant answers the value in the store, counts as themselves,
+pointers as set or not set. A field whose accessor was never generated is left out rather than
+failing. `testFieldReportReadsEveryDeclaredStructureAndLeavesItAlone` sweeps every declared
+structure and asserts the store is byte-identical after a report is built, which is what lets a
+filled-in structure be inspected while a driver still holds a pointer to it.
+
+`VkDeviceQueueCreateInfo` and `VkTestStruct` were deleted. Both were stubs with a `fieldsDesc`
+in a syntax uFFI cannot resolve — `layoutRows` on either answered `Unable to resolve external
+type` — no accessors had ever been generated for them, and nothing in the image or the sources
+referenced either. `LAYOUT-PLAN.md` §1 declares the queue create info properly.
+
+Two critiques are accepted rather than fixed: `ReExcessiveVariablesRule` on
+`VkWriteDescriptorSet`, which is one `OFFSET_` class variable per field and the price of
+declaring a ten-field C struct — `VkPhysicalDeviceLimits` carries the same one — and
+`ReExcessiveMethodsRule` on `VkBindingsTest`, which follows from this project's one-test-class-
+per-package convention. The protocol of `fieldsDesc` on `VkApplicationInfo` and
+`VkInstanceCreateInfo` was corrected to `field definition` while their initialization changed,
+which cleared the inconsistent-classification critique on both.
+
+Whole project after the unit: 335 tests over the nine concrete test classes, all passing — 55
+`VkBindingsTest`, 53 `VkCoreTest`, 57 `PVComputeTest`, 40 `PVGraphicsTest`, 5 `VkImageTest` and
+125 over the four compiler and SPIR-V classes. `run_critics` is clean on `VkDescriptorBufferInfo`,
+`VkDescriptorSet`, `VkStructure`, `VkApplicationInfo` and `VkInstanceCreateInfo`.
+
 ## Out of scope, recorded rather than fixed
 
 The hand-written byte offsets inside `VkDescriptorPool >> create:` — 8, 40, 9, 17, 21, 25, 33.
@@ -269,9 +373,11 @@ driver the way `VkPhysicalDeviceProperties` was.
 The hand-counted offsets in `VkDescriptorPool >> allocateSet:` — 1, 9, 17, 25 and 33 — and the
 long-method critique it carried. Fixed as defect E above, on its own, the same way D was.
 
-Every other structure the bindings write as a block of bytes rather than through a declared
-field specification. The descriptor path is now clean, so what is left is elsewhere: the
-remaining hand-written offsets live in the core and graphics paths, each one the same hazard
-class, each one its own unit with its own layout test and its own driver leg. They are worth
-taking one at a time rather than in a sweep, because the layout test is what makes each one
-safe and a sweep would land them all untested at once.
+The hand-counted bytes in `VkDescriptorSet >> updateStorageBuffer:atBinding:`. Fixed as defect F
+above, which also finished the descriptor path.
+
+Every other structure the bindings write as a block of bytes rather than through a declared field
+specification: thirty-five methods, inventoried by subsystem in `LAYOUT-PLAN.md` with the shape
+each unit should take and the four rules defects D to F established. They are worth taking one at
+a time rather than in a sweep, because the layout test is what makes each one safe and a sweep
+would land them all untested at once.
