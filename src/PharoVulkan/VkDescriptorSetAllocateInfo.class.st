@@ -19,7 +19,7 @@ Class {
 { #category : 'examples' }
 VkDescriptorSetAllocateInfo class >> exampleForOneSetOfThreeBindings [
 	"One click: the allocate info VkDescriptorPool writes for a three-buffer compute kernel,
-	 with the structure type, the pool slot and the set count side by side in the Request tab.
+	 with the structure type, the pool slot and the set count side by side in the Fields tab.
 	 The pool handle and the layout array stay null: an example answers an object that outlives
 	 the call, and a pointer to a store this example does not own would be read after that
 	 store has gone. The live pointers are covered by VkBindingsTest and by

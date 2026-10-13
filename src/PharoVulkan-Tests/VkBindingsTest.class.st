@@ -326,6 +326,66 @@ VkBindingsTest >> testDescriptorSetAllocateInfoLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests' }
+VkBindingsTest >> testDeviceQueueCreateInfoCarriesItsOwnStructureType [
+	"A zeroed store would ask the driver for queue family zero with zero queues, which is not a
+	 legal request, so the type is set by initialization and the counts are left to the caller:
+	 the degenerate state has to be visible rather than filled in silently."
+
+	| info |
+	info := VkDeviceQueueCreateInfo externalInstance.
+	[
+	self
+		assert: info sType
+		equals: VkStructureType deviceQueueCreateInfo.
+	self assert: info pNext isNull.
+	self assert: info queueFamilyIndex equals: 0.
+	self assert: info queueCount equals: 0 ] ensure: [ info getHandle free ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDeviceQueueCreateInfoLayoutMatchesTheCLayout [
+	"VkDeviceQueueCreateInfo is declared field by field. The three uint32 members fill the
+	 twelve bytes after pNext, and pQueuePriorities is a pointer, so uFFI pads four bytes
+	 before it to put it on an eight byte boundary and the struct is forty bytes."
+
+	| rows |
+	rows := VkDeviceQueueCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #queueFamilyIndex #queueCount
+		   #pQueuePriorities ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 ).
+	self assert: VkDeviceQueueCreateInfo byteSize equals: 40.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests' }
+VkBindingsTest >> testDeviceQueueCreateWritesThroughDeclaredFields [
+	"Every method of VkContext that deals with a queue create info fills it through the
+	 accessors uFFI generated, so none of them pokes a raw offset. The methods are found by the
+	 class they mention rather than listed, and the count is asserted so a rename cannot leave
+	 nothing tested. The array of queue priorities is not a structure and has no field
+	 specification, so the method that fills it names no structure class and is not caught here."
+
+	| pokes builders |
+	pokes := #( #unsignedLongAt:put: #unsignedLongLongAt:put: #pointerAt:put:
+	            #byteAt:put: #unsignedShortAt:put: #floatAt:put: ).
+	builders := VkContext methods select: [ :each |
+		            each literals anySatisfy: [ :literal |
+			            literal isVariableBinding and: [
+				            literal key = #VkDeviceQueueCreateInfo ] ] ].
+	self assert: builders size >= 1.
+	builders do: [ :each |
+		self
+			assertEmpty: (each messages select: [ :message |
+					 pokes includes: message ]) ]
+]
+
+{ #category : 'tests' }
 VkBindingsTest >> testEnumeratePhysicalDevices [
 
 	| info instance devices |

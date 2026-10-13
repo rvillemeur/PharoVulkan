@@ -496,8 +496,8 @@ VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension [
 		assert: (ctx extensionNamesIn: info) asArray
 		equals: ctx enabledDeviceExtensionNames asArray ] ensure: [
 		ctx freeDeviceCreateInfo: info.
-		(queueInfo pointerAt: 33) free.
-		queueInfo free ]
+		
+		ctx freeDeviceQueueCreateInfo: queueInfo ]
 ]
 
 { #category : 'tests' }
@@ -523,8 +523,29 @@ VkCoreTest >> testDeviceCreateInfoChainsTheHalfPrecisionFeatureStructs [
 			self assert: (half noneSatisfy: [ :each | types includes: each ]) ] ]
 		ensure: [
 			ctx freeDeviceCreateInfo: info.
-			(queueInfo pointerAt: 33) free.
-			queueInfo free ]
+			
+			ctx freeDeviceQueueCreateInfo: queueInfo ]
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testDeviceQueueCreateInfoAsksForOneQueueAtFullPriority [
+	"Read back from the struct handed to vkCreateDevice: the family the context chose, one
+	 queue, and one priority per queue asked for. The priorities are an array of floats and not
+	 a structure, so they are read through the store by the named stride, which is what the
+	 driver does too."
+
+	| info priorities |
+	info := ctx buildDeviceQueueCreateInfo: ctx computeQueueFamily.
+	[
+	self assert: info queueFamilyIndex equals: ctx computeQueueFamily.
+	self assert: info queueCount equals: VkContext queuesPerFamily.
+	priorities := info pQueuePriorities getHandle.
+	1 to: VkContext queuesPerFamily do: [ :index |
+		self
+			assert: (priorities
+					 floatAt: index - 1 * VkContext queuePriorityByteCount + 1)
+			equals: VkContext queuePriority ] ] ensure: [
+		ctx freeDeviceQueueCreateInfo: info ]
 ]
 
 { #category : 'tests' }

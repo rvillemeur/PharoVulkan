@@ -113,6 +113,40 @@ VkContext class >> pointerSize [
 ]
 
 { #category : 'constants' }
+VkContext class >> queueCreateInfosPerDevice [
+	"One queue create info is handed to vkCreateDevice, because the context creates its queues
+	 on one family. It is not the same number as queuesPerFamily: that one says how many queues
+	 that single family is asked for."
+
+	^ 1
+]
+
+{ #category : 'constants' }
+VkContext class >> queuePriority [
+	"The highest priority the specification allows, since the one queue created competes with
+	 nothing else in this project."
+
+	^ 1.0
+]
+
+{ #category : 'constants' }
+VkContext class >> queuePriorityByteCount [
+	"A queue priority is a float, and the array of them has no field specification to read a
+	 width from, so the stride is named here."
+
+	^ 4
+]
+
+{ #category : 'constants' }
+VkContext class >> queuesPerFamily [
+	"One queue is created on the family the context chose. Every path in this project submits
+	 from a single queue, and a device whose graphics and compute families differ is rejected
+	 at selection rather than given a second queue here."
+
+	^ 1
+]
+
+{ #category : 'constants' }
 VkContext class >> shaderFloat16Int8FeaturesSize [
     ^ 24
 ]
@@ -154,12 +188,13 @@ VkContext >> buildCooperativeMatrixFeatures [
 	^ features
 ]
 
-{ #category : 'private' }
-VkContext >> buildDeviceCreateInfo: queueInfoBuf [
+{ #category : 'initialization' }
+VkContext >> buildDeviceCreateInfo: aQueueCreateInfo [
 	"VkDeviceCreateInfo (72 bytes): 0:sType 8:pNext 16:flags 20:queueCreateInfoCount
 	 24:pQueueCreateInfos 32:enabledLayerCount 40:ppEnabledLayerNames 48:enabledExtensionCount
 	 56:ppEnabledExtensionNames 64:pEnabledFeatures.
-	 Everything allocated here is released by freeDeviceCreateInfo:."
+	 Everything allocated here is released by freeDeviceCreateInfo:; the queue create info is
+	 the caller's and is released by freeDeviceQueueCreateInfo:."
 
 	| buf names array |
 	names := self enabledDeviceExtensionNames.
@@ -168,8 +203,8 @@ VkContext >> buildDeviceCreateInfo: queueInfoBuf [
 	buf unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
 	buf pointerAt: 9 put: self buildFeatureChain.
 	buf unsignedLongAt: 17 put: 0.
-	buf unsignedLongAt: 21 put: 1.
-	buf pointerAt: 25 put: queueInfoBuf.
+	buf unsignedLongAt: 21 put: self class queueCreateInfosPerDevice.
+	buf pointerAt: 25 put: aQueueCreateInfo getHandle.
 	buf unsignedLongAt: 33 put: 0.
 	buf pointerAt: 41 put: ExternalAddress null.
 	buf unsignedLongAt: 49 put: names size.
@@ -178,22 +213,17 @@ VkContext >> buildDeviceCreateInfo: queueInfoBuf [
 	^ buf
 ]
 
-{ #category : 'private' }
+{ #category : 'initialization' }
 VkContext >> buildDeviceQueueCreateInfo: familyIndex [
-    "VkDeviceQueueCreateInfo (40 bytes): 0:sType 4:pad 8:pNext 16:flags 20:queueFamilyIndex 24:queueCount 28:pad 32:pQueuePriorities"
-    | buf priorityBuf |
-    priorityBuf := ExternalAddress allocate: 4.
-    priorityBuf floatAt: 1 put: 1.0.
-    buf := ExternalAddress allocate: 40.
-    buf unsignedLongAt: 1 put: VkStructureType deviceQueueCreateInfo.
-    buf unsignedLongAt: 5 put: 0.
-    buf pointerAt: 9 put: ExternalAddress null.
-    buf unsignedLongAt: 17 put: 0.
-    buf unsignedLongAt: 21 put: familyIndex.
-    buf unsignedLongAt: 25 put: 1.
-    buf unsignedLongAt: 29 put: 0.
-    buf pointerAt: 33 put: priorityBuf.
-    ^ buf
+	"The structure is declared field by field, so the driver reads what the accessors wrote.
+	 Its store and the priority array both live outside object memory, because the driver holds
+	 the pointer until vkCreateDevice returns; freeDeviceQueueCreateInfo: releases both."
+
+	^ VkDeviceQueueCreateInfo externalInstance
+		  queueFamilyIndex: familyIndex;
+		  queueCount: self class queuesPerFamily;
+		  pQueuePriorities: self queuePriorityArrayOutsideObjectMemory;
+		  yourself
 ]
 
 { #category : 'private' }
@@ -329,40 +359,53 @@ VkContext >> cooperativeMatrixAvailable [
 
 { #category : 'initialization' }
 VkContext >> createGraphicsDevice [
-    | queueInfo sync2Feat extNameBytes extName extPtrBuf deviceInfo devBuf result devHandle |
-    queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
-    [ sync2Feat := ExternalAddress allocate: 24.
-      [ sync2Feat unsignedLongAt: 1 put: VkStructureType physicalDeviceSynchronization2Features.
-        sync2Feat pointerAt: 9 put: ExternalAddress null.
-        sync2Feat unsignedLongAt: 17 put: 1.
-        extNameBytes := 'VK_KHR_swapchain' asByteArray copyWith: 0.
-        extName := ExternalAddress allocate: extNameBytes size.
-        [ 1 to: extNameBytes size do: [:i | extName byteAt: i put: (extNameBytes at: i)].
-          extPtrBuf := ExternalAddress allocate: 8.
-          [ extPtrBuf pointerAt: 1 put: extName.
-            deviceInfo := ExternalAddress allocate: 72.
-            [ deviceInfo unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
-              deviceInfo pointerAt: 9 put: sync2Feat.
-              deviceInfo unsignedLongAt: 17 put: 0.
-              deviceInfo unsignedLongAt: 21 put: 1.
-              deviceInfo pointerAt: 25 put: queueInfo.
-              deviceInfo unsignedLongAt: 33 put: 0.
-              deviceInfo pointerAt: 41 put: ExternalAddress null.
-              deviceInfo unsignedLongAt: 49 put: 1.
-              deviceInfo pointerAt: 57 put: extPtrBuf.
-              deviceInfo pointerAt: 65 put: ExternalAddress null.
-              devBuf := ExternalAddress allocate: 8.
-              [ result := Vk createDevice: physicalDevice handle createInfo: deviceInfo allocator: ExternalAddress null deviceOut: devBuf.
-                Vk checkResult: result.
-                devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-                device := VkDevice on: devHandle physicalDevice: physicalDevice context: self
-              ] ensure: [ devBuf free ]
-            ] ensure: [ deviceInfo free ]
-          ] ensure: [ extPtrBuf free ]
-        ] ensure: [ extName free ]
-      ] ensure: [ sync2Feat free ].
-      (queueInfo pointerAt: 33) free
-    ] ensure: [ queueInfo free ]
+
+	| queueInfo sync2Feat extNameBytes extName extPtrBuf deviceInfo devBuf result devHandle |
+	queueInfo := self buildDeviceQueueCreateInfo: computeQueueFamily.
+	[
+	sync2Feat := ExternalAddress allocate: self class synchronization2FeaturesSize.
+	[
+	sync2Feat
+		unsignedLongAt: 1
+		put: VkStructureType physicalDeviceSynchronization2Features.
+	sync2Feat pointerAt: 9 put: ExternalAddress null.
+	sync2Feat unsignedLongAt: 17 put: self class featureEnabled.
+	extNameBytes := 'VK_KHR_swapchain' asByteArray copyWith: 0.
+	extName := ExternalAddress allocate: extNameBytes size.
+	[
+	1 to: extNameBytes size do: [ :i |
+		extName byteAt: i put: (extNameBytes at: i) ].
+	extPtrBuf := ExternalAddress allocate: self class pointerSize.
+	[
+	extPtrBuf pointerAt: 1 put: extName.
+	deviceInfo := ExternalAddress allocate: self class deviceCreateInfoSize.
+	[
+	deviceInfo unsignedLongAt: 1 put: VkStructureType deviceCreateInfo.
+	deviceInfo pointerAt: 9 put: sync2Feat.
+	deviceInfo unsignedLongAt: 17 put: 0.
+	deviceInfo unsignedLongAt: 21 put: self class queueCreateInfosPerDevice.
+	deviceInfo pointerAt: 25 put: queueInfo getHandle.
+	deviceInfo unsignedLongAt: 33 put: 0.
+	deviceInfo pointerAt: 41 put: ExternalAddress null.
+	deviceInfo unsignedLongAt: 49 put: 1.
+	deviceInfo pointerAt: 57 put: extPtrBuf.
+	deviceInfo pointerAt: 65 put: ExternalAddress null.
+	devBuf := ExternalAddress allocate: self class pointerSize.
+	[
+	result := Vk
+		          createDevice: physicalDevice handle
+		          createInfo: deviceInfo
+		          allocator: ExternalAddress null
+		          deviceOut: devBuf.
+	Vk checkResult: result.
+	devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+	device := VkDevice
+		          on: devHandle
+		          physicalDevice: physicalDevice
+		          context: self ] ensure: [ devBuf free ] ] ensure: [
+		deviceInfo free ] ] ensure: [ extPtrBuf free ] ] ensure: [
+		extName free ] ] ensure: [ sync2Feat free ] ] ensure: [
+		self freeDeviceQueueCreateInfo: queueInfo ]
 ]
 
 { #category : 'initialization' }
@@ -386,8 +429,8 @@ VkContext >> createLogicalDevice [
 		          on: devHandle
 		          physicalDevice: physicalDevice
 		          context: self ] ensure: [ devBuf free ] ] ensure: [
-		self freeDeviceCreateInfo: deviceInfo ].
-	(queueInfo pointerAt: 33) free ] ensure: [ queueInfo free ]
+		self freeDeviceCreateInfo: deviceInfo ] ] ensure: [
+		self freeDeviceQueueCreateInfo: queueInfo ]
 ]
 
 { #category : 'lifecycle' }
@@ -573,6 +616,16 @@ VkContext >> freeDeviceCreateInfo: aCreateInfo [
 	aCreateInfo free
 ]
 
+{ #category : 'initialization' }
+VkContext >> freeDeviceQueueCreateInfo: aQueueCreateInfo [
+	"Releases both blocks buildDeviceQueueCreateInfo: allocated. The pair exists because a
+	 caller that freed only the structure leaked the priority array, which is what the hand
+	 written callers did on the path where device creation raised."
+
+	aQueueCreateInfo pQueuePriorities free.
+	aQueueCreateInfo getHandle free
+]
+
 { #category : 'private' }
 VkContext >> freeFeatureChain: aStruct [
 	"Walks the chain forward, keeping the successor before freeing the struct that holds it."
@@ -721,6 +774,22 @@ VkContext >> instance [
 { #category : 'accessing' }
 VkContext >> physicalDevice [
     ^ physicalDevice
+]
+
+{ #category : 'initialization' }
+VkContext >> queuePriorityArrayOutsideObjectMemory [
+	"One float per queue asked for. This is an array of floats rather than a structure, so there
+	 is no field specification to read an offset from and the stride is the named one."
+
+	| priorities |
+	priorities := ExternalAddress allocate:
+		              self class queuesPerFamily
+		              * self class queuePriorityByteCount.
+	1 to: self class queuesPerFamily do: [ :index |
+		priorities
+			floatAt: index - 1 * self class queuePriorityByteCount + 1
+			put: self class queuePriority ].
+	^ priorities
 ]
 
 { #category : 'selection' }
