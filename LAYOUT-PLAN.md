@@ -72,6 +72,17 @@ are the ones that call into the driver.
   the same name plus `Context:` answers `aContext active:` with the position in the hierarchy,
   asked as a real question — `self subclasses isNotEmpty` — not as a comparison against a class
   name.
+- **A field keeps its Vulkan name even when `Object` already answers it.** `VkBufferCreateInfo`
+  and `VkMemoryRequirements` both declare a field called `size`, so the generated accessor
+  overrides `Object >> size` for those two classes. That is correct: the field is `size` in the C
+  structure and neither class is ever asked for a collection size. Renaming the field to avoid
+  the override would hide the C name, which is the one thing a binding must not do.
+- **A structure the driver fills is read through a declared view and copied before the block
+  goes.** `VkMemoryRequirements externalInstance` is handed to the driver, read through its
+  accessors, and answered as `copyIntoObjectMemory` so the caller keeps the numbers after the
+  external block is freed. A test that hand-counted the same offsets is converted along with the
+  code: `VkCoreTest >> testStorageBufferMemoryTypeIsCoherent` used to read `memoryTypeBits` at
+  byte seventeen itself.
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -329,8 +340,8 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 
 | Method | Offsets written | Structures |
 |---|---|---|
-| `VkBuffer >> allocate` | 8 | `VkBufferCreateInfo`, `VkMemoryAllocateInfo` |
-| `VkImage >> allocate` | 4 | `VkMemoryRequirements`, allocate info |
+| ~~`VkBuffer >> allocate`~~ | ~~8~~ | done, unit 2a |
+| `VkImage >> allocate` | 4 | both memory structures, declared in 2a |
 | `VkDescriptorSetLayout >> create` | 5 | `VkDescriptorSetLayoutBinding`, layout create info |
 | `VkShaderModule >> initializeFromBytes:` | 5 | `VkShaderModuleCreateInfo` |
 | `VkCommandPool class >> on:` and `VkDevice >> createCommandPool:` | 4 each | `VkCommandPoolCreateInfo` |
@@ -340,6 +351,52 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 
 The two command pool create infos are written twice, by two methods, from the same five values;
 the unit that declares the structure should leave one writer.
+
+### 2a — the buffer and its memory, done 14 October 2026
+
+Three structures declared and `VkBuffer >> allocate` converted. `VkBufferCreateInfo` is
+fifty-six bytes over eight fields at 0/8/16/24/32/36/40/48: `size` is a `VkDeviceSize`, so it is
+eight bytes wide and eight byte aligned, which puts four bytes of padding after `flags`, and
+`queueFamilyIndexCount` is padded again before the pointer that follows it.
+`VkMemoryAllocateInfo` is thirty-two bytes at 0/8/16/24 for the same reason.
+`VkMemoryRequirements` is twenty-four bytes at 0/8/16 and has no chain header at all: the driver
+writes all three fields, so like `VkBaseOutStructure` the class declares no
+`initializeConstantFields`, and `testMemoryRequirementsWritesNothingOfItsOwn` asserts both that
+the class does not implement it and that the lookup lands on `VkStructure`.
+
+`allocate` was one method writing eight offsets into three hand-allocated blocks. It is now four:
+`allocate` itself, which creates the buffer, backs it and binds the two together; `createHandle`,
+which fills the two fields this project chooses — the byte count and the usage mask — and leaves
+the rest of the request reading as the degenerate buffer, exclusively owned with no queue family
+list; `memoryRequirements`, which hands the driver a declared block and answers
+`copyIntoObjectMemory`; and `allocateMemoryFor:`, which asks the physical device for a memory
+type that both suits the buffer and is host visible and coherent. The sharing mode's zero is
+named by `VkBufferCreateInfo class >> sharingModeExclusive`, and
+`sharingModeNameFor:` names that one value and prints any other as the number it is, rather than
+vouching for a name the class does not carry.
+
+Seven tests red first in `VkBindingsTest`: a layout test per structure, a constant-field test for
+each create info that asserts the degenerate state field by field and then asks
+`initializeConstantFields` which setters it sends,
+`testMemoryRequirementsWritesNothingOfItsOwn`, and
+`testVkBufferWritesNoScalarFieldAtAHandCountedOffset`, the blanket scalar-poke ban over every
+method of `VkBuffer` — `map`, `copyToByteArray` and `copyFromByteArray:` send only pointer and
+byte accessors, which stay allowed, because a mapped buffer's contents have no field
+specification. The driver leg is `VkCoreTest >>
+testBufferMemoryRequirementsAnswerWhatTheDriverAsked`, which asserts the driver's answer is a
+real one: at least the bytes asked for, a power of two alignment and a non-empty set of memory
+types, read after the buffer is destroyed to prove the copy outlives it.
+
+Examples: `VkBufferCreateInfo class >> exampleStorageBufferRequest`, which asks no device,
+`VkMemoryRequirements class >> exampleRequirementsOfAStorageBufferOnThisMachine` and
+`VkMemoryAllocateInfo class >> exampleAllocationForAStorageBufferOnThisMachine`, both of which
+run against this machine and answer object-memory copies. The view is
+`VkBufferCreateInfo >> inspectorRequest:`, a Request tab that names what the raw words in the
+Fields tab mean: the byte count, the usage mask decoded by `VkBufferUsage nameForFlags:` rather
+than restated, the sharing mode named by the class and whether a queue family list is attached.
+`testBufferCreateInfoRequestRowsNameTheUsageBitsAndChangeNothing` compares the rows against the
+flag constants and the field report before and after reading, so the tab cannot drift and cannot
+mutate. The suite is 365 tests over the nine concrete test classes.
 
 ## 3 — Command recording and submission
 
