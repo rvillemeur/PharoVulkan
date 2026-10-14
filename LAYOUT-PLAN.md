@@ -133,6 +133,13 @@ are the ones that call into the driver.
   `VkCommandBuffer >> bufferRows` therefore asks the pool's rows as well, and the driver leg
   asserts the buffer is not live once the pool is destroyed.
 
+- **A structure whose one writable field is reserved has no writer, and the view reads the
+  field rather than restating it.** `VkSemaphoreCreateInfo` carries a chain header and a word
+  Vulkan reserves and requires to be zero, so `initializeConstantFields` stamps the structure
+  type and nothing else: a fresh block is the whole request. `VkSemaphoreWrapper >> semaphoreRows`
+  reports the reserved word by allocating a fresh request and reading its `flags`, so the row
+  cannot claim a zero the structure stopped carrying.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -396,8 +403,8 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 | ~~`VkShaderModule >> initializeFromBytes:`~~ | ~~5~~ | done, unit 2d |
 | ~~`VkCommandPool class >> on:` and `VkDevice >> createCommandPool:`~~ | ~~4 each~~ | done, unit 2e |
 | ~~`VkCommandPool >> allocateBuffer`~~ | ~~5~~ | done, unit 2f |
-| `VkFenceWrapper >> initializeDevice:` | 3 | `VkFenceCreateInfo` |
-| `VkSemaphoreWrapper >> initializeDevice:` | 3 | `VkSemaphoreCreateInfo` |
+| ~~`VkFenceWrapper >> initializeDevice:`~~ | ~~3~~ | done, unit 2g |
+| ~~`VkSemaphoreWrapper >> initializeDevice:`~~ | ~~3~~ | done, unit 2g |
 
 The two command pool create infos were written twice, by two methods, from the same five values;
 unit 2e left one writer.
@@ -624,6 +631,40 @@ Examples: `VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine
 `VkCommandBufferAllocateInfo class >> exampleRequestForOnePrimaryBuffer`. The view is
 `VkCommandBuffer >> inspectorBuffer:`. The suite is 398 tests over the nine concrete test
 classes.
+
+### 2g — the fence and the semaphore, done 14 October 2026
+
+`VkFenceCreateInfo` and `VkSemaphoreCreateInfo` are the same shape — a chain header and one word
+of flags — and both are twenty-four bytes at 0, 8 and 16, with four bytes of tail padding to the
+alignment the chain pointer demands. They are declared as two classes rather than one shared
+structure because the structure type differs and each is read by a different driver call; what
+they share is the shape, not the request.
+
+The fence's flags belong to the caller, so `VkFenceWrapper >> initializeDevice:flags:` writes
+them and keeps them — the driver cannot be asked whether a fence was created signalled — and
+`handleForCreateInfo:` owns the block the handle comes back in. `VkFenceCreateFlag` is a new
+`VkFlagConstants` subclass answering `signaledBit`, which replaces the literal `1` in
+`createSignaledDevice:`, and `VkFenceWrapper class >> unsignaledFlags` replaces the literal `0`
+in `createDevice:`. The semaphore's flags are reserved by Vulkan and must be zero, so its
+request is written by nothing at all: `initializeDevice:` allocates it, hands it over and frees
+it, and `semaphoreRows` reads the reserved word back off a fresh request rather than restating
+the zero.
+
+Seven tests red first: one layout test over both structures, one constant-field test over both,
+the flag names including the empty mask, the scalar-poke ban over both wrapper classes and their
+metaclasses, `testOnlyOneMethodCreatesAFenceAndOneASemaphore`, the uncreated primitives, and the
+driver leg `VkCoreTest >> testFenceAndSemaphoreReportWhatTheyWereCreatedWith`, which creates a
+signalled fence and a semaphore on this machine, resets the fence, and reads both sets of rows
+before and after `destroy`.
+
+Examples: `VkFenceWrapper class >> exampleSignalledFenceOnThisMachine`,
+`VkSemaphoreWrapper class >> exampleSemaphoreOnThisMachine` and
+`VkFenceCreateInfo class >> exampleRequestForASignalledFence`. The views are
+`VkFenceWrapper >> inspectorFence:` and `VkSemaphoreWrapper >> inspectorSemaphore:`. The suite is
+405 tests over the nine concrete test classes.
+
+**Group 2 is complete.** Every buffer, image, descriptor, shader, command and synchronisation
+structure on the compute path is declared.
 
 ## 3 — Command recording and submission
 
