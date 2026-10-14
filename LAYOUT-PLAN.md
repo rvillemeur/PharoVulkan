@@ -127,6 +127,12 @@ are the ones that call into the driver.
   was not the method with the callers but the method with the responsibility, and the senders did
   not change.
 
+- **A resource freed with its owner asks the owner whether it is live.** `vkDestroyCommandPool`
+  frees every buffer cut from the pool and leaves each buffer's own handle reading as non-null,
+  so a buffer that tested only its handle would report itself usable after its pool had gone.
+  `VkCommandBuffer >> bufferRows` therefore asks the pool's rows as well, and the driver leg
+  asserts the buffer is not live once the pool is destroyed.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -389,7 +395,7 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 | ~~`VkDescriptorSetLayout >> create`~~ | ~~5~~ | done, unit 2c |
 | ~~`VkShaderModule >> initializeFromBytes:`~~ | ~~5~~ | done, unit 2d |
 | ~~`VkCommandPool class >> on:` and `VkDevice >> createCommandPool:`~~ | ~~4 each~~ | done, unit 2e |
-| `VkCommandPool >> allocateBuffer` | 5 | `VkCommandBufferAllocateInfo` |
+| ~~`VkCommandPool >> allocateBuffer`~~ | ~~5~~ | done, unit 2f |
 | `VkFenceWrapper >> initializeDevice:` | 3 | `VkFenceCreateInfo` |
 | `VkSemaphoreWrapper >> initializeDevice:` | 3 | `VkSemaphoreCreateInfo` |
 
@@ -584,6 +590,40 @@ Examples: `VkCommandPool class >> examplePoolForTheComputeQueueOnThisMachine`, t
 compute dispatch here allocates from, destroyed with its context so the tab shows a dead handle
 over live creation values. The view is `VkCommandPool >> inspectorPool:`. The suite is 392 tests
 over the nine concrete test classes.
+
+### 2f — the command buffer allocate info, done 14 October 2026
+
+`VkCommandBufferAllocateInfo` is thirty-two bytes at 0, 8, 16, 24 and 28: the pool is a handle
+and so pointer wide and eight byte aligned, and the level and the count fill the eight bytes
+after it exactly, so there is no padding anywhere in the structure.
+
+`VkCommandPool >> allocateBuffer` wrote it at five offsets and returned with a `^` from inside
+two nested `ensure:` blocks. It is now two methods: the request, and `handleForAllocateInfo:`,
+which owns the block the driver writes the handles into, so no return crosses an `ensure:`.
+`VkCommandPool class >> allocationLevel` and `buffersPerAllocation` name the two values that were
+written as `0` and `1`; the block the handles come back in is sized from `buffersPerAllocation`
+rather than from a counted eight. `VkCommandBufferLevel` is a new `VkValueConstants` subclass
+answering `primary` and `secondary`, so the Buffer tab names the level instead of printing it.
+
+The buffer keeps the level it was allocated with, as the pool keeps its queue family, and
+`bufferRows` reports both with whether the buffer is still usable. That last answer is why the
+unit is bigger than the structure: a pool frees its buffers when it is destroyed and leaves each
+buffer's handle reading as non-null, so the rows ask the pool as well as the handle, and a buffer
+that was never allocated has no pool to ask. `VkCommandBuffer class >> on:pool:` became
+`on:pool:level:`, which had one sender; `VkCommandBuffer >> initialize` sets the level so the tab
+opens on an unallocated buffer.
+
+Seven tests red first: the layout, the constant field, the level names, the whole-class
+scalar-poke ban — now over every method of `VkCommandPool` and its metaclass, since both
+structures it hands the driver are declared, with the buffer's own recording structures left to
+group three — `testOnlyOneMethodAllocatesCommandBuffers`, the unallocated buffer, and the driver
+leg `VkCoreTest >> testCommandBufferReportsTheLevelItWasAllocatedWith`, which allocates a real
+buffer on this machine and reads the rows before and after the pool is destroyed.
+
+Examples: `VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine` and
+`VkCommandBufferAllocateInfo class >> exampleRequestForOnePrimaryBuffer`. The view is
+`VkCommandBuffer >> inspectorBuffer:`. The suite is 398 tests over the nine concrete test
+classes.
 
 ## 3 — Command recording and submission
 
