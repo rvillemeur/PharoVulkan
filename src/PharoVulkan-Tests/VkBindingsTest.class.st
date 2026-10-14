@@ -186,6 +186,71 @@ VkBindingsTest >> testBufferCreateInfoRequestRowsNameTheUsageBitsAndChangeNothin
 		info getHandle free ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandPoolCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. The reset flag every pool here
+	 asks for is written by the writer, not stamped in the initializer: a pool without it is a
+	 pool whose buffers can only be reset as a whole, which is a caller's choice rather than a
+	 property of the structure."
+
+	| info setters |
+	info := VkCommandPoolCreateInfo externalInstance.
+	[
+		self
+			assert: info sType
+			equals: VkStructureType commandPoolCreateInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info queueFamilyIndex equals: 0 ] ensure: [
+		info getHandle free ].
+	setters := (VkCommandPoolCreateInfo >> #initializeConstantFields)
+		           messages select: [ :each |
+		           VkCommandPoolCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandPoolCreateInfoLayoutMatchesTheCLayout [
+	"The chain header, the creation flags and the queue family the pool serves: four words
+	 after the chain pointer, so the structure is twenty-four bytes with no padding at the
+	 end."
+
+	| rows |
+	rows := VkCommandPoolCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #queueFamilyIndex ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 ).
+	self assert: VkCommandPoolCreateInfo byteSize equals: 24
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandPoolCreationWritesNoScalarFieldAtAHandCountedOffset [
+	"The create info is declared, so neither the pool's creation path nor the device's
+	 delegation may poke a scalar at a counted offset. The ban is on these methods rather
+	 than on the whole pool class: VkCommandPool >> allocateBuffer still writes the command
+	 buffer allocate info as a block, and that structure belongs to a later unit."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := OrderedCollection new.
+	{
+		(VkCommandPool class -> #( #on:queueFamilyIndex: #handleForCreateInfo:on: )).
+		(VkDevice -> #( #createCommandPool: )) } do: [ :each |
+		each value do: [ :selector |
+			((each key includesSelector: selector) and: [
+				 (each key >> selector) messages anySatisfy: [ :message |
+					 banned includes: message ] ]) ifTrue: [
+				offenders add: each key name , ' >> ' , selector ] ] ].
+	self assertEmpty: offenders asArray.
+	self
+		assert: (VkCommandPool class includesSelector: #on:queueFamilyIndex:)
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testCooperativeMatrixFeaturesLayoutMatchesTheCLayout [
 	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR is declared field by field. The robust buffer
@@ -1266,6 +1331,23 @@ VkBindingsTest >> testOnlyOneMethodAllocatesDeviceMemory [
 	self
 		assert: senders asArray
 		equals: #( 'VkDevice >> allocateMemoryFor:properties:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCreatesACommandPool [
+	"The create info used to be written twice, once by the pool class and once by the device,
+	 with the same four offsets and the same flag counted out by hand in both. The device now
+	 delegates, so the call has one sender outside the tests. The senders are asked of the
+	 system, and the tests are rejected: a test naming the call is itself a sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #createCommandPool:createInfo:allocator:poolOut:) reject: [
+		           :each | each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandPool class >> handleForCreateInfo:on:' )
 ]
 
 { #category : 'tests - structures' }

@@ -154,6 +154,32 @@ VkCoreTest >> testChainedPropertiesQueryLinksTheBlockItIsGiven [
 	self assert: verdict fourth equals: 32
 ]
 
+{ #category : 'tests - command pool' }
+VkCoreTest >> testCommandPoolReportsTheQueueFamilyAndFlagItWasCreatedWith [
+	"The driver leg of the command pool create info: a pool created on this machine for the
+	 compute queue family. The pool keeps the family and the flags it asked for, so the Pool
+	 tab answers after the handle has gone, and the flag is named by the constants class that
+	 owns the bit rather than printed as a number."
+
+	| pool rows |
+	pool := ctx device createCommandPool: ctx computeQueueFamily.
+	[
+		self deny: pool handle isNull.
+		rows := pool poolRows.
+		self
+			assert: (rows at: #queueFamilyIndex)
+			equals: ctx computeQueueFamily.
+		self
+			assert: (rows at: #flags)
+			equals: VkCommandPoolCreateFlag resetCommandBufferBit.
+		self assert: (rows at: #flagNames) equals: 'ResetCommandBuffer'.
+		self assert: (rows at: #live) ] ensure: [ pool destroy ].
+	self deny: (pool poolRows at: #live).
+	self
+		assert: (pool poolRows at: #queueFamilyIndex)
+		equals: ctx computeQueueFamily
+]
+
 { #category : 'tests' }
 VkCoreTest >> testComputeContextCreation [
 	self assert: ctx device notNil.

@@ -53,20 +53,10 @@ VkDevice >> allocateMemoryFor: someRequirements properties: propertyFlags [
 
 { #category : 'factory' }
 VkDevice >> createCommandPool: queueFamilyIndex [
-    "VkCommandPoolCreateInfo: sType, pNext=null, flags=1 (RESET_COMMAND_BUFFER_BIT), queueFamilyIndex"
-    | info poolBuf result poolHandle |
-    info := ExternalAddress allocate: 24.
-    [ info unsignedLongAt: 1 put: VkStructureType commandPoolCreateInfo.
-      info pointerAt: 9 put: ExternalAddress null.
-      info unsignedLongAt: 17 put: 1.
-      info unsignedLongAt: 21 put: queueFamilyIndex.
-      poolBuf := ExternalAddress allocate: 8.
-      [ result := Vk createCommandPool: handle createInfo: info allocator: ExternalAddress null poolOut: poolBuf.
-        Vk checkResult: result.
-        poolHandle := VkCommandPool_H fromHandle: (poolBuf pointerAt: 1).
-        ^ VkCommandPool on: poolHandle device: self queueFamilyIndex: queueFamilyIndex
-      ] ensure: [ poolBuf free ]
-    ] ensure: [ info free ]
+	"Delegated to the pool class, as the other factories here are: the create info is written
+	 in one place."
+
+	^ VkCommandPool on: self queueFamilyIndex: queueFamilyIndex
 ]
 
 { #category : 'factory' }
