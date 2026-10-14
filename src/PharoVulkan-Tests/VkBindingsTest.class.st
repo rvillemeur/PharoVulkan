@@ -1268,6 +1268,24 @@ VkBindingsTest >> testOnlyOneMethodAllocatesDeviceMemory [
 		equals: #( 'VkDevice >> allocateMemoryFor:properties:' )
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
+	"Two places ask for a shader module — a device and a compute kernel — and both go through
+	 VkShaderModule, so the create info has exactly one writer. The senders are asked of the
+	 system rather than listed, and the tests are rejected: a test naming the call is itself a
+	 sender of the selector."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #createShaderModule:createInfo:allocator:shaderModuleOut:)
+		           reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkShaderModule >> handleForCreateInfo:' )
+]
+
 { #category : 'tests - result codes' }
 VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
 	"Observed on this device: allocating a set out of a pool built for zero sets answers
@@ -1405,6 +1423,58 @@ VkBindingsTest >> testResultCodesViewMarksTheInspectedCodeAndNothingElse [
 	self assert: marked first name equals: 'VK_SUBOPTIMAL_KHR'.
 	self deny: result isError.
 	self assert: result code equals: VkResult vkSuboptimalKHR
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testShaderModuleCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type: the byte count and the pointer
+	 describe one module's code, so a fresh block reads as no code at all."
+
+	| info setters |
+	info := VkShaderModuleCreateInfo externalInstance.
+	[
+		self
+			assert: info sType
+			equals: VkStructureType shaderModuleCreateInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info codeSize equals: 0.
+		self assert: info pCode isNull ] ensure: [ info getHandle free ].
+	setters := (VkShaderModuleCreateInfo >> #initializeConstantFields)
+		           messages select: [ :each |
+		           VkShaderModuleCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testShaderModuleCreateInfoLayoutMatchesTheCLayout [
+	"The chain header, the flags, then a size_t byte count and a pointer to the words. The
+	 count is eight bytes and eight byte aligned, so four bytes of padding follow flags and
+	 the structure is forty bytes."
+
+	| rows |
+	rows := VkShaderModuleCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #codeSize #pCode ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 ).
+	self assert: VkShaderModuleCreateInfo byteSize equals: 40
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testShaderModuleWithNoCodeReportsZeroBytes [
+	"The degenerate module, which is what the example answers on a machine with no device: no
+	 code, no handle. The Module tab is opened on it, so the byte count reads as zero rather
+	 than as nil, and zero bytes is a whole number of words."
+
+	| rows |
+	rows := VkShaderModule new moduleRows.
+	self assert: (rows at: #bytes) equals: 0.
+	self assert: (rows at: #words) equals: 0.
+	self assert: (rows at: #wholeWords).
+	self deny: (rows at: #live)
 ]
 
 { #category : 'tests' }
@@ -1740,6 +1810,23 @@ VkBindingsTest >> testVkResultSuccess [
     self assert: r isSuccess.
     self deny: r isError.
     self assert: r name equals: 'VK_SUCCESS'
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testVkShaderModuleWritesNoScalarFieldAtAHandCountedOffset [
+	"The one structure this class hands the driver is declared, so no method of the class may
+	 poke a scalar at a counted offset. Copying the code into memory outside the image is not
+	 a structure write and goes through byteAt:put:, which is not banned."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := VkShaderModule methods select: [ :each |
+		             each messages anySatisfy: [ :message |
+			             banned includes: message ] ].
+	self
+		assertEmpty: (offenders collect: [ :each | each selector ]) asArray
 ]
 
 { #category : 'tests' }

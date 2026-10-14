@@ -1090,6 +1090,29 @@ PVComputeTest >> testPrecisionComparisonTimesEveryElementTypeAtTheSameOrder [
 		self assert: benchmark result milliseconds >= 0 ]
 ]
 
+{ #category : 'tests - shader module' }
+PVComputeTest >> testShaderModuleReportsTheCodeItWasGiven [
+	"The driver leg of the shader module create info: real SPIR-V, created on this machine's
+	 device. The module keeps the byte count it was given, so the Module tab answers after the
+	 handle has gone, and the word count is the byte count divided by the four bytes a SPIR-V
+	 word takes."
+
+	| bytes module rows |
+	bytes := self buildVectorAddSpirv.
+	module := VkShaderModule fromBytes: bytes device: ctx device.
+	[
+		self deny: module handle isNull.
+		rows := module moduleRows.
+		self assert: (rows at: #bytes) equals: bytes size.
+		self
+			assert: (rows at: #words)
+			equals: bytes size // VkShaderModuleCreateInfo codeWordByteCount.
+		self assert: (rows at: #wholeWords).
+		self assert: (rows at: #live) ] ensure: [ module destroy ].
+	self assert: (module moduleRows at: #bytes) equals: bytes size.
+	self deny: (module moduleRows at: #live)
+]
+
 { #category : 'tests' }
 PVComputeTest >> testSharedMemoryBroadcastWithinWorkgroupOnDevice [
 	"Shared memory and the barrier, through the DSL rather than through a hand-built module.
