@@ -379,7 +379,7 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 | ~~`VkBuffer >> allocate`~~ | ~~8~~ | done, unit 2a |
 | ~~`VkImage >> allocate`~~ | ~~4~~ | done, unit 2b |
 | ~~`VkDescriptorSetLayout >> create`~~ | ~~5~~ | done, unit 2c |
-| `VkShaderModule >> initializeFromBytes:` | 5 | `VkShaderModuleCreateInfo` |
+| ~~`VkShaderModule >> initializeFromBytes:`~~ | ~~5~~ | done, unit 2d |
 | `VkCommandPool class >> on:` and `VkDevice >> createCommandPool:` | 4 each | `VkCommandPoolCreateInfo` |
 | `VkCommandPool >> allocateBuffer` | 5 | `VkCommandBufferAllocateInfo` |
 | `VkFenceWrapper >> initializeDevice:` | 3 | `VkFenceCreateInfo` |
@@ -512,6 +512,38 @@ destroys a real layout and still answers its bindings afterwards. The view is
 `VkDescriptorSetLayout >> inspectorBindings:`, a Bindings tab with the binding number, the type and
 the stages decoded by the constants classes that own those values. The suite is 381 tests over the
 nine concrete test classes.
+
+### 2d — the shader module, done 14 October 2026
+
+`VkShaderModuleCreateInfo` is forty bytes at 0, 8, 16, 24 and 32: the byte count is a `size_t`,
+eight bytes and eight byte aligned, so four bytes of padding follow the flags.
+`VkShaderModule >> initializeFromBytes:device:` wrote it at five offsets inside three nested
+blocks; it is now four short methods — the byte count kept and the code copied, the copy outside
+object memory, the request, and the out parameter. The code block keeps its own method,
+`VkShaderModule class >> codeOutsideObjectMemory:`, because the driver reads the words through a
+pointer and a store inside the image may move; the caller frees it, paired with the allocation as
+the array rule requires. `codeWordByteCount` names the four bytes a word takes on the structure
+that declares `pCode`, with a comment saying the number also happens to be the SPIR-V word size
+the compiler works in but the rule being enforced is Vulkan's.
+
+The module keeps the byte count it was created from, since the driver answers none of it back,
+and `moduleRows` reports it with the whole words it makes, whether the count is a whole number of
+words at all — asked of the create info's constant, not restated — and whether the handle is still
+live. `VkShaderModule >> initialize` sets the count to zero, so the Module tab opens on a module
+that was handed no code, which is what the example answers on a machine with no device.
+
+Six tests red first: the layout, the constant field, a scalar-poke ban over the whole class, the
+degenerate module with no code, and `testOnlyOneMethodCreatesAShaderModule`, which asserts
+`vkCreateShaderModule` has exactly one sender outside the tests — a device and a compute kernel
+both ask for modules and both go through this class. The driver leg is
+`PVComputeTest >> testShaderModuleReportsTheCodeItWasGiven`, which loads the vector add SPIR-V the
+test suite builds and reads the rows before and after `destroy`.
+
+Examples: `VkShaderModule class >> exampleModuleOfTheVectorAddKernelOnThisMachine`, the README's
+playground kernel compiled and loaded on this machine — 684 bytes, 171 words — and
+`VkShaderModuleCreateInfo class >> exampleRequestForTheVectorAddKernel`, the request with its code
+pointer cleared because the block it named has been freed. The view is
+`VkShaderModule >> inspectorModule:`. The suite is 387 tests over the nine concrete test classes.
 
 ## 3 — Command recording and submission
 
