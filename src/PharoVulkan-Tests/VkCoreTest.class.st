@@ -786,6 +786,34 @@ VkCoreTest >> testExtensionCommandReachesASymbolLibvulkanDoesNotExport [
 	self deny: command address isNull
 ]
 
+{ #category : 'tests - synchronisation' }
+VkCoreTest >> testFenceAndSemaphoreReportWhatTheyWereCreatedWith [
+	"The driver leg of the two synchronisation create infos: a signalled fence and a semaphore
+	 made on this machine. The driver answers neither the flags nor the reserved word back, so
+	 the fence keeps the flags it asked for and the view names the bit through the constants
+	 class. Both report themselves dead once destroyed."
+
+	| fence semaphore rows |
+	fence := VkFenceWrapper createSignaledDevice: ctx device.
+	[
+		rows := fence fenceRows.
+		self
+			assert: (rows at: #flags)
+			equals: VkFenceCreateFlag signaledBit.
+		self assert: (rows at: #flagNames) equals: 'Signaled'.
+		self assert: (rows at: #signalledAtCreation).
+		self assert: (rows at: #live).
+		fence reset.
+		self assert: (fence fenceRows at: #live) ] ensure: [ fence destroy ].
+	self deny: (fence fenceRows at: #live).
+	semaphore := VkSemaphoreWrapper createDevice: ctx device.
+	[
+		self assert: (semaphore semaphoreRows at: #reservedFlags) equals: 0.
+		self assert: (semaphore semaphoreRows at: #live) ] ensure: [
+		semaphore destroy ].
+	self deny: (semaphore semaphoreRows at: #live)
+]
+
 { #category : 'tests - constants' }
 VkCoreTest >> testFlagNamesJoinEveryNamedBitAndSurfaceAnUnnamedOne [
 	"A flags word decodes to the names of the bits it carries, and a bit no constant names

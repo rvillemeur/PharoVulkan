@@ -6,7 +6,8 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'handle',
-		'device'
+		'device',
+		'flags'
 	],
 	#category : 'PharoVulkan-Graphics',
 	#package : 'PharoVulkan',
@@ -15,7 +16,7 @@ Class {
 
 { #category : 'instance creation' }
 VkFenceWrapper class >> createDevice: aVkDevice [
-    ^ self createDevice: aVkDevice flags: 0
+	^ self createDevice: aVkDevice flags: self unsignaledFlags
 ]
 
 { #category : 'instance creation' }
@@ -28,7 +29,35 @@ VkFenceWrapper class >> createDevice: aVkDevice flags: aFlags [
 
 { #category : 'instance creation' }
 VkFenceWrapper class >> createSignaledDevice: aVkDevice [
-    ^ self createDevice: aVkDevice flags: 1
+	^ self createDevice: aVkDevice flags: VkFenceCreateFlag signaledBit
+]
+
+{ #category : 'examples' }
+VkFenceWrapper class >> exampleSignalledFenceOnThisMachine [
+	"One click: the fence a frame loop starts with, created already signalled so the first wait
+	 returns at once, then destroyed with its context. The flags live in the instance, so the
+	 Fence tab still names the bit afterwards. Where no device is available it answers an
+	 uncreated fence, which is what the inspector should show on such a machine."
+
+	<sampleInstance>
+	| context |
+	context := [ VkContext computeContext ]
+		           on: VkError
+		           do: [ :error | nil ].
+	context ifNil: [ ^ self new ].
+	^ [
+	  | fence |
+	  fence := self createSignaledDevice: context device.
+	  fence destroy.
+	  fence ] ensure: [ context destroy ]
+]
+
+{ #category : 'constants' }
+VkFenceWrapper class >> unsignaledFlags [
+	"A fence asked for with no flags starts unsignalled, which is what everything but a frame
+	 loop's first wait wants."
+
+	^ 0
 ]
 
 { #category : 'lifecycle' }
@@ -44,34 +73,86 @@ VkFenceWrapper >> destroy [
 ]
 
 { #category : 'accessing' }
+VkFenceWrapper >> fenceRows [
+	"What the fence was created with: the flags, their names from the constants class that owns
+	 the bits, whether it started signalled — asked of the bit rather than of a kept boolean —
+	 and whether the handle is still live. The rows are built fresh on every call, so reading
+	 them cannot change the fence."
+
+	^ Dictionary newFrom: {
+			  (#flags -> flags).
+			  (#flagNames -> (VkFenceCreateFlag nameForFlags: flags)).
+			  (#signalledAtCreation
+			   -> ((flags bitAnd: VkFenceCreateFlag signaledBit)
+					    = VkFenceCreateFlag signaledBit)).
+			  (#live -> (handle isNotNil and: [ handle isNull not ])) }
+]
+
+{ #category : 'accessing' }
 VkFenceWrapper >> handle [
     ^ handle
 ]
 
 { #category : 'initialization' }
-VkFenceWrapper >> initializeDevice: aVkDevice flags: flagsValue [
-	"VkFenceCreateInfo (24 bytes):
-     0:sType  8:pNext  16:flags"
+VkFenceWrapper >> handleForCreateInfo: aCreateInfo [
+	"The driver writes the handle into a block the caller owns, so the block is freed here and
+	 only the handle leaves."
 
-	| info fenceBuf result |
+	| out result |
+	out := ExternalAddress allocate: VkContext pointerSize.
+	^ [
+	  result := Vk
+		            createFence: device handle
+		            createInfo: aCreateInfo getHandle
+		            allocator: ExternalAddress null
+		            pFence: out.
+	  Vk checkResult: result.
+	  VkFence_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
+]
+
+{ #category : 'initialization' }
+VkFenceWrapper >> initialize [
+	"A fence that was never created carries no flags, so the Fence tab opens on one with the
+	 flags reading as none rather than as nil."
+
+	super initialize.
+	flags := self class unsignaledFlags
+]
+
+{ #category : 'initialization' }
+VkFenceWrapper >> initializeDevice: aVkDevice flags: flagsValue [
+	"The flags are kept because the driver never answers them back: a fence cannot be asked
+	 whether it was created signalled."
+
+	| info |
 	device := aVkDevice.
-	info := ExternalAddress allocate: 24.
+	flags := flagsValue.
+	info := VkFenceCreateInfo externalInstance.
 	handle := [
-		          info
-			          unsignedLongAt: 1
-			          put: VkStructureType fenceCreateInfo.
-		          info pointerAt: 9 put: ExternalAddress null.
-		          info unsignedLongAt: 17 put: flagsValue.
-		          fenceBuf := ExternalAddress allocate: 8.
-		          [
-			          result := Vk
-				                    createFence: aVkDevice handle
-				                    createInfo: info
-				                    allocator: ExternalAddress null
-				                    pFence: fenceBuf.
-			          Vk checkResult: result.
-			          VkFence_H fromHandle: (fenceBuf pointerAt: 1) ] ensure: [
-			          fenceBuf free ] ] ensure: [ info free ]
+	          info flags: flagsValue.
+	          self handleForCreateInfo: info ] ensure: [ info getHandle free ]
+]
+
+{ #category : 'inspector' }
+VkFenceWrapper >> inspectorFence: aBuilder [
+	"What the fence was created with: the flags, the names of the bits in them decoded by the
+	 constants class that owns them, whether it started signalled, and whether the handle is
+	 still live. The rows are built fresh, so opening the tab cannot change the fence."
+
+	<inspectorPresentationOrder: 30 title: 'Fence'>
+	| rows |
+	rows := self fenceRows.
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
+					   each first ]);
+		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
+				   each second printString ]);
+		  items: {
+				  { 'Flags'. (rows at: #flagNames) }.
+				  { 'Signalled at creation'. (rows at: #signalledAtCreation) }.
+				  { 'Handle live'. (rows at: #live) } };
+		  yourself
 ]
 
 { #category : 'operations' }

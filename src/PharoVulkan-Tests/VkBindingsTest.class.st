@@ -1022,6 +1022,60 @@ VkBindingsTest >> testFeatureStructuresShareOneFlagView [
 		shared do: [ :each | self deny: (cls includesSelector: each) ] ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFenceAndSemaphoreCreateInfoLayoutsMatchTheCLayout [
+	"Both synchronisation primitives are created from the same shape: a chain header and one
+	 word of flags, so each structure is twenty-four bytes with four bytes of tail padding to
+	 the alignment the chain pointer demands."
+
+	{
+		VkFenceCreateInfo.
+		VkSemaphoreCreateInfo } do: [ :each |
+		self
+			assert: (each layoutRows collect: [ :row | row first ]) asArray
+			equals: #( #sType #pNext #flags ).
+		self
+			assert: (each layoutRows collect: [ :row | row second ]) asArray
+			equals: #( 0 8 16 ).
+		self assert: each byteSize equals: 24 ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFenceAndSemaphoreCreateInfosInitializeOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by either type. A fence may be asked for
+	 signalled, so its flags belong to the caller; a semaphore's flags are reserved by Vulkan
+	 and must be zero, which a fresh block already is, so nothing writes them at all."
+
+	{
+		(VkFenceCreateInfo -> VkStructureType fenceCreateInfo).
+		(VkSemaphoreCreateInfo -> VkStructureType semaphoreCreateInfo) }
+		do: [ :each |
+			| info setters |
+			info := each key externalInstance.
+			[
+				self assert: info sType equals: each value.
+				self assert: info pNext isNull.
+				self assert: info flags equals: 0 ] ensure: [
+				info getHandle free ].
+			setters := (each key >> #initializeConstantFields) messages
+				           select: [ :selector |
+				           each key includesSelector: selector ].
+			self assert: setters asArray equals: #( #sType: ) ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFenceCreateFlagNamesItsOwnBits [
+	"A fence asked for signalled carries one bit, and the fence's view shows it, so the class
+	 that holds the bit is the class that names it. An empty mask names nothing rather than
+	 printing a zero."
+
+	self assert: (VkFenceCreateFlag includesBehavior: VkFlagConstants).
+	self
+		assert: (VkFenceCreateFlag nameForFlags: VkFenceCreateFlag signaledBit)
+		equals: 'Signaled'.
+	self assert: (VkFenceCreateFlag nameForFlags: 0) equals: ''
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testFieldReportReadsEveryDeclaredStructureAndLeavesItAlone [
 	"Building a field report writes nothing. That is what lets a filled in structure be
@@ -1440,6 +1494,28 @@ VkBindingsTest >> testOnlyOneMethodCreatesACommandPool [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCreatesAFenceAndOneASemaphore [
+	"Each create info has one writer: the wrapper of the primitive it creates. The senders are
+	 asked of the system, and the tests are rejected: a test naming the call is itself a
+	 sender."
+
+	{
+		(#createFence:createInfo:allocator:pFence:
+		 -> 'VkFenceWrapper >> handleForCreateInfo:').
+		(#createSemaphore:createInfo:allocator:pSemaphore:
+		 -> 'VkSemaphoreWrapper >> handleForCreateInfo:') } do: [ :each |
+		| writers |
+		writers := (SystemNavigation default allSendersOf: each key) reject: [
+			           :sender |
+			           sender methodClass instanceSide includesBehavior:
+				           TestCase ].
+		self
+			assert: (writers collect: [ :sender |
+					 sender methodClass name , ' >> ' , sender selector ]) asArray
+			equals: { each value } ]
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
 	"Two places ask for a shader module — a device and a compute kernel — and both go through
 	 VkShaderModule, so the create info has exactly one writer. The senders are asked of the
@@ -1788,6 +1864,29 @@ VkBindingsTest >> testSuboptimalPresentIsNotTreatedAsAFailure [
 		raise: VkError
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testSynchronisationPrimitivesWriteNoScalarFieldAtAHandCountedOffset [
+	"Both create infos are declared, so no method of either wrapper, on either side, may poke a
+	 scalar at a counted offset. The handle arrays the wait and reset calls pass are written
+	 with pointerAt:put:, which is not a structure write and is not banned."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := ({
+		              VkFenceWrapper.
+		              VkFenceWrapper class.
+		              VkSemaphoreWrapper.
+		              VkSemaphoreWrapper class } flatCollect: [ :each |
+		              each methods ]) select: [ :each |
+		             each messages anySatisfy: [ :message |
+			             banned includes: message ] ].
+	self
+		assertEmpty: (offenders collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testSynchronization2FeaturesLayoutMatchesTheCLayout [
 	"VkPhysicalDeviceSynchronization2Features is declared field by field. Its one feature flag
@@ -1808,6 +1907,23 @@ VkBindingsTest >> testSynchronization2FeaturesLayoutMatchesTheCLayout [
 	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
 	rows overlappingPairsDo: [ :a :b |
 		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testUncreatedFenceAndSemaphoreReportThemselvesNotLive [
+	"The examples answer an uncreated primitive on a machine with no device, so the rows must
+	 open on one: an unsignalled fence with no flags, a semaphore with the reserved flags the
+	 structure declares, and nothing live."
+
+	| fenceRows semaphoreRows |
+	fenceRows := VkFenceWrapper new fenceRows.
+	self assert: (fenceRows at: #flags) equals: 0.
+	self assert: (fenceRows at: #flagNames) equals: ''.
+	self deny: (fenceRows at: #signalledAtCreation).
+	self deny: (fenceRows at: #live).
+	semaphoreRows := VkSemaphoreWrapper new semaphoreRows.
+	self assert: (semaphoreRows at: #reservedFlags) equals: 0.
+	self deny: (semaphoreRows at: #live)
 ]
 
 { #category : 'tests - constants' }
