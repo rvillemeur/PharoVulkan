@@ -140,6 +140,14 @@ are the ones that call into the driver.
   reports the reserved word by allocating a fresh request and reading its `flags`, so the row
   cannot claim a zero the structure stopped carrying.
 
+- **A value every instance shares belongs to the class, and the rows ask the class for it.**
+  Every recording in this project is submitted once and re-recorded, so the usage flags are a
+  property of `VkCommandBuffer`, not of one buffer: `VkCommandBuffer class >> recordingFlags`
+  names them, `begin` writes them from there, and `bufferRows` reports them by asking the class
+  rather than by keeping a copy per instance. A field the caller chooses per instance — the
+  fence's flags, the buffer's level — is kept in the instance instead, because the driver never
+  answers it back.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -670,7 +678,7 @@ structure on the compute path is declared.
 
 | Method | Offsets written | Structures |
 |---|---|---|
-| `VkCommandBuffer >> begin` | 4 | `VkCommandBufferBeginInfo` |
+| ~~`VkCommandBuffer >> begin`~~ | ~~4~~ | done, unit 3a |
 | `VkCommandBuffer >> barrierForHostRead` | 9 | memory barrier and dependency info |
 | `VkCommandBuffer >> copyImage:` | 13 | `VkBufferImageCopy` |
 | `VkCommandBuffer >> beginRenderPass:` | 10 | render pass begin info, `VkClearValue` |
@@ -681,6 +689,33 @@ structure on the compute path is declared.
 
 `VkViewport` and `VkRect2D` are plain value structures with no `sType`, so they are the cheapest
 units in the plan and a good place to confirm the shape on a structure without a chain pointer.
+
+### 3a — the recording's begin info, done 14 October 2026
+
+`VkCommandBufferBeginInfo` is thirty-two bytes at 0, 8, 16 and 24: the usage flags are one word
+and the inheritance pointer after them is eight byte aligned, so four bytes of padding sit
+between the two. The inheritance pointer is read for a secondary buffer only and must be null
+for a primary one, which a fresh block already is, so nothing writes it.
+
+`VkCommandBuffer >> begin` wrote the structure at four offsets with the flag word counted out as
+`1`. It is now the request plus `beginRecordingWith:`, which is the one sender of
+`vkBeginCommandBuffer` in the project. `VkCommandBufferUsageFlag` is a new `VkFlagConstants`
+subclass naming the three usage bits; `oneTimeSubmitBit` is the one this project asks for, and
+`VkCommandBuffer class >> recordingFlags` names that choice. The other two bits are named for
+completeness, and the flag test asserts a mask of both decodes to a joined name.
+
+The flags are a property of the class rather than of a buffer, so `bufferRows` reports them by
+asking `recordingFlags` instead of keeping a copy: the Buffer tab gained two rows and the buffer
+gained no state. Six tests red first plus the driver leg
+`VkCoreTest >> testCommandBufferRecordsAnEmptyBatchWithTheDeclaredBeginInfo`, which opens and
+closes an empty recording on a real buffer — an empty batch is legal, so the driver accepting
+both calls is the check, and a wrong flag word or a stray inheritance pointer is what a
+validation layer would reject. The scalar-poke ban is on `begin` and `beginRecordingWith:` alone;
+the barriers, the copy, the render pass begin, the viewport and the scissor are still written by
+hand and belong to the later units of this group.
+
+The example is `VkCommandBufferBeginInfo class >> exampleRequestForAOneTimeRecording`; the view
+is the Buffer tab unit 2f added. The suite is 412 tests over the nine concrete test classes.
 
 ## 4 — Graphics
 
