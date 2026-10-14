@@ -173,6 +173,25 @@ VkCoreTest >> testCommandBufferRecordsAnEmptyBatchWithTheDeclaredBeginInfo [
 			equals: 'OneTimeSubmit' ] ensure: [ pool destroy ]
 ]
 
+{ #category : 'tests - commands' }
+VkCoreTest >> testCommandBufferRecordsTheHostReadBarrierWithTheDeclaredStructures [
+	"The driver leg of the barrier pair: a real buffer on this machine records the transfer to
+	 host barrier and closes. The driver reads the dependency info and the barrier it points at
+	 as it records, so a wrong count, a mask at the wrong offset or a pointer into the wrong
+	 word is what fails here rather than later at submission."
+
+	| pool buffer |
+	pool := ctx device createCommandPool: ctx computeQueueFamily.
+	buffer := [ pool allocateBuffer ] ifCurtailed: [ pool destroy ].
+	[
+		buffer begin.
+		buffer barrierForHostRead.
+		buffer end.
+		self assert: (buffer bufferRows at: #live).
+		self assert: (buffer barrierRows at: #memoryBarrierCount) equals: 1 ]
+		ensure: [ pool destroy ]
+]
+
 { #category : 'tests - command pool' }
 VkCoreTest >> testCommandBufferReportsTheLevelItWasAllocatedWith [
 	"The driver leg of the command buffer allocate info: a real buffer allocated from a real

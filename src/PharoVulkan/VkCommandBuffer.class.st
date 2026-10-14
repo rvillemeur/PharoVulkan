@@ -14,6 +14,28 @@ Class {
 	#tag : 'Graphics'
 }
 
+{ #category : 'constants' }
+VkCommandBuffer class >> barriersPerDependency [
+	"One dependency carries one memory barrier here: every barrier this project records is a
+	 single global one, never a list and never a per-buffer or per-image barrier."
+
+	^ 1
+]
+
+{ #category : 'recording' }
+VkCommandBuffer class >> dependencyForBarrier: aMemoryBarrier [
+	"The dependency info that carries one memory barrier and nothing else. The caller owns the
+	 block and must free its handle; the barrier must outlive the recording call, because the
+	 driver reads it through the pointer written here."
+
+	| info |
+	info := VkDependencyInfo externalInstance.
+	^ info
+		  memoryBarrierCount: self barriersPerDependency;
+		  pMemoryBarriers: aMemoryBarrier getHandle;
+		  yourself
+]
+
 { #category : 'examples' }
 VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine [
 	"One click: the primary command buffer a compute dispatch here records into, cut from a
@@ -35,6 +57,23 @@ VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine [
 		  context destroy ]
 ]
 
+{ #category : 'recording' }
+VkCommandBuffer class >> hostReadBarrier [
+	"The barrier a recording needs before the host reads what the device wrote: everything a
+	 transfer stage has written becomes visible to a host read. The caller owns the block and
+	 must free its handle. Answering the structure rather than writing it in place is what lets
+	 the Barrier tab show the masks the recorder really uses."
+
+	| barrier |
+	barrier := VkMemoryBarrier2 externalInstance.
+	^ barrier
+		  srcStageMask: VkPipelineStage2 allTransferBit;
+		  srcAccessMask: VkAccess2 transferWriteBit;
+		  dstStageMask: VkPipelineStage2 hostBit;
+		  dstAccessMask: VkAccess2 hostReadBit;
+		  yourself
+]
+
 { #category : 'factory' }
 VkCommandBuffer class >> on: aHandle pool: aPool level: aLevel [
 	^ self new initializeWith: aHandle pool: aPool level: aLevel
@@ -50,39 +89,45 @@ VkCommandBuffer class >> recordingFlags [
 
 { #category : 'recording' }
 VkCommandBuffer >> barrierForHostRead [
-	"Makes the transfer writes visible to a host read of the destination buffer.
-	 It is needed even though submit:andWait: waits for the queue, because that call waits with
-	 vkQueueWaitIdle rather than with a fence; the host-read availability the specification
-	 grants on fence signal is not what happens here.
-	 VkMemoryBarrier2, 48 bytes, 1-based: 1:sType 9:pNext 17:srcStageMask(u64)
-	 25:srcAccessMask(u64) 33:dstStageMask(u64) 41:dstAccessMask(u64).
-	 VkDependencyInfo, 64 bytes, 1-based: 1:sType 9:pNext 17:dependencyFlags
-	 21:memoryBarrierCount 25:pMemoryBarriers 33:bufferMemoryBarrierCount
-	 41:pBufferMemoryBarriers 49:imageMemoryBarrierCount 57:pImageMemoryBarriers.
-	 The masks are 64-bit in synchronization2, hence unsignedLongLongAt:put:."
+	"Records the transfer to host barrier. It is needed because submit:andWait: waits with
+	 vkQueueWaitIdle rather than with a fence, which orders the work but makes nothing visible
+	 to a host read on its own."
+
+	| barrier |
+	barrier := self class hostReadBarrier.
+	[ self recordBarrier: barrier ] ensure: [ barrier getHandle free ]
+]
+
+{ #category : 'accessing' }
+VkCommandBuffer >> barrierRows [
+	"What the host read barrier really says, sampled off the structures the recorder builds
+	 rather than restated here: the four masks with the names of their bits, and the counts of
+	 the dependency that carries them. The structures are built and freed on every call, so
+	 reading the rows records nothing and changes nothing."
 
 	| barrier info |
-	barrier := ExternalAddress allocate: 48.
-	[
-	barrier unsignedLongAt: 1 put: VkStructureType memoryBarrier2.
-	barrier pointerAt: 9 put: ExternalAddress null.
-	barrier unsignedLongLongAt: 17 put: VkPipelineStage2 allTransferBit.
-	barrier unsignedLongLongAt: 25 put: VkAccess2 transferWriteBit.
-	barrier unsignedLongLongAt: 33 put: VkPipelineStage2 hostBit.
-	barrier unsignedLongLongAt: 41 put: VkAccess2 hostReadBit.
-	info := ExternalAddress allocate: 64.
-	[
-	info unsignedLongAt: 1 put: VkStructureType dependencyInfo.
-	info pointerAt: 9 put: ExternalAddress null.
-	info unsignedLongAt: 17 put: 0.
-	info unsignedLongAt: 21 put: 1.
-	info pointerAt: 25 put: barrier.
-	info unsignedLongAt: 33 put: 0.
-	info pointerAt: 41 put: ExternalAddress null.
-	info unsignedLongAt: 49 put: 0.
-	info pointerAt: 57 put: ExternalAddress null.
-	Vk cmdPipelineBarrier2: handle pDependencyInfo: info ] ensure: [ info free ] ]
-		ensure: [ barrier free ]
+	barrier := self class hostReadBarrier.
+	^ [
+	  info := self class dependencyForBarrier: barrier.
+	  [
+	  Dictionary newFrom: {
+			  (#srcStageMask -> barrier srcStageMask).
+			  (#srcStageNames
+			   -> (VkPipelineStage2 nameForFlags: barrier srcStageMask)).
+			  (#srcAccessMask -> barrier srcAccessMask).
+			  (#srcAccessNames
+			   -> (VkAccess2 nameForFlags: barrier srcAccessMask)).
+			  (#dstStageMask -> barrier dstStageMask).
+			  (#dstStageNames
+			   -> (VkPipelineStage2 nameForFlags: barrier dstStageMask)).
+			  (#dstAccessMask -> barrier dstAccessMask).
+			  (#dstAccessNames
+			   -> (VkAccess2 nameForFlags: barrier dstAccessMask)).
+			  (#dependencyFlags -> info dependencyFlags).
+			  (#memoryBarrierCount -> info memoryBarrierCount).
+			  (#bufferMemoryBarrierCount -> info bufferMemoryBarrierCount).
+			  (#imageMemoryBarrierCount -> info imageMemoryBarrierCount) } ]
+		  ensure: [ info getHandle free ] ] ensure: [ barrier getHandle free ]
 ]
 
 { #category : 'recording' }
@@ -293,6 +338,33 @@ VkCommandBuffer >> initializeWith: aHandle pool: aPool level: aLevel [
 ]
 
 { #category : 'inspector' }
+VkCommandBuffer >> inspectorBarrier: aBuilder [
+	"The barrier this buffer records before a host read, read off the structures the recorder
+	 builds: what it waits on, what it makes visible, and how many barriers of each kind the
+	 dependency carries. The structures are built and freed while the rows are gathered, so
+	 opening the tab records nothing into the buffer."
+
+	<inspectorPresentationOrder: 40 title: 'Barrier'>
+	| rows |
+	rows := self barrierRows.
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
+					   each first ]);
+		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
+				   each second printString ]);
+		  items: {
+				  { 'Waits on stage'. (rows at: #srcStageNames) }.
+				  { 'Waits on access'. (rows at: #srcAccessNames) }.
+				  { 'Visible to stage'. (rows at: #dstStageNames) }.
+				  { 'Visible to access'. (rows at: #dstAccessNames) }.
+				  { 'Memory barriers'. (rows at: #memoryBarrierCount) }.
+				  { 'Buffer barriers'. (rows at: #bufferMemoryBarrierCount) }.
+				  { 'Image barriers'. (rows at: #imageMemoryBarrierCount) } };
+		  yourself
+]
+
+{ #category : 'inspector' }
 VkCommandBuffer >> inspectorBuffer: aBuilder [
 	"What the buffer was allocated with and what it records under: the level, named by the
 	 constants class that owns the values, the queue family of the pool it came from, the
@@ -314,6 +386,18 @@ VkCommandBuffer >> inspectorBuffer: aBuilder [
 				  { 'Recording flags'. (rows at: #recordingFlagNames) }.
 				  { 'Usable'. (rows at: #live) } };
 		  yourself
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordBarrier: aMemoryBarrier [
+	"The one place a pipeline barrier is recorded. The driver reads the dependency info and the
+	 barrier it points at during this call, so the barrier must still be alive here and the
+	 dependency is freed only once the call has returned."
+
+	| info |
+	info := self class dependencyForBarrier: aMemoryBarrier.
+	[ Vk cmdPipelineBarrier2: handle pDependencyInfo: info getHandle ] ensure: [
+		info getHandle free ]
 ]
 
 { #category : 'setter' }

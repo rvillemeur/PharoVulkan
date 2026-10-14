@@ -62,6 +62,88 @@ VkBindingsTest >> spanWrittenByDevicePropertiesOf: aPhysicalDeviceHandle sentine
 	  written ] ensure: [ probe free ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testAccessAndStageFlagsNameTheirOwnBits [
+	"The barrier's view shows four masks, so the two classes that hold the bits are the classes
+	 that name them. A mask Vulkan sets no bit in names nothing rather than printing a zero."
+
+	self assert: (VkAccess2 includesBehavior: VkFlagConstants).
+	self assert: (VkPipelineStage2 includesBehavior: VkFlagConstants).
+	self
+		assert: (VkAccess2 nameForFlags:
+				 VkAccess2 transferWriteBit | VkAccess2 hostReadBit)
+		equals: 'TransferWrite|HostRead'.
+	self
+		assert: (VkPipelineStage2 nameForFlags: VkPipelineStage2 hostBit)
+		equals: 'Host'.
+	self assert: (VkPipelineStage2 nameForFlags: 0) equals: ''
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBarrierAndDependencyInfoInitializeOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by either type. Every mask, count and pointer
+	 is the recorder's, and a barrier that bars nothing — all masks zero, no barrier of any
+	 kind listed — is what a fresh block of each must read as."
+
+	{
+		(VkMemoryBarrier2 -> VkStructureType memoryBarrier2).
+		(VkDependencyInfo -> VkStructureType dependencyInfo) } do: [ :each |
+		| info setters |
+		info := each key externalInstance.
+		[
+			self assert: info sType equals: each value.
+			self assert: info pNext isNull ] ensure: [ info getHandle free ].
+		setters := (each key >> #initializeConstantFields) messages select: [
+			           :selector | each key includesSelector: selector ].
+		self assert: setters asArray equals: #( #sType: ) ].
+	self
+		assert: (VkDependencyInfo externalInstance
+				 memoryBarrierCount;
+				 yourself) memoryBarrierCount
+		equals: 0
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBarrierRecordingWritesNoScalarFieldAtAHandCountedOffset [
+	"The barrier and its dependency info are declared, so none of the four methods that build
+	 or record them may poke a scalar at a counted offset. Two of them are on the class side,
+	 which is where the masks and the counts the whole project waits on now live."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := {
+		             (VkCommandBuffer -> #barrierForHostRead).
+		             (VkCommandBuffer -> #recordBarrier:).
+		             (VkCommandBuffer class -> #hostReadBarrier).
+		             (VkCommandBuffer class -> #dependencyForBarrier:) } select: [
+		             :each |
+		             (each key includesSelector: each value) and: [
+			             (each key >> each value) messages anySatisfy: [ :message |
+				             banned includes: message ] ] ].
+	self assertEmpty: offenders asArray.
+	self assert: (VkCommandBuffer includesSelector: #recordBarrier:)
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBarrierRowsNameTheMasksAndCountsTheProjectRecords [
+	"The rows sample the barrier and the dependency the recorder really builds, so they cannot
+	 drift from it: the four masks are named by the constants classes that own the bits, and the
+	 dependency carries one memory barrier and no buffer or image barrier."
+
+	| rows |
+	rows := VkCommandBuffer new barrierRows.
+	self assert: (rows at: #srcStageNames) equals: 'AllTransfer'.
+	self assert: (rows at: #srcAccessNames) equals: 'TransferWrite'.
+	self assert: (rows at: #dstStageNames) equals: 'Host'.
+	self assert: (rows at: #dstAccessNames) equals: 'HostRead'.
+	self assert: (rows at: #memoryBarrierCount) equals: 1.
+	self assert: (rows at: #bufferMemoryBarrierCount) equals: 0.
+	self assert: (rows at: #imageMemoryBarrierCount) equals: 0.
+	self assert: (rows at: #dependencyFlags) equals: 0
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testBaseOutStructureIsTheHeaderEveryChainedStructureStartsWith [
 	"VkBaseOutStructure is what the specification calls the two fields every structure in a
@@ -476,6 +558,26 @@ VkBindingsTest >> testCreateDestroyInstance [
     instance := Vk createInstance: info.
     self assert: instance isNotNil.
     Vk destroyInstance: instance allocator: ExternalAddress null
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testDependencyInfoLayoutMatchesTheCLayout [
+	"Three count-and-pointer pairs follow the flags, and each count is one word while each
+	 pointer is eight byte aligned, so uFFI pads after the second and third counts and the
+	 structure is sixty-four bytes."
+
+	| rows |
+	rows := VkDependencyInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #dependencyFlags #memoryBarrierCount
+		           #pMemoryBarriers #bufferMemoryBarrierCount
+		           #pBufferMemoryBarriers #imageMemoryBarrierCount
+		           #pImageMemoryBarriers ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 48 56 ).
+	self assert: VkDependencyInfo byteSize equals: 64
 ]
 
 { #category : 'tests' }
@@ -1462,6 +1564,23 @@ VkBindingsTest >> testMemoryAllocateInfoWriterRowsNameItsOneWriterAndTheFieldsIt
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testMemoryBarrier2LayoutMatchesTheCLayout [
+	"Synchronization2 widened the stage and access masks to sixty-four bits, so the four masks
+	 are eight bytes each and follow the chain header with no padding: forty-eight bytes."
+
+	| rows |
+	rows := VkMemoryBarrier2 layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #srcStageMask #srcAccessMask #dstStageMask
+		           #dstAccessMask ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 40 ).
+	self assert: VkMemoryBarrier2 byteSize equals: 48
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testMemoryRequirementsLayoutMatchesTheCLayout [
 	"VkMemoryRequirements has no chain header: the driver writes all three fields. Two
 	 VkDeviceSize values then a bitmask, padded out to twenty four bytes."
@@ -1641,6 +1760,22 @@ VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
 		assert: (writers collect: [ :each |
 				 each methodClass name , ' >> ' , each selector ]) asArray
 		equals: #( 'VkShaderModule >> handleForCreateInfo:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodRecordsAPipelineBarrier [
+	"Every barrier the project records goes through the one method that writes the dependency
+	 info. The senders are asked of the system, and the tests are rejected: a test naming the
+	 call is itself a sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #cmdPipelineBarrier2:pDependencyInfo:) reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandBuffer >> recordBarrier:' )
 ]
 
 { #category : 'tests - result codes' }

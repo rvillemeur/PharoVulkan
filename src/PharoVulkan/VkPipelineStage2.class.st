@@ -1,9 +1,9 @@
 "
-Named constants for VkPipelineStageFlagBits2 (VK_KHR_synchronization2) bitmask values used in VkSubmitInfo2 and memory barriers. Key method: colorAttachmentOutputBit (= 1024).
+Named constants for VkPipelineStageFlagBits2 (VK_KHR_synchronization2), the stage half of the memory barriers a dependency info carries and of the submissions in a VkSubmitInfo2. The values are sixty-four bits wide, which is why a barrier declares its mask fields as uint64. Key methods: allTransferBit, hostBit, colorAttachmentOutputBit, and namedBits, through which the inherited nameForFlags: decodes a mask for a view. VkAccess2 holds the access half of the same barriers.
 "
 Class {
 	#name : 'VkPipelineStage2',
-	#superclass : 'Object',
+	#superclass : 'VkFlagConstants',
 	#category : 'PharoVulkan-Constants',
 	#package : 'PharoVulkan',
 	#tag : 'Constants'
@@ -26,4 +26,15 @@ VkPipelineStage2 class >> hostBit [
 	"VK_PIPELINE_STAGE_2_HOST_BIT, bit 14."
 
 	^ 16384
+]
+
+{ #category : 'decoding' }
+VkPipelineStage2 class >> namedBits [
+	"Lowest bit first, as the inherited decoder expects. Only the bits this project records are
+	 named; a mask carrying any other bit shows it as hex rather than hiding it."
+
+	^ {
+		  (self colorAttachmentOutputBit -> 'ColorAttachmentOutput').
+		  (self allTransferBit -> 'AllTransfer').
+		  (self hostBit -> 'Host') }
 ]
