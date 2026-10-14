@@ -228,6 +228,44 @@ VkBindingsTest >> testCommandBufferAllocateInfoLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferBeginInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. The usage flags are the recorder's
+	 choice, and the inheritance pointer is read for a secondary buffer only, so a fresh block
+	 leaves it null rather than carrying a request a primary buffer must not make."
+
+	| info setters |
+	info := VkCommandBufferBeginInfo externalInstance.
+	[
+		self
+			assert: info sType
+			equals: VkStructureType commandBufferBeginInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info pInheritanceInfo isNull ] ensure: [
+		info getHandle free ].
+	setters := (VkCommandBufferBeginInfo >> #initializeConstantFields)
+		           messages select: [ :each |
+		           VkCommandBufferBeginInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferBeginInfoLayoutMatchesTheCLayout [
+	"The usage flags are one word and the inheritance pointer that follows them is eight byte
+	 aligned, so four bytes of padding sit between them and the structure is thirty-two bytes."
+
+	| rows |
+	rows := VkCommandBufferBeginInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #pInheritanceInfo ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 ).
+	self assert: VkCommandBufferBeginInfo byteSize equals: 32
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testCommandBufferLevelNamesItsOwnValues [
 	"The level is shown by the command buffer's view, so the class that holds the values is the
 	 class that names them. The view must never carry a table of Vulkan names of its own."
@@ -241,6 +279,62 @@ VkBindingsTest >> testCommandBufferLevelNamesItsOwnValues [
 		assert: (VkCommandBufferLevel nameForValue:
 				 VkCommandBufferLevel secondary)
 		equals: 'secondary'
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferRecordingWritesNoScalarFieldAtAHandCountedOffset [
+	"The begin info is declared, so neither the method that opens a recording nor the one that
+	 hands it to the driver may poke a scalar at a counted offset. The ban is on these two
+	 methods rather than on the class: the structures the other recording methods write — the
+	 barriers, the copy, the render pass begin, the viewport and the scissor — belong to the
+	 later units of group three."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := #( #begin #beginRecordingWith: ) select: [ :selector |
+		             (VkCommandBuffer includesSelector: selector) and: [
+			             (VkCommandBuffer >> selector) messages anySatisfy: [
+				             :message | banned includes: message ] ] ].
+	self assertEmpty: offenders asArray.
+	self assert: (VkCommandBuffer includesSelector: #beginRecordingWith:)
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferRowsNameTheRecordingFlagsTheProjectAlwaysUses [
+	"Every recording here is submitted once and thrown away, so the flags are a property of the
+	 class rather than of an instance, and the rows name them through the constants class. The
+	 rows answer on a buffer that was never allocated, which is what the example gives on a
+	 machine with no device."
+
+	| rows |
+	rows := VkCommandBuffer new bufferRows.
+	self
+		assert: (rows at: #recordingFlags)
+		equals: VkCommandBufferUsageFlag oneTimeSubmitBit.
+	self
+		assert: (rows at: #recordingFlagNames)
+		equals: 'OneTimeSubmit'
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferUsageFlagNamesItsOwnBits [
+	"The recording flags are shown by the command buffer's view, so the class that holds the
+	 bits is the class that names them."
+
+	self
+		assert: (VkCommandBufferUsageFlag includesBehavior: VkFlagConstants).
+	self
+		assert: (VkCommandBufferUsageFlag nameForFlags:
+				 VkCommandBufferUsageFlag oneTimeSubmitBit)
+		equals: 'OneTimeSubmit'.
+	self
+		assert: (VkCommandBufferUsageFlag nameForFlags:
+				 VkCommandBufferUsageFlag renderPassContinueBit
+				 | VkCommandBufferUsageFlag simultaneousUseBit)
+		equals: 'RenderPassContinue|SimultaneousUse'.
+	self assert: (VkCommandBufferUsageFlag nameForFlags: 0) equals: ''
 ]
 
 { #category : 'tests - structures' }
@@ -1474,6 +1568,22 @@ VkBindingsTest >> testOnlyOneMethodAllocatesDeviceMemory [
 	self
 		assert: senders asArray
 		equals: #( 'VkDevice >> allocateMemoryFor:properties:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodBeginsACommandBuffer [
+	"Every recording in the project opens through the one method that writes the begin info.
+	 The senders are asked of the system, and the tests are rejected: a test naming the call is
+	 itself a sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #beginCommandBuffer:beginInfo:) reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandBuffer >> beginRecordingWith:' )
 ]
 
 { #category : 'tests - structures' }

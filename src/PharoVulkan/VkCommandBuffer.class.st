@@ -40,6 +40,14 @@ VkCommandBuffer class >> on: aHandle pool: aPool level: aLevel [
 	^ self new initializeWith: aHandle pool: aPool level: aLevel
 ]
 
+{ #category : 'constants' }
+VkCommandBuffer class >> recordingFlags [
+	"Every recording here is submitted once and then re-recorded, so the driver is told to keep
+	 nothing for a resubmission."
+
+	^ VkCommandBufferUsageFlag oneTimeSubmitBit
+]
+
 { #category : 'recording' }
 VkCommandBuffer >> barrierForHostRead [
 	"Makes the transfer writes visible to a host read of the destination buffer.
@@ -79,17 +87,20 @@ VkCommandBuffer >> barrierForHostRead [
 
 { #category : 'recording' }
 VkCommandBuffer >> begin [
-    "VkCommandBufferBeginInfo (32 bytes):
-     0:sType  8:pNext  16:flags  24:pInheritanceInfo"
-    | info result |
-    info := ExternalAddress allocate: 32.
-    [ info unsignedLongAt: 1 put: VkStructureType commandBufferBeginInfo.
-      info pointerAt: 9 put: ExternalAddress null.
-      info unsignedLongAt: 17 put: 1.
-      info pointerAt: 25 put: ExternalAddress null.
-      result := Vk beginCommandBuffer: handle beginInfo: info.
-      Vk checkResult: result
-    ] ensure: [ info free ]
+	"Opens the recording. The request is freed whichever way the call goes, and the call itself
+	 is a separate method so the one sender of vkBeginCommandBuffer is a method of its own."
+
+	| info |
+	info := VkCommandBufferBeginInfo externalInstance.
+	[
+	info flags: self class recordingFlags.
+	self beginRecordingWith: info ] ensure: [ info getHandle free ]
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> beginRecordingWith: aBeginInfo [
+	Vk checkResult:
+		(Vk beginCommandBuffer: handle beginInfo: aBeginInfo getHandle)
 ]
 
 { #category : 'recording' }
@@ -177,17 +188,21 @@ VkCommandBuffer >> bindVertexBuffer: aVkBuffer [
 
 { #category : 'accessing' }
 VkCommandBuffer >> bufferRows [
-	"What the buffer was allocated with: the level and its name, the queue family the pool it
-	 came from serves, and whether the handle is still usable. A buffer is freed with the pool
-	 it was cut from and the driver leaves the handle reading as non-null, so liveness asks the
-	 pool as well, and a buffer that was never allocated has no pool to ask. The rows are built
-	 fresh on every call, so reading them cannot change the buffer."
+	"What the buffer was allocated with and what it records under: the level and its name, the
+	 queue family the pool it came from serves, the recording flags every recording in this
+	 project asks for with their names, and whether the handle is still usable. A buffer is
+	 freed with the pool it was cut from and the driver leaves the handle reading as non-null,
+	 so liveness asks the pool as well, and a buffer that was never allocated has no pool to
+	 ask. The rows are built fresh on every call, so reading them cannot change the buffer."
 
 	^ Dictionary newFrom: {
 			  (#level -> level).
 			  (#levelName -> (VkCommandBufferLevel nameForValue: level)).
 			  (#queueFamilyIndex
 			   -> (pool ifNotNil: [ :each | each poolRows at: #queueFamilyIndex ])).
+			  (#recordingFlags -> self class recordingFlags).
+			  (#recordingFlagNames
+			   -> (VkCommandBufferUsageFlag nameForFlags: self class recordingFlags)).
 			  (#live -> (handle isNotNil and: [
 				    handle isNull not and: [
 					    pool isNotNil and: [ pool poolRows at: #live ] ] ])) }
@@ -279,8 +294,9 @@ VkCommandBuffer >> initializeWith: aHandle pool: aPool level: aLevel [
 
 { #category : 'inspector' }
 VkCommandBuffer >> inspectorBuffer: aBuilder [
-	"What the buffer was allocated with: the level, named by the constants class that owns the
-	 values, the queue family of the pool it came from, and whether it is still usable. The
+	"What the buffer was allocated with and what it records under: the level, named by the
+	 constants class that owns the values, the queue family of the pool it came from, the
+	 recording flags named by the class that owns the bits, and whether it is still usable. The
 	 rows are built fresh, so opening the tab cannot change the buffer."
 
 	<inspectorPresentationOrder: 30 title: 'Buffer'>
@@ -295,6 +311,7 @@ VkCommandBuffer >> inspectorBuffer: aBuilder [
 		  items: {
 				  { 'Level'. (rows at: #levelName) }.
 				  { 'Queue family'. (rows at: #queueFamilyIndex) }.
+				  { 'Recording flags'. (rows at: #recordingFlagNames) }.
 				  { 'Usable'. (rows at: #live) } };
 		  yourself
 ]

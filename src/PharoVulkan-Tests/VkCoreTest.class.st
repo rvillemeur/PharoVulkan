@@ -155,6 +155,25 @@ VkCoreTest >> testChainedPropertiesQueryLinksTheBlockItIsGiven [
 ]
 
 { #category : 'tests - command pool' }
+VkCoreTest >> testCommandBufferRecordsAnEmptyBatchWithTheDeclaredBeginInfo [
+	"The driver leg of the begin info: a real buffer on this machine opened for recording and
+	 closed again with nothing in it. An empty recording is a legal batch, so the driver
+	 accepting both calls is the check — a wrong flag word or a stray inheritance pointer is
+	 what a validation layer would reject here."
+
+	| pool buffer |
+	pool := ctx device createCommandPool: ctx computeQueueFamily.
+	buffer := [ pool allocateBuffer ] ifCurtailed: [ pool destroy ].
+	[
+		buffer begin.
+		buffer end.
+		self assert: (buffer bufferRows at: #live).
+		self
+			assert: (buffer bufferRows at: #recordingFlagNames)
+			equals: 'OneTimeSubmit' ] ensure: [ pool destroy ]
+]
+
+{ #category : 'tests - command pool' }
 VkCoreTest >> testCommandBufferReportsTheLevelItWasAllocatedWith [
 	"The driver leg of the command buffer allocate info: a real buffer allocated from a real
 	 pool on this machine. The driver answers the level back no more than it answers the queue
