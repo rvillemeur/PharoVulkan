@@ -158,6 +158,27 @@ are the ones that call into the driver.
   barrier. The cost is that ownership moves to the caller, which the comment on each builder
   states.
 
+- **A nested structure is declared by name and carried by value.** `VkBufferImageCopy` holds a
+  subresource, an offset and an extent inside its own fifty-six bytes, so `fieldsDesc` names the
+  three classes and uFFI places their fields; declaring the parent declares the nest. The
+  generated getter answers a view onto the parent's store rather than a copy, so a cascade on
+  `region imageExtent` writes through to the parent at the C offsets. A nested structure with no
+  chain header needs no `initializeConstantFields`: `VkStructure`'s is a no-op, which is what
+  makes embedding safe — the getter runs `fromHandle:` on every read, and a constant field there
+  would write into the parent each time.
+
+- **Most of a converted structure needs no writer at all.** The hand-counted copy region poked
+  thirteen offsets; the declared one writes five. The buffer offset, both packing fields, the mip
+  level, the array layer and all three image offsets are the zero a fresh block already holds, and
+  a zero row length and image height are precisely what asks the driver for tightly packed rows.
+  The test asserts those zeros rather than the code writing them.
+
+- **A constant whose other senders belong to later units delegates rather than moves.**
+  `VkRenderConfig imageAspectColorBit` had three senders, two of them in methods groups 3 and 4
+  have yet to convert. The bits moved to `VkImageAspect` under `VkFlagConstants` because the copy's
+  view must name them, and `VkRenderConfig` now answers `VkImageAspect colorBit`: one home for the
+  value, no edit to a method outside the unit.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -690,7 +711,7 @@ structure on the compute path is declared.
 |---|---|---|
 | ~~`VkCommandBuffer >> begin`~~ | ~~4~~ | done, unit 3a |
 | ~~`VkCommandBuffer >> barrierForHostRead`~~ | ~~9~~ | done, unit 3b |
-| `VkCommandBuffer >> copyImage:` | 13 | `VkBufferImageCopy` |
+| ~~`VkCommandBuffer >> copyImage:`~~ | ~~13~~ | done, unit 3c |
 | `VkCommandBuffer >> beginRenderPass:` | 10 | render pass begin info, `VkClearValue` |
 | `VkCommandBuffer >> setViewport:` | 6 | `VkViewport` |
 | `VkCommandBuffer >> setScissor:` | 4 | `VkRect2D` |
@@ -764,6 +785,42 @@ The examples are `VkMemoryBarrier2 class >> exampleBarrierRecordedBeforeAHostRea
 `VkDependencyInfo class >> exampleDependencyCarryingOneMemoryBarrier`; the view is
 `VkCommandBuffer >> inspectorBarrier:`. The suite is 420 tests over the nine concrete test
 classes.
+
+### 3c — the image to buffer copy region, done 14 October 2026
+
+`VkBufferImageCopy` is fifty-six bytes at 0, 8, 12, 16, 32 and 44, and three of its six fields are
+structures carried by value: a sixteen byte `VkImageSubresourceLayers` at sixteen, a twelve byte
+`VkOffset3D` at thirty-two and a twelve byte `VkExtent3D` at forty-four. All three are declared as
+their own classes, so the nest is declared once and uFFI places every field; each is a plain value
+structure with no chain header and no padding.
+
+`VkCommandBuffer >> copyImage:layout:toBuffer:extent:` poked thirteen offsets by hand. It is now
+`VkCommandBuffer class >> regionForExtent:`, which writes five fields — the colour aspect, the
+layer count and the three extent words — and `recordCopyOf:layout:toBuffer:region:`, the one sender
+of `vkCmdCopyImageToBuffer` in the project. The eight fields nobody writes are the zeros a fresh
+block already holds; the zero row length and image height are what ask the driver for tightly
+packed rows of exactly the width, which is the pitch the host side indexes by, so the test asserts
+those zeros instead. `layersPerCopy`, `copyDepth` and `regionsPerCopy` name the three literals the
+method used to carry.
+
+`VkImageAspect` is a new `VkFlagConstants` subclass naming the colour, depth and stencil bits.
+`VkRenderConfig imageAspectColorBit` had three senders, two of them in methods later units convert,
+so it delegates to `VkImageAspect colorBit` rather than moving and dragging those methods into this
+unit.
+
+Eight tests red first: the parent layout including the nested sizes, the three nested layouts, the
+absence of any constant field, the five fields the region writes against the eight it leaves,
+the aspect names and the delegation, `testOnlyOneMethodCopiesAnImageToABuffer`, the scalar-poke ban
+over the three copy methods, and the rows. The driver leg
+`PVGraphicsTest >> testOffscreenTargetOfANonSquareExtentReadsBackEveryPixel` renders a three by two
+target and reads back all six pixels: a width and a height written to each other's field is the one
+layout mistake a square target cannot show, and it passed before the conversion as well, which is
+what a regression guard is for.
+
+The example is `VkBufferImageCopy class >> exampleRegionForAWholeImageReadback`, built by the
+recorder for the non-square `exampleExtent`; the view is `VkBufferImageCopy >> inspectorCopy:`,
+which says in words that the rows are tightly packed rather than leaving a reader a zero to
+interpret. The suite is 429 tests over the nine concrete test classes.
 
 ## 4 — Graphics
 
