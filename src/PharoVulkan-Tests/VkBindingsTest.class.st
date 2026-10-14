@@ -269,6 +269,45 @@ VkBindingsTest >> testBufferCreateInfoRequestRowsNameTheUsageBitsAndChangeNothin
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testBufferImageCopyFixesNoFieldByItsType [
+	"The copy region carries no chain header, so no field is fixed by the type and the class
+	 overrides nothing: a fresh block is a copy of nothing from the start of the buffer, which
+	 is what every field reading zero means."
+
+	| region |
+	self deny: (VkBufferImageCopy includesSelector: #initializeConstantFields).
+	region := VkBufferImageCopy externalInstance.
+	[
+		self assert: region bufferOffset equals: 0.
+		self assert: region bufferRowLength equals: 0.
+		self assert: region imageSubresource aspectMask equals: 0.
+		self assert: region imageOffset x equals: 0.
+		self assert: region imageExtent width equals: 0 ] ensure: [
+		region getHandle free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBufferImageCopyLayoutMatchesTheCLayout [
+	"The copy region carries three nested structures by value rather than by pointer, so the
+	 nested fields sit inside the parent's fifty-six bytes: a sixteen byte subresource at
+	 sixteen, a twelve byte offset at thirty-two and a twelve byte extent at forty-four."
+
+	| rows |
+	rows := VkBufferImageCopy layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #bufferOffset #bufferRowLength #bufferImageHeight
+		           #imageSubresource #imageOffset #imageExtent ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 12 16 32 44 ).
+	self
+		assert: (rows collect: [ :each | each third ]) asArray
+		equals: #( 8 4 4 16 12 12 ).
+	self assert: VkBufferImageCopy byteSize equals: 56
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testCommandBufferAllocateInfoInitializesOnlyWhatIsConstantForTheType [
 	"The structure type is the only field fixed by the type. The level is not: a secondary
 	 buffer is allocated from the same structure, and a zeroed block already reads as primary
@@ -549,6 +588,55 @@ VkBindingsTest >> testCopyBytesIntoCopiesTheDeclaredSpanAndNothingBeyondIt [
 		self assert: elements second binding equals: 0.
 		self assert: elements second descriptorCount equals: 0 ] ensure: [
 		elements first getHandle free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCopyRegionWritesOnlyWhatIsNotAlreadyZero [
+	"The region the recorder builds for an extent: the colour aspect, one layer, and the extent
+	 itself with a depth of one because the image is two dimensional. Everything else — the
+	 buffer offset, the row packing, the mip level, the array layer and the image offset — is
+	 the zero a fresh block already holds, so nothing writes it. Zero row length and zero image
+	 height ask the driver for tightly packed rows, which is what the host side indexes by."
+
+	| region extent |
+	extent := 3 @ 2.
+	region := VkCommandBuffer regionForExtent: extent.
+	[
+		self
+			assert: region imageSubresource aspectMask
+			equals: VkImageAspect colorBit.
+		self
+			assert: region imageSubresource layerCount
+			equals: VkCommandBuffer layersPerCopy.
+		self assert: region imageExtent width equals: extent x.
+		self assert: region imageExtent height equals: extent y.
+		self assert: region imageExtent depth equals: VkCommandBuffer copyDepth.
+		self assert: region bufferOffset equals: 0.
+		self assert: region bufferRowLength equals: 0.
+		self assert: region bufferImageHeight equals: 0.
+		self assert: region imageSubresource mipLevel equals: 0.
+		self assert: region imageSubresource baseArrayLayer equals: 0.
+		self assert: region imageOffset x equals: 0.
+		self assert: region imageOffset y equals: 0.
+		self assert: region imageOffset z equals: 0 ] ensure: [
+		region getHandle free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCopyRowsNameTheAspectAndThePacking [
+	"The Copy tab reads its rows off the region itself, so it cannot claim a packing or an
+	 aspect the region stopped carrying. A row length of zero means tightly packed rows, which
+	 the row says in words rather than leaving a reader to read a zero."
+
+	| region rows |
+	region := VkCommandBuffer regionForExtent: 3 @ 2.
+	rows := [ region copyRows ] ensure: [ region getHandle free ].
+	self assert: (rows at: #aspectNames) equals: 'Color'.
+	self assert: (rows at: #tightlyPackedRows).
+	self assert: (rows at: #extent) equals: 3 @ 2.
+	self assert: (rows at: #depth) equals: 1.
+	self assert: (rows at: #layerCount) equals: 1.
+	self assert: (rows at: #imageOffset) equals: 0 @ 0
 ]
 
 { #category : 'tests' }
@@ -1462,6 +1550,48 @@ VkBindingsTest >> testHalfPrecisionFeatureStructsLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testImageAspectNamesItsOwnBitsAndHoldsTheOnlyColourBit [
+	"The copy's view shows the aspect mask, so the bits are named by a constants class. The
+	 colour bit had three senders through VkRenderConfig, which is not a value table; it now
+	 delegates rather than carrying a second copy of the value."
+
+	self assert: (VkImageAspect includesBehavior: VkFlagConstants).
+	self
+		assert: (VkImageAspect nameForFlags:
+				 VkImageAspect colorBit | VkImageAspect depthBit)
+		equals: 'Color|Depth'.
+	self assert: (VkImageAspect nameForFlags: 0) equals: ''.
+	self
+		assert: VkRenderConfig imageAspectColorBit
+		equals: VkImageAspect colorBit.
+	self assert:
+		((VkRenderConfig class >> #imageAspectColorBit) messages includes:
+			 #colorBit)
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testImageCopyWritesNoScalarFieldAtAHandCountedOffset [
+	"The copy region and the three structures it nests are declared, so none of the three
+	 methods that build or record the copy may poke a scalar at a counted offset."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := {
+		             (VkCommandBuffer -> #copyImage:layout:toBuffer:extent:).
+		             (VkCommandBuffer -> #recordCopyOf:layout:toBuffer:region:).
+		             (VkCommandBuffer class -> #regionForExtent:) } select: [
+		             :each |
+		             (each key includesSelector: each value) and: [
+			             (each key >> each value) messages anySatisfy: [ :message |
+				             banned includes: message ] ] ].
+	self assertEmpty: offenders asArray.
+	self assert:
+		(VkCommandBuffer includesSelector: #recordCopyOf:layout:toBuffer:region:)
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testInstanceCreateInfoInitializesOnlyWhatIsConstantForTheType [
 	"Only sType is constant for an instance create info: the counts and the name arrays are
 	 whatever the caller asks for. A field written in initialization is written again on every
@@ -1608,6 +1738,27 @@ VkBindingsTest >> testMemoryRequirementsWritesNothingOfItsOwn [
 		equals: VkStructure
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testNestedCopyStructureLayoutsMatchTheCLayout [
+	"The three structures the copy region nests are plain value structures: no chain header, no
+	 padding, four words for the subresource and three for each of the offset and the extent."
+
+	{
+		(VkImageSubresourceLayers
+		 -> #( #aspectMask #mipLevel #baseArrayLayer #layerCount )).
+		(VkOffset3D -> #( #x #y #z )).
+		(VkExtent3D -> #( #width #height #depth )) } do: [ :each |
+		| rows |
+		rows := each key layoutRows.
+		self
+			assert: (rows collect: [ :row | row first ]) asArray
+			equals: each value.
+		self
+			assert: (rows collect: [ :row | row second ]) asArray
+			equals: ((1 to: each value size) collect: [ :i | (i - 1) * 4 ]) asArray.
+		self assert: each key byteSize equals: each value size * 4 ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testNestedPropertiesNameReadsThroughTheOuterStore [
 	"deviceNameString read the store directly, which only works where the structure owns it.
@@ -1703,6 +1854,23 @@ VkBindingsTest >> testOnlyOneMethodBeginsACommandBuffer [
 		assert: (writers collect: [ :each |
 				 each methodClass name , ' >> ' , each selector ]) asArray
 		equals: #( 'VkCommandBuffer >> beginRecordingWith:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCopiesAnImageToABuffer [
+	"Every image readback in the project records through the one method that hands the region to
+	 the driver. The senders are asked of the system, and the tests are rejected: a test naming
+	 the call is itself a sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #cmdCopyImageToBuffer:srcImage:srcImageLayout:dstBuffer:regionCount:pRegions:)
+		           reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandBuffer >> recordCopyOf:layout:toBuffer:region:' )
 ]
 
 { #category : 'tests - structures' }

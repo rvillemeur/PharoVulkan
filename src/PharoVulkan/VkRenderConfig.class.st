@@ -28,7 +28,11 @@ VkRenderConfig class >> compositeAlphaOpaqueBit [
 
 { #category : 'constants' }
 VkRenderConfig class >> imageAspectColorBit [
-	^ 1
+	"Delegates so the value has one home. The aspect bits moved to VkImageAspect when the copy
+	 region's view had to name them, and this method keeps its three senders — the image, the
+	 swapchain's views and the copy — until each of their units reaches them."
+
+	^ VkImageAspect colorBit
 ]
 
 { #category : 'constants' }

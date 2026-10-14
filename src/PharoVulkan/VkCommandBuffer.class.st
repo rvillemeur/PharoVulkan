@@ -22,6 +22,14 @@ VkCommandBuffer class >> barriersPerDependency [
 	^ 1
 ]
 
+{ #category : 'constants' }
+VkCommandBuffer class >> copyDepth [
+	"A two dimensional image is one texel deep, and Vulkan rejects a copy extent with a zero
+	 depth, so the depth is written where the width and the height come from the caller."
+
+	^ 1
+]
+
 { #category : 'recording' }
 VkCommandBuffer class >> dependencyForBarrier: aMemoryBarrier [
 	"The dependency info that carries one memory barrier and nothing else. The caller owns the
@@ -74,6 +82,13 @@ VkCommandBuffer class >> hostReadBarrier [
 		  yourself
 ]
 
+{ #category : 'constants' }
+VkCommandBuffer class >> layersPerCopy [
+	"One array layer per readback: every image this project copies back is a single layer."
+
+	^ 1
+]
+
 { #category : 'factory' }
 VkCommandBuffer class >> on: aHandle pool: aPool level: aLevel [
 	^ self new initializeWith: aHandle pool: aPool level: aLevel
@@ -85,6 +100,34 @@ VkCommandBuffer class >> recordingFlags [
 	 nothing for a resubmission."
 
 	^ VkCommandBufferUsageFlag oneTimeSubmitBit
+]
+
+{ #category : 'recording' }
+VkCommandBuffer class >> regionForExtent: aPoint [
+	"The region a whole-image readback copies: the colour aspect of the first mip level, one
+	 layer, and the extent the caller gives at a depth of one. The caller owns the block and
+	 must free its handle. Everything not written here — the buffer offset, the row packing, the
+	 mip level, the array layer and the image offset — is the zero a fresh block already holds,
+	 and a zero row length and image height are what ask the driver for tightly packed rows of
+	 exactly the width, which is what the host side indexes by."
+
+	| region |
+	region := VkBufferImageCopy externalInstance.
+	region imageSubresource
+		aspectMask: VkImageAspect colorBit;
+		layerCount: self layersPerCopy.
+	region imageExtent
+		width: aPoint x;
+		height: aPoint y;
+		depth: self copyDepth.
+	^ region
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> regionsPerCopy [
+	"One region per readback: the whole image is copied in one go, never in tiles."
+
+	^ 1
 ]
 
 { #category : 'recording' }
@@ -255,35 +298,17 @@ VkCommandBuffer >> bufferRows [
 
 { #category : 'recording' }
 VkCommandBuffer >> copyImage: anImage layout: layout toBuffer: aBuffer extent: aPoint [
-	"VkBufferImageCopy, 56 bytes, 1-based: 1:bufferOffset(u64) 9:bufferRowLength
-	 13:bufferImageHeight 17:aspectMask 21:mipLevel 25:baseArrayLayer 29:layerCount
-	 33,37,41:imageOffset x,y,z 45,49,53:imageExtent width,height,depth.
-	 Row length and image height stay 0, which asks the driver for tightly packed rows of
-	 exactly aPoint x pixels, so the host side can index by width alone."
+	"Records the whole-image readback. The region is built by the class, so the Copy tab and
+	 this recording are shown the same structure."
 
 	| region |
-	region := ExternalAddress allocate: 56.
+	region := self class regionForExtent: aPoint.
 	[
-	region unsignedLongLongAt: 1 put: 0.
-	region unsignedLongAt: 9 put: 0.
-	region unsignedLongAt: 13 put: 0.
-	region unsignedLongAt: 17 put: VkRenderConfig imageAspectColorBit.
-	region unsignedLongAt: 21 put: 0.
-	region unsignedLongAt: 25 put: 0.
-	region unsignedLongAt: 29 put: 1.
-	region unsignedLongAt: 33 put: 0.
-	region unsignedLongAt: 37 put: 0.
-	region unsignedLongAt: 41 put: 0.
-	region unsignedLongAt: 45 put: aPoint x.
-	region unsignedLongAt: 49 put: aPoint y.
-	region unsignedLongAt: 53 put: 1.
-	Vk
-		cmdCopyImageToBuffer: handle
-		srcImage: anImage handle
-		srcImageLayout: layout
-		dstBuffer: aBuffer handle
-		regionCount: 1
-		pRegions: region ] ensure: [ region free ]
+	self
+		recordCopyOf: anImage
+		layout: layout
+		toBuffer: aBuffer
+		region: region ] ensure: [ region getHandle free ]
 ]
 
 { #category : 'recording' }
@@ -398,6 +423,20 @@ VkCommandBuffer >> recordBarrier: aMemoryBarrier [
 	info := self class dependencyForBarrier: aMemoryBarrier.
 	[ Vk cmdPipelineBarrier2: handle pDependencyInfo: info getHandle ] ensure: [
 		info getHandle free ]
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordCopyOf: anImage layout: layout toBuffer: aBuffer region: aRegion [
+	"The one place an image to buffer copy is recorded. The driver reads the region during this
+	 call, so it must still be alive here and is freed by whoever built it."
+
+	Vk
+		cmdCopyImageToBuffer: handle
+		srcImage: anImage handle
+		srcImageLayout: layout
+		dstBuffer: aBuffer handle
+		regionCount: self class regionsPerCopy
+		pRegions: aRegion getHandle
 ]
 
 { #category : 'setter' }

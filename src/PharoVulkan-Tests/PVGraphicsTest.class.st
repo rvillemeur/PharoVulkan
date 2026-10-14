@@ -507,6 +507,26 @@ PVGraphicsTest >> testOffscreenTargetDestroyIsIdempotent [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testOffscreenTargetOfANonSquareExtentReadsBackEveryPixel [
+	"The driver leg of the declared copy region: a three by two target reads back six pixels and
+	 every one of them carries the clear colour. A width and a height swapped in the region —
+	 the one layout mistake a square target cannot show — leaves the last column unwritten or
+	 fails the copy outright."
+
+	self offscreenTargetExtent: 3 @ 2 do: [ :target :queue :pool |
+		target clearColor: #( 0.0 1.0 0.0 1.0 ).
+		target renderWith: [ :c |  ] on: queue pool: pool.
+		self
+			assert: target pixels size
+			equals: 3 * 2 * PVOffscreenTarget bytesPerPixel.
+		0 to: 1 do: [ :y |
+			0 to: 2 do: [ :x |
+				self
+					assert: (target pixelAtX: x y: y)
+					equals: #( 0 255 0 255 ) ] ] ]
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testOffscreenTargetOfOnePixelReadsBack [
 	"One pixel catches a row pitch assumed from the width and a copy region built from the
 	 wrong extent: both read plausible bytes at 8 by 8 and nothing at all here."
