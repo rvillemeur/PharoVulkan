@@ -179,6 +179,28 @@ are the ones that call into the driver.
   view must name them, and `VkRenderConfig` now answers `VkImageAspect colorBit`: one home for the
   value, no edit to a method outside the unit.
 
+- **An array uFFI cannot declare becomes a named-stride block the structure points at.** A render
+  pass begin info points at an array of `VkClearValue`, a union of four-word colour, depth and
+  stencil forms, and uFFI in this image cannot declare either a union or an array field. The
+  array therefore stays a block of its own: `VkCommandBuffer class >> clearValuesOutsideObjectMemory:`
+  allocates it and writes it by `clearComponentByteCount`, the declared structure holds the pointer
+  and the count, and the view reads the colour back through `pClearValues getHandle` by the same
+  named stride. Only the array keeps a hand-written offset, and the stride that offset multiplies
+  has a name, so the structure around it is still declared.
+
+- **An example never keeps a pointer it cannot follow.** The Pass tab reads the clear colour
+  through the pointer, and the example's clear values are freed when the example returns, so the
+  example clears the pointer before copying the structure into object memory: following a freed
+  block is how an image dies, and an example is clicked from a browser with no test around it. The
+  count stays at what the recorder writes and the tab says the values are out of reach, which is
+  one more row than a dangling pointer would have given. Where a tab does not follow a pointer, as
+  with the dependency's barrier pointer in unit 3b, the example may keep it and say so.
+
+- **A structure declared for one unit can pay for a later one.** `VkRect2D` is the render area
+  here and the whole of `setScissor:` two units later, so declaring it once leaves that unit with
+  a recorder to split and nothing to declare. The same held for `VkExtent3D`, declared by the copy
+  region in unit 3c.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -712,7 +734,7 @@ structure on the compute path is declared.
 | ~~`VkCommandBuffer >> begin`~~ | ~~4~~ | done, unit 3a |
 | ~~`VkCommandBuffer >> barrierForHostRead`~~ | ~~9~~ | done, unit 3b |
 | ~~`VkCommandBuffer >> copyImage:`~~ | ~~13~~ | done, unit 3c |
-| `VkCommandBuffer >> beginRenderPass:` | 10 | render pass begin info, `VkClearValue` |
+| ~~`VkCommandBuffer >> beginRenderPass:`~~ | ~~10~~ | done, unit 3d |
 | `VkCommandBuffer >> setViewport:` | 6 | `VkViewport` |
 | `VkCommandBuffer >> setScissor:` | 4 | `VkRect2D` |
 | `VkQueue >> submit:` | 9 | `VkSubmitInfo2`, command buffer submit info |
@@ -720,6 +742,8 @@ structure on the compute path is declared.
 
 `VkViewport` and `VkRect2D` are plain value structures with no `sType`, so they are the cheapest
 units in the plan and a good place to confirm the shape on a structure without a chain pointer.
+`VkRect2D` is already declared: unit 3d needed it for the render area, so the scissor unit has a
+recorder to split and nothing to declare.
 
 ### 3a — the recording's begin info, done 14 October 2026
 
@@ -821,6 +845,43 @@ The example is `VkBufferImageCopy class >> exampleRegionForAWholeImageReadback`,
 recorder for the non-square `exampleExtent`; the view is `VkBufferImageCopy >> inspectorCopy:`,
 which says in words that the rows are tightly packed rather than leaving a reader a zero to
 interpret. The suite is 429 tests over the nine concrete test classes.
+
+### 3d — the render pass begin info and its clear values, done 14 October 2026
+
+`VkRenderPassBeginInfo` is sixty-four bytes at 0, 8, 16, 24, 32, 48 and 56. The render pass and the
+framebuffer are declared as the handle types they are, `VkRenderPass_H*` and `VkFramebuffer_H*`, so
+the two handles read back as handles rather than as words. The render area is a sixteen byte
+`VkRect2D` carried by value at thirty-two, itself an eight byte `VkOffset2D` and an eight byte
+`VkExtent2D`; all three are new declared classes. The clear value count is one word at forty-eight
+and uFFI pads after it, because the pointer at fifty-six is eight byte aligned.
+
+`VkCommandBuffer >> beginRenderPass:framebuffer:extent:clearColor:` poked ten offsets by hand. It is
+now `clearValuesOutsideObjectMemory:`, which allocates and fills the clear value array,
+`renderPassBeginInfoFor:framebuffer:extent:clearValues:`, which writes the whole structure, and
+`recordRenderPassBeginWith:`, the one sender of `vkCmdBeginRenderPass` in the project. The render
+area's offset is left at the zero a fresh block holds, which is the whole attachment from its
+origin. `VkSubpassContents` is a new `VkValueConstants` subclass naming the two contents choices,
+and `VkCommandBuffer class >> subpassContents` names the one this project records; the count,
+the component count and the component width are named as well.
+
+The clear values are the one thing in this unit that is not declared. `VkClearValue` is a union of
+a four-component colour, a depth-and-stencil pair and four unsigned words, and uFFI in this image
+declares neither a union nor an array field — the array probe of unit 1c failed with
+`Unable to resolve external type: [`. The array is therefore written and read by a named stride,
+the precedent `VkContext >> queuePriorityArrayOutsideObjectMemory` set.
+
+Nine tests red first: the parent layout including the nested sizes and the two handle fields, the
+three nested layouts, the constant field, the contents names, the named stride over the array, the
+extent and count the builder writes, `testOnlyOneMethodBeginsARenderPass`, the scalar-poke ban over
+the four render pass methods, and the rows. The driver leg
+`PVGraphicsTest >> testOffscreenTargetClearColourReachesEveryChannelSeparately` clears a two by two
+target to a different value in each of the four channels and reads every channel back: a clear value
+written at the wrong stride, or a colour whose components are transposed, cannot hide behind a
+uniform clear colour, which is what the project's other graphics tests use.
+
+The example is `VkRenderPassBeginInfo class >> exampleBeginInfoForAClearedPass` and the view is
+`VkRenderPassBeginInfo >> inspectorPass:`. The suite is 439 tests over the nine concrete test
+classes.
 
 ## 4 — Graphics
 
