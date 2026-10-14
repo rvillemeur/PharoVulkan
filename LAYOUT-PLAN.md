@@ -112,7 +112,8 @@ are the ones that call into the driver.
   and answers `nameForValue:` or `nameForFlags:`. `VkDescriptorType` and `VkShaderStage` were
   reparented for the Bindings tab. The other classes in the `Constants` tag — `VkImageLayout`,
   `VkAccess2`, `VkPipelineStage2`, `VkAttachmentOp`, `VkImageTiling`, `VkImageType` — are still
-  plain holders, to be moved by the unit that needs each one named rather than in one sweep;
+  plain holders, to be moved by the unit that needs each one named rather than in one sweep —
+  `VkAccess2` and `VkPipelineStage2` were moved by unit 3b, which shows four of their masks;
   `VkApiVersion` and `VkRenderConfig` are not value tables and stay where they are.
 - **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
   but not `at:put:`, which lands in the inner array, so the view rows across this project are not
@@ -147,6 +148,15 @@ are the ones that call into the driver.
   rather than by keeping a copy per instance. A field the caller chooses per instance — the
   fence's flags, the buffer's level — is kept in the instance instead, because the driver never
   answers it back.
+
+- **A view that shows what a recorder writes gets the structure from the recorder.** A barrier is
+  written, handed to the driver and freed inside one call, so nothing is left for a tab to read.
+  The writer therefore answers the filled structure instead of recording with it —
+  `VkCommandBuffer class >> hostReadBarrier` and `dependencyForBarrier:` build and answer, and the
+  caller frees the handle — and `barrierForHostRead` and `barrierRows` both ask for the same
+  structures. The tab cannot drift from the recording, because it is shown the recording's own
+  barrier. The cost is that ownership moves to the caller, which the comment on each builder
+  states.
 
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
@@ -679,7 +689,7 @@ structure on the compute path is declared.
 | Method | Offsets written | Structures |
 |---|---|---|
 | ~~`VkCommandBuffer >> begin`~~ | ~~4~~ | done, unit 3a |
-| `VkCommandBuffer >> barrierForHostRead` | 9 | memory barrier and dependency info |
+| ~~`VkCommandBuffer >> barrierForHostRead`~~ | ~~9~~ | done, unit 3b |
 | `VkCommandBuffer >> copyImage:` | 13 | `VkBufferImageCopy` |
 | `VkCommandBuffer >> beginRenderPass:` | 10 | render pass begin info, `VkClearValue` |
 | `VkCommandBuffer >> setViewport:` | 6 | `VkViewport` |
@@ -716,6 +726,44 @@ hand and belong to the later units of this group.
 
 The example is `VkCommandBufferBeginInfo class >> exampleRequestForAOneTimeRecording`; the view
 is the Buffer tab unit 2f added. The suite is 412 tests over the nine concrete test classes.
+
+### 3b — the memory barrier and its dependency, done 14 October 2026
+
+`VkMemoryBarrier2` is forty-eight bytes at 0, 8, 16, 24, 32 and 40. Synchronization2 widened the
+stage and access masks to sixty-four bits, so all four masks are quad words and the structure
+needs no padding anywhere. `VkDependencyInfo` is sixty-four bytes at 0, 8, 16, 20, 24, 32, 40, 48
+and 56: three count-and-pointer pairs follow the dependency flags, one pair per kind of barrier,
+and because each count is one word and each pointer is eight byte aligned uFFI pads after the
+second and the third count. This project records memory barriers only, so the buffer and image
+pairs stay at zero and null, which a fresh block already is.
+
+`VkCommandBuffer >> barrierForHostRead` wrote both structures by hand at nine offsets, with the
+masks poked through `unsignedLongLongAt:put:` and the barrier count written as a bare `1`. It is
+now three methods: the two class-side builders, `hostReadBarrier` and `dependencyForBarrier:`,
+and `recordBarrier:`, which is the one sender of `vkCmdPipelineBarrier2` in the project. The
+builders answer their structure for the caller to free rather than recording with it, which is
+what lets the new Barrier tab show the masks the recorder really uses; the barrier must outlive
+the recording call, because the driver follows the pointer in the dependency as it records.
+`VkCommandBuffer class >> barriersPerDependency` names the count. The long-method critique this
+method carried through every earlier unit is gone with the split.
+
+`VkAccess2` and `VkPipelineStage2` moved under `VkFlagConstants` and gained `namedBits`, so the
+four masks are named by the classes that own the bits. Both class comments were rewritten after
+the reparenting, which drops them.
+
+Eight tests red first: a layout test per structure, one constant-field test over both, the mask
+names including the empty mask, `testOnlyOneMethodRecordsAPipelineBarrier`, the scalar-poke ban
+over all four barrier methods on both sides of the class, the rows test over the sampled
+structures, and the driver leg
+`VkCoreTest >> testCommandBufferRecordsTheHostReadBarrierWithTheDeclaredStructures`, which records
+the barrier into a real buffer on this machine: the driver reads the dependency and the barrier it
+points at while recording, so a wrong count, a mask at the wrong offset or a pointer in the wrong
+word fails there rather than later at submission.
+
+The examples are `VkMemoryBarrier2 class >> exampleBarrierRecordedBeforeAHostRead` and
+`VkDependencyInfo class >> exampleDependencyCarryingOneMemoryBarrier`; the view is
+`VkCommandBuffer >> inspectorBarrier:`. The suite is 420 tests over the nine concrete test
+classes.
 
 ## 4 — Graphics
 
