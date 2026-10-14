@@ -21,18 +21,44 @@ Class {
 	#tag : 'Bindings'
 }
 
+{ #category : 'examples' }
+VkInstanceCreateInfo class >> exampleComputeInstanceRequest [
+	"One click: the structure the compute path hands vkCreateInstance, built by the real
+	 builder and copied into object memory before the external blocks go, so the click frees
+	 everything it allocated. No instance is created, so no context needs destroying. The copy
+	 is for looking at and not for passing on: its application info pointer still reads as the
+	 address of a block that has since been freed."
+
+	<sampleInstance>
+	| context appInfo createInfo |
+	context := VkContext new.
+	appInfo := context buildApplicationInfo.
+	^ [
+	  createInfo := context
+		                buildInstanceCreateInfo: appInfo
+		                extensions: VkContext computeInstanceExtensionNames.
+	  [ createInfo copyIntoObjectMemory ] ensure: [
+		  context freeInstanceCreateInfo: createInfo ] ] ensure: [
+		  context freeApplicationInfo: appInfo ]
+]
+
 { #category : 'field definition' }
 VkInstanceCreateInfo class >> fieldsDesc [
-    ^ #(
-        int32  sType;
-        void*  pNext;
-        uint32 flags;
-        VkApplicationInfo* pApplicationInfo;
-        uint32 enabledLayerCount;
-        void*  ppEnabledLayerNames;
-        uint32 enabledExtensionCount;
-        void*  ppEnabledExtensionNames
-    )
+	"pApplicationInfo is a VkApplicationInfo* and is declared void* all the same: uFFI's
+	 getter for a typed structure pointer answers that structure through fromHandle:, which
+	 sends initialize, so every read of the field would write this project's constant fields
+	 over memory the driver is about to read."
+
+	^ #(
+		int32 sType;
+		void* pNext;
+		uint32 flags;
+		void* pApplicationInfo;
+		uint32 enabledLayerCount;
+		void* ppEnabledLayerNames;
+		uint32 enabledExtensionCount;
+		void* ppEnabledExtensionNames
+	)
 ]
 
 { #category : 'accessing - structure variables' }
@@ -73,30 +99,22 @@ VkInstanceCreateInfo >> flags: anObject [
 
 { #category : 'initialization' }
 VkInstanceCreateInfo >> initializeConstantFields [
-	"The structure type and the cleared pointers and counts an instance create info needs
-	 before a caller asks for layers or extensions."
+	"The structure type, and nothing else: the flags, the counts and the two name arrays are
+	 the caller's, and a fresh store already reads as none of each."
 
-	self
-		sType: VkStructureType instanceCreateInfo;
-		pNext: ExternalAddress null;
-		flags: 0;
-		enabledLayerCount: 0;
-		ppEnabledLayerNames: ExternalAddress null;
-		enabledExtensionCount: 0;
-		ppEnabledExtensionNames: ExternalAddress null
+	self sType: VkStructureType instanceCreateInfo
 ]
 
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> pApplicationInfo [
 	"This method was automatically generated"
-	^VkApplicationInfo fromHandle: (handle pointerAt: OFFSET_PAPPLICATIONINFO)
+	^ExternalData fromHandle: (handle pointerAt: OFFSET_PAPPLICATIONINFO) type: ExternalType void asPointerType
 ]
 
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> pApplicationInfo: anObject [
 	"This method was automatically generated"
-
-	handle pointerAt: OFFSET_PAPPLICATIONINFO put: anObject getHandle
+	handle pointerAt: OFFSET_PAPPLICATIONINFO put: anObject getHandle.
 ]
 
 { #category : 'accessing - structure variables' }
@@ -108,8 +126,7 @@ VkInstanceCreateInfo >> pNext [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> pNext: anObject [
 	"This method was automatically generated"
-
-	handle pointerAt: OFFSET_PNEXT put: anObject getHandle
+	handle pointerAt: OFFSET_PNEXT put: anObject getHandle.
 ]
 
 { #category : 'accessing - structure variables' }
@@ -121,10 +138,7 @@ VkInstanceCreateInfo >> ppEnabledExtensionNames [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> ppEnabledExtensionNames: anObject [
 	"This method was automatically generated"
-
-	handle
-		pointerAt: OFFSET_PPENABLEDEXTENSIONNAMES
-		put: anObject getHandle
+	handle pointerAt: OFFSET_PPENABLEDEXTENSIONNAMES put: anObject getHandle.
 ]
 
 { #category : 'accessing - structure variables' }
@@ -136,8 +150,7 @@ VkInstanceCreateInfo >> ppEnabledLayerNames [
 { #category : 'accessing - structure variables' }
 VkInstanceCreateInfo >> ppEnabledLayerNames: anObject [
 	"This method was automatically generated"
-
-	handle pointerAt: OFFSET_PPENABLEDLAYERNAMES put: anObject getHandle
+	handle pointerAt: OFFSET_PPENABLEDLAYERNAMES put: anObject getHandle.
 ]
 
 { #category : 'accessing - structure variables' }

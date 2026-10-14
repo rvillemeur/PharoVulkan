@@ -737,6 +737,48 @@ VkCoreTest >> testHostVisibleAndCoherentAsksForBothProperties [
 		equals: VkMemoryProperty hostCoherentBit
 ]
 
+{ #category : 'tests - instance' }
+VkCoreTest >> testInstanceCreateInfoCarriesTheApplicationInfoAndTheExtensionsAskedFor [
+	"Reads back the struct handed to vkCreateInstance. The API version is what decides
+	 whether the device dispatch table carries vkQueueSubmit2, and an instance extension
+	 name counts for nothing unless it reaches that field."
+
+	| names appInfo info |
+	names := #( 'VK_KHR_surface' 'VK_KHR_xlib_surface' ).
+	appInfo := ctx buildApplicationInfo.
+	[
+	info := ctx buildInstanceCreateInfo: appInfo extensions: names.
+	[
+	self assert: info sType equals: VkStructureType instanceCreateInfo.
+	self
+		assert: info pApplicationInfo getHandle
+		equals: appInfo getHandle.
+	self assert: appInfo apiVersion equals: VkContext instanceApiVersion.
+	self assert: (ctx extensionNamesIn: info) asArray equals: names ]
+		ensure: [ ctx freeInstanceCreateInfo: info ] ] ensure: [
+		ctx freeApplicationInfo: appInfo ]
+]
+
+{ #category : 'tests - instance' }
+VkCoreTest >> testInstanceCreateInfoWithoutExtensionsAsksForNone [
+	"The degenerate state the compute path uses: no instance extensions at all. The count
+	 must read zero and the array pointer must be null, because a driver reads the array
+	 whenever the count says there is one."
+
+	| appInfo info |
+	appInfo := ctx buildApplicationInfo.
+	[
+	info := ctx buildInstanceCreateInfo: appInfo extensions: #( ).
+	[
+	self assert: info enabledExtensionCount equals: 0.
+	self assert: info ppEnabledExtensionNames getHandle isNull.
+	self assert: info enabledLayerCount equals: 0.
+	self assert: info ppEnabledLayerNames getHandle isNull.
+	self assertEmpty: (ctx extensionNamesIn: info) ]
+		ensure: [ ctx freeInstanceCreateInfo: info ] ] ensure: [
+		ctx freeApplicationInfo: appInfo ]
+]
+
 { #category : 'tests' }
 VkCoreTest >> testMemoryTypeRowsNameEveryTypeTheDriverReports [
 	"The Memory types view must cover the whole table and agree with the allocator: one

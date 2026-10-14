@@ -30,6 +30,14 @@ VkContext class >> computeContextRequiring: aCollectionOfSelectors [
 	^ self new initializeComputeRequiring: aCollectionOfSelectors
 ]
 
+{ #category : 'constants' }
+VkContext class >> computeInstanceExtensionNames [
+	"The compute path needs no instance extension: it never presents to a surface, and
+	 everything it calls is core Vulkan 1.3."
+
+	^ #( )
+]
+
 { #category : 'instance creation' }
 VkContext class >> cooperativeMatrixContext [
 	"On this machine the device that offers VK_KHR_cooperative_matrix is not the first one
@@ -96,6 +104,15 @@ VkContext class >> halfPrecisionExtensionNames [
     ^ #( 'VK_KHR_shader_float16_int8' 'VK_KHR_16bit_storage' )
 ]
 
+{ #category : 'constants' }
+VkContext class >> instanceApiVersion [
+	"Vulkan 1.3 is what the instance asks for, and it is not a free choice: the device
+	 dispatch table carries vkQueueSubmit2 only from 1.3 on, and this project submits every
+	 batch of work through it."
+
+	^ VkApiVersion vulkan13
+]
+
 { #category : 'factory' }
 VkContext class >> offscreenGraphicsContext [
 	"A device whose graphics and compute families differ would need a second queue,
@@ -152,6 +169,17 @@ VkContext >> allocateCString: aString [
 	buf := ExternalAddress allocate: bytes size.
 	bytes doWithIndex: [ :byte :i | buf byteAt: i put: byte ].
 	^ buf
+]
+
+{ #category : 'private - instance' }
+VkContext >> buildApplicationInfo [
+	"The application info both instance paths pass. Only the API version is asked for; the
+	 application and engine names are the fields a driver may match a workaround on, and this
+	 project wants none, so they stay the null pointers a fresh store gives."
+
+	^ VkApplicationInfo externalInstance
+		  apiVersion: self class instanceApiVersion;
+		  yourself
 ]
 
 { #category : 'initialization' }
@@ -259,6 +287,22 @@ VkContext >> buildHalfPrecisionFeatures [
 		           pNext: storage16 getHandle;
 		           yourself.
 	^ float16 getHandle
+]
+
+{ #category : 'private - instance' }
+VkContext >> buildInstanceCreateInfo: anApplicationInfo extensions: aNameCollection [
+	"The struct vkCreateInstance is given, for both paths: the compute path asks for no
+	 instance extensions, the graphics path for the ones SDL names. The application info
+	 belongs to the caller, which is why it is passed in and freed there."
+
+	| array |
+	array := self buildExtensionNameArray: aNameCollection.
+	^ VkInstanceCreateInfo externalInstance
+		  pApplicationInfo: anApplicationInfo getHandle;
+		  enabledExtensionCount: aNameCollection size;
+		  ppEnabledExtensionNames:
+			  (array ifNil: [ ExternalAddress null ]);
+		  yourself
 ]
 
 { #category : 'initialization' }
@@ -376,6 +420,40 @@ VkContext >> createGraphicsDevice [
 	[ self createDeviceFromCreateInfo: deviceInfo ] ensure: [
 		self freeDeviceCreateInfo: deviceInfo ] ] ensure: [
 		self freeDeviceQueueCreateInfo: queueInfo ]
+]
+
+{ #category : 'private - instance' }
+VkContext >> createInstanceFromCreateInfo: aCreateInfo [
+	"The one vkCreateInstance call both paths make. The out parameter is a single handle and
+	 not a structure, so it is one pointer wide and read at its only index."
+
+	| buf result |
+	buf := ExternalAddress allocate: self class pointerSize.
+	^ [
+	  result := Vk
+		            primCreateInstance: aCreateInfo getHandle
+		            allocator: ExternalAddress null
+		            instanceOut: buf.
+	  Vk checkResult: result.
+	  instance := VkInstance_H fromHandle: (buf pointerAt: 1) ] ensure: [
+		  buf free ]
+]
+
+{ #category : 'private - instance' }
+VkContext >> createInstanceWithExtensions: aNameCollection [
+	"Both paths differ only in the instance extensions they name, so both come through here.
+	 Each block is freed by the method paired with the one that built it, in an ensure:, so a
+	 refused vkCreateInstance leaks nothing."
+
+	| appInfo createInfo |
+	appInfo := self buildApplicationInfo.
+	^ [
+	  createInfo := self
+		                buildInstanceCreateInfo: appInfo
+		                extensions: aNameCollection.
+	  [ self createInstanceFromCreateInfo: createInfo ] ensure: [
+		  self freeInstanceCreateInfo: createInfo ] ] ensure: [
+		  self freeApplicationInfo: appInfo ]
 ]
 
 { #category : 'initialization' }
@@ -565,6 +643,14 @@ VkContext >> fetchGraphicsQueue [
 		                buf free ]
 ]
 
+{ #category : 'private - instance' }
+VkContext >> freeApplicationInfo: anApplicationInfo [
+	"Paired with buildApplicationInfo. The structure owns no other block, because the names
+	 it could point at were never allocated."
+
+	anApplicationInfo getHandle free
+]
+
 { #category : 'initialization' }
 VkContext >> freeDeviceCreateInfo: aCreateInfo [
 	"Releases everything buildDeviceCreateInfo: allocated, the create info's own store
@@ -615,6 +701,17 @@ VkContext >> freeFeatureChain: aStruct [
 		current := next ]
 ]
 
+{ #category : 'private - instance' }
+VkContext >> freeInstanceCreateInfo: aCreateInfo [
+	"Paired with buildInstanceCreateInfo:extensions:, which allocated the name array and the
+	 structure. The application info is the caller's and is not freed here."
+
+	self
+		freeExtensionNameArray: aCreateInfo ppEnabledExtensionNames getHandle
+		count: aCreateInfo enabledExtensionCount.
+	aCreateInfo getHandle free
+]
+
 { #category : 'querying' }
 VkContext >> halfPrecisionAvailable [
 	"Asks the driver rather than assuming: the same context must come up on a device that
@@ -626,42 +723,7 @@ VkContext >> halfPrecisionAvailable [
 
 { #category : 'initialization' }
 VkContext >> initializeCompute [
-	"Create instance with Vulkan 1.3 API version so device dispatch table includes vkQueueSubmit2."
-
-	| appInfo info buf result |
-	appInfo := ExternalAddress allocate: 48.
-	instance := [
-		            appInfo
-			            unsignedLongAt: 1
-			            put: VkStructureType applicationInfo.
-		            appInfo pointerAt: 9 put: ExternalAddress null.
-		            appInfo pointerAt: 17 put: ExternalAddress null.
-		            appInfo unsignedLongAt: 25 put: 0.
-		            appInfo pointerAt: 33 put: ExternalAddress null.
-		            appInfo unsignedLongAt: 41 put: 0.
-		            appInfo unsignedLongAt: 45 put: VkApiVersion vulkan13.
-		            info := ExternalAddress allocate: 64.
-		            [
-			            info
-				            unsignedLongAt: 1
-				            put: VkStructureType instanceCreateInfo.
-			            info pointerAt: 9 put: ExternalAddress null.
-			            info unsignedLongAt: 17 put: 0.
-			            info pointerAt: 25 put: appInfo.
-			            info unsignedLongAt: 33 put: 0.
-			            info pointerAt: 41 put: ExternalAddress null.
-			            info unsignedLongAt: 49 put: 0.
-			            info pointerAt: 57 put: ExternalAddress null.
-			            buf := ExternalAddress allocate: 8.
-			            [
-				            result := Vk
-					                      primCreateInstance: info
-					                      allocator: ExternalAddress null
-					                      instanceOut: buf.
-				            Vk checkResult: result.
-				            VkInstance_H fromHandle: (buf pointerAt: 1) ] ensure: [
-				            buf free ] ] ensure: [ info free ] ] ensure: [
-		            appInfo free ].
+	self createInstanceWithExtensions: self class computeInstanceExtensionNames.
 	self selectPhysicalDevice.
 	self createLogicalDevice.
 	self fetchComputeQueue.
@@ -675,45 +737,15 @@ VkContext >> initializeComputeRequiring: aCollectionOfSelectors [
 ]
 
 { #category : 'initialization' }
-VkContext >> initializeGraphicsWithExtensions: extNames [
-    | appInfo info extPtrs extArray buf result |
-    appInfo := ExternalAddress allocate: 48.
-    [ appInfo unsignedLongAt: 1 put: VkStructureType applicationInfo.
-      appInfo pointerAt: 9 put: ExternalAddress null.
-      appInfo pointerAt: 17 put: ExternalAddress null.
-      appInfo unsignedLongAt: 25 put: 0.
-      appInfo pointerAt: 33 put: ExternalAddress null.
-      appInfo unsignedLongAt: 41 put: 0.
-      appInfo unsignedLongAt: 45 put: VkApiVersion vulkan13.
-      info := ExternalAddress allocate: 64.
-      [ extPtrs := extNames collect: [:n |
-            | bytes p |
-            bytes := n asByteArray copyWith: 0.
-            p := ExternalAddress allocate: bytes size.
-            1 to: bytes size do: [:i | p byteAt: i put: (bytes at: i)].
-            p].
-        extArray := ExternalAddress allocate: extNames size * 8.
-        [ extPtrs doWithIndex: [:p :i | extArray pointerAt: (i - 1) * 8 + 1 put: p].
-          info unsignedLongAt: 1 put: VkStructureType instanceCreateInfo.
-          info pointerAt: 9 put: ExternalAddress null.
-          info unsignedLongAt: 17 put: 0.
-          info pointerAt: 25 put: appInfo.
-          info unsignedLongAt: 33 put: 0.
-          info pointerAt: 41 put: ExternalAddress null.
-          info unsignedLongAt: 49 put: extNames size.
-          info pointerAt: 57 put: extArray.
-          buf := ExternalAddress allocate: 8.
-          [ result := Vk primCreateInstance: info allocator: ExternalAddress null instanceOut: buf.
-            Vk checkResult: result.
-            instance := VkInstance_H fromHandle: (buf pointerAt: 1)
-          ] ensure: [ buf free ]
-        ] ensure: [ extArray free. extPtrs do: [:p | p free] ]
-      ] ensure: [ info free ]
-    ] ensure: [ appInfo free ].
-    self selectGraphicsPhysicalDevice.
-    self createGraphicsDevice.
-    self fetchGraphicsQueue.
-    ^ self
+VkContext >> initializeGraphicsWithExtensions: aNameCollection [
+	"The names come from SDL_Vulkan_GetInstanceExtensions: whatever the window system needs
+	 to put a surface on a window."
+
+	self createInstanceWithExtensions: aNameCollection.
+	self selectGraphicsPhysicalDevice.
+	self createGraphicsDevice.
+	self fetchGraphicsQueue.
+	^ self
 ]
 
 { #category : 'inspector' }

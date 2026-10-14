@@ -848,6 +848,27 @@ VkBindingsTest >> testHalfPrecisionFeatureStructsLayoutMatchesTheCLayout [
 		self assert: a second + a third <= b second ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testInstanceCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"Only sType is constant for an instance create info: the counts and the name arrays are
+	 whatever the caller asks for. A field written in initialization is written again on every
+	 fromHandle: read of the structure, which would clear a count the driver was meant to see.
+	 The degenerate state needs no writing at all, because a fresh store is zeroed."
+
+	| info setters |
+	info := VkInstanceCreateInfo new.
+	self assert: info sType equals: VkStructureType instanceCreateInfo.
+	self assert: info flags equals: 0.
+	self assert: info enabledLayerCount equals: 0.
+	self assert: info ppEnabledLayerNames getHandle isNull.
+	self assert: info enabledExtensionCount equals: 0.
+	self assert: info ppEnabledExtensionNames getHandle isNull.
+	setters := (VkInstanceCreateInfo >> #initializeConstantFields) messages
+		           select: [ :each |
+		           VkInstanceCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testLayoutRowsReportEveryPointerFieldAsOnePointerWide [
 	"A pointer field occupies a pointer, not the thing it points at. FFIExternalStructureType
@@ -1233,6 +1254,24 @@ VkBindingsTest >> testVkApplicationInfoSType [
     | info |
     info := VkApplicationInfo new.
     self assert: info sType equals: VkStructureType applicationInfo
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testVkContextWritesNoScalarFieldAtAHandCountedOffset [
+	"Every scalar a Vulkan structure carries is a declared field, so a method that writes one
+	 at an offset it counted itself is writing outside a declaration. The pointer, float and
+	 byte accessors stay allowed: an array of C strings, of priorities or of handles has no
+	 field specification and is walked by a named stride."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := (VkContext methods select: [ :method |
+		              method messages anySatisfy: [ :each |
+			              banned includes: each ] ]) collect: [ :method |
+		             method selector ].
+	self assertEmpty: offenders
 ]
 
 { #category : 'tests' }
