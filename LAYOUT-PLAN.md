@@ -119,6 +119,14 @@ are the ones that call into the driver.
   immutable however the older comments read. The guarantee that holds is that every row builder
   answers fresh rows over copied values, so a view cannot reach the inspected object; new rows
   say that rather than claiming read-only.
+- **A duplicated writer collapses onto the resource class, and the convenience method
+  delegates.** Where two methods write the same create info, the one that keeps it is the class
+  whose resource the structure creates, because that class also holds the resource's constants and
+  its rows; the other becomes a one-line delegation. `VkCommandPool class >> on:queueFamilyIndex:`
+  had no senders at all and `VkDevice >> createCommandPool:` had the two real ones, so the choice
+  was not the method with the callers but the method with the responsibility, and the senders did
+  not change.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -380,13 +388,13 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 | ~~`VkImage >> allocate`~~ | ~~4~~ | done, unit 2b |
 | ~~`VkDescriptorSetLayout >> create`~~ | ~~5~~ | done, unit 2c |
 | ~~`VkShaderModule >> initializeFromBytes:`~~ | ~~5~~ | done, unit 2d |
-| `VkCommandPool class >> on:` and `VkDevice >> createCommandPool:` | 4 each | `VkCommandPoolCreateInfo` |
+| ~~`VkCommandPool class >> on:` and `VkDevice >> createCommandPool:`~~ | ~~4 each~~ | done, unit 2e |
 | `VkCommandPool >> allocateBuffer` | 5 | `VkCommandBufferAllocateInfo` |
 | `VkFenceWrapper >> initializeDevice:` | 3 | `VkFenceCreateInfo` |
 | `VkSemaphoreWrapper >> initializeDevice:` | 3 | `VkSemaphoreCreateInfo` |
 
-The two command pool create infos are written twice, by two methods, from the same five values;
-the unit that declares the structure should leave one writer.
+The two command pool create infos were written twice, by two methods, from the same five values;
+unit 2e left one writer.
 
 ### 2a — the buffer and its memory, done 14 October 2026
 
@@ -544,6 +552,38 @@ playground kernel compiled and loaded on this machine — 684 bytes, 171 words �
 `VkShaderModuleCreateInfo class >> exampleRequestForTheVectorAddKernel`, the request with its code
 pointer cleared because the block it named has been freed. The view is
 `VkShaderModule >> inspectorModule:`. The suite is 387 tests over the nine concrete test classes.
+
+### 2e — the command pool, done 14 October 2026
+
+`VkCommandPoolCreateInfo` is twenty-four bytes at 0, 8, 16 and 20: two four-byte words after the
+chain header, with no padding between them and four bytes of tail padding to the eight-byte
+alignment the pointer demands.
+
+The structure was written at those four offsets by two methods with identical bodies,
+`VkCommandPool class >> on:queueFamilyIndex:` and `VkDevice >> createCommandPool:`, and the
+creation flag was the literal `1` in both. Now `VkCommandPool class >> on:queueFamilyIndex:` is
+the one writer, split into the request and `handleForCreateInfo:on:` for the out parameter, and
+`VkDevice >> createCommandPool:` is a single delegation, so its two senders —
+`PVGraphicsTest` and `PVOffscreenTarget` — are untouched. `VkCommandPool class >> creationFlags`
+names the flag the project always asks for, and `VkCommandPoolCreateFlag` is a new
+`VkFlagConstants` subclass that answers `resetCommandBufferBit` and decodes it to
+`'ResetCommandBuffer'`, so the Pool tab shows the name without holding a table of its own.
+
+The pool keeps the queue family and the flags it was created with, since the driver answers
+neither back, and `poolRows` reports them with the decoded flag names and whether the handle is
+still live. The rows are built fresh on every call.
+
+Five tests red first: the layout, the constant field,
+`testCommandPoolCreationWritesNoScalarFieldAtAHandCountedOffset` over the whole class,
+`testOnlyOneMethodCreatesACommandPool` — `vkCreateCommandPool` has exactly one sender outside the
+tests — and the driver leg
+`VkCoreTest >> testCommandPoolReportsTheQueueFamilyAndFlagItWasCreatedWith`, which creates a real
+pool on this machine's compute queue family and reads the rows.
+
+Examples: `VkCommandPool class >> examplePoolForTheComputeQueueOnThisMachine`, the pool every
+compute dispatch here allocates from, destroyed with its context so the tab shows a dead handle
+over live creation values. The view is `VkCommandPool >> inspectorPool:`. The suite is 392 tests
+over the nine concrete test classes.
 
 ## 3 — Command recording and submission
 
