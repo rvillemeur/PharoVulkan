@@ -83,6 +83,17 @@ are the ones that call into the driver.
   external block is freed. A test that hand-counted the same offsets is converted along with the
   code: `VkCoreTest >> testStorageBufferMemoryTypeIsCoherent` used to read `memoryTypeBits` at
   byte seventeen itself.
+- **The same four steps for two resources get one writer.** A buffer and an image differ in what
+  they demand of the driver and in how they bind, but not in the allocation between: the
+  allocate info is written by `VkDevice >> allocateMemoryFor:properties:` and nowhere else, and
+  `VkBindingsTest >> testOnlyOneMethodAllocatesDeviceMemory` asserts that `vkAllocateMemory` has
+  exactly one sender outside the tests.
+- **Ask the system who writes a structure.** `VkStructure class >> writerRows` reflects over the
+  senders of the structure's declared setters, so the Writers tab cannot list a writer that no
+  longer exists or miss one that appeared. Field names repeat across Vulkan structures — `size`
+  belongs to both the buffer create info and the memory requirements — so a sender counts only if
+  it also names the class, which every builder here does because each one allocates the structure
+  it fills. The chain header's setters are excluded: every structure implements them.
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -341,7 +352,7 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 | Method | Offsets written | Structures |
 |---|---|---|
 | ~~`VkBuffer >> allocate`~~ | ~~8~~ | done, unit 2a |
-| `VkImage >> allocate` | 4 | both memory structures, declared in 2a |
+| ~~`VkImage >> allocate`~~ | ~~4~~ | done, unit 2b |
 | `VkDescriptorSetLayout >> create` | 5 | `VkDescriptorSetLayoutBinding`, layout create info |
 | `VkShaderModule >> initializeFromBytes:` | 5 | `VkShaderModuleCreateInfo` |
 | `VkCommandPool class >> on:` and `VkDevice >> createCommandPool:` | 4 each | `VkCommandPoolCreateInfo` |
@@ -397,6 +408,41 @@ than restated, the sharing mode named by the class and whether a queue family li
 `testBufferCreateInfoRequestRowsNameTheUsageBitsAndChangeNothing` compares the rows against the
 flag constants and the field report before and after reading, so the tab cannot drift and cannot
 mutate. The suite is 365 tests over the nine concrete test classes.
+
+### 2b — the image's memory, done 14 October 2026
+
+`VkImage >> allocate` wrote the same memory half as the buffer: the requirements block read at
+two hand-counted offsets, then a thirty-two-byte allocate info written at four. Both structures
+were declared in 2a, so this unit was about where the shared sequence lives. The allocation step
+moved to `VkDevice >> allocateMemoryFor:properties:`, on the device that owns the memory: it
+writes the allocate info, asks the physical device for a memory type that both satisfies the
+resource and carries the properties wanted, calls `vkAllocateMemory` and answers the handle. The
+resources keep what differs — `VkBuffer >> memoryRequirements` and `VkImage >> memoryRequirements`
+ask the driver through a declared `VkMemoryRequirements` and answer `copyIntoObjectMemory`, and
+each binds with its own call and its own properties, host visible and coherent for a buffer,
+device local for an image. `VkBuffer >> allocateMemoryFor:`, written in 2a, is gone.
+
+Four tests red first. `testOnlyOneMethodAllocatesDeviceMemory` asserts `vkAllocateMemory` has
+exactly one sender outside the tests, which is what keeps the two paths from drifting apart
+again. `testVkImageAllocatesMemoryWithNoScalarFieldAtAHandCountedOffset` bans the scalar
+accessors in `allocate` and `memoryRequirements` rather than across the whole class, because
+`VkImage >> create` and `createView` still write the image and image view create infos as blocks
+and carry `ReLongMethodsRule` until their unit; the ban widens to the class then.
+`testMemoryAllocateInfoWriterRowsNameItsOneWriterAndTheFieldsItFills` and
+`testStructureWritersTabShowsOnlyWhereFieldsAreDeclared` cover the new view. The driver leg is
+`VkImageTest >> testImageMemoryRequirementsAnswerWhatTheDriverAsked`, and
+`testImageReportsTheMemorySizeTheDriverAsked` was converted with the code: it used to read the
+size at byte one itself.
+
+Example: `VkMemoryRequirements class >> exampleRequirementsOfAColorAttachmentOnThisMachine`,
+which answers the driver's demand for a 64 by 64 colour attachment next to the arithmetic size of
+its pixels — 20480 against 16384 on this machine, which is why `VkImage` binds what it is told.
+The view is `VkStructure class >> inspectorWriters:`, a Writers tab on every declared structure,
+gated by `inspectorWritersContext:` on the class declaring fields at all. `VkStructure class >>
+chainHeaderFieldNames` now names `sType` and `pNext` once for the hierarchy, and
+`VkFeatureStructure class >> headerFieldNames` defers to it. The suite is 370 tests over the nine
+concrete test classes.
+
 
 ## 3 — Command recording and submission
 
