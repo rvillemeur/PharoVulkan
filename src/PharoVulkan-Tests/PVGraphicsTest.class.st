@@ -481,6 +481,23 @@ PVGraphicsTest >> testLifecycleReportTracksReleasedSlots [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testOffscreenTargetClearColourReachesEveryChannelSeparately [
+	"The driver leg of the declared begin info and its clear values: four channels given four
+	 different values must come back in that order. A clear value written at the wrong stride,
+	 or a channel written to its neighbour's word, reads back plausibly when the colour is black
+	 or a single channel and wrongly here. The swatch is not involved, so only the driver's own
+	 rounding of a float to a byte is allowed."
+
+	self offscreenTargetExtent: 2 @ 2 do: [ :target :queue :pool |
+		| pixel |
+		target clearColor: #( 0.0 0.25 0.5 1.0 ).
+		target renderWith: [ :c |  ] on: queue pool: pool.
+		pixel := target pixelAtX: 1 y: 1.
+		#( 0 64 128 255 ) withIndexDo: [ :expected :channel |
+			self assert: ((pixel at: channel) - expected) abs <= 1 ] ]
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testOffscreenTargetDefaultsToTheClearTheWindowPathUses [
 	"A target told nothing must behave like the window path, which is the only thing that keeps
 	 the extracted clear colour honest: the delegating three-keyword method is what the scene

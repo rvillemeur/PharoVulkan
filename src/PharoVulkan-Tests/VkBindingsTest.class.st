@@ -308,6 +308,28 @@ VkBindingsTest >> testBufferImageCopyLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testClearValueArrayIsReadByItsNamedStride [
+	"A clear value is a union of arrays, and uFFI in this image cannot declare an array field,
+	 so the clear values are a block with no field specification: the stride and the component
+	 count are named and the block is read back by them. The components are written in the order
+	 Vulkan reads them, which the test pins by giving each one a different value."
+
+	| colour values |
+	colour := #( 0.0 0.25 0.5 1.0 ).
+	values := VkCommandBuffer clearValuesOutsideObjectMemory: colour.
+	[
+		self
+			assert: VkCommandBuffer clearComponentCount
+			  * VkCommandBuffer clearComponentByteCount
+			equals: 16.
+		1 to: VkCommandBuffer clearComponentCount do: [ :index |
+			self
+				assert: (values floatAt:
+						 index - 1 * VkCommandBuffer clearComponentByteCount + 1)
+				equals: (colour at: index) ] ] ensure: [ values free ]
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testCommandBufferAllocateInfoInitializesOnlyWhatIsConstantForTheType [
 	"The structure type is the only field fixed by the type. The level is not: a secondary
 	 buffer is allocated from the same structure, and a zeroed block already reads as primary
@@ -1857,6 +1879,23 @@ VkBindingsTest >> testOnlyOneMethodBeginsACommandBuffer [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodBeginsARenderPass [
+	"Every pass in the project opens through the one method that hands the begin info to the
+	 driver. The senders are asked of the system, and the tests are rejected: a test naming the
+	 call is itself a sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #cmdBeginRenderPass:pRenderPassBegin:contents:) reject: [
+		           :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandBuffer >> recordRenderPassBeginWith:' )
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testOnlyOneMethodCopiesAnImageToABuffer [
 	"Every image readback in the project records through the one method that hands the region to
 	 the driver. The senders are asked of the system, and the tests are rejected: a test naming
@@ -1955,6 +1994,35 @@ VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
 		assert: (VkResult nameForCode: VkResult vkErrorOutOfPoolMemory)
 		equals: (VkResult nameForSelector: #vkErrorOutOfPoolMemory).
 	self assert: (VkResult withCode: VkResult vkErrorOutOfPoolMemory) isError
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPassRowsNameTheClearColourTheAreaAndTheContents [
+	"The Pass tab reads its rows off the begin info itself, including the clear colour behind the
+	 pointer, read by the named stride the writer used. The subpass contents are not a field of
+	 the structure, so the row asks the class that names the choice."
+
+	| values rows |
+	values := VkCommandBuffer clearValuesOutsideObjectMemory:
+		          #( 0.0 0.25 0.5 1.0 ).
+	rows := [
+	        | info |
+	        info := VkCommandBuffer
+		                renderPassBeginInfoFor:
+		                (VkRenderPass_H fromHandle: ExternalAddress null)
+		                framebuffer:
+		                (VkFramebuffer_H fromHandle: ExternalAddress null)
+		                extent: 3 @ 2
+		                clearValues: values.
+	        [ info passRows ] ensure: [ info getHandle free ] ] ensure: [
+		        values free ].
+	self assert: (rows at: #renderArea) equals: 3 @ 2.
+	self assert: (rows at: #renderAreaOffset) equals: 0 @ 0.
+	self assert: (rows at: #clearValueCount) equals: 1.
+	self assert: (rows at: #clearColor) equals: #( 0.0 0.25 0.5 1.0 ).
+	self assert: (rows at: #subpassContentsName) equals: 'inline'.
+	self deny: (rows at: #renderPassSet).
+	self deny: (rows at: #framebufferSet)
 ]
 
 { #category : 'tests' }
@@ -2067,6 +2135,129 @@ VkBindingsTest >> testQueueFlagsConstants [
     self assert: VkQueueFlags graphicsBit equals: 1.
     self assert: VkQueueFlags computeBit equals: 2.
     self assert: VkQueueFlags transferBit equals: 4
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRect2DLayoutsMatchTheCLayout [
+	"A rectangle is an offset and an extent carried by value, two words each, so sixteen bytes
+	 with nothing padded. The same three classes serve the scissor rectangle."
+
+	self
+		assert: (VkRect2D layoutRows collect: [ :each |
+				 each first -> each second ]) asArray
+		equals: {
+				(#offset -> 0).
+				(#extent -> 8) }.
+	self assert: VkRect2D byteSize equals: 16.
+	{
+		(VkOffset2D -> #( #x #y )).
+		(VkExtent2D -> #( #width #height )) } do: [ :each |
+		| rows |
+		rows := each key layoutRows.
+		self
+			assert: (rows collect: [ :row | row first ]) asArray
+			equals: each value.
+		self
+			assert: (rows collect: [ :row | row second ]) asArray
+			equals: #( 0 4 ).
+		self assert: each key byteSize equals: 8 ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassBeginInfoCarriesTheExtentAndOneClearValue [
+	"The begin info the recorder builds: the render area starts at the image's corner and covers
+	 the whole extent, and one clear value is listed. The builder takes handles rather than
+	 wrappers, so the degenerate case — a null render pass and a null framebuffer — is one the
+	 test can build, and it still has to carry the area and the count."
+
+	| values info extent |
+	extent := 3 @ 2.
+	values := VkCommandBuffer clearValuesOutsideObjectMemory:
+		          VkRenderConfig clearColorBlackOpaque.
+	[
+		info := VkCommandBuffer
+			        renderPassBeginInfoFor: (VkRenderPass_H fromHandle: ExternalAddress null)
+			        framebuffer: (VkFramebuffer_H fromHandle: ExternalAddress null)
+			        extent: extent
+			        clearValues: values.
+		[
+		self assert: info renderArea offset x equals: 0.
+		self assert: info renderArea offset y equals: 0.
+		self assert: info renderArea extent width equals: extent x.
+		self assert: info renderArea extent height equals: extent y.
+		self
+			assert: info clearValueCount
+			equals: VkCommandBuffer clearValuesPerPass.
+		self deny: info pClearValues isNull ] ensure: [ info getHandle free ] ]
+		ensure: [ values free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassBeginInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type: both handles, the render area, the
+	 clear value count and the pointer to the values are the recorder's."
+
+	| info setters |
+	info := VkRenderPassBeginInfo externalInstance.
+	[
+		self
+			assert: info sType
+			equals: VkStructureType renderPassBeginInfo.
+		self assert: info pNext isNull.
+		self assert: info clearValueCount equals: 0.
+		self assert: info pClearValues isNull ] ensure: [
+		info getHandle free ].
+	setters := (VkRenderPassBeginInfo >> #initializeConstantFields) messages
+		           select: [ :selector |
+		           VkRenderPassBeginInfo includesSelector: selector ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassBeginInfoLayoutMatchesTheCLayout [
+	"Two handles follow the chain header, then the render area by value — sixteen bytes of it —
+	 then the clear value count and the pointer to the values, which is eight byte aligned, so
+	 four bytes of padding sit after the count."
+
+	| rows |
+	rows := VkRenderPassBeginInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #renderPass #framebuffer #renderArea
+		           #clearValueCount #pClearValues ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 48 56 ).
+	self
+		assert: (rows collect: [ :each | each third ]) asArray
+		equals: #( 4 8 8 8 16 4 8 ).
+	self assert: VkRenderPassBeginInfo byteSize equals: 64
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassBeginWritesNoScalarFieldAtAHandCountedOffset [
+	"The begin info and its render area are declared, so none of the four methods that build or
+	 record a pass may poke a scalar at a counted offset. The clear values are not a structure
+	 and are written by a named stride, which is why floatAt:put: is not banned here."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := {
+		             (VkCommandBuffer
+		              -> #beginRenderPass:framebuffer:extent:clearColor:).
+		             (VkCommandBuffer -> #recordRenderPassBeginWith:).
+		             (VkCommandBuffer class
+		              -> #renderPassBeginInfoFor:framebuffer:extent:clearValues:).
+		             (VkCommandBuffer class
+		              -> #clearValuesOutsideObjectMemory:) } select: [ :each |
+		             (each key includesSelector: each value) and: [
+			             (each key >> each value) messages anySatisfy: [ :message |
+				             banned includes: message ] ] ].
+	self assertEmpty: offenders asArray.
+	self assert:
+		(VkCommandBuffer includesSelector: #recordRenderPassBeginWith:)
 ]
 
 { #category : 'tests - results' }
@@ -2275,6 +2466,24 @@ VkBindingsTest >> testSuboptimalPresentIsNotTreatedAsAFailure [
 				checkResult: VkResult vkErrorDeviceLost
 				acceptable: { VkResult vkSuboptimalKHR } ]
 		raise: VkError
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testSubpassContentsNamesItsOwnValues [
+	"The pass view shows which kind of contents the subpass is recorded with, so the values are
+	 named by a constants class rather than by a literal zero at the call."
+
+	self assert: (VkSubpassContents includesBehavior: VkValueConstants).
+	self
+		assert: (VkSubpassContents nameForValue: VkSubpassContents inline)
+		equals: 'inline'.
+	self
+		assert: (VkSubpassContents nameForValue:
+				 VkSubpassContents secondaryCommandBuffers)
+		equals: 'secondaryCommandBuffers'.
+	self
+		assert: VkCommandBuffer subpassContents
+		equals: VkSubpassContents inline
 ]
 
 { #category : 'tests - structures' }

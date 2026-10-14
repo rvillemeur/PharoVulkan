@@ -23,6 +23,49 @@ VkCommandBuffer class >> barriersPerDependency [
 ]
 
 { #category : 'constants' }
+VkCommandBuffer class >> clearComponentByteCount [
+	"A clear colour component is a float, and the clear values are a union of arrays rather than
+	 a declared structure, so there is no field specification to read a width from and the
+	 stride is named here."
+
+	^ 4
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> clearComponentCount [
+	"Four components per clear colour, in the order Vulkan reads them."
+
+	^ 4
+]
+
+{ #category : 'recording' }
+VkCommandBuffer class >> clearValuesOutsideObjectMemory: anArray [
+	"The clear values a pass loads with, as r, g, b, a floats in nought to one. A clear value is
+	 a union of arrays, which uFFI in this image cannot declare, so this is a block with no
+	 field specification and the stride is the named one. The caller owns the block and must
+	 free it. The components are numbers rather than a Color, so this layer stays independent of
+	 the image format's channel order."
+
+	| values |
+	values := ExternalAddress allocate:
+		          self clearValuesPerPass * self clearComponentCount
+		          * self clearComponentByteCount.
+	1 to: self clearComponentCount do: [ :index |
+		values
+			floatAt: index - 1 * self clearComponentByteCount + 1
+			put: (anArray at: index) asFloat ].
+	^ values
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> clearValuesPerPass [
+	"One clear value per pass: every render pass in this project has a single colour attachment
+	 and no depth attachment, so the load operation reads one value."
+
+	^ 1
+]
+
+{ #category : 'constants' }
 VkCommandBuffer class >> copyDepth [
 	"A two dimensional image is one texel deep, and Vulkan rejects a copy extent with a zero
 	 depth, so the depth is written where the width and the height come from the caller."
@@ -131,6 +174,35 @@ VkCommandBuffer class >> regionsPerCopy [
 ]
 
 { #category : 'recording' }
+VkCommandBuffer class >> renderPassBeginInfoFor: aRenderPassHandle framebuffer: aFramebufferHandle extent: aPoint clearValues: aClearValueBlock [
+	"The begin info a pass opens with: which pass runs over which framebuffer, the whole extent
+	 of the attachments starting at their corner, and the one clear value the load operation
+	 reads. The caller owns the block and must free its handle; the clear values must outlive
+	 the recording call, because the driver reads them through the pointer written here. The
+	 render area's offset is the zero a fresh block already holds."
+
+	| info |
+	info := VkRenderPassBeginInfo externalInstance.
+	info
+		renderPass: aRenderPassHandle;
+		framebuffer: aFramebufferHandle;
+		clearValueCount: self clearValuesPerPass;
+		pClearValues: aClearValueBlock.
+	info renderArea extent
+		width: aPoint x;
+		height: aPoint y.
+	^ info
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> subpassContents [
+	"Every subpass in this project is recorded in the buffer that begins the pass, because the
+	 pool allocates primary buffers only."
+
+	^ VkSubpassContents inline
+]
+
+{ #category : 'recording' }
 VkCommandBuffer >> barrierForHostRead [
 	"Records the transfer to host barrier. It is needed because submit:andWait: waits with
 	 vkQueueWaitIdle rather than with a fence, which orders the work but makes nothing visible
@@ -204,33 +276,20 @@ VkCommandBuffer >> beginRenderPass: aRenderPass framebuffer: aFramebuffer extent
 
 { #category : 'recording' }
 VkCommandBuffer >> beginRenderPass: aRenderPass framebuffer: aFramebuffer extent: aPoint clearColor: anArray [
-	"VkClearValue (16 bytes): 4 floats for colour (r, g, b, a). anArray holds r, g, b, a as
-	 floats in 0.0 to 1.0; this layer speaks in numbers rather than in Color so it stays
-	 independent of the image format's channel order.
-	 VkRenderPassBeginInfo (64 bytes):
-	 0:sType  8:pNext  16:renderPass  24:framebuffer  32:renderArea.offset.x
-	 36:renderArea.offset.y  40:renderArea.extent.width  44:renderArea.extent.height
-	 48:clearValueCount  56:pClearValues(ptr)"
+	"Opens the pass. The clear values live outside the begin info, so they are allocated first
+	 and freed last: the driver follows the pointer to them while the pass is being recorded."
 
-	| info clearVal |
-	clearVal := ExternalAddress allocate: 16.
+	| values |
+	values := self class clearValuesOutsideObjectMemory: anArray.
 	[
-	1 to: 4 do: [ :i |
-		clearVal floatAt: i - 1 * 4 + 1 put: (anArray at: i) asFloat ].
-	info := ExternalAddress allocate: 64.
-	[
-	info unsignedLongAt: 1 put: VkStructureType renderPassBeginInfo.
-	info pointerAt: 9 put: ExternalAddress null.
-	info pointerAt: 17 put: aRenderPass handle getHandle.
-	info pointerAt: 25 put: aFramebuffer handle getHandle.
-	info unsignedLongAt: 33 put: 0.
-	info unsignedLongAt: 37 put: 0.
-	info unsignedLongAt: 41 put: aPoint x.
-	info unsignedLongAt: 45 put: aPoint y.
-	info unsignedLongAt: 49 put: 1.
-	info pointerAt: 57 put: clearVal.
-	Vk cmdBeginRenderPass: handle pRenderPassBegin: info contents: 0 ] ensure: [
-		info free ] ] ensure: [ clearVal free ]
+	| info |
+	info := self class
+		        renderPassBeginInfoFor: aRenderPass handle
+		        framebuffer: aFramebuffer handle
+		        extent: aPoint
+		        clearValues: values.
+	[ self recordRenderPassBeginWith: info ] ensure: [ info getHandle free ] ]
+		ensure: [ values free ]
 ]
 
 { #category : 'recording' }
@@ -437,6 +496,17 @@ VkCommandBuffer >> recordCopyOf: anImage layout: layout toBuffer: aBuffer region
 		dstBuffer: aBuffer handle
 		regionCount: self class regionsPerCopy
 		pRegions: aRegion getHandle
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordRenderPassBeginWith: aBeginInfo [
+	"The one place a render pass is opened. The driver reads the begin info and the clear values
+	 it points at during this call, so both must still be alive here."
+
+	Vk
+		cmdBeginRenderPass: handle
+		pRenderPassBegin: aBeginInfo getHandle
+		contents: self class subpassContents
 ]
 
 { #category : 'setter' }
