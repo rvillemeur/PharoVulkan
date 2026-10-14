@@ -91,41 +91,19 @@ VkBuffer class >> storageBufferUsage [
 { #category : 'lifecycle' }
 VkBuffer >> allocate [
 	"Create the buffer, back it with memory the host can read, and tie the two together. The
-	 driver decides how many bytes the buffer really needs, so the allocation asks it first."
+	 driver decides how many bytes the buffer really needs, so the allocation asks it first.
+	 Host visible and coherent, because every buffer in this project is written and read back
+	 through a mapping."
 
 	self createHandle.
-	self allocateMemoryFor: self memoryRequirements.
+	memory := device
+		          allocateMemoryFor: self memoryRequirements
+		          properties: VkMemoryProperty hostVisibleAndCoherent.
 	Vk checkResult: (Vk
 			 bindBufferMemory: device handle
 			 buffer: handle
 			 memory: memory
 			 memoryOffset: 0)
-]
-
-{ #category : 'private' }
-VkBuffer >> allocateMemoryFor: someRequirements [
-	"Take the bytes the driver asked for from a memory type that satisfies the buffer and is
-	 visible and coherent to the host: every buffer in this project is written and read back
-	 through a mapping."
-
-	| info buf result |
-	info := VkMemoryAllocateInfo externalInstance.
-	[
-	info
-		allocationSize: someRequirements size;
-		memoryTypeIndex: (device physicalDevice
-				 findMemoryType: someRequirements memoryTypeBits
-				 properties: VkMemoryProperty hostVisibleAndCoherent).
-	buf := ExternalAddress allocate: VkContext pointerSize.
-	[
-	result := Vk
-		          allocateMemory: device handle
-		          allocateInfo: info getHandle
-		          allocator: ExternalAddress null
-		          memory: buf.
-	Vk checkResult: result.
-	memory := VkDeviceMemory_H fromHandle: (buf pointerAt: 1) ] ensure: [
-		buf free ] ] ensure: [ info getHandle free ]
 ]
 
 { #category : 'accessing' }

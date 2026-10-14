@@ -25,6 +25,33 @@ VkDevice >> allocateBuffer: byteSize usage: usageFlags [
 ]
 
 { #category : 'factory' }
+VkDevice >> allocateMemoryFor: someRequirements properties: propertyFlags [
+	"Memory for a resource this device owns: the bytes the driver demanded for it, taken from
+	 the first memory type that both satisfies the resource and carries the properties asked
+	 for. Buffers and images differ in what they demand and in how they bind, but not in this
+	 step, so the allocate info is written here and nowhere else."
+
+	| info buf result |
+	info := VkMemoryAllocateInfo externalInstance.
+	^ [
+	  info
+		  allocationSize: someRequirements size;
+		  memoryTypeIndex: (physicalDevice
+				   findMemoryType: someRequirements memoryTypeBits
+				   properties: propertyFlags).
+	  buf := ExternalAddress allocate: VkContext pointerSize.
+	  [
+	  result := Vk
+		            allocateMemory: handle
+		            allocateInfo: info getHandle
+		            allocator: ExternalAddress null
+		            memory: buf.
+	  Vk checkResult: result.
+	  VkDeviceMemory_H fromHandle: (buf pointerAt: 1) ] ensure: [ buf free ] ]
+		  ensure: [ info getHandle free ]
+]
+
+{ #category : 'factory' }
 VkDevice >> createCommandPool: queueFamilyIndex [
     "VkCommandPoolCreateInfo: sType, pNext=null, flags=1 (RESET_COMMAND_BUFFER_BIT), queueFamilyIndex"
     | info poolBuf result poolHandle |

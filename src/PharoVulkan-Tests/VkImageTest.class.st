@@ -96,14 +96,37 @@ VkImageTest >> testImageDestroyIsIdempotent [
 	self assert: image view isNil ] ensure: [ context destroy ]
 ]
 
-{ #category : 'tests - image' }
+{ #category : 'tests' }
+VkImageTest >> testImageMemoryRequirementsAnswerWhatTheDriverAsked [
+	"The image's requirements come from the driver through the same declared structure the
+	 buffer uses, and the answer is a copy in object memory, still readable after the image and
+	 the external block have gone. The size demanded is at least the arithmetic size of the
+	 pixels, because optimal tiling pads rows and may add a header."
+
+	| context requirements |
+	context := VkContext offscreenGraphicsContext.
+	requirements := [
+	                | image |
+	                image := VkImage
+		                         on: context device
+		                         format: VkFormat b8g8r8a8Unorm
+		                         extent: 64 @ 64
+		                         usage: VkImageUsage colorAttachmentBit.
+	                [ image memoryRequirements ] ensure: [ image destroy ] ]
+		                ensure: [ context destroy ].
+	self assert: requirements size >= (64 * 64 * 4).
+	self assert: requirements alignment isPowerOfTwo.
+	self assert: requirements memoryTypeBits > 0
+]
+
+{ #category : 'tests' }
 VkImageTest >> testImageReportsTheMemorySizeTheDriverAsked [
 	"The size bound must be the driver's, never width * height * 4: optimal tiling pads rows,
 	 so arithmetic would bind too little. The driver is asked again here, independently of
 	 the slot, which is the only way the two numbers can be seen to disagree; this machine
 	 answers 20480 for a 64 by 64 image whose arithmetic size is 16384."
 
-	| context image memReqs |
+	| context image |
 	context := VkContext offscreenGraphicsContext.
 	[
 	image := VkImage
@@ -112,14 +135,7 @@ VkImageTest >> testImageReportsTheMemorySizeTheDriverAsked [
 		         extent: 64 @ 64
 		         usage: VkImageUsage colorAttachmentBit.
 	[
-	memReqs := ExternalAddress allocate: 24.
-	[
-	Vk
-		getImageMemoryRequirements: context device handle
-		image: image handle
-		memoryRequirements: memReqs.
-	self assert: image memorySize equals: (memReqs unsignedLongLongAt: 1) ]
-		ensure: [ memReqs free ].
+	self assert: image memorySize equals: image memoryRequirements size.
 	self assert: image memorySize >= (64 * 64 * 4) ] ensure: [ image destroy ] ]
 		ensure: [ context destroy ]
 ]

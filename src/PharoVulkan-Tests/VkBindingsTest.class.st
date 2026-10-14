@@ -1009,6 +1009,22 @@ VkBindingsTest >> testMemoryAllocateInfoLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testMemoryAllocateInfoWriterRowsNameItsOneWriterAndTheFieldsItFills [
+	"The Writers tab reflects over the system for the methods that fill this structure, rather
+	 than naming them in a list that could go stale, and reports which declared fields each one
+	 sets. One writer, both fields."
+
+	| rows |
+	rows := VkMemoryAllocateInfo writerRows.
+	self
+		assert: (rows collect: [ :each | each at: #method ]) asArray
+		equals: #( 'VkDevice >> allocateMemoryFor:properties:' ).
+	self
+		assert: (rows first at: #fields)
+		equals: 'allocationSize, memoryTypeIndex'
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testMemoryRequirementsLayoutMatchesTheCLayout [
 	"VkMemoryRequirements has no chain header: the driver writes all three fields. Two
 	 VkDeviceSize values then a bitmask, padded out to twenty four bytes."
@@ -1079,6 +1095,25 @@ VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
 		self assert: each asF32 equals: each asFloat ].
 	self assert: 3 asF32 equals: 3.0.
 	self assert: Float infinity asF16 equals: Float infinity
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodAllocatesDeviceMemory [
+	"Buffers and images need the same four steps to get memory: ask the driver what the
+	 resource demands, pick a memory type that satisfies it and has the properties wanted, call
+	 vkAllocateMemory, bind. The allocation step is written once, on the device that owns the
+	 memory, so the allocate info has one writer and cannot drift between the two resources.
+	 Test classes are dropped from the senders: this test names the selector itself, as the
+	 literal it asks about."
+
+	| senders |
+	senders := ((SystemNavigation default allSendersOf:
+		             #allocateMemory:allocateInfo:allocator:memory:) reject: [ :each |
+		            each methodClass includesBehavior: TestCase ]) collect: [ :each |
+		           each methodClass name , ' >> ' , each selector ].
+	self
+		assert: senders asArray
+		equals: #( 'VkDevice >> allocateMemoryFor:properties:' )
 ]
 
 { #category : 'tests - result codes' }
@@ -1298,6 +1333,25 @@ VkBindingsTest >> testStructureTypeConstants [
     self assert: VkStructureType instanceCreateInfo equals: 1
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testStructureWritersTabShowsOnlyWhereFieldsAreDeclared [
+	"The Writers tab answers a question about declared fields, so it shows on a structure that
+	 declares some and stays away from the abstract classes, which declare none."
+
+	| activeFor |
+	activeFor := [ :cls |
+	              | context |
+	              context := StInspectionContext new.
+	              (VkStructure class >> #inspectorWritersContext:)
+		              valueWithReceiver: cls
+		              arguments: { context }.
+	              context isActive ].
+	self assert: (activeFor value: VkMemoryAllocateInfo).
+	self assert: (activeFor value: VkMemoryRequirements).
+	self deny: (activeFor value: VkStructure).
+	self deny: (activeFor value: VkFeatureStructure)
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testSubgroupFeaturePredicateMatchesTheOperationBits [
 	"VkPhysicalDevice and the Features view read supportedOperations through one predicate. The
@@ -1435,6 +1489,25 @@ VkBindingsTest >> testVkHandleIsNull [
     | h |
     h := VkHandle new.
     self assert: h isNull
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testVkImageAllocatesMemoryWithNoScalarFieldAtAHandCountedOffset [
+	"The memory half of VkImage goes through declared structures, so neither allocate nor the
+	 methods it sends on the image may poke a scalar at a counted offset. The ban is on these
+	 methods rather than on the whole class: VkImage >> create and createView still write the
+	 image and image view create infos as blocks, and those structures belong to a later unit."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := (#( #allocate #memoryRequirements ) select: [ :selector |
+		              (VkImage includesSelector: selector) and: [
+			              (VkImage >> selector) messages anySatisfy: [ :each |
+				              banned includes: each ] ] ]).
+	self assertEmpty: offenders.
+	self assert: (VkImage includesSelector: #memoryRequirements)
 ]
 
 { #category : 'tests' }

@@ -60,44 +60,21 @@ VkImage class >> on: aDevice format: aFormat extent: anExtent usage: usageFlags 
 
 { #category : 'initialization' }
 VkImage >> allocate [
-	"VkMemoryRequirements, 24 bytes, 1-based: 1:size(u64) 9:alignment(u64) 17:memoryTypeBits.
-	 VkMemoryAllocateInfo, 32 bytes: 1:sType 9:pNext 17:allocationSize(u64) 25:memoryTypeIndex.
-	 The size asked for is the driver's, not width * height * 4: optimal tiling pads rows and
-	 may add a header, so binding the arithmetic size would bind too little."
+	"Back the image with device-local memory and bind it. The size kept is the driver's, not
+	 width * height * 4: optimal tiling pads rows and may add a header, so binding the
+	 arithmetic size would bind too little."
 
-	| memReqs memTypeIndex allocInfo memBuf result |
-	memReqs := ExternalAddress allocate: 24.
-	[
-	Vk
-		getImageMemoryRequirements: device handle
-		image: handle
-		memoryRequirements: memReqs.
-	memorySize := memReqs unsignedLongLongAt: 1.
-	memTypeIndex := device physicalDevice
-		                findMemoryType: (memReqs unsignedLongAt: 17)
-		                properties: VkMemoryProperty deviceLocalBit.
-	allocInfo := ExternalAddress allocate: 32.
-	[
-	allocInfo unsignedLongAt: 1 put: VkStructureType memoryAllocateInfo.
-	allocInfo pointerAt: 9 put: ExternalAddress null.
-	allocInfo unsignedLongLongAt: 17 put: memorySize.
-	allocInfo unsignedLongAt: 25 put: memTypeIndex.
-	memBuf := ExternalAddress allocate: 8.
-	[
-	result := Vk
-		          allocateMemory: device handle
-		          allocateInfo: allocInfo
-		          allocator: ExternalAddress null
-		          memory: memBuf.
-	Vk checkResult: result.
-	memory := VkDeviceMemory_H fromHandle: (memBuf pointerAt: 1) ] ensure: [ memBuf free ] ]
-		ensure: [ allocInfo free ] ] ensure: [ memReqs free ].
-	result := Vk
-		          bindImageMemory: device handle
-		          image: handle
-		          memory: memory
-		          memoryOffset: 0.
-	Vk checkResult: result
+	| requirements |
+	requirements := self memoryRequirements.
+	memorySize := requirements size.
+	memory := device
+		          allocateMemoryFor: requirements
+		          properties: VkMemoryProperty deviceLocalBit.
+	Vk checkResult: (Vk
+			 bindImageMemory: device handle
+			 image: handle
+			 memory: memory
+			 memoryOffset: 0)
 ]
 
 { #category : 'inspecting' }
@@ -268,6 +245,22 @@ VkImage >> inspectorImage: aBuilder [
 { #category : 'accessing' }
 VkImage >> memory [
 	^ memory
+]
+
+{ #category : 'private' }
+VkImage >> memoryRequirements [
+	"What the driver demands to back this image. The block it writes lives outside the image
+	 and is freed here, so the answer is a copy in object memory the caller can keep."
+
+	| requirements |
+	requirements := VkMemoryRequirements externalInstance.
+	^ [
+	  Vk
+		  getImageMemoryRequirements: device handle
+		  image: handle
+		  memoryRequirements: requirements getHandle.
+	  requirements copyIntoObjectMemory ] ensure: [
+		  requirements getHandle free ]
 ]
 
 { #category : 'accessing' }

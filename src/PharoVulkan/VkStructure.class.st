@@ -15,6 +15,15 @@ Class {
 	#tag : 'Bindings'
 }
 
+{ #category : 'accessing' }
+VkStructure class >> chainHeaderFieldNames [
+	"sType and pNext describe the structure's place in a chain rather than what it asks for.
+	 Nearly every Vulkan structure carries them, so a question about who fills a particular
+	 structure has to ignore them: their setters are implemented by every subclass here."
+
+	^ #( sType pNext )
+]
+
 { #category : 'instance creation' }
 VkStructure class >> externalInstance [
 	"An instance whose store is memory outside the image, so its address is stable while a
@@ -33,6 +42,41 @@ VkStructure class >> headByteCount [
 	"Enough bytes to recognise a field in a table row, few enough that the long array fields do
 	 not push the other columns off the view."
 	^ 8
+]
+
+{ #category : 'inspector' }
+VkStructure class >> inspectorWriters: aBuilder [
+	"The methods that fill this structure, with the fields each one sets, reflected out of the
+	 system. A structure the driver fills rather than this project — memory requirements — has
+	 no rows, and a structure with two writers of the same fields shows both, which is how the
+	 duplication shows up as a duplication."
+
+	<inspectorPresentationOrder: 50 title: 'Writers'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Method' evaluated: [ :each |
+				   each at: #method ]);
+		  addColumn: (SpStringTableColumn title: 'Fields' evaluated: [ :each |
+				   each at: #fields ]);
+		  items: self writerRows;
+		  yourself
+]
+
+{ #category : 'inspector' }
+VkStructure class >> inspectorWritersContext: aContext [
+	"A structure with no declared fields has no writers to show: the abstract classes of this
+	 hierarchy carry no field specification of their own."
+
+	aContext active: (self fieldSpec notNil and: [ self fieldSpec fieldNames notEmpty ])
+]
+
+{ #category : 'accessing' }
+VkStructure class >> isNamedBy: aCompiledMethod [
+	"Whether the method mentions this class, which is how a writer of this structure is told
+	 apart from a method that happens to send a field setter of the same name to another one.
+	 A global is a variable binding among the method's literals."
+
+	^ aCompiledMethod literals anySatisfy: [ :each |
+		  each isVariableBinding and: [ each value == self ] ]
 ]
 
 { #category : 'layout' }
@@ -79,6 +123,44 @@ VkStructure class >> structureTypeNameFor: aValue [
 			   (VkStructureType class >> each) numArgs = 0 and: [
 				   (VkStructureType perform: each) = aValue ] ]
 		   ifNone: [ ^ aValue printString ]) asString
+]
+
+{ #category : 'accessing' }
+VkStructure class >> writerRows [
+	"Who fills this structure, and with which of its declared fields, asked of the system by
+	 reflection so the answer cannot drift from the code. The setters come from the declared
+	 layout, so a field added to fieldsDesc is looked for too.
+	 A sender counts as a writer only if it also names this class. Field names repeat across
+	 Vulkan structures — size: is sent to a buffer create info and to nothing else here, yet
+	 the memory requirements declare a size too — and every builder in this project allocates
+	 the structure it fills, so naming the class is both necessary to tell them apart and true
+	 of each one. The chain header's setters are excluded for the same reason: every structure
+	 here implements them. This class's own accessors and examples, and the tests, are dropped
+	 as well."
+
+	| setters writers |
+	setters := (self fieldSpec fieldNames reject: [ :each |
+		            self chainHeaderFieldNames includes: each ]) collect: [ :each |
+		           (each , ':') asSymbol ].
+	writers := Set new.
+	setters do: [ :each |
+		writers addAll: (SystemNavigation default allSendersOf: each) ].
+	writers := writers select: [ :each |
+		           (each methodClass instanceSide ~~ self instanceSide and: [
+			            (each methodClass includesBehavior: TestCase) not ]) and: [
+			           self isNamedBy: each ] ].
+	writers := (writers asSortedCollection: [ :a :b |
+		            a methodClass name , a selector
+		            <= (b methodClass name , b selector) ]) asArray.
+	^ writers collect: [ :each |
+		  | filled |
+		  filled := setters select: [ :setter |
+			            each messages includes: setter ].
+		  (Dictionary newFrom: {
+			   (#method -> (each methodClass name , ' >> ' , each selector)).
+			   (#fields
+			    -> (', ' join: (filled collect: [ :setter | setter allButLast ]))) })
+			  beReadOnlyObject ]
 ]
 
 { #category : 'copying' }

@@ -25,9 +25,9 @@ VkFeatureStructure class >> exampleFlagsEveryFeatureStructureDeclares [
 
 { #category : 'accessing' }
 VkFeatureStructure class >> headerFieldNames [
-	"sType and pNext describe the chain, not the device."
+	"The chain header, named once for the whole structure hierarchy."
 
-	^ #( sType pNext )
+	^ self chainHeaderFieldNames
 ]
 
 { #category : 'inspector' }
