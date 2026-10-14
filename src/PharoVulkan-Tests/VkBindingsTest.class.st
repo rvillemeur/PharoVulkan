@@ -112,6 +112,80 @@ VkBindingsTest >> testBaseOutStructureViewLeavesTheStructureItReadsAlone [
 		features getHandle free ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBufferCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"A fresh buffer create info carries its structure type and nothing else: the size, the
+	 usage mask, the sharing mode and the queue family list all belong to the caller, and the
+	 degenerate request is an empty exclusive buffer."
+
+	| info setters |
+	info := VkBufferCreateInfo externalInstance.
+	[
+		self assert: info sType equals: VkStructureType bufferCreateInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info size equals: 0.
+		self assert: info usage equals: 0.
+		self
+			assert: info sharingMode
+			equals: VkBufferCreateInfo sharingModeExclusive.
+		self assert: info queueFamilyIndexCount equals: 0.
+		self assert: info pQueueFamilyIndices isNull ] ensure: [
+		info getHandle free ].
+	setters := (VkBufferCreateInfo >> #initializeConstantFields) messages
+		           select: [ :each | VkBufferCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBufferCreateInfoLayoutMatchesTheCLayout [
+	"VkBufferCreateInfo is declared field by field. size is a VkDeviceSize and so eight bytes
+	 wide and eight byte aligned, which puts four bytes of padding after flags; usage and
+	 sharingMode fill the eight bytes after it, and the queue family count is padded again
+	 before the pointer. Fifty six bytes over eight fields."
+
+	| rows |
+	rows := VkBufferCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #size #usage #sharingMode
+		   #queueFamilyIndexCount #pQueueFamilyIndices ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 36 40 48 ).
+	self assert: VkBufferCreateInfo byteSize equals: 56.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ].
+	rows overlappingPairsDo: [ :a :b |
+		self assert: a second + a third <= b second ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testBufferCreateInfoRequestRowsNameTheUsageBitsAndChangeNothing [
+	"The Request tab decodes the usage mask through the flag constants rather than restating
+	 them, and reading it leaves the request untouched."
+
+	| info rows before valueOf |
+	info := VkBufferCreateInfo externalInstance.
+	[
+		info
+			size: VkBuffer exampleByteSize;
+			usage: VkBuffer storageBufferUsage.
+		before := info fieldReport.
+		rows := info requestRows.
+		self assert: info fieldReport equals: before.
+		valueOf := [ :attribute |
+		           (rows detect: [ :each | (each at: #attribute) = attribute ])
+			           at: #value ].
+		self
+			assert: (valueOf value: 'Usage')
+			equals: (VkBufferUsage nameForFlags: VkBuffer storageBufferUsage).
+		self
+			assert: (valueOf value: 'Bytes')
+			equals: VkBuffer exampleByteSize printString.
+		self assert: (valueOf value: 'Sharing') equals: 'exclusive' ] ensure: [
+		info getHandle free ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testCooperativeMatrixFeaturesLayoutMatchesTheCLayout [
 	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR is declared field by field. The robust buffer
@@ -898,6 +972,70 @@ VkBindingsTest >> testLibraryLoads [
     self assert: lib isNotNil
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testMemoryAllocateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field a fresh allocation request can know: the size and the
+	 memory type index come from the requirements the driver answers."
+
+	| info setters |
+	info := VkMemoryAllocateInfo externalInstance.
+	[
+		self assert: info sType equals: VkStructureType memoryAllocateInfo.
+		self assert: info pNext isNull.
+		self assert: info allocationSize equals: 0.
+		self assert: info memoryTypeIndex equals: 0 ] ensure: [
+		info getHandle free ].
+	setters := (VkMemoryAllocateInfo >> #initializeConstantFields) messages
+		           select: [ :each | VkMemoryAllocateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testMemoryAllocateInfoLayoutMatchesTheCLayout [
+	"VkMemoryAllocateInfo is declared field by field. allocationSize is a VkDeviceSize, eight
+	 bytes wide and eight byte aligned, so the memory type index sits at twenty four and the
+	 structure is padded out to thirty two bytes."
+
+	| rows |
+	rows := VkMemoryAllocateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #allocationSize #memoryTypeIndex ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 ).
+	self assert: VkMemoryAllocateInfo byteSize equals: 32.
+	rows do: [ :each | self assert: each second \\ each third equals: 0 ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testMemoryRequirementsLayoutMatchesTheCLayout [
+	"VkMemoryRequirements has no chain header: the driver writes all three fields. Two
+	 VkDeviceSize values then a bitmask, padded out to twenty four bytes."
+
+	| rows |
+	rows := VkMemoryRequirements layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #size #alignment #memoryTypeBits ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 ).
+	self assert: VkMemoryRequirements byteSize equals: 24
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testMemoryRequirementsWritesNothingOfItsOwn [
+	"The driver fills a memory requirements block and this project only reads it, so the class
+	 must declare no constant field: an initializer would write over the driver's answer every
+	 time the block is read through fromHandle:."
+
+	self deny: (VkMemoryRequirements includesSelector: #initializeConstantFields).
+	self
+		assert: (VkMemoryRequirements lookupSelector: #initializeConstantFields) methodClass
+		equals: VkStructure
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testNestedPropertiesNameReadsThroughTheOuterStore [
 	"deviceNameString read the store directly, which only works where the structure owns it.
@@ -1254,6 +1392,23 @@ VkBindingsTest >> testVkApplicationInfoSType [
     | info |
     info := VkApplicationInfo new.
     self assert: info sType equals: VkStructureType applicationInfo
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testVkBufferWritesNoScalarFieldAtAHandCountedOffset [
+	"Every structure VkBuffer builds or reads is declared, so no method of the class may poke a
+	 scalar at a counted offset. The pointer and byte accessors stay allowed: mapping a buffer
+	 and copying bytes through it is what they are for."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := (VkBuffer methods select: [ :method |
+		              method messages anySatisfy: [ :each |
+			              banned includes: each ] ]) collect: [ :method |
+		             method selector ].
+	self assertEmpty: offenders
 ]
 
 { #category : 'tests - structures' }

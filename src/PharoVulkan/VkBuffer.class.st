@@ -90,42 +90,42 @@ VkBuffer class >> storageBufferUsage [
 
 { #category : 'lifecycle' }
 VkBuffer >> allocate [
-    "VkBufferCreateInfo: 1:sType 9:pNext 17:flags [pad] 25:size(u64) 33:usage 37:sharing 41:qCount [pad] 49:pQueues"
-    | info bufBuf result memReqs memTypeIndex allocInfo memBuf |
-    info := ExternalAddress allocate: 56.
-    [ info unsignedLongAt: 1 put: VkStructureType bufferCreateInfo.
-      info pointerAt: 9 put: ExternalAddress null.
-      info unsignedLongAt: 17 put: 0.
-      info unsignedLongLongAt: 25 put: size.
-      info unsignedLongAt: 33 put: usage.
-      info unsignedLongAt: 37 put: 0.
-      info unsignedLongAt: 41 put: 0.
-      info pointerAt: 49 put: ExternalAddress null.
-      bufBuf := ExternalAddress allocate: 8.
-      [ result := Vk createBuffer: device handle createInfo: info allocator: ExternalAddress null bufferOut: bufBuf.
-        Vk checkResult: result.
-        handle := VkBuffer_H fromHandle: (bufBuf pointerAt: 1)
-      ] ensure: [ bufBuf free ]
-    ] ensure: [ info free ].
-    memReqs := ExternalAddress allocate: 24.
-    [ Vk getBufferMemoryRequirements: device handle buffer: handle memoryRequirements: memReqs.
-      memTypeIndex := device physicalDevice
-          findMemoryType: (memReqs unsignedLongAt: 17)
-          properties: VkMemoryProperty hostVisibleAndCoherent.
-      allocInfo := ExternalAddress allocate: 32.
-      [ allocInfo unsignedLongAt: 1 put: VkStructureType memoryAllocateInfo.
-        allocInfo pointerAt: 9 put: ExternalAddress null.
-        allocInfo unsignedLongLongAt: 17 put: (memReqs unsignedLongLongAt: 1).
-        allocInfo unsignedLongAt: 25 put: memTypeIndex.
-        memBuf := ExternalAddress allocate: 8.
-        [ result := Vk allocateMemory: device handle allocateInfo: allocInfo allocator: ExternalAddress null memory: memBuf.
-          Vk checkResult: result.
-          memory := VkDeviceMemory_H fromHandle: (memBuf pointerAt: 1)
-        ] ensure: [ memBuf free ]
-      ] ensure: [ allocInfo free ]
-    ] ensure: [ memReqs free ].
-    result := Vk bindBufferMemory: device handle buffer: handle memory: memory memoryOffset: 0.
-    Vk checkResult: result
+	"Create the buffer, back it with memory the host can read, and tie the two together. The
+	 driver decides how many bytes the buffer really needs, so the allocation asks it first."
+
+	self createHandle.
+	self allocateMemoryFor: self memoryRequirements.
+	Vk checkResult: (Vk
+			 bindBufferMemory: device handle
+			 buffer: handle
+			 memory: memory
+			 memoryOffset: 0)
+]
+
+{ #category : 'private' }
+VkBuffer >> allocateMemoryFor: someRequirements [
+	"Take the bytes the driver asked for from a memory type that satisfies the buffer and is
+	 visible and coherent to the host: every buffer in this project is written and read back
+	 through a mapping."
+
+	| info buf result |
+	info := VkMemoryAllocateInfo externalInstance.
+	[
+	info
+		allocationSize: someRequirements size;
+		memoryTypeIndex: (device physicalDevice
+				 findMemoryType: someRequirements memoryTypeBits
+				 properties: VkMemoryProperty hostVisibleAndCoherent).
+	buf := ExternalAddress allocate: VkContext pointerSize.
+	[
+	result := Vk
+		          allocateMemory: device handle
+		          allocateInfo: info getHandle
+		          allocator: ExternalAddress null
+		          memory: buf.
+	Vk checkResult: result.
+	memory := VkDeviceMemory_H fromHandle: (buf pointerAt: 1) ] ensure: [
+		buf free ] ] ensure: [ info getHandle free ]
 ]
 
 { #category : 'accessing' }
@@ -160,6 +160,30 @@ VkBuffer >> copyToByteArray [
 	1 to: size do: [:i | result at: i put: (ptr byteAt: i)].
 	self unmap.
 	^ result
+]
+
+{ #category : 'private' }
+VkBuffer >> createHandle [
+	"The requested byte count and usage mask are all the driver needs from this project: the
+	 remaining fields of the request read as the degenerate buffer, exclusively owned and with
+	 no queue family list, which is what every buffer here is."
+
+	| info buf result |
+	info := VkBufferCreateInfo externalInstance.
+	[
+	info
+		size: size;
+		usage: usage.
+	buf := ExternalAddress allocate: VkContext pointerSize.
+	[
+	result := Vk
+		          createBuffer: device handle
+		          createInfo: info getHandle
+		          allocator: ExternalAddress null
+		          bufferOut: buf.
+	Vk checkResult: result.
+	handle := VkBuffer_H fromHandle: (buf pointerAt: 1) ] ensure: [ buf free ] ]
+		ensure: [ info getHandle free ]
 ]
 
 { #category : 'lifecycle' }
@@ -263,6 +287,22 @@ VkBuffer >> map [
       mappedPointer := ptrBuf pointerAt: 1.
       ^ mappedPointer
     ] ensure: [ ptrBuf free ]
+]
+
+{ #category : 'private' }
+VkBuffer >> memoryRequirements [
+	"What the driver demands to back this buffer. The block it writes lives outside the image
+	 and is freed here, so the answer is a copy in object memory the caller can keep."
+
+	| requirements |
+	requirements := VkMemoryRequirements externalInstance.
+	^ [
+	  Vk
+		  getBufferMemoryRequirements: device handle
+		  buffer: handle
+		  memoryRequirements: requirements getHandle.
+	  requirements copyIntoObjectMemory ] ensure: [
+		  requirements getHandle free ]
 ]
 
 { #category : 'accessing' }

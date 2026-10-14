@@ -78,6 +78,22 @@ VkCoreTest >> testBufferCapacityCheckAnswersWhatAWriteWouldDo [
 		raise: SizeMismatch ] ensure: [ buf destroy ]
 ]
 
+{ #category : 'tests - buffers' }
+VkCoreTest >> testBufferMemoryRequirementsAnswerWhatTheDriverAsked [
+	"The requirements come from the driver through a declared structure, so the three fields
+	 must read as a real answer: at least the bytes asked for, a power of two alignment, and a
+	 non empty set of memory types. The answer is a copy in object memory, so it is still
+	 readable here, after the buffer and the external block it was read from have gone."
+
+	| buffer requested requirements |
+	requested := 4.
+	buffer := VkBuffer storageBuffer: requested on: ctx device.
+	requirements := [ buffer memoryRequirements ] ensure: [ buffer destroy ].
+	self assert: requirements size >= requested.
+	self assert: requirements alignment isPowerOfTwo.
+	self assert: requirements memoryTypeBits > 0
+]
+
 { #category : 'tests' }
 VkCoreTest >> testBufferRefusesMoreBytesThanItHolds [
 	"The bytes leave through a mapped raw pointer, so an oversized collection would write past
@@ -932,7 +948,7 @@ VkCoreTest >> testStorageBufferByElementTypeRoundtripsBothWidths [
 		floats destroy ]
 ]
 
-{ #category : 'tests' }
+{ #category : 'tests - buffers' }
 VkCoreTest >> testStorageBufferMemoryTypeIsCoherent [
 	"VkBuffer allocate picks its memory type with hostVisibleAndCoherent; the type it picks
 	 must actually carry the coherent bit, or map/unmap can read stale bytes on hardware
@@ -941,23 +957,17 @@ VkCoreTest >> testStorageBufferMemoryTypeIsCoherent [
 	 memory type 1, which is coherent here, so the test guards other hardware rather than
 	 proving the fix. What proves the fix is
 	 testHostVisibleAndCoherentAsksForBothProperties."
-	| buffer memReqs typeFilter typeIndex |
+
+	| buffer typeIndex |
 	buffer := VkBuffer storageBuffer: 4 on: ctx device.
-	[ memReqs := ExternalAddress allocate: 24.
-	  [ Vk
-	  	getBufferMemoryRequirements: ctx device handle
-	  	buffer: buffer handle
-	  	memoryRequirements: memReqs.
-	    typeFilter := memReqs unsignedLongAt: 17.
-	    typeIndex := ctx device physicalDevice
-	  	findMemoryType: typeFilter
-	  	properties: VkMemoryProperty hostVisibleAndCoherent.
-	    self
-	  	assert: ((ctx device physicalDevice memoryPropertyFlagsOfType: typeIndex)
-	  			bitAnd: VkMemoryProperty hostCoherentBit)
-	  	equals: VkMemoryProperty hostCoherentBit
-	  ] ensure: [ memReqs free ]
-	] ensure: [ buffer destroy ]
+	[
+	typeIndex := ctx device physicalDevice
+		             findMemoryType: buffer memoryRequirements memoryTypeBits
+		             properties: VkMemoryProperty hostVisibleAndCoherent.
+	self
+		assert: ((ctx device physicalDevice memoryPropertyFlagsOfType: typeIndex)
+				 bitAnd: VkMemoryProperty hostCoherentBit)
+		equals: VkMemoryProperty hostCoherentBit ] ensure: [ buffer destroy ]
 ]
 
 { #category : 'tests' }
