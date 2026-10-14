@@ -6,16 +6,38 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'handle',
-		'pool'
+		'pool',
+		'level'
 	],
 	#category : 'PharoVulkan-Graphics',
 	#package : 'PharoVulkan',
 	#tag : 'Graphics'
 }
 
+{ #category : 'examples' }
+VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine [
+	"One click: the primary command buffer a compute dispatch here records into, cut from a
+	 pool on this machine's compute queue family. The pool is destroyed with its context, which
+	 frees the buffer with it, so the Buffer tab shows the level and the family it was
+	 allocated with over a handle it reports as dead. Where no device is available it answers
+	 an unallocated buffer, which is what the inspector should show on such a machine."
+
+	<sampleInstance>
+	| context |
+	context := [ VkContext computeContext ]
+		           on: VkError
+		           do: [ :error | nil ].
+	context ifNil: [ ^ self new ].
+	^ [
+	  | pool |
+	  pool := context device createCommandPool: context computeQueueFamily.
+	  [ pool allocateBuffer ] ensure: [ pool destroy ] ] ensure: [
+		  context destroy ]
+]
+
 { #category : 'factory' }
-VkCommandBuffer class >> on: aHandle pool: aPool [
-    ^ self new initializeWith: aHandle pool: aPool
+VkCommandBuffer class >> on: aHandle pool: aPool level: aLevel [
+	^ self new initializeWith: aHandle pool: aPool level: aLevel
 ]
 
 { #category : 'recording' }
@@ -153,6 +175,24 @@ VkCommandBuffer >> bindVertexBuffer: aVkBuffer [
     ] ensure: [ pBufs free ]
 ]
 
+{ #category : 'accessing' }
+VkCommandBuffer >> bufferRows [
+	"What the buffer was allocated with: the level and its name, the queue family the pool it
+	 came from serves, and whether the handle is still usable. A buffer is freed with the pool
+	 it was cut from and the driver leaves the handle reading as non-null, so liveness asks the
+	 pool as well, and a buffer that was never allocated has no pool to ask. The rows are built
+	 fresh on every call, so reading them cannot change the buffer."
+
+	^ Dictionary newFrom: {
+			  (#level -> level).
+			  (#levelName -> (VkCommandBufferLevel nameForValue: level)).
+			  (#queueFamilyIndex
+			   -> (pool ifNotNil: [ :each | each poolRows at: #queueFamilyIndex ])).
+			  (#live -> (handle isNotNil and: [
+				    handle isNull not and: [
+					    pool isNotNil and: [ pool poolRows at: #live ] ] ])) }
+]
+
 { #category : 'recording' }
 VkCommandBuffer >> copyImage: anImage layout: layout toBuffer: aBuffer extent: aPoint [
 	"VkBufferImageCopy, 56 bytes, 1-based: 1:bufferOffset(u64) 9:bufferRowLength
@@ -219,8 +259,44 @@ VkCommandBuffer >> handle [
 ]
 
 { #category : 'initialization' }
-VkCommandBuffer >> initializeWith: aHandle pool: aPool [
-    handle := aHandle. pool := aPool
+VkCommandBuffer >> initialize [
+	"A buffer that was never allocated still answers its rows, so the level reads as the one
+	 the allocate info would have asked for rather than as nil."
+
+	super initialize.
+	level := VkCommandPool allocationLevel
+]
+
+{ #category : 'initialization' }
+VkCommandBuffer >> initializeWith: aHandle pool: aPool level: aLevel [
+	"The level is kept because the driver answers it back no more than it answers the pool's
+	 queue family: it is only ever what the allocate info asked for."
+
+	handle := aHandle.
+	pool := aPool.
+	level := aLevel
+]
+
+{ #category : 'inspector' }
+VkCommandBuffer >> inspectorBuffer: aBuilder [
+	"What the buffer was allocated with: the level, named by the constants class that owns the
+	 values, the queue family of the pool it came from, and whether it is still usable. The
+	 rows are built fresh, so opening the tab cannot change the buffer."
+
+	<inspectorPresentationOrder: 30 title: 'Buffer'>
+	| rows |
+	rows := self bufferRows.
+	^ aBuilder newTable
+		  addColumn:
+			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
+					   each first ]);
+		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
+				   each second printString ]);
+		  items: {
+				  { 'Level'. (rows at: #levelName) }.
+				  { 'Queue family'. (rows at: #queueFamilyIndex) }.
+				  { 'Usable'. (rows at: #live) } };
+		  yourself
 ]
 
 { #category : 'setter' }

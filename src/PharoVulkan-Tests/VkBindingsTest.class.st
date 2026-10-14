@@ -187,6 +187,77 @@ VkBindingsTest >> testBufferCreateInfoRequestRowsNameTheUsageBitsAndChangeNothin
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferAllocateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. The level is not: a secondary
+	 buffer is allocated from the same structure, and a zeroed block already reads as primary
+	 because primary is zero in Vulkan, which is a coincidence of the enumeration rather than
+	 something to rely on."
+
+	| info setters |
+	info := VkCommandBufferAllocateInfo externalInstance.
+	[
+		self
+			assert: info sType
+			equals: VkStructureType commandBufferAllocateInfo.
+		self assert: info pNext isNull.
+		self assert: info commandPool isNull.
+		self assert: info level equals: 0.
+		self assert: info commandBufferCount equals: 0 ] ensure: [
+		info getHandle free ].
+	setters := (VkCommandBufferAllocateInfo >> #initializeConstantFields)
+		           messages select: [ :each |
+		           VkCommandBufferAllocateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferAllocateInfoLayoutMatchesTheCLayout [
+	"The pool the buffers come from is a handle, so it is pointer wide and eight byte aligned;
+	 the level and the count are words that follow it with no padding between them, which makes
+	 the structure thirty-two bytes."
+
+	| rows |
+	rows := VkCommandBufferAllocateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #commandPool #level #commandBufferCount ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 28 ).
+	self assert: VkCommandBufferAllocateInfo byteSize equals: 32
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferLevelNamesItsOwnValues [
+	"The level is shown by the command buffer's view, so the class that holds the values is the
+	 class that names them. The view must never carry a table of Vulkan names of its own."
+
+	self assert: (VkCommandBufferLevel includesBehavior: VkValueConstants).
+	self
+		assert: (VkCommandBufferLevel nameForValue:
+				 VkCommandBufferLevel primary)
+		equals: 'primary'.
+	self
+		assert: (VkCommandBufferLevel nameForValue:
+				 VkCommandBufferLevel secondary)
+		equals: 'secondary'
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCommandBufferWithNoPoolReportsNoQueueFamilyAndIsNotLive [
+	"The example answers an unallocated buffer on a machine with no device, so the rows must
+	 open on one: no pool to ask for a queue family, the level primary because that is what
+	 the allocate info would have asked for, and nothing live."
+
+	| rows |
+	rows := VkCommandBuffer new bufferRows.
+	self assert: (rows at: #level) equals: VkCommandBufferLevel primary.
+	self assert: (rows at: #levelName) equals: 'primary'.
+	self assert: (rows at: #queueFamilyIndex) isNil.
+	self deny: (rows at: #live)
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testCommandPoolCreateInfoInitializesOnlyWhatIsConstantForTheType [
 	"The structure type is the only field fixed by the type. The reset flag every pool here
 	 asks for is written by the writer, not stamped in the initializer: a pool without it is a
@@ -227,28 +298,29 @@ VkBindingsTest >> testCommandPoolCreateInfoLayoutMatchesTheCLayout [
 ]
 
 { #category : 'tests - structures' }
-VkBindingsTest >> testCommandPoolCreationWritesNoScalarFieldAtAHandCountedOffset [
-	"The create info is declared, so neither the pool's creation path nor the device's
-	 delegation may poke a scalar at a counted offset. The ban is on these methods rather
-	 than on the whole pool class: VkCommandPool >> allocateBuffer still writes the command
-	 buffer allocate info as a block, and that structure belongs to a later unit."
+VkBindingsTest >> testCommandPoolWritesNoScalarFieldAtAHandCountedOffset [
+	"Both structures the pool hands the driver are now declared — the create info it is made
+	 from and the allocate info its buffers come from — so no method of the class, on either
+	 side, may poke a scalar at a counted offset. The device's delegation is held to the same
+	 ban, since it used to write the create info itself. The buffer the pool answers is not
+	 covered: the structures it records commands through belong to group three of the plan."
 
 	| banned offenders |
 	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
 	             #unsignedShortAt:put: #unsignedLongLongAt:
 	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
-	offenders := OrderedCollection new.
-	{
-		(VkCommandPool class -> #( #on:queueFamilyIndex: #handleForCreateInfo:on: )).
-		(VkDevice -> #( #createCommandPool: )) } do: [ :each |
-		each value do: [ :selector |
-			((each key includesSelector: selector) and: [
-				 (each key >> selector) messages anySatisfy: [ :message |
-					 banned includes: message ] ]) ifTrue: [
-				offenders add: each key name , ' >> ' , selector ] ] ].
-	self assertEmpty: offenders asArray.
+	offenders := ({
+		              VkCommandPool.
+		              VkCommandPool class } flatCollect: [ :each |
+		              each methods ]) select: [ :each |
+		             each messages anySatisfy: [ :message |
+			             banned includes: message ] ].
 	self
-		assert: (VkCommandPool class includesSelector: #on:queueFamilyIndex:)
+		assertEmpty: (offenders collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray.
+	self
+		deny: ((VkDevice >> #createCommandPool:) messages anySatisfy: [
+				 :message | banned includes: message ])
 ]
 
 { #category : 'tests' }
@@ -1312,6 +1384,23 @@ VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
 		self assert: each asF32 equals: each asFloat ].
 	self assert: 3 asF32 equals: 3.0.
 	self assert: Float infinity asF16 equals: Float infinity
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodAllocatesCommandBuffers [
+	"Every command buffer in the project comes from a pool, so the allocate info has one writer.
+	 The senders are asked of the system, and the tests are rejected: a test naming the call is
+	 itself a sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #allocateCommandBuffers:allocateInfo:commandBuffers:)
+		           reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandPool >> handleForAllocateInfo:' )
 ]
 
 { #category : 'tests - structures' }

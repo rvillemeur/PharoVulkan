@@ -155,6 +155,32 @@ VkCoreTest >> testChainedPropertiesQueryLinksTheBlockItIsGiven [
 ]
 
 { #category : 'tests - command pool' }
+VkCoreTest >> testCommandBufferReportsTheLevelItWasAllocatedWith [
+	"The driver leg of the command buffer allocate info: a real buffer allocated from a real
+	 pool on this machine. The driver answers the level back no more than it answers the queue
+	 family, so the buffer keeps what it was allocated with and the Buffer tab names it through
+	 the constants class. Destroying the pool frees the buffer with it, and the driver leaves
+	 the buffer's own handle reading as non-null, so the rows must ask the pool."
+
+	| pool buffer rows |
+	pool := ctx device createCommandPool: ctx computeQueueFamily.
+	buffer := [ pool allocateBuffer ] ifCurtailed: [ pool destroy ].
+	[
+		self deny: buffer handle isNull.
+		rows := buffer bufferRows.
+		self assert: (rows at: #level) equals: VkCommandBufferLevel primary.
+		self assert: (rows at: #levelName) equals: 'primary'.
+		self
+			assert: (rows at: #queueFamilyIndex)
+			equals: ctx computeQueueFamily.
+		self assert: (rows at: #live) ] ensure: [ pool destroy ].
+	self deny: (buffer bufferRows at: #live).
+	self
+		assert: (buffer bufferRows at: #level)
+		equals: VkCommandBufferLevel primary
+]
+
+{ #category : 'tests - command pool' }
 VkCoreTest >> testCommandPoolReportsTheQueueFamilyAndFlagItWasCreatedWith [
 	"The driver leg of the command pool create info: a pool created on this machine for the
 	 compute queue family. The pool keeps the family and the flags it asked for, so the Pool

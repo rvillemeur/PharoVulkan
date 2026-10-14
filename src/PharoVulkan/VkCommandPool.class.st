@@ -15,6 +15,21 @@ Class {
 }
 
 { #category : 'constants' }
+VkCommandPool class >> allocationLevel [
+	"Every buffer this project records is submitted to a queue, never recorded into another
+	 buffer, so the level is always primary."
+
+	^ VkCommandBufferLevel primary
+]
+
+{ #category : 'constants' }
+VkCommandPool class >> buffersPerAllocation [
+	"allocateBuffer answers one buffer, so it asks for one and reads one handle back."
+
+	^ 1
+]
+
+{ #category : 'constants' }
 VkCommandPool class >> creationFlags [
 	"The flags every pool here is created with, named once so the creation path and the Pool
 	 tab cannot disagree about what was asked for."
@@ -84,22 +99,20 @@ VkCommandPool class >> on: aDevice queueFamilyIndex: idx [
 
 { #category : 'allocating' }
 VkCommandPool >> allocateBuffer [
-    "VkCommandBufferAllocateInfo (32 bytes):
-     0:sType  8:pNext  16:commandPool  24:level  28:commandBufferCount"
-    | info bufOut result cbHandle |
-    info := ExternalAddress allocate: 32.
-    [ info unsignedLongAt: 1 put: VkStructureType commandBufferAllocateInfo.
-      info pointerAt: 9 put: ExternalAddress null.
-      info pointerAt: 17 put: handle getHandle.
-      info unsignedLongAt: 25 put: 0.
-      info unsignedLongAt: 29 put: 1.
-      bufOut := ExternalAddress allocate: 8.
-      [ result := Vk allocateCommandBuffers: device handle allocateInfo: info commandBuffers: bufOut.
-        Vk checkResult: result.
-        cbHandle := VkCommandBuffer_H fromHandle: (bufOut pointerAt: 1).
-        ^ VkCommandBuffer on: cbHandle pool: self
-      ] ensure: [ bufOut free ]
-    ] ensure: [ info free ]
+	"One primary buffer, cut from this pool. The request is freed whichever way the allocation
+	 goes, and the allocation itself is a separate method so no return crosses this ensure:."
+
+	| info |
+	info := VkCommandBufferAllocateInfo externalInstance.
+	^ [
+	  info
+		  commandPool: handle;
+		  level: self class allocationLevel;
+		  commandBufferCount: self class buffersPerAllocation.
+	  VkCommandBuffer
+		  on: (self handleForAllocateInfo: info)
+		  pool: self
+		  level: self class allocationLevel ] ensure: [ info getHandle free ]
 ]
 
 { #category : 'lifecycle' }
@@ -117,6 +130,23 @@ VkCommandPool >> destroy [
 { #category : 'accessing' }
 VkCommandPool >> handle [
     ^ handle
+]
+
+{ #category : 'allocating' }
+VkCommandPool >> handleForAllocateInfo: anAllocateInfo [
+	"The driver writes the handles into a block the caller owns, one pointer per buffer asked
+	 for, so the block is freed here and only the handle leaves."
+
+	| out result |
+	out := ExternalAddress allocate:
+		       self class buffersPerAllocation * VkContext pointerSize.
+	^ [
+	  result := Vk
+		            allocateCommandBuffers: device handle
+		            allocateInfo: anAllocateInfo getHandle
+		            commandBuffers: out.
+	  Vk checkResult: result.
+	  VkCommandBuffer_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
 ]
 
 { #category : 'initialization' }
