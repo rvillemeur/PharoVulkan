@@ -473,6 +473,73 @@ VkCoreTest >> testDescriptorPoolViewNamesBothCountsAndTheTypeItRequests [
 		equals: 0 printString
 ]
 
+{ #category : 'tests - descriptors' }
+VkCoreTest >> testDescriptorSetLayoutBindingRowsDecodeTheNamesAndChangeNothing [
+	"The Bindings tab names the descriptor type and the stage mask through the constants
+	 classes that own those values rather than restating them. The rows are built fresh on
+	 every call, so a row a view has written on cannot reach the layout."
+
+	| layout row |
+	layout := VkDescriptorSetLayout on: ctx device.
+	layout addStorageBufferBinding: 0 stageFlags: VkShaderStage computeBit.
+	layout create.
+	[
+		row := layout bindingRows first.
+		self
+			assert: (row at: #typeName)
+			equals:
+			(VkDescriptorType nameForValue: VkDescriptorType storageBuffer).
+		self
+			assert: (row at: #stageNames)
+			equals: (VkShaderStage nameForFlags: VkShaderStage computeBit).
+		row at: #binding put: 9.
+		self assert: (layout bindingRows first at: #binding) equals: 0 ]
+		ensure: [ layout destroy ]
+]
+
+{ #category : 'tests - descriptors' }
+VkCoreTest >> testDescriptorSetLayoutBindingRowsNameEachBindingTheDriverWasGiven [
+	"The bindings the driver was handed, read back through the declared layout rather than out
+	 of the arguments the caller passed: each row is one element of the array the create info
+	 pointed at, so a stride or a field written wrong shows up here."
+
+	| layout rows |
+	layout := VkDescriptorSetLayout on: ctx device.
+	layout addStorageBufferBinding: 0 stageFlags: VkShaderStage computeBit.
+	layout addStorageBufferBinding: 1 stageFlags: VkShaderStage computeBit.
+	layout create.
+	[
+		rows := layout bindingRows.
+		self assert: rows size equals: 2.
+		self
+			assert: (rows collect: [ :each | each at: #binding ]) asArray
+			equals: #( 0 1 ).
+		rows do: [ :each |
+			self
+				assert: (each at: #type)
+				equals: VkDescriptorType storageBuffer.
+			self
+				assert: (each at: #count)
+				equals: VkDescriptorSetLayoutBinding descriptorsPerBinding.
+			self
+				assert: (each at: #stages)
+				equals: VkShaderStage computeBit ] ] ensure: [ layout destroy ]
+]
+
+{ #category : 'tests - descriptors' }
+VkCoreTest >> testDescriptorSetLayoutWithNoBindingIsStillCreated [
+	"The degenerate layout: no binding at all. Vulkan accepts it, and the create info must say
+	 so with a zero count and a null array pointer rather than with a pointer into a block of
+	 no bytes."
+
+	| layout |
+	layout := VkDescriptorSetLayout on: ctx device.
+	layout create.
+	[
+		self deny: layout handle isNull.
+		self assertEmpty: layout bindingRows ] ensure: [ layout destroy ]
+]
+
 { #category : 'tests' }
 VkCoreTest >> testDeviceChoiceRowsNameEveryRequirementAsked [
 	| context asked |

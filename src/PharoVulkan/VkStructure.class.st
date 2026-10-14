@@ -25,6 +25,25 @@ VkStructure class >> chainHeaderFieldNames [
 ]
 
 { #category : 'instance creation' }
+VkStructure class >> externalArrayOf: aCount [
+	"A run of aCount structures outside object memory, answered as one view per element over a
+	 single block, so a Vulkan array field is written through generated accessors and the
+	 driver still reads the elements packed at the declared stride. The block lives outside
+	 object memory because the garbage collector may move a store inside the image between the
+	 pointer being written and the driver reading it. It is zeroed, so a field no caller writes
+	 reads as zero or null. The caller frees the first element's handle, which is the address
+	 of the whole block; a count of zero allocates nothing, leaving the caller a null pointer
+	 and a count of zero to write."
+
+	| address |
+	aCount = 0 ifTrue: [ ^ #(  ) ].
+	address := ExternalAddress allocate: aCount * self byteSize.
+	1 to: aCount * self byteSize do: [ :i | address byteAt: i put: 0 ].
+	^ (1 to: aCount) collect: [ :index |
+		  self fromHandle: address + (index - 1 * self byteSize) ]
+]
+
+{ #category : 'instance creation' }
 VkStructure class >> externalInstance [
 	"An instance whose store is memory outside the image, so its address is stable while a
 	 driver holds a pointer to it. ExternalAddress allocate: is malloc, so the block arrives
@@ -164,6 +183,19 @@ VkStructure class >> writerRows [
 ]
 
 { #category : 'copying' }
+VkStructure >> copyBytesInto: aStructure [
+	"Move this structure into another store of the same class — an element of an external
+	 array, or a keeper in object memory. Both sides carry the same declared layout, so the
+	 span to copy is byteSize and nothing past it is touched. Both ends go through byteAt:,
+	 which reads and writes the bytes a store stands for: an ExternalAddress is itself a
+	 ByteArray holding the pointer, so at:put: on one would overwrite the pointer rather than
+	 what it points at."
+
+	1 to: self class byteSize do: [ :i |
+		aStructure getHandle byteAt: i put: (self getHandle byteAt: i) ]
+]
+
+{ #category : 'copying' }
 VkStructure >> copyIntoObjectMemory [
 	"A copy whose store is a ByteArray inside the image, for a structure the driver filled in
 	 memory that is about to be freed. A carried over pNext would point into memory already
@@ -172,8 +204,7 @@ VkStructure >> copyIntoObjectMemory [
 
 	| kept |
 	kept := self class new.
-	1 to: self class byteSize do: [ :i |
-		kept getHandle at: i put: (self getHandle byteAt: i) ].
+	self copyBytesInto: kept.
 	(kept respondsTo: #pNext:) ifTrue: [ kept pNext: ExternalAddress null ].
 	^ kept
 ]

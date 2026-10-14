@@ -209,6 +209,35 @@ VkBindingsTest >> testCooperativeMatrixFeaturesLayoutMatchesTheCLayout [
 		self assert: a second + a third <= b second ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testCopyBytesIntoCopiesTheDeclaredSpanAndNothingBeyondIt [
+	"A structure built in object memory is moved into an element of an external array by
+	 copying the span the declared layout gives it. The copy stops at byteSize, so the element
+	 after it keeps the zeroes the array was allocated with."
+
+	| binding elements |
+	binding := VkDescriptorSetLayoutBinding new.
+	binding
+		binding: 3;
+		descriptorType: VkDescriptorType storageBuffer;
+		descriptorCount: 1;
+		stageFlags: VkShaderStage computeBit.
+	elements := VkDescriptorSetLayoutBinding externalArrayOf: 2.
+	[
+		binding copyBytesInto: elements first.
+		self assert: elements first binding equals: 3.
+		self
+			assert: elements first descriptorType
+			equals: VkDescriptorType storageBuffer.
+		self assert: elements first descriptorCount equals: 1.
+		self
+			assert: elements first stageFlags
+			equals: VkShaderStage computeBit.
+		self assert: elements second binding equals: 0.
+		self assert: elements second descriptorCount equals: 0 ] ensure: [
+		elements first getHandle free ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testCreateDestroyInstance [
     | info instance |
@@ -472,6 +501,88 @@ VkBindingsTest >> testDescriptorSetAllocateInfoLayoutMatchesTheCLayout [
 		self assert: a second + a third <= b second ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testDescriptorSetLayoutBindingLayoutMatchesTheCLayout [
+	"VkDescriptorSetLayoutBinding is four words followed by a sampler array pointer, which is
+	 eight byte aligned, so the structure is twenty-four bytes. It carries no chain header: a
+	 binding is an element of an array, not a structure the driver is handed on its own, so it
+	 declares no constant field either."
+
+	| rows |
+	rows := VkDescriptorSetLayoutBinding layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #binding #descriptorType #descriptorCount #stageFlags
+		   #pImmutableSamplers ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 16 ).
+	self assert: VkDescriptorSetLayoutBinding byteSize equals: 24.
+	self
+		deny: (VkDescriptorSetLayoutBinding includesSelector:
+				 #initializeConstantFields)
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testDescriptorSetLayoutCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field a fresh layout request can know. The flags, the
+	 binding count and the binding array pointer all describe the layout being asked for, so a
+	 fresh block reads as the empty layout: no flag, no binding, no array."
+
+	| info setters |
+	info := VkDescriptorSetLayoutCreateInfo externalInstance.
+	[
+		self
+			assert: info sType
+			equals: VkStructureType descriptorSetLayoutCreateInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info bindingCount equals: 0.
+		self assert: info pBindings isNull ] ensure: [ info getHandle free ].
+	setters := (VkDescriptorSetLayoutCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkDescriptorSetLayoutCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testDescriptorSetLayoutCreateInfoLayoutMatchesTheCLayout [
+	"The chain header, the flags, the binding count and the pointer to the binding array: the
+	 count and the pointer share the eight bytes after flags only because the count is padded
+	 to the pointer's alignment, which is why the pointer is at twenty-four and not twenty."
+
+	| rows |
+	rows := VkDescriptorSetLayoutCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #bindingCount #pBindings ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 ).
+	self assert: VkDescriptorSetLayoutCreateInfo byteSize equals: 32
+]
+
+{ #category : 'tests - constants' }
+VkBindingsTest >> testDescriptorTypeAndShaderStageNameTheirOwnValues [
+	"The descriptor set layout view shows what each binding declares, and a binding's type and
+	 stage mask are numbers. Both classes therefore answer the names themselves — the value
+	 class decoding one value, the flag class decoding a mask — so no view carries a table of
+	 its own that could drift from the constants."
+
+	self assert: (VkDescriptorType includesBehavior: VkValueConstants).
+	self assert: (VkShaderStage includesBehavior: VkFlagConstants).
+	self
+		assert: (VkDescriptorType nameForValue: VkDescriptorType storageBuffer)
+		equals: 'storageBuffer'.
+	self
+		assert: (VkShaderStage nameForFlags: VkShaderStage computeBit)
+		equals: 'Compute'.
+	self
+		assert: (VkShaderStage nameForFlags:
+				 VkShaderStage vertexBit | VkShaderStage fragmentBit)
+		equals: 'Vertex|Fragment'
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testDeviceCreateInfoCarriesItsOwnStructureTypeAndNoChain [
 	"The structure type is the only constant field: pNext carries the feature chain, which is
@@ -639,6 +750,47 @@ VkBindingsTest >> testEveryFeatureStructureShowsEveryFlagItDeclares [
 					 instance headerFieldNames includes: name ]).
 		self deny: instance flagRows isEmpty ] ensure: [
 			instance getHandle free ] ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testExternalArrayAnswersContiguousZeroedViewsOfOneBlock [
+	"A Vulkan array field points at a run of structures packed at the declared stride. The
+	 array answers one view per element, each on its slice of a single block, so an element is
+	 written through its generated accessors and the driver still reads one contiguous run. The
+	 block is zeroed, because a field the caller does not write must read as null or zero."
+
+	| elements stride |
+	elements := VkDescriptorSetLayoutBinding externalArrayOf: 3.
+	[
+		stride := VkDescriptorSetLayoutBinding byteSize.
+		self assert: elements size equals: 3.
+		self
+			assert: (elements second getHandle asInteger
+				 - elements first getHandle asInteger)
+			equals: stride.
+		self
+			assert: (elements third getHandle asInteger
+				 - elements first getHandle asInteger)
+			equals: stride * 2.
+		elements do: [ :each |
+			self assert: each binding equals: 0.
+			self assert: each descriptorType equals: 0.
+			self assert: each descriptorCount equals: 0.
+			self assert: each stageFlags equals: 0.
+			self assert: each pImmutableSamplers isNull ].
+		elements second binding: 7.
+		self assert: elements first binding equals: 0.
+		self assert: elements third binding equals: 0 ] ensure: [
+		elements first getHandle free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testExternalArrayOfNoElementAllocatesNothing [
+	"The degenerate array: a layout with no binding, a pool with no size. No block is
+	 allocated, so there is no handle to free and no address for the caller to pass; the count
+	 is zero and the pointer the caller writes stays null."
+
+	self assertEmpty: (VkDescriptorSetLayoutBinding externalArrayOf: 0)
 ]
 
 { #category : 'tests' }
@@ -1481,6 +1633,24 @@ VkBindingsTest >> testVkContextWritesNoScalarFieldAtAHandCountedOffset [
 			              banned includes: each ] ]) collect: [ :method |
 		             method selector ].
 	self assertEmpty: offenders
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testVkDescriptorSetLayoutWritesNoScalarFieldAtAHandCountedOffset [
+	"Every structure this class hands the driver — the binding array and the layout create
+	 info — is declared, so no method of the class may poke a scalar at a counted offset. The
+	 ban covers the whole class, not a chosen few methods: nothing here writes an undeclared
+	 structure any more."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put: ).
+	offenders := VkDescriptorSetLayout methods select: [ :each |
+		             each messages anySatisfy: [ :message |
+			             banned includes: message ] ].
+	self
+		assertEmpty: (offenders collect: [ :each | each selector ]) asArray
 ]
 
 { #category : 'tests' }
