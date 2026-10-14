@@ -201,6 +201,25 @@ are the ones that call into the driver.
   a recorder to split and nothing to declare. The same held for `VkExtent3D`, declared by the copy
   region in unit 3c.
 
+- **Rows belong to the structure when two commands share it.** `VkRect2D` is a scissor in one
+  command and a render area in another, so `rectRows` and the Rectangle tab report an offset, an
+  extent and whether the rectangle starts at the origin, and name neither caller. A row that said
+  "clips nothing" would be true of the scissor and meaningless of the render area. Where the rows
+  are about one command — the barrier, the copy region — they may name it, because one recorder
+  owns the structure.
+
+- **The scalar-poke ban lists the accessors the old method used.** A viewport is six floats, so
+  unit 3e's ban adds `floatAt:` and `floatAt:put:` to the integer pokes the earlier units banned.
+  The ban is a test over a named list of methods and a named list of selectors, so each unit grows
+  the list to cover what it has just converted rather than trusting a general rule.
+
+- **A regression leg asks the existing rules on a shape the old tests could not fail.** Every
+  triangle test in the project renders a square target, and a viewport or scissor whose width and
+  height are swapped is invisible on a square one. The leg therefore renders at a non-square extent
+  and asks `PVOffscreenTriangleScene >> pixelRules` — the same rules the square tests assert — rather
+  than measuring new pixel values. The test helper gained an extent parameter and the old helper
+  delegates to it.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -735,15 +754,15 @@ structure on the compute path is declared.
 | ~~`VkCommandBuffer >> barrierForHostRead`~~ | ~~9~~ | done, unit 3b |
 | ~~`VkCommandBuffer >> copyImage:`~~ | ~~13~~ | done, unit 3c |
 | ~~`VkCommandBuffer >> beginRenderPass:`~~ | ~~10~~ | done, unit 3d |
-| `VkCommandBuffer >> setViewport:` | 6 | `VkViewport` |
-| `VkCommandBuffer >> setScissor:` | 4 | `VkRect2D` |
+| ~~`VkCommandBuffer >> setViewport:`~~ | ~~6~~ | done, unit 3e |
+| ~~`VkCommandBuffer >> setScissor:`~~ | ~~4~~ | done, unit 3e |
 | `VkQueue >> submit:` | 9 | `VkSubmitInfo2`, command buffer submit info |
 | `VkQueue >> submitGraphics:` | 9 | same, with `VkSemaphoreSubmitInfo` |
 
-`VkViewport` and `VkRect2D` are plain value structures with no `sType`, so they are the cheapest
-units in the plan and a good place to confirm the shape on a structure without a chain pointer.
-`VkRect2D` is already declared: unit 3d needed it for the render area, so the scissor unit has a
-recorder to split and nothing to declare.
+`VkViewport` and `VkRect2D` are plain value structures with no `sType`, so they were the cheapest
+unit in the plan and a good place to confirm the shape on a structure without a chain pointer.
+`VkRect2D` was already declared by unit 3d for the render area, so unit 3e had one structure to
+declare and two recorders to split.
 
 ### 3a — the recording's begin info, done 14 October 2026
 
@@ -882,6 +901,37 @@ uniform clear colour, which is what the project's other graphics tests use.
 The example is `VkRenderPassBeginInfo class >> exampleBeginInfoForAClearedPass` and the view is
 `VkRenderPassBeginInfo >> inspectorPass:`. The suite is 439 tests over the nine concrete test
 classes.
+
+### 3e — the viewport and the scissor, done 14 October 2026
+
+`VkViewport` is twenty-four bytes at 0, 4, 8, 12, 16 and 20: six floats, the origin, the size and
+the depth range, with nothing padded. `VkRect2D` was already declared by unit 3d for the render
+area, so the scissor had a recorder to split and nothing to declare.
+
+`setViewport:` poked six floats and `setScissor:` four words, both at counted offsets. Each is now
+a class-side builder and a recorder: `viewportForExtent:` writes the size and the far plane,
+`scissorForExtent:` writes the extent, and `recordViewport:` and `recordScissor:` are the one sender
+each of `vkCmdSetViewport` and `vkCmdSetScissor` in the project. The viewport's origin and near
+plane and the scissor's offset are the zeros a fresh block holds. `viewportMaxDepth`,
+`viewportsPerCommand`, `firstViewportIndex`, `scissorsPerCommand` and `firstScissorIndex` name the
+five literals the two methods carried.
+
+The rows and the tabs go on the structures rather than on the recorder, because a rectangle serves
+two commands: `VkViewport >> viewportRows` reports the origin, the extent and the depth range as a
+pair, and `VkRect2D >> rectRows` reports the offset, the extent and whether the rectangle starts at
+the origin, naming neither the scissor nor the render area.
+
+Eight tests red first: the layout, the absence of any constant field, what each builder writes
+against what it leaves at zero, the one-sender test over both commands, the scalar-poke ban now
+including the float pokes, and the rows of both structures. The driver leg
+`PVGraphicsTest >> testOffscreenTriangleRulesHoldOnANonSquareTarget` renders the hello triangle on a
+target twice as wide as it is high and asks every rule the square triangle tests ask: a swapped
+viewport draws the triangle into half the picture and a swapped scissor clips it out of the other
+half, which no square render can show. It passed before the conversion as well.
+
+The examples are `VkViewport class >> exampleViewportCoveringAnExampleTarget` and
+`VkRect2D class >> exampleScissorCoveringAnExampleTarget`, both built by the recorder for the
+non-square example extent. The suite is 448 tests over the nine concrete test classes.
 
 ## 4 — Graphics
 
