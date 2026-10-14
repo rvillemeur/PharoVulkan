@@ -94,6 +94,31 @@ are the ones that call into the driver.
   belongs to both the buffer create info and the memory requirements — so a sender counts only if
   it also names the class, which every builder here does because each one allocates the structure
   it fills. The chain header's setters are excluded: every structure implements them.
+- **An array of structures is one block of views.** A Vulkan array field points at structures
+  packed at the declared stride, so `VkStructure class >> externalArrayOf:` allocates one zeroed
+  block outside object memory and answers one view per element, each on its own slice. An element
+  is then written through its generated accessors and the driver still reads one contiguous run.
+  The caller frees the first element's handle, which is the block's address; a count of zero
+  allocates nothing, which is what the degenerate layout needs — a count of zero and a null
+  pointer rather than a pointer into a block of no bytes.
+- **`ExternalAddress` is a `ByteArray` holding the pointer, so copy with `byteAt:put:`.** Writing
+  a copy with `at:put:` works when the destination store is a `ByteArray` in object memory and
+  silently overwrites the pointer itself when it is an `ExternalAddress`: the first attempt at
+  `copyBytesInto:` turned the array's address into `16r700000003`, the bytes of the fields being
+  copied. `byteAt:` and `byteAt:put:` read and write what a store stands for at both ends, so one
+  method serves a copy into object memory and a copy into an external element.
+- **A constants class names its own values.** A view must never carry its own table of Vulkan
+  names, so a class whose values a view shows sits under `VkValueConstants` or `VkFlagConstants`
+  and answers `nameForValue:` or `nameForFlags:`. `VkDescriptorType` and `VkShaderStage` were
+  reparented for the Bindings tab. The other classes in the `Constants` tag — `VkImageLayout`,
+  `VkAccess2`, `VkPipelineStage2`, `VkAttachmentOp`, `VkImageTiling`, `VkImageType` — are still
+  plain holders, to be moved by the unit that needs each one named rather than in one sweep;
+  `VkApiVersion` and `VkRenderConfig` are not value tables and stay where they are.
+- **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
+  but not `at:put:`, which lands in the inner array, so the view rows across this project are not
+  immutable however the older comments read. The guarantee that holds is that every row builder
+  answers fresh rows over copied values, so a view cannot reach the inspected object; new rows
+  say that rather than claiming read-only.
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -353,7 +378,7 @@ whose pointers are stale. The suite is 356 tests over the nine concrete test cla
 |---|---|---|
 | ~~`VkBuffer >> allocate`~~ | ~~8~~ | done, unit 2a |
 | ~~`VkImage >> allocate`~~ | ~~4~~ | done, unit 2b |
-| `VkDescriptorSetLayout >> create` | 5 | `VkDescriptorSetLayoutBinding`, layout create info |
+| ~~`VkDescriptorSetLayout >> create`~~ | ~~5~~ | done, unit 2c |
 | `VkShaderModule >> initializeFromBytes:` | 5 | `VkShaderModuleCreateInfo` |
 | `VkCommandPool class >> on:` and `VkDevice >> createCommandPool:` | 4 each | `VkCommandPoolCreateInfo` |
 | `VkCommandPool >> allocateBuffer` | 5 | `VkCommandBufferAllocateInfo` |
@@ -443,6 +468,50 @@ chainHeaderFieldNames` now names `sType` and `pNext` once for the hierarchy, and
 `VkFeatureStructure class >> headerFieldNames` defers to it. The suite is 370 tests over the nine
 concrete test classes.
 
+
+### 2c — the descriptor set layout, done 14 October 2026
+
+`VkDescriptorSetLayout >> create` was one method of five nested blocks: a binding array written
+at base plus one, five, nine, thirteen and seventeen with a stride of twenty-four multiplied in by
+hand, then a thirty-two-byte create info written at five more offsets, then the out parameter.
+Two structures were declared. `VkDescriptorSetLayoutBinding` is twenty-four bytes at 0, 4, 8, 12
+and 16; it carries no chain header, because an array element is never handed to the driver on its
+own, and therefore declares no `initializeConstantFields` either.
+`VkDescriptorSetLayoutCreateInfo` is thirty-two bytes at 0, 8, 16, 20 and 24 — the binding count
+sits at twenty and the pointer at twenty-four because the count is padded to the pointer's
+alignment — and stamps only its structure type, so a fresh block reads as the layout with no
+binding.
+
+The array moved into `VkStructure class >> externalArrayOf:`, which every later unit with an
+array field can use, and the copy from object memory into an element into
+`VkStructure >> copyBytesInto:`; `copyIntoObjectMemory` now goes through the same copy rather than
+keeping its own byte loop. `VkDescriptorSetLayout` collects real
+`VkDescriptorSetLayoutBinding` instances instead of four-element arrays indexed by position, built
+by `VkDescriptorSetLayoutBinding class >> storageBufferAt:stages:`, and the one descriptor each
+binding names became `descriptorsPerBinding`. `create` is now three short methods: the array and
+its paired free, the request that points at it, and the out parameter the driver writes the handle
+into.
+
+Eight tests red first, including the two layout tests, the constant-field test, a scalar-poke ban
+over every method of `VkDescriptorSetLayout` rather than a chosen few,
+`testExternalArrayAnswersContiguousZeroedViewsOfOneBlock` for the stride and the zeroing,
+`testExternalArrayOfNoElementAllocatesNothing` for the degenerate array and
+`testCopyBytesIntoCopiesTheDeclaredSpanAndNothingBeyondIt`, which caught the `at:put:` corruption
+described in the rules above. `VkCoreTest` carries the driver legs: a two-binding layout read back
+through the structures the driver was given, a layout with no binding at all, and the row decoding.
+An attempt to state the constants rule for the whole `Constants` tag was written and withdrawn: it
+would have forced nine unrelated reparentings in a unit about descriptor sets, so the test names
+the two classes this unit needs instead.
+
+Examples: `VkDescriptorSetLayoutBinding class >> exampleStorageBufferBindingsOfATwoBufferKernel`,
+the run a two-buffer kernel declares, read back out of the external block and kept;
+`VkDescriptorSetLayoutCreateInfo class >> exampleRequestForTwoStorageBuffers`, the request with
+its array pointer cleared because the block it named has been freed; and
+`VkDescriptorSetLayout class >> exampleLayoutForATwoBufferKernelOnThisMachine`, which creates and
+destroys a real layout and still answers its bindings afterwards. The view is
+`VkDescriptorSetLayout >> inspectorBindings:`, a Bindings tab with the binding number, the type and
+the stages decoded by the constants classes that own those values. The suite is 381 tests over the
+nine concrete test classes.
 
 ## 3 — Command recording and submission
 
