@@ -114,8 +114,9 @@ are the ones that call into the driver.
   followed, each moved by the unit whose view needed its names rather than in one sweep:
   `VkAccess2` and `VkPipelineStage2` by unit 3b, which shows four of their masks, `VkImageLayout`
   by unit 4c, whose Attachment tab names the layouts an attachment enters and leaves in, and
-  `VkImageTiling` and `VkImageType` by unit 4d, whose Image tab names both. `VkAttachmentOp`
-  cannot be moved at all: its load and store halves share their numbering. `VkApiVersion` and
+  `VkImageTiling` and `VkImageType` by unit 4d, whose Image tab names both. Unit 4e added three
+  more already in that shape: `VkColorSpace`, `VkSurfaceTransform` and `VkCompositeAlpha`.
+  `VkAttachmentOp` cannot be moved at all: its load and store halves share their numbering. `VkApiVersion` and
   `VkRenderConfig` are not value tables and stay where they are.
 - **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
   but not `at:put:`, which lands in the inner array, so the view rows across this project are not
@@ -284,6 +285,17 @@ are the ones that call into the driver.
   pairing method that nests them in `ensure:` blocks innermost first. A single builder writing all
   four would have had to own four blocks and free them in the right order, which is the hand-counted
   method's shape with the offsets removed.
+- **A structure the driver fills carries no chain header, so it declares no initializer at
+  all.** The capabilities and the format pairs of a surface are written by the driver and read by
+  the project, which is the opposite direction from a request. There is nothing in them that is
+  constant for the type, and `initializeConstantFields` runs on every read of a nested field, so
+  declaring one would write over what the driver reported. The asker allocates the block, hands
+  it over and answers `copyIntoObjectMemory`, which is what makes the answer outlive the free.
+- **A scalar out parameter is not a structure field.** A count or a boolean the driver writes
+  into four bytes has no field specification to read a width from, so it stays a block read by
+  `unsignedLongAt:`. The ban on counted offsets therefore names those methods as exceptions
+  instead of pretending a one-field structure exists for them, and the width is named once, on
+  `Vk`, because every enumerating class would otherwise name the same fact.
 - **A count two requests restate is one count on the resource.** The image is created with one mip
   level and one array layer, and its view covers every level and layer the image has, so the two
   requests ask for the same number for the same reason. Unit 4a had named them
@@ -1046,7 +1058,7 @@ widest.
 | Method | Offsets written | Structures |
 |---|---|---|
 | `VkGraphicsPipeline >> initializeDevice:` | 29 | the whole pipeline create info tree |
-| `VkSwapchain >> initializeDevice:` | 19 | `VkSwapchainCreateInfoKHR`, surface capabilities |
+| `VkSwapchain >> initializeDevice:` | 19 | `VkSwapchainCreateInfoKHR`; ~~the surface capabilities and formats it reads~~ — **queries done 15 October 2026** |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
 | ~~`VkImage >> create`~~ | ~~17~~ | `VkImageCreateInfo` — **done 15 October 2026** |
@@ -1238,3 +1250,58 @@ creation layout and whether the image is shared between queue families. `VkImage
 `ReExcessiveVariablesRule` on both sides for its fifteen `OFFSET_` variables, accepted as before.
 
 The suite is 489 tests over the nine concrete test classes.
+
+### 4e — the surface queries, done 15 October 2026
+
+The swapchain read the surface through two blocks of bytes: fifty-two bytes of capabilities,
+of which it read `minImageCount` at zero, `maxImageCount` at four and `currentTransform` at forty,
+and a run of eight-byte format pairs it walked by a hand-written stride. Both are now declared.
+`VkSurfaceCapabilitiesKHR` is fifty-two bytes at 0, 4, 8, 16, 24, 32, 36, 40, 44 and 48, with
+three `VkExtent2D` carried by value; `VkSurfaceFormatKHR` is eight bytes at 0 and 4. Neither has
+a chain header, because the driver is the writer, and so neither declares an initializer.
+
+`VkSurface` answers them: `capabilities` allocates the block, hands it to
+`vkGetPhysicalDeviceSurfaceCapabilitiesKHR` and answers `copyIntoObjectMemory`, so the answer
+outlives the block it was written into. `formats` asks for the count with a null run, allocates
+the run with `externalArrayOf:` and answers one copy per element; the count buffer is allocated
+around both calls because the second needs the count as well. `formatPreferredFrom:` is the
+choice of format and colour space, on the class side and a function of its argument, so it is
+tested on a machine with no display: the format the project renders in wherever it sits in the
+run, the first one offered otherwise, nil for an empty run. `queryCapabilitiesInto:`, which
+handed a caller's block to the driver and told it nothing about what came back, is gone.
+
+Three facts the swapchain had inline became named. `VkSwapchain class >> imageCountFor:` is the
+rule — one more image than the surface demands, held down to what it allows, with
+`unlimitedImageCount` read as no maximum rather than as no images. `imagesBeyondMinimum` says why
+that one is there. `imageHandleByteCount` is the stride of the run of swapchain image handles,
+which is a run and not a structure. The request itself still writes its nineteen offsets by hand;
+that is the next unit, and `ReLongMethodsRule` on `initializeDevice:surface:extent:` stands until
+then. The colour space it writes is no longer a zero: it is the colour space of the pair the
+surface offered.
+
+Three constants classes were added for the fields the views name: `VkColorSpace`, a
+`VkValueConstants` subclass with the one colour space every surface supports;
+`VkSurfaceTransform`, a `VkFlagConstants` subclass naming all nine transforms, not only the
+identity this project asks for, because the driver reports whichever one the display is rotated
+to; and `VkCompositeAlpha`, naming all four modes, with
+`VkRenderConfig class >> compositeAlphaOpaqueBit` delegating to it as `imageAspectColorBit` does.
+
+Seven tests red first: the two layouts including the extents' width, that neither structure
+declares an initializer or understands `sType`, the image count rule against its three readings,
+the format choice against three runs, both row sets, and the ban on counted offsets over
+`VkSurface` with its two scalar out parameters named. The driver leg
+`PVGraphicsTest >> testSurfaceReportsWhatItAllowsAndWhatItOffersOnThisMachine` asks a real
+surface twice and compares the reports, which is what proves the copy survives the free, then
+checks that the swapchain's format is one the surface offered and its extent lies inside the
+extents the surface accepts.
+
+Both examples fill their fields through the generated accessors rather than calling a writer,
+because the writer is the driver and an example must run where there is no display:
+`exampleCapabilitiesAWindowSurfaceMightReport` and `exampleFormatAWindowSurfaceMightReport`, each
+built from constants other classes already name. The views are the Surface tab, whose image count
+row asks `VkSwapchain` what it would request rather than restating the rule, and the Format tab,
+which asks `VkSurface` whether this is the pair the project renders in.
+`VkSurfaceCapabilitiesKHR` earns `ReExcessiveVariablesRule` on both sides for its ten generated
+offset variables, accepted as for the other wide structures.
+
+The suite is 497 tests over the nine concrete test classes.
