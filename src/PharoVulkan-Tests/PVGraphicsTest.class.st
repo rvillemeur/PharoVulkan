@@ -65,6 +65,14 @@ PVGraphicsTest class >> deviceTestMethods [
 				  method messages includes: selector ] ]
 ]
 
+{ #category : 'constants' }
+PVGraphicsTest class >> fenceWaitNanoseconds [
+	"Two seconds, long enough for any batch this suite submits and short enough that a batch
+	 the driver never runs fails the test instead of hanging the image."
+
+	^ 2000000000
+]
+
 { #category : 'coverage' }
 PVGraphicsTest class >> graphicsClassNamesWithoutDeviceCoverage [
 	"Graphics classes that no device test can reach, each paired with the reason. The list is
@@ -228,6 +236,28 @@ PVGraphicsTest >> renderedOffscreenTrianglePairDo: aBlock [
 	aBlock value: handBuilt value: fromDsl ] ensure: [
 		fromDsl ifNotNil: [ fromDsl destroy ].
 		handBuilt ifNotNil: [ handBuilt destroy ] ] ] ensure: [ context destroy ]
+]
+
+{ #category : 'running' }
+PVGraphicsTest >> submitSignalling: aCommandBuffer semaphore: aSemaphore on: aQueue [
+	"Submits one command buffer that signals a semaphore and waits for nothing, which no
+	 product path needs: the window path's wait semaphore is signalled by acquiring a
+	 swapchain image. The test needs a signalled semaphore to wait on, so it builds the batch
+	 from the same builders the product paths use and hands it to the same recorder."
+
+	| bufferInfo signalInfo batch |
+	bufferInfo := VkQueue commandBufferSubmitInfoFor:
+		              aCommandBuffer handle getHandle.
+	[
+	signalInfo := VkQueue semaphoreSubmitInfoFor: aSemaphore handle getHandle.
+	[
+	batch := VkQueue
+		         submitInfoFor: bufferInfo getHandle
+		         waitSemaphoreInfo: nil
+		         signalSemaphoreInfo: signalInfo.
+	[ aQueue submitBatch: batch fence: ExternalAddress null ] ensure: [
+		batch getHandle free ] ] ensure: [ signalInfo getHandle free ] ]
+		ensure: [ bufferInfo getHandle free ]
 ]
 
 { #category : 'tests' }
@@ -425,6 +455,51 @@ PVGraphicsTest >> testGlslWhiteMixFactorIsTheOneItsShaderSourceUses [
 
 	self assert: ((PVKernelExamples >> #glslTriFragment:) literals includes:
 			 PVGlslTriangleShaders whiteMixFactor)
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testGraphicsSubmitBatchCarriesSemaphoresAndAFenceOnThisMachine [
+	"The driver leg of the submit unit: two real batches on a graphics queue, the first
+	 signalling a semaphore and the second waiting on it, signalling a second semaphore and
+	 taking a fence. The window path's batch is the one with semaphores on both sides, and no
+	 test could reach it before, because acquiring a swapchain image is what signals its wait
+	 semaphore; a batch that signals first lets the same structures be submitted headlessly.
+	 The driver reads all three structures as it validates the batch, so a count beside the
+	 wrong pointer, a stage mask at the wrong offset or a semaphore handle in the wrong word
+	 fails here. Waiting on the fence is the proof the second batch ran at all."
+
+	| context pool waitSemaphore signalSemaphore fence |
+	context := VkContext offscreenGraphicsContext.
+	[
+	pool := context device createCommandPool: context computeQueueFamily.
+	[
+	waitSemaphore := VkSemaphoreWrapper createDevice: context device.
+	signalSemaphore := VkSemaphoreWrapper createDevice: context device.
+	fence := VkFenceWrapper createDevice: context device.
+	[
+	| first second |
+	first := pool allocateBuffer.
+	second := pool allocateBuffer.
+	first begin.
+	first end.
+	second begin.
+	second end.
+	self
+		submitSignalling: first
+		semaphore: waitSemaphore
+		on: context computeQueue.
+	context computeQueue
+		submitGraphics: second
+		waitSemaphore: waitSemaphore
+		signalSemaphore: signalSemaphore
+		fence: fence.
+	fence waitTimeout: self class fenceWaitNanoseconds.
+	context computeQueue waitIdle.
+	self assert: (fence fenceRows at: #live) ] ensure: [
+		fence destroy.
+		signalSemaphore destroy.
+		waitSemaphore destroy ] ] ensure: [ pool destroy ] ] ensure: [
+		context destroy ]
 ]
 
 { #category : 'tests - lifecycle report' }

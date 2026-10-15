@@ -560,6 +560,29 @@ VkBindingsTest >> testCommandPoolWritesNoScalarFieldAtAHandCountedOffset [
 				 :message | banned includes: message ])
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testComputeSubmitCarriesOneCommandBufferAndNoSemaphore [
+	"The compute path submits one command buffer and waits with vkQueueWaitIdle, so its batch
+	 carries one command buffer info and no semaphore info at all. The two semaphore counts and
+	 their pointers are the zeros and nulls a fresh block holds, which is what asking the
+	 builder for no semaphore means."
+
+	| info |
+	info := VkQueue
+		        submitInfoFor: ExternalAddress null
+		        waitSemaphoreInfo: nil
+		        signalSemaphoreInfo: nil.
+	[
+		self
+			assert: info commandBufferInfoCount
+			equals: VkQueue commandBufferInfosPerSubmit.
+		self assert: info waitSemaphoreInfoCount equals: 0.
+		self assert: info signalSemaphoreInfoCount equals: 0.
+		self assert: info pWaitSemaphoreInfos isNull.
+		self assert: info pSignalSemaphoreInfos isNull.
+		self assert: info flags equals: 0 ] ensure: [ info getHandle free ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testCooperativeMatrixFeaturesLayoutMatchesTheCLayout [
 	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR is declared field by field. The robust buffer
@@ -1535,6 +1558,43 @@ VkBindingsTest >> testGeneratorIsIdempotent [
 	self assert: after - before equals: 0
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testGraphicsSubmitCarriesAWaitAndASignalSemaphoreAtTheColourAttachmentStage [
+	"The window path waits for the image to be acquired and signals that the frame is drawn, so
+	 its batch carries one semaphore info on each side and one command buffer info. Both
+	 semaphore infos wait at the colour attachment output stage, which is where the frame's
+	 writes happen, and both leave the timeline value and the device index at zero: these are
+	 binary semaphores on a single device."
+
+	| wait signal batch |
+	wait := VkQueue semaphoreSubmitInfoFor: ExternalAddress null.
+	signal := VkQueue semaphoreSubmitInfoFor: ExternalAddress null.
+	batch := VkQueue
+		         submitInfoFor: ExternalAddress null
+		         waitSemaphoreInfo: wait
+		         signalSemaphoreInfo: signal.
+	[
+		self
+			assert: wait stageMask
+			equals: VkQueue graphicsSemaphoreStageMask.
+		self assert: wait value equals: 0.
+		self assert: wait deviceIndex equals: 0.
+		self
+			assert: batch waitSemaphoreInfoCount
+			equals: VkQueue semaphoreInfosPerSubmit.
+		self
+			assert: batch signalSemaphoreInfoCount
+			equals: VkQueue semaphoreInfosPerSubmit.
+		self
+			assert: batch commandBufferInfoCount
+			equals: VkQueue commandBufferInfosPerSubmit.
+		self deny: batch pWaitSemaphoreInfos isNull.
+		self deny: batch pSignalSemaphoreInfos isNull ] ensure: [
+		batch getHandle free.
+		signal getHandle free.
+		wait getHandle free ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testHalfPrecisionFeatureStructsLayoutMatchesTheCLayout [
 	"The two structures the half precision path chains together. The float16 struct carries two
@@ -2008,6 +2068,22 @@ VkBindingsTest >> testOnlyOneMethodSetsTheViewportAndOneSetsTheScissor [
 			equals: { each value } ]
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testOnlyOneMethodSubmitsToAQueue [
+	"Both submit paths hand their batch to the driver through one method, so the batch has one
+	 writer and one reader. The senders are asked of the system, and the tests are rejected: a
+	 test naming the call is itself a sender."
+
+	| submitters |
+	submitters := (SystemNavigation default allSendersOf:
+		               #queueSubmit2:submitCount:submits:fence:) reject: [ :each |
+		              each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (submitters collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkQueue >> submitBatch:fence:' )
+]
+
 { #category : 'tests - result codes' }
 VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
 	"Observed on this device: allocating a set out of a pool built for zero sets answers
@@ -2158,6 +2234,33 @@ VkBindingsTest >> testQueueFlagsConstants [
     self assert: VkQueueFlags graphicsBit equals: 1.
     self assert: VkQueueFlags computeBit equals: 2.
     self assert: VkQueueFlags transferBit equals: 4
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testQueueSubmitWritesNoScalarFieldAtAHandCountedOffset [
+	"All three submit structures are declared, so none of the methods that build a batch or
+	 hand it to the driver may poke a scalar at a counted offset. The pointer pokes are banned
+	 here as well: a count-and-pointer pair written by hand is what this unit replaced."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #pointerAt: #pointerAt:put:
+	             #signedLongAt: #signedLongAt:put: ).
+	offenders := {
+		             (VkQueue -> #submit:andWait:).
+		             (VkQueue
+		              -> #submitGraphics:waitSemaphore:signalSemaphore:fence:).
+		             (VkQueue -> #submitBatch:fence:).
+		             (VkQueue class -> #commandBufferSubmitInfoFor:).
+		             (VkQueue class -> #semaphoreSubmitInfoFor:).
+		             (VkQueue class
+		              -> #submitInfoFor:waitSemaphoreInfo:signalSemaphoreInfo:) }
+			            select: [ :each |
+			            (each key includesSelector: each value) and: [
+				            (each key >> each value) messages anySatisfy: [ :message |
+					            banned includes: message ] ] ].
+	self assertEmpty: offenders asArray.
+	self assert: (VkQueue includesSelector: #submitBatch:fence:)
 ]
 
 { #category : 'tests - structures' }
@@ -2331,6 +2434,56 @@ VkBindingsTest >> testScissorCoversTheWholeTarget [
 		scissor getHandle free ]
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSemaphoreAndCommandBufferSubmitInfoLayoutsMatchTheCLayout [
+	"A semaphore submit info is forty-eight bytes at 0, 8, 16, 24, 32 and 40: synchronization2
+	 widened the stage mask to sixty-four bits and the timeline value beside it is sixty-four
+	 bits as well, so both are quad words and the device index at the end is padded to the
+	 structure's alignment. A command buffer submit info is thirty-two bytes at 0, 8, 16 and
+	 24, padded the same way after its device mask."
+
+	self
+		assert: (VkSemaphoreSubmitInfo layoutRows collect: [ :each |
+				 each first -> each second ]) asArray
+		equals: {
+				(#sType -> 0).
+				(#pNext -> 8).
+				(#semaphore -> 16).
+				(#value -> 24).
+				(#stageMask -> 32).
+				(#deviceIndex -> 40) }.
+	self assert: VkSemaphoreSubmitInfo byteSize equals: 48.
+	self
+		assert: (VkCommandBufferSubmitInfo layoutRows collect: [ :each |
+				 each first -> each second ]) asArray
+		equals: {
+				(#sType -> 0).
+				(#pNext -> 8).
+				(#commandBuffer -> 16).
+				(#deviceMask -> 24) }.
+	self assert: VkCommandBufferSubmitInfo byteSize equals: 32
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSemaphoreSubmitRowsNameTheStageAndTheSubmitFlagsNameTheirOwnBit [
+	"The Semaphore tab names the stage mask through the class that owns the stage bits, so the
+	 row cannot drift from the mask the builder writes. The submit flags have one bit in
+	 Vulkan, the protected submit, which this project never asks for: a zero mask decodes to
+	 the empty name and the bit itself still decodes to its name."
+
+	| info rows |
+	info := VkQueue semaphoreSubmitInfoFor: ExternalAddress null.
+	rows := [ info semaphoreSubmitRows ] ensure: [ info getHandle free ].
+	self assert: (rows at: #stageNames) equals: 'ColorAttachmentOutput'.
+	self assert: (rows at: #value) equals: 0.
+	self assert: (rows at: #deviceIndex) equals: 0.
+	self deny: (rows at: #semaphoreSet).
+	self assert: (VkSubmitFlag nameForFlags: 0) equals: ''.
+	self
+		assert: (VkSubmitFlag nameForFlags: VkSubmitFlag protectedBit)
+		equals: 'Protected'
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testShaderModuleCreateInfoInitializesOnlyWhatIsConstantForTheType [
 	"The structure type is the only field fixed by the type: the byte count and the pointer
@@ -2497,6 +2650,80 @@ VkBindingsTest >> testSubgroupFeaturePredicateMatchesTheOperationBits [
 	self assert: supported value isEmpty.
 	block supportedOperations: everyBit.
 	self assert: supported value equals: VkSubgroupFeature featureSelectors
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSubmitInfo2LayoutMatchesTheCLayout [
+	"The submit batch is sixty-four bytes at 0, 8, 16, 20, 24, 32, 40, 48 and 56: three
+	 count-and-pointer pairs, one per kind of info it carries, after the chain header and the
+	 flags. Each count is one word and each pointer is eight byte aligned, so uFFI pads after
+	 the second and the third count."
+
+	| rows |
+	rows := VkSubmitInfo2 layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #waitSemaphoreInfoCount
+		           #pWaitSemaphoreInfos #commandBufferInfoCount
+		           #pCommandBufferInfos #signalSemaphoreInfoCount
+		           #pSignalSemaphoreInfos ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 48 56 ).
+	self assert: VkSubmitInfo2 byteSize equals: 64
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSubmitRowsCountTheInfosAndSayWhichPointersAreSet [
+	"The Batch tab reads its rows off the submit info itself: the three counts and, for each
+	 kind of info, whether the pointer beside the count is set. The rows report the pointers as
+	 set or not rather than following them, because a batch is freed as soon as the driver has
+	 read it and a row that followed a freed pointer would be reading freed memory."
+
+	| wait batch rows |
+	wait := VkQueue semaphoreSubmitInfoFor: ExternalAddress null.
+	batch := VkQueue
+		         submitInfoFor: ExternalAddress null
+		         waitSemaphoreInfo: wait
+		         signalSemaphoreInfo: nil.
+	rows := [ batch submitRows ] ensure: [
+		        batch getHandle free.
+		        wait getHandle free ].
+	self assert: (rows at: #commandBufferInfoCount) equals: 1.
+	self assert: (rows at: #waitSemaphoreInfoCount) equals: 1.
+	self assert: (rows at: #signalSemaphoreInfoCount) equals: 0.
+	self assert: (rows at: #waitSemaphoreInfosSet).
+	self deny: (rows at: #signalSemaphoreInfosSet).
+	self assert: (rows at: #flagNames) equals: ''
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSubmitStructuresInitializeOnlyWhatIsConstantForTheirType [
+	"Each of the three submit structures carries a chain header, so each fixes its own
+	 structure type and nothing else: every count, every pointer and every mask is the zero a
+	 fresh block already holds."
+
+	{
+		(VkSubmitInfo2 -> VkStructureType submitInfo2).
+		(VkSemaphoreSubmitInfo -> VkStructureType semaphoreSubmitInfo).
+		(VkCommandBufferSubmitInfo
+		 -> VkStructureType commandBufferSubmitInfo) } do: [ :each |
+		| info |
+		info := each key externalInstance.
+		[
+			self assert: info sType equals: each value.
+			self assert: info pNext isNull ] ensure: [ info getHandle free ] ].
+	{
+		(VkSubmitInfo2 -> #( #flags #waitSemaphoreInfoCount
+		    #commandBufferInfoCount #signalSemaphoreInfoCount )).
+		(VkSemaphoreSubmitInfo -> #( #value #stageMask #deviceIndex )).
+		(VkCommandBufferSubmitInfo -> #( #deviceMask )) } do: [ :each |
+		| info |
+		info := each key externalInstance.
+		[
+		each value do: [ :field |
+			self assert: (info perform: field) equals: 0 ] ] ensure: [
+			info getHandle free ] ]
 ]
 
 { #category : 'tests - results' }
