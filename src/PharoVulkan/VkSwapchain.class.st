@@ -3,7 +3,7 @@ Vulkan swapchain. Holds the queue of presentable images for a surface, creates o
 
 Creation asks the surface what it allows and what it offers rather than assuming either: imageCountFor: is how many images it requests, one more than the surface demands, held down to what it allows, with a maximum of zero read as no maximum; the format and colour space are the pair VkSurface class >> formatPreferredFrom: chose. createInfoForSurface:format:capabilities:extent: builds the declared VkSwapchainCreateInfoKHR from those answers, and handleForCreateInfo:on: is the only sender of vkCreateSwapchainKHR, so there is one place where a swapchain comes into being. imagesFromDriver enumerates the images the driver actually gave back, which may be more than were asked for, and the count the swapchain reports is that number.
 
-present:queue:waitSemaphore: still writes VkPresentInfoKHR at counted offsets; that structure has its own unit in LAYOUT-PLAN.md.
+Presentation is the mirror of that: presentInfoForSwapchain:imageIndex:waitSemaphore: builds the declared VkPresentInfoKHR together with the three runs of one entry it points at, and freePresentInfo: gives all four blocks back. What is left outside a declared structure are the blocks that are runs rather than structures — the out parameter a creation answers through, the index an acquire is given, the count and run of image handles, and those three present runs — each allocated by a named width.
 "
 Class {
 	#name : 'VkSwapchain',
@@ -67,6 +67,41 @@ VkSwapchain class >> createInfoForSurface: aSurfaceHandle format: aSurfaceFormat
 	^ info
 ]
 
+{ #category : 'examples' }
+VkSwapchain class >> exampleImageIndex [
+	"The first image of a swapchain, which is the one an acquire answers for the first frame.
+	 An example and a test both need an index to present, and neither reaches a driver that
+	 would hand one out."
+
+	^ 0
+]
+
+{ #category : 'structures' }
+VkSwapchain class >> freePresentInfo: aPresentInfo [
+	"Gives back everything presentInfoForSwapchain:imageIndex:waitSemaphore: allocated: the
+	 three runs first, because the request is where their addresses are kept, and then the
+	 request itself."
+
+	self freePresentRunsOf: aPresentInfo.
+	aPresentInfo getHandle free
+]
+
+{ #category : 'structures' }
+VkSwapchain class >> freePresentRunsOf: aPresentInfo [
+	"Gives back the three runs the request points at and clears each field as it goes. The runs
+	 were allocated for the request, so the request is the only record of where they are; a
+	 field left holding a freed address would read as a run that is there. The results run is
+	 never asked for, so there is nothing to free for that field."
+
+	aPresentInfo pWaitSemaphores getHandle free.
+	aPresentInfo pSwapchains getHandle free.
+	aPresentInfo pImageIndices getHandle free.
+	aPresentInfo
+		pWaitSemaphores: ExternalAddress null;
+		pSwapchains: ExternalAddress null;
+		pImageIndices: ExternalAddress null
+]
+
 { #category : 'instance creation' }
 VkSwapchain class >> handleForCreateInfo: aCreateInfo on: aDevice [
 	"The one call to vkCreateSwapchainKHR in the project. The out parameter is freed whichever
@@ -107,6 +142,16 @@ VkSwapchain class >> imageHandleByteCount [
 ]
 
 { #category : 'constants' }
+VkSwapchain class >> imageIndexByteCount [
+	"An image index is a uint32, the same width as the counts Vk names. An index is not a
+	 structure field, so there is no field specification to read the width from: both the
+	 block an acquire writes the index into and the run a present reads it from are plain
+	 blocks of this many bytes."
+
+	^ Vk countByteCount
+]
+
+{ #category : 'constants' }
 VkSwapchain class >> imagesBeyondMinimum [
 	"One image more than the surface demands, so a frame can be drawn into one image while
 	 another is being presented. Asking for exactly the minimum makes every frame wait for
@@ -118,6 +163,25 @@ VkSwapchain class >> imagesBeyondMinimum [
 { #category : 'instance creation' }
 VkSwapchain class >> on: aVkDevice surface: aVkSurface extent: aPoint [
     ^ self new initializeDevice: aVkDevice surface: aVkSurface extent: aPoint
+]
+
+{ #category : 'structures' }
+VkSwapchain class >> presentInfoForSwapchain: aSwapchainHandle imageIndex: anImageIndex waitSemaphore: aSemaphoreHandle [
+	"The request vkQueuePresentKHR reads: one swapchain, the index of the image in it that is
+	 ready, and the semaphore that says when the rendering into that image finished. No run of
+	 per-swapchain results is asked for, because a present of one swapchain learns everything
+	 from the code the call itself answers. The request owns the three runs it points at, so
+	 freePresentInfo: is what gives all four blocks back."
+
+	| info |
+	info := VkPresentInfoKHR externalInstance.
+	^ info
+		  waitSemaphoreCount: self semaphoresPerPresent;
+		  pWaitSemaphores: (self runOfOneHandle: aSemaphoreHandle);
+		  swapchainCount: self swapchainsPerPresent;
+		  pSwapchains: (self runOfOneHandle: aSwapchainHandle);
+		  pImageIndices: (self runOfOneImageIndex: anImageIndex);
+		  yourself
 ]
 
 { #category : 'accessing' }
@@ -135,6 +199,48 @@ VkSwapchain class >> presentModeNameFor: aValue [
 		   ifNone: [ ^ aValue printString ]) asString
 ]
 
+{ #category : 'structures' }
+VkSwapchain class >> runOfOneHandle: aHandle [
+	"A Vulkan list of handles is a pointer to a run of them, and a present names lists of one.
+	 A run is not a structure, so there is no field specification to read its width from: one
+	 entry is one pointer wide. The request that points at the run owns it, and
+	 freePresentInfo: gives it back."
+
+	| run |
+	run := ExternalAddress allocate: VkContext pointerSize.
+	run pointerAt: 1 put: aHandle getHandle.
+	^ run
+]
+
+{ #category : 'structures' }
+VkSwapchain class >> runOfOneImageIndex: anImageIndex [
+	"The present request points at one image index per swapchain, so the index travels as a
+	 run of one rather than as a value. The request that points at the run owns it, and
+	 freePresentInfo: gives it back."
+
+	| run |
+	run := ExternalAddress allocate: self imageIndexByteCount.
+	run unsignedLongAt: 1 put: anImageIndex.
+	^ run
+]
+
+{ #category : 'constants' }
+VkSwapchain class >> semaphoresPerPresent [
+	"One semaphore per present: the frame waits for its own rendering to finish and for
+	 nothing else. The count is a caller's choice rather than a property of the request, so
+	 it is named here and written by the builder."
+
+	^ 1
+]
+
+{ #category : 'constants' }
+VkSwapchain class >> swapchainsPerPresent [
+	"One swapchain per present. A present call can carry several, one per window, which this
+	 project never has: a scene draws into one surface."
+
+	^ 1
+]
+
 { #category : 'constants' }
 VkSwapchain class >> unlimitedImageCount [
 	"What VkSurfaceCapabilitiesKHR reports as maxImageCount when the surface sets no upper
@@ -146,19 +252,24 @@ VkSwapchain class >> unlimitedImageCount [
 
 { #category : 'rendering' }
 VkSwapchain >> acquireNextImage: semaphore fence: fence [
+	"Asks the presentation engine for the next image to draw into and answers its index. The
+	 driver writes the index into a plain block, which is not a structure and so keeps its
+	 named width, and the block goes back whatever the call answers. The acquire blocks until
+	 an image is free, and a suboptimal swapchain is not a failure here, as it is not in a
+	 present."
 
-	| idxBuf result |
-	idxBuf := ExternalAddress allocate: 4.
+	| indexBlock result |
+	indexBlock := ExternalAddress allocate: self class imageIndexByteCount.
 	^ [
 	  result := Vk
 		            acquireNextImageKHR: device handle
 		            swapchain: handle
-		            timeout: 18446744073709551615
+		            timeout: Vk noTimeout
 		            semaphore: semaphore
 		            fence: fence
-		            pImageIndex: idxBuf.
+		            pImageIndex: indexBlock.
 	  Vk checkResult: result acceptable: self class acceptablePresentResults.
-	  idxBuf unsignedLongAt: 1 ] ensure: [ idxBuf free ]
+	  indexBlock unsignedLongAt: 1 ] ensure: [ indexBlock free ]
 ]
 
 { #category : 'initialization' }
@@ -286,31 +397,20 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
 
 { #category : 'rendering' }
 VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
-    "VkPresentInfoKHR (64 bytes):
-     0:sType  8:pNext  16:waitSemaphoreCount  20:pWaitSemaphores(ptr)
-     28:swapchainCount  32:pSwapchains(ptr)  40:pImageIndices(ptr)  48:pResults(ptr)"
-    | semBuf presentInfo result |
-    semBuf := ExternalAddress allocate: 8.
-    [ semBuf pointerAt: 1 put: semaphore getHandle.
-      presentInfo := ExternalAddress allocate: 64.
-      [ | idxBuf swapBuf |
-        idxBuf := ExternalAddress allocate: 4.
-        swapBuf := ExternalAddress allocate: 8.
-        [ idxBuf unsignedLongAt: 1 put: imageIndex.
-          swapBuf pointerAt: 1 put: handle getHandle.
-          presentInfo unsignedLongAt: 1  put: VkStructureType presentInfoKHR.
-          presentInfo pointerAt:   9  put: ExternalAddress null.
-          presentInfo unsignedLongAt: 17 put: 1.
-          presentInfo pointerAt:   25 put: semBuf.
-          presentInfo unsignedLongAt: 33 put: 1.
-          presentInfo pointerAt:   41 put: swapBuf.
-          presentInfo pointerAt:   49 put: idxBuf.
-          presentInfo pointerAt:   57 put: ExternalAddress null.
-          result := Vk queuePresentKHR: aVkQueue handle pPresentInfo: presentInfo.
-          Vk checkResult: result acceptable: self class acceptablePresentResults
-        ] ensure: [ idxBuf free. swapBuf free ]
-      ] ensure: [ presentInfo free ]
-    ] ensure: [ semBuf free ]
+	"Hands one image of this swapchain to the presentation engine, once the rendering into it
+	 has signalled the semaphore. The request and the three runs it points at go back together
+	 whatever the driver answers, and a suboptimal swapchain is not a failure: there is no
+	 recreation path here, so the honest response is to carry on with the frame."
+
+	| info result |
+	info := self class
+		        presentInfoForSwapchain: handle
+		        imageIndex: imageIndex
+		        waitSemaphore: semaphore.
+	[
+	result := Vk queuePresentKHR: aVkQueue handle pPresentInfo: info getHandle.
+	Vk checkResult: result acceptable: self class acceptablePresentResults ]
+		ensure: [ self class freePresentInfo: info ]
 ]
 
 { #category : 'accessing' }

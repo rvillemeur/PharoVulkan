@@ -2623,6 +2623,28 @@ VkBindingsTest >> testOnlyOneMethodCreatesAnImageView [
 		equals: #( 'VkImage class >> viewRequestFor:format:' )
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testOnlyOneMethodPresentsASwapchain [
+	"One builder of the request and one caller of the presentation, so there is one place where
+	 a frame reaches the screen. The tests are rejected from the senders: a test naming the call
+	 is itself a sender."
+
+	| callers |
+	callers := (SystemNavigation default allSendersOf:
+		            #queuePresentKHR:pPresentInfo:) reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name asString , ' >> ' , each selector ])
+				asSortedCollection asArray
+		equals: #( 'VkSwapchain >> present:queue:waitSemaphore:' ).
+	self
+		assert: (VkPresentInfoKHR writerRows collect: [ :each | each at: #method ])
+				asArray
+		equals:
+		#( 'VkSwapchain class >> presentInfoForSwapchain:imageIndex:waitSemaphore:' )
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testOnlyOneMethodRecordsAPipelineBarrier [
 	"Every barrier the project records goes through the one method that writes the dependency
@@ -2859,6 +2881,135 @@ VkBindingsTest >> testPhysicalDevicePropertiesLayoutTilesItsWholeStore [
 	self
 		assert: rows last second + rows last third
 		equals: VkPhysicalDeviceProperties byteSize
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPresentInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. Both counts are one for every
+	 present this project makes, but one swapchain and one semaphore are a caller's choice
+	 rather than a property of the structure, and a pointer written in an initializer would be
+	 written again on every read of the field."
+
+	| info setters |
+	info := VkPresentInfoKHR externalInstance.
+	[ self assert: info sType equals: VkStructureType presentInfoKHR ] ensure: [
+		info getHandle free ].
+	setters := (VkPresentInfoKHR >> #initializeConstantFields) messages select: [
+		           :each | VkPresentInfoKHR includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPresentInfoLayoutMatchesTheCLayout [
+	"What vkQueuePresentKHR reads: the chain header, a count and a run of semaphores to wait
+	 on, a count and a run of swapchains, one image index per swapchain, and an optional run
+	 of per-swapchain results. uFFI pads after each of the two counts, which rounds the
+	 request to sixty-four bytes. Every run is pointed at, so each pointer field is one
+	 pointer wide however many elements sit behind it."
+
+	| rows |
+	rows := VkPresentInfoKHR layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #waitSemaphoreCount #pWaitSemaphores
+		           #swapchainCount #pSwapchains #pImageIndices #pResults ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 40 48 56 ).
+	self assert: VkPresentInfoKHR byteSize equals: 64
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPresentRequestExampleKeepsTheCountsAndNoFreedRun [
+	"The example is built by the one writer the present path uses, so its counts are the ones a
+	 real present asks for. Its runs are given back before the copy is kept, so every run field
+	 reads as null rather than as an address that has been freed, and the copy lives in object
+	 memory, so a click frees nothing."
+
+	| example rows |
+	example := VkPresentInfoKHR examplePresentRequestForOneSwapchain.
+	rows := example presentRows.
+	self
+		assert: (rows at: #waitSemaphoreCount)
+		equals: VkSwapchain semaphoresPerPresent.
+	self
+		assert: (rows at: #swapchainCount)
+		equals: VkSwapchain swapchainsPerPresent.
+	self deny: (rows at: #waitsOnASemaphore).
+	self deny: (rows at: #swapchainGiven).
+	self deny: (rows at: #imageIndexGiven).
+	self deny: (rows at: #resultsRequested).
+	self assert: example sType equals: VkStructureType presentInfoKHR.
+	self deny: example getHandle isExternalAddress
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPresentRequestNamesOneSwapchainAndOneSemaphore [
+	"What the builder writes, with no queue in reach: one semaphore to wait on, one swapchain,
+	 one image index, and no run of per-swapchain results, because a present of one swapchain
+	 learns everything from the code the call answers. Each run carries what it was given,
+	 read back through the pointer the request holds. The handles are null here; what matters
+	 is that the runs carry what they were handed."
+
+	| info |
+	info := VkSwapchain
+		        presentInfoForSwapchain: ExternalAddress null
+		        imageIndex: VkSwapchain exampleImageIndex
+		        waitSemaphore: ExternalAddress null.
+	[
+	self assert: info sType equals: VkStructureType presentInfoKHR.
+	self
+		assert: info waitSemaphoreCount
+		equals: VkSwapchain semaphoresPerPresent.
+	self assert: info swapchainCount equals: VkSwapchain swapchainsPerPresent.
+	self deny: info pWaitSemaphores isNull.
+	self deny: info pSwapchains isNull.
+	self deny: info pImageIndices isNull.
+	self assert: info pResults isNull.
+	self
+		assert: (info pImageIndices getHandle unsignedLongAt: 1)
+		equals: VkSwapchain exampleImageIndex ] ensure: [
+		VkSwapchain freePresentInfo: info ]
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPresentRequestTabShowsEveryRowTheRequestReports [
+	"The Present tab is the report laid out, so it must carry one row per entry presentRows
+	 answers: a value added to the report cannot then stay invisible. Building the table only
+	 reads, which is why the report is compared with itself afterwards."
+
+	| example rows table shown |
+	example := VkPresentInfoKHR examplePresentRequestForOneSwapchain.
+	rows := example presentRows.
+	table := example inspectorPresent: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :each | self assert: (shown includes: each) ].
+	self assert: example presentRows equals: rows
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testPresentRowsNameTheCountsAndSayWhichRunsAreThere [
+	"What the Present tab reads. The counts come from the request itself and the three runs are
+	 reported as there or not, because their addresses say nothing to a reader. The results run
+	 is never asked for. Read only, so the tab leaves the store alone."
+
+	| info rows |
+	info := VkSwapchain
+		        presentInfoForSwapchain: ExternalAddress null
+		        imageIndex: VkSwapchain exampleImageIndex
+		        waitSemaphore: ExternalAddress null.
+	rows := [ info presentRows ] ensure: [ VkSwapchain freePresentInfo: info ].
+	self
+		assert: (rows at: #waitSemaphoreCount)
+		equals: VkSwapchain semaphoresPerPresent.
+	self
+		assert: (rows at: #swapchainCount)
+		equals: VkSwapchain swapchainsPerPresent.
+	self assert: (rows at: #waitsOnASemaphore).
+	self assert: (rows at: #swapchainGiven).
+	self assert: (rows at: #imageIndexGiven).
+	self deny: (rows at: #resultsRequested)
 ]
 
 { #category : 'tests' }
@@ -3689,10 +3840,11 @@ VkBindingsTest >> testSwapchainCreateInfoLayoutMatchesTheCLayout [
 
 { #category : 'tests - layout' }
 VkBindingsTest >> testSwapchainCreationWritesNoScalarFieldAtAHandCountedOffset [
-	"The swapchain request is declared, so no method may write it at a counted offset. What is
-	 left is named: the present info, whose own unit has not come yet, and three blocks that
-	 are not structures — the image index an acquire writes, the count and the run of image
-	 handles the driver fills, and the out parameter a creation answers through."
+	"Both structures a swapchain writes are declared, so no method may write either at a
+	 counted offset. What is left is named, and none of it is a structure: the out parameter a
+	 creation answers through, the image index an acquire is given, the count and the run of
+	 image handles the driver fills, and the two runs of one entry a present request points
+	 at."
 
 	| banned offenders |
 	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
@@ -3709,8 +3861,9 @@ VkBindingsTest >> testSwapchainCreationWritesNoScalarFieldAtAHandCountedOffset [
 				asSortedCollection asArray
 		equals: #( 'VkSwapchain >> acquireNextImage:fence:'
 			           'VkSwapchain >> imagesFromDriver'
-			           'VkSwapchain >> present:queue:waitSemaphore:'
-			           'VkSwapchain class >> handleForCreateInfo:on:' )
+			           'VkSwapchain class >> handleForCreateInfo:on:'
+			           'VkSwapchain class >> runOfOneHandle:'
+			           'VkSwapchain class >> runOfOneImageIndex:' )
 ]
 
 { #category : 'tests - layout' }

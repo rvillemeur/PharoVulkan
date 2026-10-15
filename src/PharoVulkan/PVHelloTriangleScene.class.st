@@ -246,10 +246,11 @@ PVHelloTriangleScene >> inspectorSwapchain: aBuilder [
 { #category : 'rendering' }
 PVHelloTriangleScene >> renderFrame [
 	"Answer the swapchain index this frame was drawn into, so a caller can see the cycle
-	 advance. Additive: renderTriangle ignores the answer."
+	 advance. Additive: renderTriangle ignores the answer. The fence wait blocks until the
+	 previous frame's work is done, which is what Vk noTimeout says."
 
 	| imageIndex ext |
-	inFlightFence waitTimeout: 16rFFFFFFFFFFFFFFFF.
+	inFlightFence waitTimeout: Vk noTimeout.
 	inFlightFence reset.
 	imageIndex := swapchain
 		              acquireNextImage: imageAvailable handle

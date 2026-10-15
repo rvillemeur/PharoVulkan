@@ -893,6 +893,37 @@ PVGraphicsTest >> testPrepareReleasesSceneWhenInitialisationFails [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testPresentRequestForARealSwapchainCarriesItsHandleAndIndex [
+	"What only a real swapchain can exercise: the request a present is built from carries the
+	 swapchain's own handle and the index of an image it actually holds. The runs are read
+	 back through the pointers the request holds, which is what proves the driver would find
+	 the handle this project meant to give it, and the request and its runs go back together."
+
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	self windowSceneDo: [ :scene :backendWindow |
+		| swapchain imageIndex info rows |
+		swapchain := scene swapchain.
+		imageIndex := swapchain imageCount - 1.
+		info := VkSwapchain
+			        presentInfoForSwapchain: swapchain handle
+			        imageIndex: imageIndex
+			        waitSemaphore: ExternalAddress null.
+		rows := [
+		        self
+			        assert: (info pSwapchains getHandle pointerAt: 1)
+			        equals: swapchain handle getHandle.
+		        self
+			        assert: (info pImageIndices getHandle unsignedLongAt: 1)
+			        equals: imageIndex.
+		        info presentRows ] ensure: [
+			        VkSwapchain freePresentInfo: info ].
+		self assert: (rows at: #swapchainGiven).
+		self assert: (rows at: #imageIndexGiven).
+		self deny: (rows at: #resultsRequested) ]
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testRenderFrameCyclesThroughTheSwapchainImages [
 	"Phase 6 claimed stable frames; this asserts it. Rendering more frames than the swapchain
 	 has images must acquire every image at least once, which is what says the acquire, submit

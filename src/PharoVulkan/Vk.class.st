@@ -637,6 +637,15 @@ Vk class >> mapMemory: device memory: memory offset: offset size: size flags: fl
         uint32 flags, void* ppData ) )
 ]
 
+{ #category : 'constants' }
+Vk class >> noTimeout [
+	"Every bit of a uint64 set, which is what a Vulkan timeout takes to mean wait until the
+	 call can answer rather than give up after a while. An acquire here blocks: the frame has
+	 nothing to do until the presentation engine lets go of an image."
+
+	^ 16rFFFFFFFFFFFFFFFF
+]
+
 { #category : 'ffi-primitives' }
 Vk class >> primCreateInstance: pCreateInfo allocator: pAllocator instanceOut: pInstance [
     "Raw FFI call. pInstance must be an ExternalAddress pointing to 8 bytes of storage."
