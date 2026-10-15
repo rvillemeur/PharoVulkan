@@ -705,6 +705,44 @@ PVComputeTest >> testComputeLoopSumOnDevice [
 ]
 
 { #category : 'tests' }
+PVComputeTest >> testComputePipelineRequestForARealModuleCarriesItsHandleAndLayout [
+	"The declared request against a real driver: a shader module compiled from this project's
+	 own SPIR-V and a pipeline layout created on the same device. The handles are read back
+	 through the declared fields, so a field declared at the wrong offset or the wrong width
+	 shows as a handle that is missing rather than as a driver that crashes later."
+
+	| module setLayout pipelineLayout request rows |
+	module := VkShaderModule
+		          fromBytes: self buildVectorAddSpirv
+		          device: ctx device.
+	setLayout := VkDescriptorSetLayout on: ctx device.
+	setLayout addStorageBufferBinding: 0 stageFlags: VkShaderStage computeBit.
+	setLayout create.
+	pipelineLayout := VkPipelineLayout
+		                  on: ctx device
+		                  setLayouts: (Array with: setLayout).
+	[
+	request := VkComputePipeline
+		           createInfoForModule: module handle
+		           entryPoint: VkComputePipeline defaultEntryPoint
+		           layout: pipelineLayout handle.
+	rows := [ request computePipelineRows ] ensure: [
+		        VkComputePipeline freeCreateInfo: request ].
+	self assert: (rows at: #moduleGiven).
+	self assert: (rows at: #layoutGiven).
+	self
+		assert: (rows at: #entryPoint)
+		equals: VkComputePipeline defaultEntryPoint.
+	self
+		assert: (rows at: #stageName)
+		equals: (VkShaderStage nameForFlags: VkShaderStage computeBit).
+	self deny: (rows at: #derivesFromAPipeline) ] ensure: [
+		pipelineLayout destroy.
+		setLayout destroy.
+		module destroy ]
+]
+
+{ #category : 'tests' }
 PVComputeTest >> testComputeSelectionClampOnDevice [
 	"The selection kernel must clamp negatives to zero on the device, which proves both
 	 arms of the OpBranchConditional and the OpPhi that joins them."

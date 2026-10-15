@@ -680,6 +680,184 @@ VkBindingsTest >> testComponentMappingAndSubresourceRangeLayoutsMatchTheCLayout 
 	self assert: VkImageSubresourceRange byteSize equals: 20
 ]
 
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testComputePipelineCreationWritesNoFieldAtAHandCountedOffset [
+	"Both structures a compute pipeline creation writes are declared, so no method of
+	 VkComputePipeline may write either at a counted offset. What is left is the out parameter
+	 the creation answers through, which is one handle rather than a structure."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: #pointerAt: #pointerAt:put: #byteAt:
+	             #byteAt:put: ).
+	offenders := (VkComputePipeline methods , VkComputePipeline class methods)
+		             select: [ :method |
+			             method messages anySatisfy: [ :each |
+				             banned includes: each ] ].
+	self
+		assert: (offenders collect: [ :each |
+				 each methodClass name asString , ' >> ' , each selector ])
+				asSortedCollection asArray
+		equals: #( 'VkComputePipeline class >> handleForCreateInfo:on:' )
+]
+
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testComputePipelineRequestExampleIsTheRequestTheProjectMakes [
+	"The example is the request this project creates every compute pipeline from, kept in object
+	 memory so a click leaks nothing. The entry point string it pointed at is freed with the
+	 external store, so the kept copy must say so rather than point at freed memory, and
+	 everything a caller does not choose stays as it was."
+
+	| request |
+	request := VkComputePipelineCreateInfo
+		           exampleRequestForAComputeShader.
+	self
+		assert: request sType
+		equals: VkStructureType computePipelineCreateInfo.
+	self
+		assert: request stage sType
+		equals: VkStructureType pipelineShaderStageCreateInfo.
+	self assert: request stage stage equals: VkShaderStage computeBit.
+	self assert: request stage pName isNull.
+	self assert: request pNext isNull.
+	self
+		assert: request basePipelineIndex
+		equals: VkComputePipeline noBasePipelineIndex
+]
+
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testComputePipelineRequestInitializesOnlyWhatIsConstantForTheType [
+	"The request's own structure type is fixed by its type, so it is written once over a real
+	 store. The nested stage's type is just as fixed, but it may not be written in an
+	 initializer: the generated getter for a nested field answers the stage through fromHandle:,
+	 so initialize runs on every read of the field, and a stage that initialized itself would
+	 write into the request's store each time the field is read. Its builder writes it instead."
+
+	| request setters |
+	request := VkComputePipelineCreateInfo externalInstance.
+	[
+	self
+		assert: request sType
+		equals: VkStructureType computePipelineCreateInfo.
+	self assert: request stage sType equals: 0 ] ensure: [
+		request getHandle free ].
+	setters := (VkComputePipelineCreateInfo >> #initializeConstantFields)
+		           messages select: [ :each |
+		           VkComputePipelineCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: ).
+	self deny:
+		(VkPipelineShaderStageCreateInfo includesSelector:
+			 #initializeConstantFields)
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testComputePipelineRequestLayoutsMatchTheCLayout [
+	"Two structures, one inside the other. A shader stage is the chain header, the flags, which
+	 stage it is, the module it comes from, the entry point in that module and an optional
+	 specialization: forty-eight bytes, with uFFI padding after the flags and the stage field
+	 pair so the module lands pointer aligned. A compute pipeline request carries one of those
+	 by value at byte twenty-four, then the layout, the pipeline it derives from and the index
+	 of that pipeline, which rounds it to ninety-six bytes."
+
+	| stageRows requestRows |
+	stageRows := VkPipelineShaderStageCreateInfo layoutRows.
+	self
+		assert: (stageRows collect: [ :each | each first ]) asArray
+		equals:
+			#( #sType #pNext #flags #stage #module #pName
+			   #pSpecializationInfo ).
+	self
+		assert: (stageRows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 ).
+	self assert: VkPipelineShaderStageCreateInfo byteSize equals: 48.
+	requestRows := VkComputePipelineCreateInfo layoutRows.
+	self
+		assert: (requestRows collect: [ :each | each first ]) asArray
+		equals:
+			#( #sType #pNext #flags #stage #layout #basePipelineHandle
+			   #basePipelineIndex ).
+	self
+		assert: (requestRows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 72 80 88 ).
+	self assert: VkComputePipelineCreateInfo byteSize equals: 96.
+	self
+		assert: (requestRows detect: [ :each | each first = #stage ]) third
+		equals: VkPipelineShaderStageCreateInfo byteSize
+]
+
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testComputePipelineRequestNamesTheComputeStageAndNoBasePipeline [
+	"What the one builder writes, read back through the declared fields. A builder is a function
+	 of its arguments, so no device is needed: null handles stand for the module and the layout.
+	 The entry point arrives as a Pharo string and leaves as a NUL terminated C string the
+	 request points at, and the pipeline derives from nothing, which in a signed field is minus
+	 one."
+
+	| request |
+	request := VkComputePipeline
+		           createInfoForModule:
+		           (VkShaderModule_H fromHandle: ExternalAddress null)
+		           entryPoint: VkComputePipeline defaultEntryPoint
+		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null).
+	[
+	self
+		assert: request stage sType
+		equals: VkStructureType pipelineShaderStageCreateInfo.
+	self assert: request stage stage equals: VkShaderStage computeBit.
+	self
+		assert: request stage pName getHandle readString asString
+		equals: VkComputePipeline defaultEntryPoint.
+	self assert: request stage pSpecializationInfo isNull.
+	self assert: request basePipelineHandle isNull.
+	self
+		assert: request basePipelineIndex
+		equals: VkComputePipeline noBasePipelineIndex ] ensure: [
+		VkComputePipeline freeCreateInfo: request ]
+]
+
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testComputePipelineRequestTabShowsEveryRowTheRequestReports [
+	"The Pipeline tab is the report laid out, so it must carry one row per entry
+	 computePipelineRows answers: a value added to the report cannot then stay invisible.
+	 Building the table only reads, which is why the report is compared with itself afterwards."
+
+	| example rows table shown |
+	example := VkComputePipelineCreateInfo exampleRequestForAComputeShader.
+	rows := example computePipelineRows.
+	table := example inspectorComputePipeline: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :each | self assert: (shown includes: each) ].
+	self assert: example computePipelineRows equals: rows
+]
+
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testComputePipelineRowsNameTheStageAndTheEntryPoint [
+	"The rows the Pipeline tab reads: which stage the shader is, whether a module and a layout
+	 are given, the entry point in that module, and whether the pipeline derives from another.
+	 The stage is named through VkShaderStage rather than shown as a bitmask, and the entry
+	 point is read back out of the C string the request points at."
+
+	| request rows |
+	request := VkComputePipeline
+		           createInfoForModule:
+		           (VkShaderModule_H fromHandle: ExternalAddress null)
+		           entryPoint: VkComputePipeline defaultEntryPoint
+		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null).
+	rows := [ request computePipelineRows ] ensure: [
+		        VkComputePipeline freeCreateInfo: request ].
+	self
+		assert: (rows at: #stageName)
+		equals: (VkShaderStage nameForFlags: VkShaderStage computeBit).
+	self assert: (rows at: #entryPoint) equals: VkComputePipeline defaultEntryPoint.
+	self deny: (rows at: #moduleGiven).
+	self deny: (rows at: #layoutGiven).
+	self deny: (rows at: #specializationGiven).
+	self deny: (rows at: #derivesFromAPipeline)
+]
+
 { #category : 'tests - layout' }
 VkBindingsTest >> testComputeSubmitCarriesOneCommandBufferAndNoSemaphore [
 	"The compute path submits one command buffer and waits with vkQueueWaitIdle, so its batch
@@ -2465,6 +2643,28 @@ VkBindingsTest >> testOnlyOneMethodCreatesACommandPool [
 		assert: (writers collect: [ :each |
 				 each methodClass name , ' >> ' , each selector ]) asArray
 		equals: #( 'VkCommandPool class >> handleForCreateInfo:on:' )
+]
+
+{ #category : 'tests - compute pipeline' }
+VkBindingsTest >> testOnlyOneMethodCreatesAComputePipeline [
+	"One builder of the request and one caller of the creation, so one place owns the out
+	 parameter the creation answers through. The tests are rejected from the senders: a test
+	 naming the call is itself a sender."
+
+	| callers |
+	callers := (SystemNavigation default allSendersOf:
+		            #createComputePipelines:pipelineCache:createInfoCount:createInfos:allocator:pipelines:)
+		           reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name asString , ' >> ' , each selector ])
+				asSortedCollection asArray
+		equals: #( 'VkComputePipeline class >> handleForCreateInfo:on:' ).
+	self
+		assert: (VkComputePipelineCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkComputePipeline class >> createInfoForModule:entryPoint:layout:' )
 ]
 
 { #category : 'tests - structures' }
