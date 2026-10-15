@@ -181,19 +181,28 @@ PVGraphicsTest >> offscreenTargetExtent: aPoint do: aBlock [
 
 { #category : 'running' }
 PVGraphicsTest >> renderedOffscreenTriangleDo: aBlock [
-	"Draws the hello triangle once into an offscreen target and passes the scene to the block,
-	 which can then probe pixels. Drawing needs a device that can do graphics, which the plain
-	 compute context does not ask for. The scene and the context are released afterwards even
-	 if the block raises."
+	"Draws the hello triangle once into an offscreen target of the example extent and passes
+	 the scene to the block. The extent is square, which most of the pixel tests want: their
+	 measured coordinates were taken on it."
+
+	self
+		renderedOffscreenTriangleOfExtent: PVOffscreenTriangleScene exampleExtent
+		do: aBlock
+]
+
+{ #category : 'running' }
+PVGraphicsTest >> renderedOffscreenTriangleOfExtent: aPoint do: aBlock [
+	"Draws the hello triangle once into an offscreen target of the given extent and passes the
+	 scene to the block, which can then probe pixels. Drawing needs a device that can do
+	 graphics, which the plain compute context does not ask for. The scene and the context are
+	 released afterwards even if the block raises."
 
 	| context scene |
 	context := VkContext offscreenGraphicsContext.
 	[
 	scene := nil.
 	[
-	scene := PVOffscreenTriangleScene
-		         on: context
-		         extent: PVOffscreenTriangleScene exampleExtent.
+	scene := PVOffscreenTriangleScene on: context extent: aPoint.
 	scene renderOnce.
 	aBlock value: scene ] ensure: [ scene ifNotNil: [ scene destroy ] ] ]
 		ensure: [ context destroy ]
@@ -700,6 +709,27 @@ PVGraphicsTest >> testOffscreenTrianglePixelRulesAllPassAndChangeNothing [
 		scene pixelRules do: [ :rule |
 			self assert: (rule third value: (scene pixelAt: rule first)) ].
 		self assert: scene target pixels equals: before ]
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testOffscreenTriangleRulesHoldOnANonSquareTarget [
+	"Every pixel rule of the render holds on a target twice as wide as it is high. The viewport
+	 and the scissor are the two structures whose width and height a square target cannot tell
+	 apart: swap them and the triangle is drawn into half the picture and clipped out of the
+	 other half, so the corners stop being cleared or the probe near a vertex stops carrying
+	 that vertex's colour. The rules are asked of the scene rather than restated, so this test
+	 says the same thing on a non-square target that the square tests say on theirs."
+
+	self
+		renderedOffscreenTriangleOfExtent:
+		PVOffscreenTriangleScene exampleExtent x
+		@ (PVOffscreenTriangleScene exampleExtent y // 2)
+		do: [ :scene |
+			self deny: scene pixelRules isEmpty.
+			scene pixelRules do: [ :rule |
+				self
+					assert: (rule third value: (scene pixelAt: rule first))
+					description: rule second , ' failed at ' , rule first printString ] ]
 ]
 
 { #category : 'tests - driver lifecycle' }

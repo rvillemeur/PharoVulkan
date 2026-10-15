@@ -1985,6 +1985,29 @@ VkBindingsTest >> testOnlyOneMethodRecordsAPipelineBarrier [
 		equals: #( 'VkCommandBuffer >> recordBarrier:' )
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testOnlyOneMethodSetsTheViewportAndOneSetsTheScissor [
+	"Both dynamic state commands are recorded in one place each, so the structure each hands
+	 the driver has one writer. The senders are asked of the system, and the tests are
+	 rejected: a test naming the call is itself a sender."
+
+	| expected |
+	expected := {
+		            (#cmdSetViewport:firstViewport:viewportCount:pViewports:
+		             -> 'VkCommandBuffer >> recordViewport:').
+		            (#cmdSetScissor:firstScissor:scissorCount:pScissors:
+		             -> 'VkCommandBuffer >> recordScissor:') }.
+	expected do: [ :each |
+		| writers |
+		writers := (SystemNavigation default allSendersOf: each key) reject: [
+			           :sender |
+			           sender methodClass instanceSide includesBehavior: TestCase ].
+		self
+			assert: (writers collect: [ :sender |
+					 sender methodClass name , ' >> ' , sender selector ]) asArray
+			equals: { each value } ]
+]
+
 { #category : 'tests - result codes' }
 VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
 	"Observed on this device: allocating a set out of a pool built for zero sets answers
@@ -2163,6 +2186,21 @@ VkBindingsTest >> testRect2DLayoutsMatchTheCLayout [
 		self assert: each key byteSize equals: 8 ]
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testRectRowsReportTheOffsetAndTheExtentOfAnyRectangle [
+	"A rectangle serves both the scissor and the render pass's render area, so its rows belong
+	 to the rectangle and say nothing about which of the two it is. A rectangle covering a
+	 target from its origin clips nothing, which the rows state as a fact about the offset
+	 rather than as a claim about the caller."
+
+	| scissor rows |
+	scissor := VkCommandBuffer scissorForExtent: 3 @ 2.
+	rows := [ scissor rectRows ] ensure: [ scissor getHandle free ].
+	self assert: (rows at: #extent) equals: 3 @ 2.
+	self assert: (rows at: #offset) equals: 0 @ 0.
+	self assert: (rows at: #atTheOrigin)
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testRenderPassBeginInfoCarriesTheExtentAndOneClearValue [
 	"The begin info the recorder builds: the render area starts at the image's corner and covers
@@ -2274,6 +2312,23 @@ VkBindingsTest >> testResultCodesViewMarksTheInspectedCodeAndNothingElse [
 	self assert: marked first name equals: 'VK_SUBOPTIMAL_KHR'.
 	self deny: result isError.
 	self assert: result code equals: VkResult vkSuboptimalKHR
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testScissorCoversTheWholeTarget [
+	"The scissor the recorder builds clips nothing: it is the whole target from its origin, so
+	 only the extent is written and the offset is the zero a fresh block holds. The rectangle
+	 is the same declared class the render pass uses for its render area."
+
+	| scissor extent |
+	extent := 3 @ 2.
+	scissor := VkCommandBuffer scissorForExtent: extent.
+	[
+		self assert: scissor extent width equals: extent x.
+		self assert: scissor extent height equals: extent y.
+		self assert: scissor offset x equals: 0.
+		self assert: scissor offset y equals: 0 ] ensure: [
+		scissor getHandle free ]
 ]
 
 { #category : 'tests - structures' }
@@ -2569,6 +2624,104 @@ VkBindingsTest >> testValueConstantsNameEveryConstantTheyDeclare [
 				assert: (each perform: (each nameForValue: value))
 				equals: value ].
 		self assert: (each nameForValue: -1) isNil ]
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testViewportAndScissorWriteNoScalarFieldAtAHandCountedOffset [
+	"The viewport and the rectangle are declared, so none of the methods that build or record
+	 either dynamic state may poke a scalar or a float at a counted offset. The float pokes are
+	 banned here as well, because a viewport is six floats and counting them out was exactly
+	 what this unit replaced."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #floatAt: #floatAt:put:
+	             #signedLongAt: #signedLongAt:put: ).
+	offenders := {
+		             (VkCommandBuffer -> #setViewport:).
+		             (VkCommandBuffer -> #setScissor:).
+		             (VkCommandBuffer -> #recordViewport:).
+		             (VkCommandBuffer -> #recordScissor:).
+		             (VkCommandBuffer class -> #viewportForExtent:).
+		             (VkCommandBuffer class -> #scissorForExtent:) } select: [
+		             :each |
+		             (each key includesSelector: each value) and: [
+			             (each key >> each value) messages anySatisfy: [ :message |
+				             banned includes: message ] ] ].
+	self assertEmpty: offenders asArray.
+	self assert: (VkCommandBuffer includesSelector: #recordViewport:).
+	self assert: (VkCommandBuffer includesSelector: #recordScissor:)
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testViewportCoversTheTargetAtTheFullDepthRange [
+	"The viewport the recorder builds for an extent covers the whole target from its origin and
+	 maps the whole depth range. The origin and the near plane are the zeros a fresh block
+	 already holds, so only the size and the far plane are written."
+
+	| viewport extent |
+	extent := 3 @ 2.
+	viewport := VkCommandBuffer viewportForExtent: extent.
+	[
+		self assert: viewport width equals: extent x.
+		self assert: viewport height equals: extent y.
+		self
+			assert: viewport maxDepth
+			equals: VkCommandBuffer viewportMaxDepth.
+		self assert: viewport x equals: 0.0.
+		self assert: viewport y equals: 0.0.
+		self assert: viewport minDepth equals: 0.0 ] ensure: [
+		viewport getHandle free ]
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testViewportFixesNoFieldByItsType [
+	"A viewport carries no chain header, so no field is fixed by the type and the class
+	 overrides nothing. A fresh block is a viewport of no size at a depth range of zero to
+	 zero, which draws nothing: every field a caller means is written."
+
+	| viewport |
+	self deny: (VkViewport includesSelector: #initializeConstantFields).
+	viewport := VkViewport externalInstance.
+	[
+		self assert: viewport x equals: 0.0.
+		self assert: viewport width equals: 0.0.
+		self assert: viewport maxDepth equals: 0.0 ] ensure: [
+		viewport getHandle free ]
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testViewportLayoutMatchesTheCLayout [
+	"A viewport is six floats at four byte stride with no padding anywhere: the origin, the
+	 size and the depth range the rasteriser maps z into."
+
+	| rows |
+	rows := VkViewport layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #x #y #width #height #minDepth #maxDepth ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 16 20 ).
+	self
+		assert: (rows collect: [ :each | each third ]) asArray
+		equals: #( 4 4 4 4 4 4 ).
+	self assert: VkViewport byteSize equals: 24
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testViewportRowsNameTheDepthRangeAndTheExtent [
+	"The Viewport tab reads its rows off the viewport itself, so it cannot claim an origin, a
+	 size or a depth range the structure stopped carrying. The depth range is reported as the
+	 pair the rasteriser maps z into, and a viewport that covers its target from the origin
+	 says so in words rather than leaving a reader two zeros to interpret."
+
+	| viewport rows |
+	viewport := VkCommandBuffer viewportForExtent: 3 @ 2.
+	rows := [ viewport viewportRows ] ensure: [ viewport getHandle free ].
+	self assert: (rows at: #extent) equals: 3 @ 2.
+	self assert: (rows at: #origin) equals: 0 @ 0.
+	self assert: (rows at: #atTheOrigin).
+	self assert: (rows at: #depthRange) equals: 0.0 -> 1.0
 ]
 
 { #category : 'tests' }

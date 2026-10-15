@@ -108,6 +108,20 @@ VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine [
 		  context destroy ]
 ]
 
+{ #category : 'constants' }
+VkCommandBuffer class >> firstScissorIndex [
+	"The scissor slot the one rectangle is bound to."
+
+	^ 0
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> firstViewportIndex [
+	"The viewport slot the one viewport is bound to."
+
+	^ 0
+]
+
 { #category : 'recording' }
 VkCommandBuffer class >> hostReadBarrier [
 	"The barrier a recording needs before the host reads what the device wrote: everything a
@@ -194,12 +208,64 @@ VkCommandBuffer class >> renderPassBeginInfoFor: aRenderPassHandle framebuffer: 
 	^ info
 ]
 
+{ #category : 'structures' }
+VkCommandBuffer class >> scissorForExtent: aPoint [
+	"A scissor rectangle covering the whole of a target of this extent, so nothing is clipped.
+	 The offset is the zero a fresh block holds. The caller owns the structure and frees its
+	 handle."
+
+	| scissor |
+	scissor := VkRect2D externalInstance.
+	scissor extent
+		width: aPoint x;
+		height: aPoint y.
+	^ scissor
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> scissorsPerCommand [
+	"One scissor rectangle, matching the one viewport."
+
+	^ 1
+]
+
 { #category : 'constants' }
 VkCommandBuffer class >> subpassContents [
 	"Every subpass in this project is recorded in the buffer that begins the pass, because the
 	 pool allocates primary buffers only."
 
 	^ VkSubpassContents inline
+]
+
+{ #category : 'structures' }
+VkCommandBuffer class >> viewportForExtent: aPoint [
+	"A viewport covering the whole of a target of this extent at the full depth range. The
+	 origin and the near plane are the zeros a fresh block holds. The caller owns the structure
+	 and frees its handle."
+
+	| viewport |
+	viewport := VkViewport externalInstance.
+	^ viewport
+		  width: aPoint x;
+		  height: aPoint y;
+		  maxDepth: self viewportMaxDepth;
+		  yourself
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> viewportMaxDepth [
+	"The far plane of the depth range every viewport this project records maps z into. The near
+	 plane is the zero a fresh viewport already holds."
+
+	^ 1.0
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> viewportsPerCommand [
+	"One viewport covering the whole target; a multiple viewport pipeline would need a device
+	 feature this project does not ask for."
+
+	^ 1
 ]
 
 { #category : 'recording' }
@@ -509,30 +575,44 @@ VkCommandBuffer >> recordRenderPassBeginWith: aBeginInfo [
 		contents: self class subpassContents
 ]
 
-{ #category : 'setter' }
-VkCommandBuffer >> setScissor: aPoint [
-    "VkRect2D (16 bytes): 0:offset.x  4:offset.y  8:extent.width  12:extent.height"
-    | sc |
-    sc := ExternalAddress allocate: 16.
-    [ sc unsignedLongAt: 1 put: 0.
-      sc unsignedLongAt: 5 put: 0.
-      sc unsignedLongAt: 9 put: aPoint x.
-      sc unsignedLongAt: 13 put: aPoint y.
-      Vk cmdSetScissor: handle firstScissor: 0 scissorCount: 1 pScissors: sc
-    ] ensure: [ sc free ]
+{ #category : 'recording' }
+VkCommandBuffer >> recordScissor: aRect [
+	"The one sender of vkCmdSetScissor in the project. The driver reads the rectangle as it
+	 records, so the structure must outlive this call and the caller frees it."
+
+	Vk
+		cmdSetScissor: handle
+		firstScissor: self class firstScissorIndex
+		scissorCount: self class scissorsPerCommand
+		pScissors: aRect getHandle
 ]
 
-{ #category : 'setter' }
+{ #category : 'recording' }
+VkCommandBuffer >> recordViewport: aViewport [
+	"The one sender of vkCmdSetViewport in the project. The driver reads the viewport as it
+	 records, so the structure must outlive this call and the caller frees it."
+
+	Vk
+		cmdSetViewport: handle
+		firstViewport: self class firstViewportIndex
+		viewportCount: self class viewportsPerCommand
+		pViewports: aViewport getHandle
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> setScissor: aPoint [
+	"Bind one scissor rectangle covering a target of this extent, which clips nothing."
+
+	| scissor |
+	scissor := self class scissorForExtent: aPoint.
+	[ self recordScissor: scissor ] ensure: [ scissor getHandle free ]
+]
+
+{ #category : 'recording' }
 VkCommandBuffer >> setViewport: aPoint [
-    "VkViewport (24 bytes): 0:x  4:y  8:width  12:height  16:minDepth  20:maxDepth"
-    | vp |
-    vp := ExternalAddress allocate: 24.
-    [ vp floatAt: 1 put: 0.0.
-      vp floatAt: 5 put: 0.0.
-      vp floatAt: 9 put: aPoint x asFloat.
-      vp floatAt: 13 put: aPoint y asFloat.
-      vp floatAt: 17 put: 0.0.
-      vp floatAt: 21 put: 1.0.
-      Vk cmdSetViewport: handle firstViewport: 0 viewportCount: 1 pViewports: vp
-    ] ensure: [ vp free ]
+	"Bind one viewport covering a target of this extent."
+
+	| viewport |
+	viewport := self class viewportForExtent: aPoint.
+	[ self recordViewport: viewport ] ensure: [ viewport getHandle free ]
 ]
