@@ -3480,6 +3480,172 @@ VkBindingsTest >> testSubpassContentsNamesItsOwnValues [
 		equals: VkSubpassContents inline
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSurfaceCapabilitiesRowsNameTheTransformsTheAlphaAndTheUsage [
+	"What the Surface tab reads. The masks are decoded through their constant classes rather
+	 than restated, and the image count the project would ask for is asked of VkSwapchain
+	 itself, so the tab cannot disagree with what creation does. A maximum of zero is reported
+	 as unlimited rather than as no images allowed. Read only, so the tab leaves the store
+	 alone."
+
+	| capabilities rows |
+	capabilities := VkSurfaceCapabilitiesKHR
+		                exampleCapabilitiesAWindowSurfaceMightReport.
+	rows := capabilities surfaceRows.
+	self
+		assert: (rows at: #minImageCount)
+		equals: VkSurfaceCapabilitiesKHR exampleMinImageCount.
+	self assert: (rows at: #maxImageCountIsUnlimited).
+	self
+		assert: (rows at: #swapchainImageCount)
+		equals: (VkSwapchain imageCountFor: capabilities).
+	self assert: (rows at: #currentExtent) equals: VkImage exampleExtent.
+	self assert: (rows at: #maxImageArrayLayers) equals: VkImage arrayLayerCount.
+	self assert: (rows at: #currentTransformName) equals: 'Identity'.
+	self assert: (rows at: #supportedTransformNames) equals: 'Identity'.
+	self assert: (rows at: #supportedCompositeAlphaNames) equals: 'Opaque'.
+	self
+		assert: (rows at: #supportedUsageNames)
+		equals: (VkImageUsage nameForFlags: VkImageUsage colorAttachmentBit).
+	capabilities maxImageCount: capabilities minImageCount.
+	self deny: (capabilities surfaceRows at: #maxImageCountIsUnlimited)
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSurfaceFormatChoicePrefersTheFormatTheProjectRendersIn [
+	"The choice is a function of what the surface offered, so it is tested without a surface.
+	 The format the shaders and the render pass are written for is taken when the surface
+	 offers it, whatever position it is in; otherwise the first format offered is taken,
+	 because a surface always offers at least one and refusing to present is worse than
+	 presenting in another format. A surface that offered nothing has nothing to choose."
+
+	| offered other |
+	offered := VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport.
+	other := VkSurfaceFormatKHR new.
+	other
+		format: VkFormat r32g32b32Sfloat;
+		colorSpace: VkColorSpace srgbNonlinearKHR.
+	self
+		assert: (VkSurface formatPreferredFrom: { other. offered }) format
+		equals: VkSurface formatRenderedIn.
+	self
+		assert: (VkSurface formatPreferredFrom: { other }) format
+		equals: other format.
+	self assert: (VkSurface formatPreferredFrom: #(  )) isNil
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSurfaceFormatRowsNameTheFormatAndTheColourSpace [
+	"What the Format tab reads. Whether this is the pair the project renders in is asked of
+	 VkSurface, which is what the choice itself asks, so the tab cannot name a preference the
+	 choice stopped making. A format no constant names is shown as its number rather than
+	 dropped."
+
+	| surfaceFormat rows |
+	surfaceFormat := VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport.
+	rows := surfaceFormat formatRows.
+	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
+	self assert: (rows at: #colorSpaceName) equals: 'srgbNonlinearKHR'.
+	self assert: (rows at: #rendersThisProject).
+	surfaceFormat format: VkFormat r32g32Sfloat.
+	rows := surfaceFormat formatRows.
+	self deny: (rows at: #rendersThisProject).
+	surfaceFormat format: 0 - 1.
+	self assert: (surfaceFormat formatRows at: #formatName) equals: '-1'
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSurfaceQueriesReadNoFieldAtAHandCountedOffset [
+	"Both structures the surface queries answer are declared, so no method of VkSurface, on
+	 either side, may read a field at a counted offset. The two scalar out parameters are the
+	 exception and are named: a count and a boolean the driver writes into a four byte block
+	 are not structure fields and carry no field specification to read a width from. The
+	 swapchain still writes its own request by hand; that is the next unit."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: #pointerAt: #pointerAt:put: ).
+	offenders := (VkSurface methods , VkSurface class methods) select: [
+		             :method |
+		             method messages anySatisfy: [ :each |
+			             banned includes: each ] ].
+	self
+		assert: (offenders collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkSurface >> formatCountInto:' 'VkSurface >> supportsPresentation:' )
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSurfaceQueryLayoutsMatchTheCLayout [
+	"The two structures the surface queries answer. The capabilities carry three VkExtent2D by
+	 value, so a layout that reported a pointer width for them would put every field after the
+	 first extent in the wrong place. Neither structure has a chain header: the driver fills
+	 them, so there is nothing for an application to extend."
+
+	| rows |
+	rows := VkSurfaceCapabilitiesKHR layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #minImageCount #maxImageCount #currentExtent #minImageExtent
+		           #maxImageExtent #maxImageArrayLayers #supportedTransforms
+		           #currentTransform #supportedCompositeAlpha #supportedUsageFlags ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 16 24 32 36 40 44 48 ).
+	self assert: VkSurfaceCapabilitiesKHR byteSize equals: 52.
+	(rows select: [ :each | each first endsWith: 'Extent' ]) do: [ :each |
+		self assert: each third equals: VkExtent2D byteSize ].
+	rows := VkSurfaceFormatKHR layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #format #colorSpace ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 ).
+	self assert: VkSurfaceFormatKHR byteSize equals: 8
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSurfaceQueryStructuresInitializeNothing [
+	"A structure the driver fills carries no chain header, so it has nothing that is constant
+	 for its type and must not declare an initializer at all: VkStructure runs
+	 initializeConstantFields on every read of a nested field, and both of these are read as
+	 copies of a block the driver wrote."
+
+	self deny: (VkSurfaceCapabilitiesKHR includesSelector: #initializeConstantFields).
+	self deny: (VkSurfaceFormatKHR includesSelector: #initializeConstantFields).
+	self deny: (VkSurfaceCapabilitiesKHR canUnderstand: #sType).
+	self deny: (VkSurfaceFormatKHR canUnderstand: #sType)
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainImageCountAsksForOneMoreThanTheSurfaceDemands [
+	"One image more than the surface demands, so a frame can be drawn while another is
+	 presented, and never more than the surface allows. A maximum of zero means the surface
+	 sets no maximum, and the degenerate reading of that — clamping to zero images — would
+	 ask for a swapchain with nothing in it."
+
+	| capabilities |
+	capabilities := VkSurfaceCapabilitiesKHR
+		                exampleCapabilitiesAWindowSurfaceMightReport.
+	self
+		assert: (VkSwapchain imageCountFor: capabilities)
+		equals:
+		VkSurfaceCapabilitiesKHR exampleMinImageCount
+		+ VkSwapchain imagesBeyondMinimum.
+	capabilities maxImageCount: capabilities minImageCount.
+	self
+		assert: (VkSwapchain imageCountFor: capabilities)
+		equals: capabilities minImageCount.
+	capabilities maxImageCount: VkSwapchain unlimitedImageCount.
+	capabilities minImageCount: 1.
+	self
+		assert: (VkSwapchain imageCountFor: capabilities)
+		equals: 1 + VkSwapchain imagesBeyondMinimum
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testSynchronisationPrimitivesWriteNoScalarFieldAtAHandCountedOffset [
 	"Both create infos are declared, so no method of either wrapper, on either side, may poke a

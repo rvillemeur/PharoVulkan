@@ -283,6 +283,11 @@ PVHelloTriangleScene >> seeClassSide [
 ]
 
 { #category : 'accessing' }
+PVHelloTriangleScene >> surface [
+	^ surface
+]
+
+{ #category : 'accessing' }
 PVHelloTriangleScene >> swapchain [ ^ swapchain
 ]
 

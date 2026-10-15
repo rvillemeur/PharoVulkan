@@ -184,6 +184,16 @@ Vk class >> cmdSetViewport: cmdBuf firstViewport: first viewportCount: count pVi
         void* pViewports ) )
 ]
 
+{ #category : 'constants' }
+Vk class >> countByteCount [
+	"A Vulkan count is a uint32, which is the width the driver writes through any of the
+	 pFooCount out parameters of the enumeration calls. A count is not a structure field, so
+	 there is no field specification to read the width from, and it is named here rather than
+	 in each class that enumerates: every one of them would be naming the same fact."
+
+	^ 4
+]
+
 { #category : 'generated-api' }
 Vk class >> createBuffer: device createInfo: pCreateInfo allocator: pAllocator bufferOut: pBuffer [
     ^ self ffiCall: #( VkResult vkCreateBuffer (

@@ -23,7 +23,11 @@ VkRenderConfig class >> colorWriteMaskRGBA [
 
 { #category : 'constants' }
 VkRenderConfig class >> compositeAlphaOpaqueBit [
-	^ 1
+	"Delegates so the value has one home. The composite alpha bits moved to VkCompositeAlpha
+	 when the surface capabilities view had to name which modes a surface accepts, and this
+	 method keeps its sender until the swapchain request unit reaches it."
+
+	^ VkCompositeAlpha opaqueBit
 ]
 
 { #category : 'constants' }

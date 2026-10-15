@@ -989,6 +989,37 @@ PVGraphicsTest >> testSceneDestroyWaitsForGpu [
 	self assert: stub waitIdleCount equals: 1
 ]
 
+{ #category : 'tests - window' }
+PVGraphicsTest >> testSurfaceReportsWhatItAllowsAndWhatItOffersOnThisMachine [
+	"What only a real surface can exercise: the two structures the driver fills. The report
+	 must survive the block it was written into being freed, which is what asking twice and
+	 comparing proves. The format the swapchain was created with must be one the surface
+	 actually offered, and the extent it was created with must lie inside the extents the
+	 surface accepts, or the driver would have refused the swapchain."
+
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	self windowSceneDo: [ :scene :backendWindow |
+		| capabilities formats chosen |
+		capabilities := scene surface capabilities.
+		self assert: capabilities surfaceRows equals: scene surface capabilities surfaceRows.
+		self assert: capabilities minImageCount >= 1.
+		formats := scene surface formats.
+		self denyEmpty: formats.
+		chosen := scene surface preferredFormat.
+		self assert: (formats anySatisfy: [ :each |
+					 each format = chosen format and: [
+						 each colorSpace = chosen colorSpace ] ]).
+		self assert: scene swapchain format equals: chosen format.
+		self assert: scene swapchain imageCount
+			>= (VkSwapchain imageCountFor: capabilities).
+		self
+			assert: scene swapchain extent x >= capabilities minImageExtent width;
+			assert: scene swapchain extent x <= capabilities maxImageExtent width;
+			assert: scene swapchain extent y >= capabilities minImageExtent height;
+			assert: scene swapchain extent y <= capabilities maxImageExtent height ]
+]
+
 { #category : 'tests' }
 PVGraphicsTest >> testSwapchainHasAnImageViewForEveryImage [
 	"What only a surface can exercise: the swapchain the driver actually gave us. Presentation
