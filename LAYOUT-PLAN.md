@@ -268,7 +268,11 @@ are the ones that call into the driver.
   parent must not touch a field carried by value: a getter for a nested field answers the nested
   class through `fromHandle:`, which runs `initialize` over the parent's store. A nested class with
   nothing constant for its type — a swizzle, a subresource range — therefore declares no
-  initializer at all, and a test asserts that it has none.
+  initializer at all, and a test asserts that it has none. A nested structure that does have a
+  field fixed by its type is no exception: a shader stage carries an `sType`, and unit 4h leaves
+  it to the builder, which writes it through the parent's field accessor along with the rest of
+  the stage. An initializer would have written it into the enclosing request on every read of the
+  field, which is the same hazard whether or not the value is the right one.
 - **A constant whose value is zero stays unwritten but still gets a name.** The identity swizzle is
   zero, so writing it would write what the zeroed block already holds; the writer names it in a
   comment and the test asserts it through the constant class, so the request is still read in
@@ -1078,7 +1082,7 @@ widest.
 | ~~`VkImage >> createView`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | ~~`VkRenderPass >> initializeDevice:`~~ | ~~31~~ | attachment, reference, subpass and render pass create infos — **done 15 October 2026** |
 | ~~`VkFramebuffer >> initializeDevice:`~~ | ~~9~~ | `VkFramebufferCreateInfo` — **done 15 October 2026** |
-| `VkComputePipeline >> create` | 13 | `VkComputePipelineCreateInfo`, shader stage create info |
+| ~~`VkComputePipeline >> create`~~ | ~~13~~ | `VkComputePipelineCreateInfo`, shader stage create info — **done 15 October 2026** |
 
 `VkImage >> createView` and `VkSwapchain >> createImageViews` wrote the same structure from two
 places, so declaring `VkImageViewCreateInfo` left one writer, as with the command pool; unit 4a
@@ -1400,3 +1404,52 @@ request from a live swapchain and reads its own handle and an index it holds bac
 
 `VkSwapchain` has no critique left at all: `ReLongMethodsRule` on `present:queue:waitSemaphore:`,
 the last one, went with the rewrite. The suite is 514 tests over the nine concrete test classes.
+
+### 4h — the compute pipeline request, done 15 October 2026
+
+`VkComputePipeline >> create` wrote thirteen offsets over ninety-six bytes, two structures deep, in
+three nested `ensure:` blocks: the request at 1, 9 and 17, the shader stage carried inside it at 25
+through 65, and then the layout, the base pipeline and its index. The entry point string was built
+byte by byte into a block of its own, and the out parameter was a literal eight bytes. Both
+structures are now declared. `VkPipelineShaderStageCreateInfo` is forty-eight bytes at 0, 8, 16, 20,
+24, 32 and 40 — the `flags` and `stage` uint32 pair leaves four bytes of padding so the module
+handle lands on a pointer boundary. `VkComputePipelineCreateInfo` is ninety-six bytes at 0, 8, 16,
+24, 72, 80 and 88, with the stage nested by value at twenty-four, and a test asserts that the
+`stage` row's width is the nested structure's `byteSize` rather than a number of its own.
+
+The nested stage is written through the generated field accessor, which answers a view on the
+request's own bytes, so the builder writes the stage and the request in one place and nothing is
+copied between them. Its structure type is written there too: a nested structure may declare no
+`initializeConstantFields` even when a field is fixed by its type, because the getter runs
+`initialize` over the enclosing store on every read of the field. The request's own
+`initializeConstantFields` stamps `sType` alone.
+
+`VkComputePipeline class >> createInfoForModule:entryPoint:layout:` is the one writer. It allocates
+the NUL terminated entry point string through `Vk class >> allocateCString:`, which already existed
+for callers with no context, rather than filling a block byte by byte. The request owns that string
+and is the record of where it is, so `freeEntryPointOf:` frees it and nulls the field, and
+`freeCreateInfo:` does that and then frees the request — the pairing unit 4g arrived at.
+`handleForCreateInfo:on:` is the only sender of `vkCreateComputePipelines` and the one block left
+read at an offset: the out parameter is a run of one handle, not a structure. `create` is four
+lines: build, create, free in an `ensure:`.
+
+Three constants were named. `defaultEntryPoint` is `'main'`, the name the SPIR-V this project emits
+gives its entry point, which `on:layout:device:` passed as a literal. `pipelinesPerCreate` is one,
+and is both the create-info count and the width of the out parameter in handles.
+`noBasePipelineIndex` is minus one: the field is a signed int32, so the sentinel for deriving from
+no pipeline is minus one rather than the unsigned `4294967295` the old code wrote, which is the same
+bits read through a field that now knows its own sign.
+
+Eight tests red first: both layouts against the C structures including the nested width, that the
+request initializes only its structure type and the stage declares no initializer, what the builder
+writes with the entry point read back out of the C string, that one method creates a compute
+pipeline and one writes the request, the rows the tab reads, the example with its entry point freed
+and its field null, that the Pipeline tab carries one row per entry the report answers, and the
+offset ban over both sides of `VkComputePipeline`, which names `handleForCreateInfo:on:` alone. The
+driver leg `PVComputeTest >> testComputePipelineRequestForARealModuleCarriesItsHandleAndLayout`
+builds the request from a module compiled out of this project's own SPIR-V and a pipeline layout on
+the same device, and reads both handles back through the declared fields; the existing kernel
+dispatch tests create pipelines from the new request end to end.
+
+`VkComputePipeline` and both new structures have no critique. The suite is 523 tests over the nine
+concrete test classes.
