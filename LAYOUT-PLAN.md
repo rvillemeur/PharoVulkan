@@ -118,6 +118,12 @@ are the ones that call into the driver.
   more already in that shape: `VkColorSpace`, `VkSurfaceTransform` and `VkCompositeAlpha`.
   `VkAttachmentOp` cannot be moved at all: its load and store halves share their numbering. `VkApiVersion` and
   `VkRenderConfig` are not value tables and stay where they are.
+- **A builder on the class side is a function of its arguments, so it is tested with no device.**
+  `VkSwapchain class >> createInfoForSurface:format:capabilities:extent:` takes what the surface
+  reported and answers the filled request, so the whole of what the project asks a driver for is
+  checked on a machine with no display; what is left on the instance side is the creation itself,
+  which needs a device. Splitting the builder out is also what removes a long-method critique,
+  rather than rewrapping the lines of one long method.
 - **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
   but not `at:put:`, which lands in the inner array, so the view rows across this project are not
   immutable however the older comments read. The guarantee that holds is that every row builder
@@ -1058,7 +1064,7 @@ widest.
 | Method | Offsets written | Structures |
 |---|---|---|
 | `VkGraphicsPipeline >> initializeDevice:` | 29 | the whole pipeline create info tree |
-| `VkSwapchain >> initializeDevice:` | 19 | `VkSwapchainCreateInfoKHR`; ~~the surface capabilities and formats it reads~~ — **queries done 15 October 2026** |
+| ~~`VkSwapchain >> initializeDevice:`~~ | ~~19~~ | `VkSwapchainCreateInfoKHR` and the surface capabilities and formats it reads — **done 15 October 2026** |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
 | ~~`VkImage >> create`~~ | ~~17~~ | `VkImageCreateInfo` — **done 15 October 2026** |
@@ -1305,3 +1311,50 @@ which asks `VkSurface` whether this is the pair the project renders in.
 offset variables, accepted as for the other wide structures.
 
 The suite is 497 tests over the nine concrete test classes.
+
+### 4f — the swapchain request, done 15 October 2026
+
+`VkSwapchain >> initializeDevice:surface:extent:` wrote nineteen offsets across one hundred and
+four bytes, allocated the request, the out parameter, the image count and the run of image
+handles, and read every answer back, all in one method. `VkSwapchainCreateInfoKHR` is now
+declared: one hundred and four bytes at 0, 8, 16, 24, 32, 36, 40, 44, 52, 56, 60, 64, 72, 80, 84,
+88, 92 and 96, with `imageExtent` carried by value as a `VkExtent2D` and both handle fields
+declared as handles. `initializeConstantFields` sets the structure type alone.
+
+The method split into three. `createInfoForSurface:format:capabilities:extent:` is the builder,
+on the class side and a function of its four arguments, so it is tested with no device in reach:
+it writes twelve values, because the flags, the exclusive sharing mode, both queue family fields
+and the old swapchain are the zeros a fresh block already holds. `handleForCreateInfo:on:` is the
+only sender of `vkCreateSwapchainKHR`, which a test asserts by counting senders, and frees its own
+out parameter. `imagesFromDriver` enumerates the images the driver gave back, which is the one
+place that still allocates a plain block: a count and a run of handles are not structures, so
+they keep `unsignedLongAt:` and `pointerAt:` and are named in the offset ban as exceptions
+alongside the image index an acquire writes and the present info, whose own unit has not come
+yet. What remains in `initializeDevice:surface:extent:` is the four instance variables, the two
+questions asked of the surface, the builder, the creation and the views — and
+`ReLongMethodsRule` on it, which stood through unit 4e, is gone.
+
+`presentModeNameFor:` moved to the class side, so the request and the created swapchain name a
+present mode through one method rather than two copies of the same prefix search, and
+`clipObscuredPixels` names the one that used to be a literal `1`.
+
+Six tests red first: the layout against the C structure including the extent's two words, that
+the request initializes the structure type and nothing else, what the builder writes against
+what the surface reported, that exactly one method creates a swapchain, the rows the tab reads,
+and the ban on counted offsets over both sides of `VkSwapchain` with its four exceptions named.
+Two more cover the artefacts: that the example is what the builder produces and lives in object
+memory, and that the Swapchain tab carries one row per entry the report answers. The driver leg
+`PVGraphicsTest >> testSwapchainRequestForARealSurfaceCarriesWhatTheSurfaceReported` builds the
+request from a real surface's own capabilities and chosen format and checks it carries the
+surface's transform, an image count the surface allows and an extent inside the ones it accepts.
+
+`exampleRequestForAWindowSurface` calls the builder with a null surface handle, named as
+`exampleSurfaceHandle`, and answers `copyIntoObjectMemory`, so a click in the browser frees
+nothing and the example cannot drift from the creation path. The Swapchain tab reads
+`swapchainRows`, which names every value through the class that owns it and reports the surface
+and the old swapchain as set or not, because their addresses say nothing to a reader.
+`VkSwapchainCreateInfoKHR` earns `ReExcessiveVariablesRule` on both sides for its eighteen
+generated offset variables, accepted as for the other wide structures; the only critique left on
+`VkSwapchain` is `ReLongMethodsRule` on `present:queue:waitSemaphore:`, which is its own plan row.
+
+The suite is 506 tests over the nine concrete test classes.
