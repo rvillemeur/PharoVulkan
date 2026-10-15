@@ -281,6 +281,38 @@ PVGraphicsTest >> testBothColorPassVariantsBuildOnTheDevice [
 	offscreen destroy ] ensure: [ context destroy ]
 ]
 
+{ #category : 'tests - render pass' }
+PVGraphicsTest >> testBothPassVariantsAreBuiltFromTheSameBuildersOnThisMachine [
+	"The window variant and the offscreen variant differ in one field, the layout the
+	 attachment leaves the pass in, and are otherwise built from the same four builders. The
+	 window variant is never reached headlessly, because a swapchain needs a surface, yet the
+	 driver accepts it on any device that can draw: presentSrcKHR is a layout, not a surface.
+	 Creating both here is the shape that would break if a builder kept state between calls
+	 or freed a structure before the driver had read it, and it is the only place the window
+	 variant is exercised at all on this machine."
+
+	| context passes |
+	context := VkContext offscreenGraphicsContext.
+	[
+		passes := {
+			          (VkRenderPass
+				           createColorPassDevice: context device
+				           format: PVOffscreenTarget colorFormat).
+			          (VkRenderPass
+				           createOffscreenColorPassDevice: context device
+				           format: PVOffscreenTarget colorFormat).
+			          (VkRenderPass
+				           createOffscreenColorPassDevice: context device
+				           format: PVOffscreenTarget colorFormat) }.
+		[
+			passes do: [ :each | self deny: each handle getHandle isNull ].
+			self
+				assert: (passes collect: [ :each | each handle getHandle asInteger ])
+						asSet size
+				equals: passes size ] ensure: [ passes do: [ :each | each destroy ] ] ]
+		ensure: [ context destroy ]
+]
+
 { #category : 'tests' }
 PVGraphicsTest >> testDisplayAvailabilityAndItsReasonAgreeOnThisMachine [
 	"Whatever this machine offers, exactly one of the two answers holds: a display and no

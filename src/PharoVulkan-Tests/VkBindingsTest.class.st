@@ -80,6 +80,44 @@ VkBindingsTest >> testAccessAndStageFlagsNameTheirOwnBits [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testAttachmentAndSubpassDescriptionLayoutsMatchTheCLayout [
+	"The three structures the request points at. None of them carries a chain header: these are
+	 descriptions read in place rather than chained structures. The attachment description is
+	 nine words, the reference two, and the subpass description five counts and flags among
+	 five pointers, padded to seventy-two bytes."
+
+	| attachmentRows referenceRows subpassRows |
+	attachmentRows := VkAttachmentDescription layoutRows.
+	self
+		assert: (attachmentRows collect: [ :each | each first ]) asArray
+		equals: #( #flags #format #samples #loadOp #storeOp #stencilLoadOp
+		           #stencilStoreOp #initialLayout #finalLayout ).
+	self
+		assert: (attachmentRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 16 20 24 28 32 ).
+	self assert: VkAttachmentDescription byteSize equals: 36.
+	referenceRows := VkAttachmentReference layoutRows.
+	self
+		assert: (referenceRows collect: [ :each | each first ]) asArray
+		equals: #( #attachment #layout ).
+	self
+		assert: (referenceRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 ).
+	self assert: VkAttachmentReference byteSize equals: 8.
+	subpassRows := VkSubpassDescription layoutRows.
+	self
+		assert: (subpassRows collect: [ :each | each first ]) asArray
+		equals: #( #flags #pipelineBindPoint #inputAttachmentCount #pInputAttachments
+		           #colorAttachmentCount #pColorAttachments #pResolveAttachments
+		           #pDepthStencilAttachment #preserveAttachmentCount
+		           #pPreserveAttachments ).
+	self
+		assert: (subpassRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 16 24 32 40 48 56 64 ).
+	self assert: VkSubpassDescription byteSize equals: 72
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testBarrierAndDependencyInfoInitializeOnlyWhatIsConstantForTheType [
 	"The structure type is the only field fixed by either type. Every mask, count and pointer
 	 is the recorder's, and a barrier that bars nothing — all masks zero, no barrier of any
@@ -327,6 +365,63 @@ VkBindingsTest >> testClearValueArrayIsReadByItsNamedStride [
 				assert: (values floatAt:
 						 index - 1 * VkCommandBuffer clearComponentByteCount + 1)
 				equals: (colour at: index) ] ] ensure: [ values free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testColourPassDescriptionsClearTheAttachmentAndLeaveItWhereItIsAsked [
+	"What the three builders write, with no device in reach. The attachment is cleared on load
+	 and kept on store, its stencil halves are not used, it comes in undefined and leaves in the
+	 layout the caller names — which is where the two pass variants differ. The subpass reads it
+	 as a colour attachment at the graphics bind point and names no other attachment."
+
+	| description reference subpass |
+	description := VkRenderPass
+		               attachmentDescriptionForFormat: VkFormat b8g8r8a8Unorm
+		               finalLayout: VkImageLayout transferSrcOptimal.
+	[
+		self assert: description flags equals: 0.
+		self assert: description format equals: VkFormat b8g8r8a8Unorm.
+		self assert: description samples equals: VkRenderConfig sampleCount1Bit.
+		self assert: description loadOp equals: VkAttachmentOp loadClear.
+		self assert: description storeOp equals: VkAttachmentOp storeStore.
+		self
+			assert: description stencilLoadOp
+			equals: VkAttachmentOp loadDontCare.
+		self
+			assert: description stencilStoreOp
+			equals: VkAttachmentOp storeDiscard.
+		self assert: description initialLayout equals: VkImageLayout undefined.
+		self
+			assert: description finalLayout
+			equals: VkImageLayout transferSrcOptimal ] ensure: [
+		description getHandle free ].
+	reference := VkRenderPass colorAttachmentReference.
+	[
+		self
+			assert: reference attachment
+			equals: VkRenderPass firstAttachmentIndex.
+		self
+			assert: reference layout
+			equals: VkImageLayout colorAttachmentOptimal ] ensure: [
+		reference getHandle free ].
+	reference := VkRenderPass colorAttachmentReference.
+	[
+		subpass := VkRenderPass subpassDescriptionReading: reference.
+		[
+			self
+				assert: subpass pipelineBindPoint
+				equals: VkPipelineBindPoint graphics.
+			self
+				assert: subpass colorAttachmentCount
+				equals: VkRenderPass colorAttachmentsPerSubpass.
+			self deny: subpass pColorAttachments isNull.
+			self assert: subpass inputAttachmentCount equals: 0.
+			self assert: subpass pInputAttachments isNull.
+			self assert: subpass pResolveAttachments isNull.
+			self assert: subpass pDepthStencilAttachment isNull.
+			self assert: subpass preserveAttachmentCount equals: 0.
+			self assert: subpass pPreserveAttachments isNull ] ensure: [
+			subpass getHandle free ] ] ensure: [ reference getHandle free ]
 ]
 
 { #category : 'tests - structures' }
@@ -2289,6 +2384,38 @@ VkBindingsTest >> testOnlyOneMethodCreatesAFramebuffer [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCreatesARenderPassAndWritesEachOfItsStructures [
+	"Four structures, one writer each, and one caller of the creation. Both pass variants share
+	 the same builders: the final layout is the only thing that differs between them. The tests
+	 are rejected from the senders: a test naming the call is itself a sender."
+
+	| callers writerOf |
+	callers := (SystemNavigation default allSendersOf:
+		            #createRenderPass:createInfo:allocator:pRenderPass:) reject: [
+		           :each | each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkRenderPass class >> handleForCreateInfo:on:' ).
+	writerOf := [ :structureClass |
+	            (structureClass writerRows collect: [ :each | each at: #method ])
+		            asArray ].
+	self
+		assert: (writerOf value: VkAttachmentDescription)
+		equals:
+		#( 'VkRenderPass class >> attachmentDescriptionForFormat:finalLayout:' ).
+	self
+		assert: (writerOf value: VkAttachmentReference)
+		equals: #( 'VkRenderPass class >> colorAttachmentReference' ).
+	self
+		assert: (writerOf value: VkSubpassDescription)
+		equals: #( 'VkRenderPass class >> subpassDescriptionReading:' ).
+	self
+		assert: (writerOf value: VkRenderPassCreateInfo)
+		equals: #( 'VkRenderPass class >> createInfoForAttachment:subpass:' )
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
 	"Two places ask for a shader module — a device and a compute kernel — and both go through
 	 VkShaderModule, so the create info has exactly one writer. The senders are asked of the
@@ -2393,6 +2520,45 @@ VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
 		assert: (VkResult nameForCode: VkResult vkErrorOutOfPoolMemory)
 		equals: (VkResult nameForSelector: #vkErrorOutOfPoolMemory).
 	self assert: (VkResult withCode: VkResult vkErrorOutOfPoolMemory) isError
+]
+
+{ #category : 'tests - render pass' }
+VkBindingsTest >> testPassRequestRowsNameTheLoadStoreAndLayoutsOfTheAttachment [
+	"What the two tabs read. The attachment's rows name its format, its load and store
+	 operations and the layouts it enters and leaves through their constant classes, so a tab
+	 cannot restate a value the structure does not hold. The request's rows count the
+	 attachments, the subpasses and the dependencies, and report each pointer as set or not
+	 rather than following it, which is why a request pointing at nothing can be asked at
+	 all."
+
+	| description reference subpass rows |
+	description := VkRenderPass
+		               attachmentDescriptionForFormat: VkFormat b8g8r8a8Unorm
+		               finalLayout: VkImageLayout transferSrcOptimal.
+	rows := [ description attachmentRows ] ensure: [
+	        description getHandle free ].
+	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
+	self assert: (rows at: #loadOpName) equals: 'loadClear'.
+	self assert: (rows at: #storeOpName) equals: 'storeStore'.
+	self assert: (rows at: #initialLayoutName) equals: 'undefined'.
+	self assert: (rows at: #finalLayoutName) equals: 'transferSrcOptimal'.
+	self deny: (rows at: #usesStencil).
+	reference := VkRenderPass colorAttachmentReference.
+	rows := [
+	        subpass := VkRenderPass subpassDescriptionReading: reference.
+	        [ | info |
+	        info := VkRenderPass
+		                createInfoForAttachment:
+		                (VkAttachmentDescription fromHandle: ExternalAddress null)
+		                subpass: subpass.
+	        [ info passRequestRows ] ensure: [ info getHandle free ] ] ensure: [
+		        subpass getHandle free ] ] ensure: [ reference getHandle free ].
+	self assert: (rows at: #attachmentCount) equals: VkRenderPass attachmentsPerPass.
+	self deny: (rows at: #attachmentsSet).
+	self assert: (rows at: #subpassCount) equals: VkRenderPass subpassesPerPass.
+	self assert: (rows at: #subpassesSet).
+	self assert: (rows at: #dependencyCount) equals: 0.
+	self deny: (rows at: #dependenciesSet)
 ]
 
 { #category : 'tests - layout' }
@@ -2699,6 +2865,106 @@ VkBindingsTest >> testRenderPassBeginWritesNoScalarFieldAtAHandCountedOffset [
 	self assertEmpty: offenders asArray.
 	self assert:
 		(VkCommandBuffer includesSelector: #recordRenderPassBeginWith:)
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassCreateInfoLayoutMatchesTheCLayout [
+	"The request vkCreateRenderPass reads: chain header, flags, then a count and a pointer for
+	 the attachments, the subpasses and the subpass dependencies. uFFI pads after the flags and
+	 after each count, so the request is sixty-four bytes."
+
+	| rows |
+	rows := VkRenderPassCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #attachmentCount #pAttachments #subpassCount
+		           #pSubpasses #dependencyCount #pDependencies ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 48 56 ).
+	self assert: VkRenderPassCreateInfo byteSize equals: 64
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassCreationWritesNoScalarFieldAtAHandCountedOffset [
+	"All four structures the render pass hands the driver are declared, so no method of the
+	 class, on either side, may poke a scalar or a pointer at a counted offset. Before this unit
+	 one method wrote thirty-one of them."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: #pointerAt:put: ).
+	offenders := (VkRenderPass methods , VkRenderPass class methods) select: [
+		             :method |
+		             method messages anySatisfy: [ :each | banned includes: each ] ].
+	self assertEmpty: (offenders collect: [ :each |
+			 each methodClass name , ' >> ' , each selector ]).
+	offenders := (VkRenderPass methods , VkRenderPass class methods) select: [
+		             :method | method messages includes: #pointerAt: ].
+	self
+		assert: (offenders collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkRenderPass class >> handleForCreateInfo:on:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassRequestNamesOneAttachmentOneSubpassAndNoDependency [
+	"The request itself: one attachment, one subpass, no dependency. The dependency count and
+	 pointer are the zeros a fresh block holds, which is what a pass with a single subpass
+	 needs: there is nothing for a dependency to order."
+
+	| description reference subpass info |
+	description := VkRenderPass
+		               attachmentDescriptionForFormat: VkFormat b8g8r8a8Unorm
+		               finalLayout: VkImageLayout presentSrcKHR.
+	[
+		reference := VkRenderPass colorAttachmentReference.
+		[
+			subpass := VkRenderPass subpassDescriptionReading: reference.
+			[
+				info := VkRenderPass
+					        createInfoForAttachment: description
+					        subpass: subpass.
+				[
+					self
+						assert: info sType
+						equals: VkStructureType renderPassCreateInfo.
+					self assert: info flags equals: 0.
+					self
+						assert: info attachmentCount
+						equals: VkRenderPass attachmentsPerPass.
+					self deny: info pAttachments isNull.
+					self assert: info subpassCount equals: VkRenderPass subpassesPerPass.
+					self deny: info pSubpasses isNull.
+					self assert: info dependencyCount equals: 0.
+					self assert: info pDependencies isNull ] ensure: [
+					info getHandle free ] ] ensure: [ subpass getHandle free ] ]
+			ensure: [ reference getHandle free ] ] ensure: [
+		description getHandle free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testRenderPassStructuresInitializeOnlyWhatIsConstantForTheirType [
+	"Only the request has a structure type to stamp. The three descriptions carry no chain
+	 header at all — the driver reads them in place — so none of them may have an initializer:
+	 each is pointed at from a structure whose getter would otherwise write through the
+	 pointer."
+
+	| info setters |
+	info := VkRenderPassCreateInfo externalInstance.
+	[ self assert: info sType equals: VkStructureType renderPassCreateInfo ]
+		ensure: [ info getHandle free ].
+	setters := (VkRenderPassCreateInfo >> #initializeConstantFields) messages
+		           select: [ :each |
+		           VkRenderPassCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: ).
+	#( #VkAttachmentDescription #VkAttachmentReference #VkSubpassDescription )
+		do: [ :name |
+			self deny:
+				((Smalltalk at: name) includesSelector: #initializeConstantFields).
+			self deny: ((Smalltalk at: name) includesSelector: #sType:) ]
 ]
 
 { #category : 'tests - results' }
