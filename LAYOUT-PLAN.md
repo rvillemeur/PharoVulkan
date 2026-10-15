@@ -1024,7 +1024,7 @@ widest.
 | `VkImage >> create` | 17 | `VkImageCreateInfo` |
 | ~~`VkImage >> createView`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | `VkRenderPass >> initializeDevice:` | 13 | attachment, subpass and render pass create infos |
-| `VkFramebuffer >> initializeDevice:` | 9 | `VkFramebufferCreateInfo` |
+| ~~`VkFramebuffer >> initializeDevice:`~~ | ~~9~~ | `VkFramebufferCreateInfo` — **done 15 October 2026** |
 | `VkComputePipeline >> create` | 13 | `VkComputePipelineCreateInfo`, shader stage create info |
 
 `VkImage >> createView` and `VkSwapchain >> createImageViews` wrote the same structure from two
@@ -1073,3 +1073,37 @@ writer and copied into object memory so it leaves nothing allocated outside the 
 the View tab, which names the format and the swizzles through their constant classes, decodes the
 aspect bits, shows the mip and layer runs as intervals, and reports the image as set or not rather
 than as an address. The suite is 466 tests over the nine concrete test classes.
+
+### 4b — the framebuffer request, done 15 October 2026
+
+`VkFramebufferCreateInfo` is sixty-four bytes at 0, 8, 16, 24, 32, 40, 48, 52 and 56: the chain
+header, the flags, the render pass whose attachments are bound, the attachment views as a count and
+a pointer, then the extent and the layer count. The three trailing words end the request at sixty
+bytes, which the padding to the chain pointer's alignment rounds to sixty-four.
+
+`initializeDevice:renderPass:imageView:width:height:` wrote nine offsets by hand and allocated the
+attachment run itself. The request is now written by
+`VkFramebuffer class >> createInfoForRenderPass:attachments:extent:`, handed to the driver by
+`handleForCreateInfo:on:` — the only sender of `vkCreateFramebuffer` in the project — and the
+attachment run is written by `attachmentsOutsideObjectMemory:`, which is the only other method of
+the class allowed to send `pointerAt:put:`, because a run of handles has no field specification to
+read a stride from. `attachmentsPerFramebuffer`, `layersPerFramebuffer` and `attachmentByteCount`
+name the three literals the old method carried. The run and the request are freed innermost first
+after the call returns: the driver reads both during it and neither afterwards.
+
+The initializer took a width and a height, which earned `ReExcessiveArgumentsRule` on both it and
+its factory; the request takes a point, and both callers already had one, so the pair now reads
+`on:renderPass:imageView:extent:` and the critique is gone.
+
+Six tests red first: the layout, the constant field, what the builder writes against what it leaves
+at zero, the one-writer and one-caller test, the scalar-poke ban — which here also pins the two
+methods allowed to write a pointer — and the rows. The driver leg
+`PVGraphicsTest >> testOneRequestServesSeveralFramebuffersOnThisMachine` creates three framebuffers
+over one view and one offscreen pass and asserts three distinct handles; the window path's loop over
+the swapchain's images needs a surface, so this is the same shape run headlessly.
+
+The example is `VkFramebufferCreateInfo class >> exampleRequestBindingOneColourAttachment`, whose
+attachment pointer is cleared before the copy is kept, because the Framebuffer tab reads through
+that pointer and the run is freed with the example; the view is the Framebuffer tab, which reports
+the extent as a point, the layer and attachment counts, and whether each handle in the run is set.
+The suite is 473 tests over the nine concrete test classes.
