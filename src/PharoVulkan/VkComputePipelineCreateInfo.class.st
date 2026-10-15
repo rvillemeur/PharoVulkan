@@ -22,19 +22,17 @@ Class {
 
 { #category : 'examples' }
 VkComputePipelineCreateInfo class >> exampleRequestForAComputeShader [
-	<sampleInstance>
-	"One click: the request this project creates every compute pipeline from, rebuilt on every
-	 call. The module and the layout stay null — an example answers an object that outlives the
-	 call, and a handle to a module this example does not own would be read after that module
-	 has gone. The entry point string is freed and its field nulled before the copy, so the
-	 answered request in object memory points at nothing rather than at freed memory, and the
-	 external store is freed whatever happens."
+	"One click: the request this project creates a compute pipeline from, built with null
+	 handles so no device is needed. The entry point string is given back and the field nulled
+	 before the copy is taken, so the copy names no freed address; the copy lives in object
+	 memory, so it still reads after the external store goes."
 
+	<sampleInstance>
 	| request |
 	request := VkComputePipeline
 		           createInfoForModule:
 		           (VkShaderModule_H fromHandle: ExternalAddress null)
-		           entryPoint: VkComputePipeline defaultEntryPoint
+		           entryPoint: VkShaderModule defaultEntryPoint
 		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null).
 	^ [
 	  VkComputePipeline freeEntryPointOf: request.
@@ -84,22 +82,14 @@ VkComputePipelineCreateInfo >> basePipelineIndex: anObject [
 	handle signedLongAt: OFFSET_BASEPIPELINEINDEX put: anObject
 ]
 
-{ #category : 'reporting' }
+{ #category : 'accessing' }
 VkComputePipelineCreateInfo >> computePipelineRows [
-	"What this request asks for, rather than where its fields sit: the stage named through
-	 VkShaderStage, the entry point read back out of the C string the request points at, and
-	 whether each optional pointer is there. A freed entry point reads as the null label rather
-	 than as a string from memory that has gone. Read only, so a view built from this leaves the
-	 store alone."
+	"What this request asks for, rather than where its fields sit: the rows of the stage nested
+	 inside it, followed by what the request itself adds. The stage decodes its own fields, so
+	 the Pipeline tab here and the Stage tab of a graphics stage cannot drift apart. Read only,
+	 so a view built from this leaves the store alone."
 
-	^ Dictionary new
-		  at: #stageName put: (VkShaderStage nameForFlags: self stage stage);
-		  at: #moduleGiven put: self stage module isNull not;
-		  at: #entryPoint
-		  put: (self stage pName isNull
-				   ifTrue: [ self class nullLabel ]
-				   ifFalse: [ self stage pName getHandle readString asString ]);
-		  at: #specializationGiven put: self stage pSpecializationInfo isNull not;
+	^ self stage stageRows
 		  at: #layoutGiven put: self layout isNull not;
 		  at: #derivesFromAPipeline put: self basePipelineHandle isNull not;
 		  at: #basePipelineIndex put: self basePipelineIndex;

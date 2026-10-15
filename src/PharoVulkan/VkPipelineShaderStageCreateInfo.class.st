@@ -1,7 +1,9 @@
 "
 VkPipelineShaderStageCreateInfo: one shader stage of a pipeline — which stage it is, the module the code comes from, the entry point in that module and an optional specialization. Declared field by field, so uFFI computes all seven offsets; the structure is forty-eight bytes, with the padding after the flags and stage pair that puts the module handle on a pointer boundary.
 
-This project carries it nested by value inside VkComputePipelineCreateInfo at byte twenty-four, so it declares no initializeConstantFields even though its sType is fixed by its type: the generated getter for a nested field answers the stage through fromHandle:, which runs initialize on every read of the field, and an initializer would therefore write into the enclosing request each time it is read. VkComputePipeline class >> createInfoForModule:entryPoint:layout: writes the type along with the rest, and VkComputePipeline class >> freeEntryPointOf: gives back the C string pName points at. See VkStructure >> initialize.
+It is used two ways. A compute pipeline carries one stage nested by value inside VkComputePipelineCreateInfo at byte twenty-four, and a graphics pipeline points at a run of two of them, built by VkGraphicsPipeline class >> shaderStagesForVertexModule:fragmentModule:. Because of the nesting it declares no initializeConstantFields even though its sType is fixed by its type: the generated getter for a nested field answers the stage through fromHandle:, which runs initialize on every read of the field, and an initializer would therefore write into the enclosing request each time it is read. Each builder stamps the type along with the rest, and each gives back the C string pName points at — VkComputePipeline class >> freeEntryPointOf: for the nested stage, VkGraphicsPipeline class >> freeShaderStageEntryPointsOf: for the run.
+
+stageRows decodes a stage for the Stage tab, and the compute request reads the same rows for the stage inside it, so the two tabs cannot drift apart. See VkStructure >> initialize.
 "
 Class {
 	#name : 'VkPipelineShaderStageCreateInfo',
@@ -19,6 +21,25 @@ Class {
 	#package : 'PharoVulkan',
 	#tag : 'Bindings'
 }
+
+{ #category : 'examples' }
+VkPipelineShaderStageCreateInfo class >> exampleStagesOfTheTriangleThisProjectDraws [
+	"One click: the two stages the triangle this project draws is created from, built with null
+	 module handles so no device is needed. The entry point strings are given back before the
+	 copies are taken, so each copy says the name is gone rather than naming an address that
+	 has been freed; the copies live in object memory, so they still read after the run goes."
+
+	<sampleInstance>
+	| stages |
+	stages := VkGraphicsPipeline
+		          shaderStagesForVertexModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null)
+		          fragmentModule: (VkShaderModule_H fromHandle: ExternalAddress null).
+	^ [
+	  VkGraphicsPipeline freeShaderStageEntryPointsOf: stages.
+	  stages collect: [ :each | each copyIntoObjectMemory ] ] ensure: [
+		  stages first getHandle free ]
+]
 
 { #category : 'field definition' }
 VkPipelineShaderStageCreateInfo class >> fieldsDesc [
@@ -49,6 +70,28 @@ VkPipelineShaderStageCreateInfo >> flags [
 VkPipelineShaderStageCreateInfo >> flags: anObject [
 	"This method was automatically generated"
 	handle unsignedLongAt: OFFSET_FLAGS put: anObject
+]
+
+{ #category : 'inspector' }
+VkPipelineShaderStageCreateInfo >> inspectorStage: aBuilder [
+	"What this stage asks the driver for, rather than where the fields sit: the Layout and
+	 Fields tabs answer that. The rows come from stageRows, which only reads, so opening the tab
+	 changes nothing."
+
+	<inspectorPresentationOrder: 30 title: 'Stage'>
+	| rows |
+	rows := self stageRows.
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
+					   each first ]);
+		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
+				   each second printString ]);
+		  items: {
+				  { 'Shader stage'. (rows at: #stageName) }.
+				  { 'Module given'. (rows at: #moduleGiven) }.
+				  { 'Entry point'. (rows at: #entryPoint) }.
+				  { 'Specialization given'. (rows at: #specializationGiven) } };
+		  yourself
 ]
 
 { #category : 'accessing - structure variables' }
@@ -121,4 +164,23 @@ VkPipelineShaderStageCreateInfo >> stage [
 VkPipelineShaderStageCreateInfo >> stage: anObject [
 	"This method was automatically generated"
 	handle unsignedLongAt: OFFSET_STAGE put: anObject
+]
+
+{ #category : 'accessing' }
+VkPipelineShaderStageCreateInfo >> stageRows [
+	"What this stage asks for, rather than where its fields sit: the stage named through
+	 VkShaderStage, the entry point read back out of the C string the stage points at, and
+	 whether each optional pointer is there. A freed entry point reads as the null label rather
+	 than as a string from memory that has gone. Read only, so a view built from this leaves the
+	 store alone."
+
+	^ Dictionary new
+		  at: #stageName put: (VkShaderStage nameForFlags: self stage);
+		  at: #moduleGiven put: self module isNull not;
+		  at: #entryPoint
+		  put: (self pName isNull
+				   ifTrue: [ self class nullLabel ]
+				   ifFalse: [ self pName getHandle readString asString ]);
+		  at: #specializationGiven put: self pSpecializationInfo isNull not;
+		  yourself
 ]

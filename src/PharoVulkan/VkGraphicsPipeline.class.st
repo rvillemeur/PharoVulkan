@@ -3,7 +3,9 @@ Graphics pipeline for hello-triangle. Wraps VkPipeline + embedded VkPipelineLayo
 
 The class side owns the vertex layout this project draws with: vertexBindingDescriptions and vertexAttributeDescriptions build declared descriptions in object memory from the named widths and locations, runOf: copies a collection of them into one contiguous external run at the declared stride, and vertexInputStateForBindings:attributes: answers the VkPipelineVertexInputStateCreateInfo that points at both runs. The state owns those runs: freeVertexInputState: gives them back through it. The stride is derived from positionByteCount and colourByteCount rather than written again, and PVGraphicsTest asserts it against the bytes PVTriangleScene uploads.
 
-The rest of the pipeline create info tree — the two shader stages, input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself — is still written at counted offsets inside initializeDevice:renderPass:vertexModule:fragmentModule:extent:, one declared structure per remaining unit of LAYOUT-PLAN.md.
+The class side also owns the shader stages: shaderStagesForVertexModule:fragmentModule: answers a run of shaderStagesPerPipeline declared VkPipelineShaderStageCreateInfo, each naming its own module and its own copy of VkShaderModule class >> defaultEntryPoint, and freeShaderStages: gives back every entry point string and then the run.
+
+The rest of the pipeline create info tree — input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself — is still written at counted offsets inside initializeDevice:renderPass:vertexModule:fragmentModule:extent:, one declared structure per remaining unit of LAYOUT-PLAN.md.
 "
 Class {
 	#name : 'VkGraphicsPipeline',
@@ -38,6 +40,27 @@ VkGraphicsPipeline class >> createDevice: aVkDevice renderPass: aRenderPass vert
     obj := self new.
     obj initializeDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint.
     ^ obj
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeShaderStageEntryPointsOf: someStages [
+	"Give back the entry point string each stage points at, and null the field as it goes: a
+	 stage is the record of where its own name is, so a freed address left in it could be read
+	 or freed twice. Each stage allocated its own string, so each is freed once."
+
+	someStages do: [ :each |
+		each pName isNull ifFalse: [ each pName getHandle free ].
+		each pName: ExternalAddress null ]
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeShaderStages: someStages [
+	"Everything the run owns, in the order that keeps each address readable until it is freed:
+	 the entry point strings the stages point at, then the one block the whole run lives in,
+	 which is named by its first element."
+
+	self freeShaderStageEntryPointsOf: someStages.
+	someStages first getHandle free
 ]
 
 { #category : 'request' }
@@ -97,6 +120,36 @@ VkGraphicsPipeline class >> runOf: someDescriptions [
 	someDescriptions doWithIndex: [ :each :index |
 		each copyBytesInto: (elements at: index) ].
 	^ elements first getHandle
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> shaderStagesForVertexModule: aVertexModuleHandle fragmentModule: aFragmentModuleHandle [
+	"The two stages a graphics pipeline is created from, in one contiguous external run so the
+	 request can name them by the first element's address. Each element is written through the
+	 declared fields, so the structure's own layout decides where each value lands."
+
+	| stages |
+	stages := VkPipelineShaderStageCreateInfo externalArrayOf:
+		          self shaderStagesPerPipeline.
+	{
+		(VkShaderStage vertexBit -> aVertexModuleHandle).
+		(VkShaderStage fragmentBit -> aFragmentModuleHandle) }
+		doWithIndex: [ :each :index |
+			(stages at: index)
+				sType: VkStructureType pipelineShaderStageCreateInfo;
+				stage: each key;
+				module: each value;
+				pName: (Vk allocateCString: VkShaderModule defaultEntryPoint) ].
+	^ stages
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> shaderStagesPerPipeline [
+	"Every pipeline this project draws with has a vertex stage and a fragment stage, and no
+	 other. A tessellation or geometry stage would add an element to the run and a module to
+	 build it from."
+
+	^ 2
 ]
 
 { #category : 'vertex layout' }
@@ -182,18 +235,19 @@ VkGraphicsPipeline >> handle [
 
 { #category : 'initialization' }
 VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint [
-	"VkPipelineShaderStageCreateInfo (48 bytes each): 0:sType 8:pNext 16:flags 20:stage 24:module(ptr) 32:pName(ptr) 40:pSpecializationInfo(ptr)
-	 The vertex input state and the two description runs it points at are declared structures,
-	 built by vertexInputStateForBindings:attributes: and freed through the class; the rest of
-	 the tree is still written at counted offsets."
+	"The two shader stages and the vertex input state, with the two description runs it points
+	 at, are declared structures built and freed through the class; the rest of the tree is
+	 still written at counted offsets."
 
-	| emptyLayout nameBuf stagesBuf vertInput inputAssembly viewportState rasterState sampleState blendAttach blendState dynStates dynState createInfo pipeBuf result |
+	| emptyLayout stages vertInput inputAssembly viewportState rasterState sampleState blendAttach blendState dynStates dynState createInfo pipeBuf result |
+
 	device := aVkDevice.
 	emptyLayout := VkPipelineLayout new.
 	emptyLayout initializeOn: aVkDevice setLayouts: #().
 	layout := emptyLayout.
-	nameBuf := ExternalAddress allocate: 5.
-	stagesBuf := ExternalAddress allocate: 96.
+	stages := self class
+		          shaderStagesForVertexModule: aVertexModule handle
+		          fragmentModule: aFragmentModule handle.
 	vertInput := self class
 		             vertexInputStateForBindings:
 		             self class vertexBindingDescriptions
@@ -208,26 +262,7 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 	dynState := ExternalAddress allocate: 32.
 	createInfo := ExternalAddress allocate: 144.
 	pipeBuf := ExternalAddress allocate: 8.
-	[	nameBuf byteAt: 1 put: 109.
-		nameBuf byteAt: 2 put: 97.
-		nameBuf byteAt: 3 put: 105.
-		nameBuf byteAt: 4 put: 110.
-		nameBuf byteAt: 5 put: 0.
-		stagesBuf unsignedLongAt: 1  put: VkStructureType pipelineShaderStageCreateInfo.
-		stagesBuf pointerAt:   9  put: ExternalAddress null.
-		stagesBuf unsignedLongAt: 17 put: 0.
-		stagesBuf unsignedLongAt: 21 put: VkShaderStage vertexBit.
-		stagesBuf pointerAt:   25 put: aVertexModule handle getHandle.
-		stagesBuf pointerAt:   33 put: nameBuf.
-		stagesBuf pointerAt:   41 put: ExternalAddress null.
-		stagesBuf unsignedLongAt: 49 put: VkStructureType pipelineShaderStageCreateInfo.
-		stagesBuf pointerAt:   57 put: ExternalAddress null.
-		stagesBuf unsignedLongAt: 65 put: 0.
-		stagesBuf unsignedLongAt: 69 put: VkShaderStage fragmentBit.
-		stagesBuf pointerAt:   73 put: aFragmentModule handle getHandle.
-		stagesBuf pointerAt:   81 put: nameBuf.
-		stagesBuf pointerAt:   89 put: ExternalAddress null.
-		inputAssembly unsignedLongAt: 1  put: VkStructureType pipelineInputAssemblyStateCreateInfo.
+	[	inputAssembly unsignedLongAt: 1  put: VkStructureType pipelineInputAssemblyStateCreateInfo.
 		inputAssembly pointerAt:   9  put: ExternalAddress null.
 		inputAssembly unsignedLongAt: 17 put: 0.
 		inputAssembly unsignedLongAt: 21 put: VkRenderConfig primitiveTopologyTriangleList.
@@ -290,8 +325,8 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		createInfo unsignedLongAt: 1  put: VkStructureType graphicsPipelineCreateInfo.
 		createInfo pointerAt:   9  put: ExternalAddress null.
 		createInfo unsignedLongAt: 17 put: 0.
-		createInfo unsignedLongAt: 21 put: 2.
-		createInfo pointerAt:   25 put: stagesBuf.
+		createInfo unsignedLongAt: 21 put: stages size.
+		createInfo pointerAt:   25 put: stages first getHandle.
 		createInfo pointerAt:   33 put: vertInput getHandle.
 		createInfo pointerAt:   41 put: inputAssembly.
 		createInfo pointerAt:   49 put: ExternalAddress null.
@@ -310,7 +345,7 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		Vk checkResult: result.
 		handle := VkPipeline_H fromHandle: (pipeBuf pointerAt: 1)
 	] ensure: [
-		nameBuf free. stagesBuf free.
+		self class freeShaderStages: stages.
 		self class freeVertexInputState: vertInput.
 		inputAssembly free. viewportState free. rasterState free.
 		sampleState free. blendAttach free. blendState free.

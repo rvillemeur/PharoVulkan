@@ -799,7 +799,7 @@ VkBindingsTest >> testComputePipelineRequestNamesTheComputeStageAndNoBasePipelin
 	request := VkComputePipeline
 		           createInfoForModule:
 		           (VkShaderModule_H fromHandle: ExternalAddress null)
-		           entryPoint: VkComputePipeline defaultEntryPoint
+		           entryPoint: VkShaderModule defaultEntryPoint
 		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null).
 	[
 	self
@@ -808,7 +808,7 @@ VkBindingsTest >> testComputePipelineRequestNamesTheComputeStageAndNoBasePipelin
 	self assert: request stage stage equals: VkShaderStage computeBit.
 	self
 		assert: request stage pName getHandle readString asString
-		equals: VkComputePipeline defaultEntryPoint.
+		equals: VkShaderModule defaultEntryPoint.
 	self assert: request stage pSpecializationInfo isNull.
 	self assert: request basePipelineHandle isNull.
 	self
@@ -844,14 +844,14 @@ VkBindingsTest >> testComputePipelineRowsNameTheStageAndTheEntryPoint [
 	request := VkComputePipeline
 		           createInfoForModule:
 		           (VkShaderModule_H fromHandle: ExternalAddress null)
-		           entryPoint: VkComputePipeline defaultEntryPoint
+		           entryPoint: VkShaderModule defaultEntryPoint
 		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null).
 	rows := [ request computePipelineRows ] ensure: [
 		        VkComputePipeline freeCreateInfo: request ].
 	self
 		assert: (rows at: #stageName)
 		equals: (VkShaderStage nameForFlags: VkShaderStage computeBit).
-	self assert: (rows at: #entryPoint) equals: VkComputePipeline defaultEntryPoint.
+	self assert: (rows at: #entryPoint) equals: VkShaderModule defaultEntryPoint.
 	self deny: (rows at: #moduleGiven).
 	self deny: (rows at: #layoutGiven).
 	self deny: (rows at: #specializationGiven).
@@ -1516,6 +1516,34 @@ VkBindingsTest >> testEveryFeatureStructureShowsEveryFlagItDeclares [
 			instance getHandle free ] ]
 ]
 
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testEveryPipelineAsksForTheEntryPointTheModulesDeclare [
+	"The name of the entered function belongs to the compiled module, not to a kind of pipeline,
+	 so one constant answers it and both pipelines ask that constant. A second copy of the name
+	 would let a pipeline ask for a function the emitted SPIR-V does not declare, which is why
+	 no pipeline class may hold the name as a literal of its own."
+
+	| offenders |
+	self deny: (VkComputePipeline class includesSelector: #defaultEntryPoint).
+	self assert:
+		((VkComputePipeline class >> #on:layout:device:) messages includes:
+			 #defaultEntryPoint).
+	self assert:
+		((VkGraphicsPipeline class
+		  >> #shaderStagesForVertexModule:fragmentModule:) messages includes:
+			 #defaultEntryPoint).
+	offenders := OrderedCollection new.
+	{ VkComputePipeline. VkGraphicsPipeline. VkPipelineShaderStageCreateInfo }
+		do: [ :each |
+			{ each. each class } do: [ :behavior |
+				behavior methodsDo: [ :method |
+					(method literals includes: VkShaderModule defaultEntryPoint)
+						ifTrue: [
+							offenders add:
+								behavior name asString , ' >> ' , method selector ] ] ] ].
+	self assert: offenders asArray equals: #(  )
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testExternalArrayAnswersContiguousZeroedViewsOfOneBlock [
 	"A Vulkan array field points at a run of structures packed at the declared stride. The
@@ -1985,6 +2013,38 @@ VkBindingsTest >> testGeneratorIsIdempotent [
 	gen generateEnum: desc.
 	after := Smalltalk globals allClasses size.
 	self assert: after - before equals: 0
+]
+
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testGraphicsShaderStagesNameAVertexAndAFragmentStage [
+	"The two stages a graphics pipeline is created from live in one external run, so the request
+	 can name them by the first element's address. Each stage carries its own structure type,
+	 its own module handle and its own copy of the entry point name; neither asks for a
+	 specialization. The names are separate allocations, so freeing one stage cannot leave a
+	 freed address in the other."
+
+	| stages |
+	stages := VkGraphicsPipeline
+		          shaderStagesForVertexModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null)
+		          fragmentModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null).
+	[
+		self assert: stages size equals: 2.
+		stages do: [ :each |
+			self
+				assert: each sType
+				equals: VkStructureType pipelineShaderStageCreateInfo.
+			self
+				assert: each pName getHandle readString asString
+				equals: VkShaderModule defaultEntryPoint.
+			self assert: each pSpecializationInfo isNull ].
+		self assert: stages first stage equals: VkShaderStage vertexBit.
+		self assert: stages second stage equals: VkShaderStage fragmentBit.
+		self
+			deny: stages first pName getHandle asInteger
+			equals: stages second pName getHandle asInteger ] ensure: [
+		VkGraphicsPipeline freeShaderStages: stages ]
 ]
 
 { #category : 'tests - layout' }
@@ -2900,6 +2960,21 @@ VkBindingsTest >> testOnlyOneMethodSubmitsToAQueue [
 		equals: #( 'VkQueue >> submitBatch:fence:' )
 ]
 
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testOnlyOneMethodWritesAGraphicsShaderStageRun [
+	"One builder of the stage run, so one place allocates the entry point strings and one place
+	 gives them back. The reflected writer list is what the Writers tab shows, so a second
+	 writer would show there as well as here. The compute pipeline writes the stage nested
+	 inside its request and names the request class rather than this one, which is why it is not
+	 listed: a writer counts only where it also names the structure it fills."
+
+	self
+		assert: (VkPipelineShaderStageCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals:
+		#( 'VkGraphicsPipeline class >> shaderStagesForVertexModule:fragmentModule:' )
+]
+
 { #category : 'tests - vertex input' }
 VkBindingsTest >> testOnlyOneMethodWritesTheVertexInputState [
 	"One builder of the vertex input state, so one place owns the two runs it points at and one
@@ -3631,6 +3706,97 @@ VkBindingsTest >> testShaderModuleWithNoCodeReportsZeroBytes [
 	self assert: (rows at: #words) equals: 0.
 	self assert: (rows at: #wholeWords).
 	self deny: (rows at: #live)
+]
+
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testShaderStageExampleIsTheStagesTheProjectDraws [
+	"The example is the pair of stages the triangle is drawn with, kept in object memory so it
+	 can be inspected after the run has gone. Its entry point strings are given back before the
+	 copies are taken, so each row says the name is gone rather than naming a freed address."
+
+	| stages |
+	stages := VkPipelineShaderStageCreateInfo
+		          exampleStagesOfTheTriangleThisProjectDraws.
+	self
+		assert: stages size
+		equals: VkGraphicsPipeline shaderStagesPerPipeline.
+	self
+		assert: (stages collect: [ :each | each stage ]) asArray
+		equals: {
+				VkShaderStage vertexBit.
+				VkShaderStage fragmentBit }.
+	stages do: [ :each |
+		self
+			assert: each sType
+			equals: VkStructureType pipelineShaderStageCreateInfo.
+		self
+			assert: (each stageRows at: #entryPoint)
+			equals: VkPipelineShaderStageCreateInfo nullLabel ]
+]
+
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testShaderStageRowsNameTheStageAndTheEntryPoint [
+	"The rows a stage reports: which stage it is, whether a module and a specialization are
+	 there, and the entry point read back out of the C string the stage points at. The compute
+	 request answers the same rows for the stage nested inside it, so one place decodes a stage
+	 and the two tabs cannot drift apart."
+
+	| stages rows |
+	stages := VkGraphicsPipeline
+		          shaderStagesForVertexModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null)
+		          fragmentModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null).
+	rows := [ stages collect: [ :each | each stageRows ] ] ensure: [
+		        VkGraphicsPipeline freeShaderStages: stages ].
+	self
+		assert: (rows first at: #stageName)
+		equals: (VkShaderStage nameForFlags: VkShaderStage vertexBit).
+	self
+		assert: (rows second at: #stageName)
+		equals: (VkShaderStage nameForFlags: VkShaderStage fragmentBit).
+	rows do: [ :each |
+		self deny: (each at: #moduleGiven).
+		self deny: (each at: #specializationGiven).
+		self
+			assert: (each at: #entryPoint)
+			equals: VkShaderModule defaultEntryPoint ]
+]
+
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testShaderStageRunGivesBackEveryEntryPointItAllocated [
+	"Each stage is the record of where its entry point string is, so giving the strings back
+	 nulls the fields as it goes: a freed address left in a stage could be read or freed twice.
+	 The run itself is freed afterwards, through its first element."
+
+	| stages |
+	stages := VkGraphicsPipeline
+		          shaderStagesForVertexModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null)
+		          fragmentModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null).
+	[
+		stages do: [ :each | self deny: each pName isNull ].
+		VkGraphicsPipeline freeShaderStageEntryPointsOf: stages.
+		stages do: [ :each | self assert: each pName isNull ] ] ensure: [
+		VkGraphicsPipeline freeShaderStages: stages ]
+]
+
+{ #category : 'tests - graphics pipeline' }
+VkBindingsTest >> testShaderStageTabShowsEveryRowTheStageReports [
+	"The Stage tab is the stage's report laid out, so it must carry one row per entry the report
+	 answers: a value added to the report cannot then stay invisible. Building a table only
+	 reads, which is why the report is compared with itself afterwards."
+
+	| stage rows table shown |
+	stage := VkPipelineShaderStageCreateInfo
+		         exampleStagesOfTheTriangleThisProjectDraws first.
+	rows := stage stageRows.
+	table := stage inspectorStage: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self assert: stage stageRows equals: rows
 ]
 
 { #category : 'tests' }

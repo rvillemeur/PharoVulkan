@@ -1,7 +1,7 @@
 "
 Vulkan compute pipeline. Wraps a VkPipeline_H created from a SPIR-V compute shader module and a VkPipelineLayout; PVComputeKernel >> prepare builds the one this project dispatches.
 
-The request is declared rather than counted: createInfoForModule:entryPoint:layout: fills a VkComputePipelineCreateInfo with the shader stage nested inside it, freeCreateInfo: gives back the entry point string the request points at and then the request itself, and handleForCreateInfo:on: is the only caller of vkCreateComputePipelines — its out parameter is a run of one handle, which is the one block here still read at an offset. Key methods: class-side on:layout:device:, create, destroy, class-side createInfoForModule:entryPoint:layout:, class-side defaultEntryPoint.
+The request is declared rather than counted: createInfoForModule:entryPoint:layout: fills a VkComputePipelineCreateInfo with the shader stage nested inside it, freeCreateInfo: gives back the entry point string the request points at and then the request itself, and handleForCreateInfo:on: is the only caller of vkCreateComputePipelines — its out parameter is a run of one handle rather than a structure, which is the one block here still read at an offset. The name of the entered function comes from VkShaderModule class >> defaultEntryPoint, because it belongs to the compiled module rather than to a kind of pipeline. Key methods: class-side on:layout:device:, create, destroy, class-side createInfoForModule:entryPoint:layout:.
 "
 Class {
 	#name : 'VkComputePipeline',
@@ -38,14 +38,6 @@ VkComputePipeline class >> createInfoForModule: aModuleHandle entryPoint: anEntr
 		  layout: aLayoutHandle;
 		  basePipelineIndex: self noBasePipelineIndex;
 		  yourself
-]
-
-{ #category : 'constants' }
-VkComputePipeline class >> defaultEntryPoint [
-	"The name of the function a compiled compute shader is entered through. The SPIR-V this
-	 project emits names its entry point main, so every pipeline it creates asks for that one."
-
-	^ 'main'
 ]
 
 { #category : 'request' }
@@ -106,7 +98,7 @@ VkComputePipeline class >> on: aShaderModule layout: aPipelineLayout device: aDe
 	p shaderModule: aShaderModule.
 	p layout: aPipelineLayout.
 	p device: aDevice.
-	p entryPoint: self defaultEntryPoint.
+	p entryPoint: VkShaderModule defaultEntryPoint.
 	p create.
 	^ p
 ]

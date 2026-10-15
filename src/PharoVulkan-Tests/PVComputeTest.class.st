@@ -724,7 +724,7 @@ PVComputeTest >> testComputePipelineRequestForARealModuleCarriesItsHandleAndLayo
 	[
 	request := VkComputePipeline
 		           createInfoForModule: module handle
-		           entryPoint: VkComputePipeline defaultEntryPoint
+		           entryPoint: VkShaderModule defaultEntryPoint
 		           layout: pipelineLayout handle.
 	rows := [ request computePipelineRows ] ensure: [
 		        VkComputePipeline freeCreateInfo: request ].
@@ -732,7 +732,7 @@ PVComputeTest >> testComputePipelineRequestForARealModuleCarriesItsHandleAndLayo
 	self assert: (rows at: #layoutGiven).
 	self
 		assert: (rows at: #entryPoint)
-		equals: VkComputePipeline defaultEntryPoint.
+		equals: VkShaderModule defaultEntryPoint.
 	self
 		assert: (rows at: #stageName)
 		equals: (VkShaderStage nameForFlags: VkShaderStage computeBit).

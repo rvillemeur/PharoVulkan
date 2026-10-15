@@ -1020,6 +1020,59 @@ PVGraphicsTest >> testSceneDestroyWaitsForGpu [
 	self assert: stub waitIdleCount equals: 1
 ]
 
+{ #category : 'tests - pipeline' }
+PVGraphicsTest >> testShaderStagesForRealModulesCarryTheirOwnHandles [
+	"The stages of a real pipeline on this machine: each one names the module its code was
+	 created from, and the two handles differ. A builder that wrote both elements over the same
+	 bytes, or that stamped one module into both stages, would draw with the vertex shader twice
+	 and the error would only show as a blank frame."
+
+	| context vertex fragment |
+	context := VkContext offscreenGraphicsContext.
+	[
+		vertex := VkShaderModule
+			          fromBytes: PVTriangleScene new buildVertexShader
+			          device: context device.
+		fragment := VkShaderModule
+			            fromBytes: PVTriangleScene new buildFragmentShader
+			            device: context device.
+		[
+			| stages read |
+			stages := VkGraphicsPipeline
+				          shaderStagesForVertexModule: vertex handle
+				          fragmentModule: fragment handle.
+			read := [
+			        stages collect: [ :each |
+				        each stageRows
+					        at: #moduleAddress
+					        put: each module getHandle asInteger;
+					        yourself ] ] ensure: [
+				        VkGraphicsPipeline freeShaderStages: stages ].
+			read do: [ :each |
+				self assert: (each at: #moduleGiven).
+				self
+					assert: (each at: #entryPoint)
+					equals: VkShaderModule defaultEntryPoint ].
+			self
+				assert: (read first at: #moduleAddress)
+				equals: vertex handle getHandle asInteger.
+			self
+				assert: (read second at: #moduleAddress)
+				equals: fragment handle getHandle asInteger.
+			self
+				deny: (read first at: #moduleAddress)
+				equals: (read second at: #moduleAddress).
+			self
+				assert: (read first at: #stageName)
+				equals: (VkShaderStage nameForFlags: VkShaderStage vertexBit).
+			self
+				assert: (read second at: #stageName)
+				equals: (VkShaderStage nameForFlags: VkShaderStage fragmentBit) ]
+			ensure: [
+				fragment destroy.
+				vertex destroy ] ] ensure: [ context destroy ]
+]
+
 { #category : 'tests - window' }
 PVGraphicsTest >> testSurfaceReportsWhatItAllowsAndWhatItOffersOnThisMachine [
 	"What only a real surface can exercise: the two structures the driver fills. The report

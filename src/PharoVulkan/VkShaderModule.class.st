@@ -1,5 +1,7 @@
 "
 Loads SPIR-V bytecode into a `VkShaderModule_H` on a device. `fromBytes:device:` copies the words outside object memory, hands them to the driver through a declared `VkShaderModuleCreateInfo` and frees the copy: a module keeps no reference to the code it was created from. The byte count is kept in the instance, because the driver never answers it back, and `moduleRows` reports it with the word count and whether the handle is still live. Must be destroyed explicitly with `destroy` once the pipelines using it are built.
+
+The class side answers `defaultEntryPoint`, the name of the function a module is entered through. It lives here because the name belongs to the compiled module rather than to a kind of pipeline: both the compute and the graphics stage builders ask for it.
 "
 Class {
 	#name : 'VkShaderModule',
@@ -25,6 +27,16 @@ VkShaderModule class >> codeOutsideObjectMemory: spirvBytes [
 	1 to: spirvBytes size do: [ :i |
 		address byteAt: i put: (spirvBytes at: i) ].
 	^ address
+]
+
+{ #category : 'constants' }
+VkShaderModule class >> defaultEntryPoint [
+	"The name of the function a compiled shader module is entered through. The SPIR-V this
+	 project emits names every entry point main, so every pipeline stage created from one of
+	 these modules asks for that name. The name belongs to the module rather than to a kind of
+	 pipeline, which is why compute and graphics both read it here."
+
+	^ 'main'
 ]
 
 { #category : 'examples' }
