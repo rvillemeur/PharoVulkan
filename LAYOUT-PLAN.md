@@ -220,6 +220,31 @@ are the ones that call into the driver.
   than measuring new pixel values. The test helper gained an extent parameter and the old helper
   delegates to it.
 
+- **A pointer a tab must not follow is reported as set or not.** A submit batch is freed as soon
+  as the driver has read it, and so are the three infos it points at, so `submitRows` reports each
+  count beside a boolean saying whether the pointer next to it is set, and follows nothing. This is
+  the third answer to the same question: unit 3b's dependency keeps a pointer its tab never reads,
+  unit 3d's begin info clears a pointer its tab does read, and the batch reports presence instead.
+  The rule is that a row either reads a pointer it owns or says only whether the pointer is there.
+
+- **One builder serves both paths, with nil for the pair a path does not use.**
+  `VkQueue class >> submitInfoFor:waitSemaphoreInfo:signalSemaphoreInfo:` writes the whole batch;
+  a nil semaphore info leaves its count at zero and its pointer null, which is exactly what the
+  compute path submits. Two builders, one per path, would have written the same nine fields twice,
+  and the count beside the pointer is the pairing a hand-written batch gets wrong.
+
+- **A structure the driver reads during a call is freed by the caller after it.** A frame's batch
+  points at three other structures, and the driver reads all four inside `vkQueueSubmit2`, so
+  `submitGraphics:` holds each in its own `ensure:` and frees them after `submitBatch:fence:`
+  returns. The recorder's comment says the caller owns them, which is what makes the Batch tab's
+  refusal to follow a pointer correct rather than timid.
+
+- **Test-only behaviour stays in the test.** Submitting a batch that signals a semaphore and waits
+  for nothing is what makes the window path's batch testable without a surface, and no product path
+  needs it, so the helper lives in `PVGraphicsTest` and builds its batch from the product builders
+  and the product recorder. A product method with no product sender would have been the easier
+  route and a worse one.
+
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
@@ -756,8 +781,8 @@ structure on the compute path is declared.
 | ~~`VkCommandBuffer >> beginRenderPass:`~~ | ~~10~~ | done, unit 3d |
 | ~~`VkCommandBuffer >> setViewport:`~~ | ~~6~~ | done, unit 3e |
 | ~~`VkCommandBuffer >> setScissor:`~~ | ~~4~~ | done, unit 3e |
-| `VkQueue >> submit:` | 9 | `VkSubmitInfo2`, command buffer submit info |
-| `VkQueue >> submitGraphics:` | 9 | same, with `VkSemaphoreSubmitInfo` |
+| ~~`VkQueue >> submit:`~~ | ~~9~~ | done, unit 3f |
+| ~~`VkQueue >> submitGraphics:`~~ | ~~9~~ | done, unit 3f |
 
 `VkViewport` and `VkRect2D` are plain value structures with no `sType`, so they were the cheapest
 unit in the plan and a good place to confirm the shape on a structure without a chain pointer.
@@ -932,6 +957,43 @@ half, which no square render can show. It passed before the conversion as well.
 The examples are `VkViewport class >> exampleViewportCoveringAnExampleTarget` and
 `VkRect2D class >> exampleScissorCoveringAnExampleTarget`, both built by the recorder for the
 non-square example extent. The suite is 448 tests over the nine concrete test classes.
+
+### 3f — the queue submit, done 15 October 2026
+
+`VkSubmitInfo2` is sixty-four bytes at 0, 8, 16, 20, 24, 32, 40, 48 and 56: three count-and-pointer
+pairs, one for the semaphores waited on, one for the command buffers run and one for the semaphores
+signalled, so uFFI pads after the second and the third count. `VkSemaphoreSubmitInfo` is forty-eight
+bytes at 0, 8, 16, 24, 32 and 40, with the timeline value and the stage mask both quad words under
+synchronization2 and the device index padded to the structure's alignment.
+`VkCommandBufferSubmitInfo` is thirty-two bytes at 0, 8, 16 and 24, padded the same way after its
+device mask. The command buffer and the semaphore are declared as the handle types they are.
+
+`submit:andWait:` wrote twelve offsets by hand and `submitGraphics:waitSemaphore:signalSemaphore:fence:`
+wrote twenty-two. Both are now three builders and one recorder: `commandBufferSubmitInfoFor:`,
+`semaphoreSubmitInfoFor:`, `submitInfoFor:waitSemaphoreInfo:signalSemaphoreInfo:` — which takes nil
+for a side a path does not use and leaves that count and pointer at zero — and
+`VkQueue >> submitBatch:fence:`, the one sender of `vkQueueSubmit2` in the project. The device mask,
+the device index, the timeline value and the flags are the zeros a fresh block holds.
+`submitsPerBatch`, `commandBufferInfosPerSubmit`, `semaphoreInfosPerSubmit` and
+`graphicsSemaphoreStageMask` name the four literals the two methods carried, and `VkSubmitFlag` is a
+new `VkFlagConstants` subclass naming the one bit Vulkan defines for a batch.
+
+Nine tests red first: a layout test for the batch and one for the two smaller structures, the
+constant field of all three, what each path's batch carries, the one-sender test, the scalar-poke
+ban now including the pointer pokes, and the rows of the batch and of a semaphore info. The driver
+leg `PVGraphicsTest >> testGraphicsSubmitBatchCarriesSemaphoresAndAFenceOnThisMachine` submits two
+real batches on a graphics queue: the first signals a semaphore, the second waits on it, signals
+another and takes a fence the test then waits on. The window path's batch could not be reached by
+any test before, because acquiring a swapchain image is what signals its wait semaphore; a batch
+that signals first makes the same structures submittable headlessly. The signalling batch is built
+in the test from the product builders, because no product path needs it.
+
+The examples are `VkSubmitInfo2 class >> exampleComputeBatchOfOneCommandBuffer` and
+`VkSemaphoreSubmitInfo class >> exampleWaitOnAFrameSemaphore`; the views are the Batch and Semaphore
+tabs. The suite is 458 tests over the nine concrete test classes.
+
+**Group 3 is complete.** Every structure the project writes while recording a command buffer or
+submitting it is declared.
 
 ## 4 — Graphics
 
