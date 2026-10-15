@@ -110,11 +110,13 @@ are the ones that call into the driver.
 - **A constants class names its own values.** A view must never carry its own table of Vulkan
   names, so a class whose values a view shows sits under `VkValueConstants` or `VkFlagConstants`
   and answers `nameForValue:` or `nameForFlags:`. `VkDescriptorType` and `VkShaderStage` were
-  reparented for the Bindings tab. The other classes in the `Constants` tag — `VkImageLayout`,
-  `VkAccess2`, `VkPipelineStage2`, `VkAttachmentOp`, `VkImageTiling`, `VkImageType` — are still
-  plain holders, to be moved by the unit that needs each one named rather than in one sweep —
-  `VkAccess2` and `VkPipelineStage2` were moved by unit 3b, which shows four of their masks;
-  `VkApiVersion` and `VkRenderConfig` are not value tables and stay where they are.
+  reparented for the Bindings tab. The other classes in the `Constants` tag — `VkImageTiling`,
+  `VkImageType` — are still plain holders, to be moved by the unit that needs each one named
+  rather than in one sweep — `VkAccess2` and `VkPipelineStage2` were moved by unit 3b, which shows
+  four of their masks, and `VkImageLayout` by unit 4c, whose Attachment tab names the layouts an
+  attachment enters and leaves in. `VkAttachmentOp` cannot be moved at all: its load and store
+  halves share their numbering. `VkApiVersion` and `VkRenderConfig` are not value tables and stay
+  where they are.
 - **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
   but not `at:put:`, which lands in the inner array, so the view rows across this project are not
   immutable however the older comments read. The guarantee that holds is that every row builder
@@ -263,6 +265,25 @@ are the ones that call into the driver.
 - **A path no headless machine can run is tested by its shape.** The swapchain's view loop needs a
   surface. Running the same loop over one image, headlessly, is what would break on a builder that
   kept state between calls or freed its request too early, which is what the loop risks.
+- **A description read in place carries no chain header, and so no initializer.** An attachment
+  description, an attachment reference and a subpass description have neither `sType` nor `pNext`:
+  the driver reads each one at the address the request points at, in the order the structure
+  declares. None of them may have an `initializeConstantFields`, for the reason a nested structure
+  may not — each is pointed at from a structure whose getter would run `initialize` over it — and a
+  test asserts that none of them implements it or `sType:`.
+- **Two enumerations that share their numbering do not share a reverse lookup.** `VkAttachmentOp`
+  holds both the load operations and the store operations, and clearing on load and discarding on
+  store are both one, so a single `nameForValue:` over its constants would answer the wrong half.
+  It stays outside `VkValueConstants` and answers `nameForLoadOp:` and `nameForStoreOp:`, which
+  select on the prefix of the selector and ask the system for the selectors rather than listing
+  them. A class whose values are distinct — `VkImageLayout`, reparented by this unit — gets the
+  inherited lookup instead.
+- **A builder per structure, however many structures one call needs.** The render pass hands the
+  driver four structures at once, each pointed at by the one built after it. Four builders, one
+  per structure, each allocating what it fills and leaving it to the caller to free, and one
+  pairing method that nests them in `ensure:` blocks innermost first. A single builder writing all
+  four would have had to own four blocks and free them in the right order, which is the hand-counted
+  method's shape with the offsets removed.
 
 ## 1 — Instance and device creation — **done 13 October 2026**
 
@@ -1023,7 +1044,7 @@ widest.
 | `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
 | `VkImage >> create` | 17 | `VkImageCreateInfo` |
 | ~~`VkImage >> createView`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
-| `VkRenderPass >> initializeDevice:` | 13 | attachment, subpass and render pass create infos |
+| ~~`VkRenderPass >> initializeDevice:`~~ | ~~31~~ | attachment, reference, subpass and render pass create infos — **done 15 October 2026** |
 | ~~`VkFramebuffer >> initializeDevice:`~~ | ~~9~~ | `VkFramebufferCreateInfo` — **done 15 October 2026** |
 | `VkComputePipeline >> create` | 13 | `VkComputePipelineCreateInfo`, shader stage create info |
 
@@ -1107,3 +1128,63 @@ attachment pointer is cleared before the copy is kept, because the Framebuffer t
 that pointer and the run is freed with the example; the view is the Framebuffer tab, which reports
 the extent as a point, the layer and attachment counts, and whether each handle in the run is set.
 The suite is 473 tests over the nine concrete test classes.
+
+### 4c — the render pass request, done 15 October 2026
+
+`VkRenderPass >> initializeDevice:format:finalLayout:` wrote thirty-one offsets across four
+structures in four nested `ensure:` blocks — the largest single hand-counted method in the project.
+All four are now declared:
+
+| Structure | Bytes | C offsets |
+|---|---|---|
+| `VkAttachmentDescription` | 36 | 0, 4, 8, 12, 16, 20, 24, 28, 32 |
+| `VkAttachmentReference` | 8 | 0, 4 |
+| `VkSubpassDescription` | 72 | 0, 4, 8, 16, 24, 32, 40, 48, 56, 64 |
+| `VkRenderPassCreateInfo` | 64 | 0, 8, 16, 20, 24, 32, 40, 48, 56 |
+
+Only the request carries a chain header. The three descriptions are read in place at the address
+the structure above them points at, so none of them declares an initializer, and the request's
+stamps `sType` and nothing else.
+
+Four builders on the class side, one per structure:
+`attachmentDescriptionForFormat:finalLayout:`, `colorAttachmentReference`,
+`subpassDescriptionReading:` and `createInfoForAttachment:subpass:`, with
+`handleForCreateInfo:on:` the only sender of `vkCreateRenderPass` in the project. The initializer
+now allocates nothing itself: it calls the four builders, nests them in `ensure:` blocks innermost
+first, and frees each structure after the call returns — the driver reads all four during it and
+none afterwards. The two pass variants are unchanged in shape and still differ in one argument,
+the layout the attachment leaves the pass in.
+
+Most of the old method's writes were zeros a fresh block already holds: the pass flags, the
+subpass flags, the input, resolve, depth-stencil and preserved attachments, the dependency count
+and pointer, and the graphics bind point itself. Eleven of the thirty-one offsets are now written.
+`attachmentsPerPass`, `subpassesPerPass`, `colorAttachmentsPerSubpass` and `firstAttachmentIndex`
+name the four literals that remain, and `VkPipelineBindPoint` was added so the bind point is asked
+for by name even though its value is zero.
+
+`VkImageLayout` was reparented onto `VkValueConstants`, which the Attachment tab needs to name the
+layouts the attachment enters and leaves in. `VkAttachmentOp` could not be: its load and store
+halves share their numbering, so it answers two prefixed lookups instead.
+
+Eight tests red first: the request's layout, the three descriptions' layouts, what the three
+builders write against what they leave at zero, what the request names, the one-caller and
+four-writers test, the scalar-poke ban — which here pins `handleForCreateInfo:on:` as the only
+method of the class allowed to send even `pointerAt:` — the rows of both tabs, and the initializers.
+The driver leg `PVGraphicsTest >> testBothPassVariantsAreBuiltFromTheSameBuildersOnThisMachine`
+creates the window variant and two offscreen variants on one device and asserts three distinct
+handles; it is the only place the window variant is exercised headlessly, which works because
+`presentSrcKHR` is a layout rather than a surface.
+
+Each of the four structures has an example, and the three that point at something clear the pointer
+before the copy is kept, because the structure pointed at is freed with the example. Two views: the
+Attachment tab, which names the format, the load and store operations, the entry and exit layouts
+and whether either stencil half is used; and the Request tab, which counts the attachments, the
+subpasses and the dependencies and says whether each run is there without following it.
+`VkSubpassDescription` earns `ReExcessiveVariablesRule` on both sides for its ten `OFFSET_`
+variables, which is accepted as it was for the earlier wide structures.
+
+Left alone deliberately: `VkCommandBuffer` still passes `0` and `1` inline as the bind point to
+`vkCmdBindPipeline` and `vkCmdBindDescriptorSets`. Those methods write no structure, so they are
+outside this unit; `VkPipelineBindPoint` now exists for whichever unit reaches them.
+
+The suite is 482 tests over the nine concrete test classes.
