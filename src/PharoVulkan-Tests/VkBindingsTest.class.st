@@ -2900,6 +2900,19 @@ VkBindingsTest >> testOnlyOneMethodSubmitsToAQueue [
 		equals: #( 'VkQueue >> submitBatch:fence:' )
 ]
 
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testOnlyOneMethodWritesTheVertexInputState [
+	"One builder of the vertex input state, so one place owns the two runs it points at and one
+	 place frees them. The reflected writer list is what the Writers tab shows, so a second
+	 writer would show there as well as here."
+
+	self
+		assert: (VkPipelineVertexInputStateCreateInfo writerRows collect: [
+				 :each | each at: #method ]) asArray
+		equals:
+		#( 'VkGraphicsPipeline class >> vertexInputStateForBindings:attributes:' )
+]
+
 { #category : 'tests - result codes' }
 VkBindingsTest >> testOutOfPoolMemoryIsADeclaredResultCode [
 	"Observed on this device: allocating a set out of a pool built for zero sets answers
@@ -4283,6 +4296,257 @@ VkBindingsTest >> testValueConstantsNameEveryConstantTheyDeclare [
 				assert: (each perform: (each nameForValue: value))
 				equals: value ].
 		self assert: (each nameForValue: -1) isNil ]
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexDescriptionRowsNameTheRateAndTheFormat [
+	"Both descriptions hold numbers that mean something in Vulkan's terms: the rate a buffer
+	 advances at and the format of one attribute. Each is named through its constant class
+	 rather than through a table a view keeps, so a row cannot name something the constants do
+	 not."
+
+	| binding attribute bindingRows attributeRows |
+	binding := VkGraphicsPipeline vertexBindingDescriptions first.
+	attribute := VkGraphicsPipeline vertexAttributeDescriptions first.
+	bindingRows := binding bindingRows.
+	attributeRows := attribute attributeRows.
+	self
+		assert: (bindingRows at: #inputRateName)
+		equals: (VkVertexInputRate nameForValue: VkVertexInputRate perVertex)
+				asString.
+	self assert: (bindingRows at: #stride) equals: binding stride.
+	self
+		assert: (attributeRows at: #formatName)
+		equals: (VkFormat nameForValue: VkFormat r32g32Sfloat) asString.
+	self assert: (attributeRows at: #location) equals: attribute location
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexInputExamplesAreTheDescriptionsTheProjectDraws [
+	"Each example is what this project really hands the driver, rebuilt on every call. The two
+	 descriptions live in object memory, so a click frees nothing. The state example keeps a
+	 copy with both runs freed and both fields nulled, so it says the runs are not there rather
+	 than pointing at memory that has gone, and both counts survive the copy."
+
+	| binding attribute state |
+	binding := VkVertexInputBindingDescription
+		           exampleBindingOfTheVertexThisProjectDraws.
+	attribute := VkVertexInputAttributeDescription
+		             examplePositionAttributeOfTheVertexThisProjectDraws.
+	self
+		assert: binding stride
+		equals: VkGraphicsPipeline vertexBindingDescriptions first stride.
+	self assert: attribute format equals: VkFormat r32g32Sfloat.
+	state := VkPipelineVertexInputStateCreateInfo
+		         exampleStateOfTheVertexThisProjectDraws.
+	self
+		assert: state sType
+		equals: VkStructureType pipelineVertexInputStateCreateInfo.
+	self
+		assert: state vertexBindingDescriptionCount
+		equals: VkGraphicsPipeline vertexBindingDescriptions size.
+	self
+		assert: state vertexAttributeDescriptionCount
+		equals: VkGraphicsPipeline vertexAttributeDescriptions size.
+	self assert: state pVertexBindingDescriptions isNull.
+	self assert: state pVertexAttributeDescriptions isNull.
+	self assert: state pNext isNull
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexInputLayoutsMatchTheCLayout [
+	"Three structures: a binding description says how wide one vertex is, an attribute
+	 description says where one value sits inside it, and the state structure points at a run of
+	 each. Both descriptions are plain uint32 quartets with no chain header, twelve and sixteen
+	 bytes. The state structure pads after the flags and count pair so the first run pointer
+	 lands on a pointer boundary, which makes it forty-eight bytes."
+
+	| bindingRows attributeRows stateRows |
+	bindingRows := VkVertexInputBindingDescription layoutRows.
+	self
+		assert: (bindingRows collect: [ :each | each first ]) asArray
+		equals: #( #binding #stride #inputRate ).
+	self
+		assert: (bindingRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 ).
+	self assert: VkVertexInputBindingDescription byteSize equals: 12.
+	attributeRows := VkVertexInputAttributeDescription layoutRows.
+	self
+		assert: (attributeRows collect: [ :each | each first ]) asArray
+		equals: #( #location #binding #format #offset ).
+	self
+		assert: (attributeRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 ).
+	self assert: VkVertexInputAttributeDescription byteSize equals: 16.
+	stateRows := VkPipelineVertexInputStateCreateInfo layoutRows.
+	self
+		assert: (stateRows collect: [ :each | each first ]) asArray
+		equals:
+			#( #sType #pNext #flags #vertexBindingDescriptionCount
+			   #pVertexBindingDescriptions #vertexAttributeDescriptionCount
+			   #pVertexAttributeDescriptions ).
+	self
+		assert: (stateRows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 ).
+	self assert: VkPipelineVertexInputStateCreateInfo byteSize equals: 48
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexInputRowsNameTheCountsAndSayWhichRunsAreThere [
+	"The rows the Vertex input tab reads: how many of each description the state names, and
+	 whether each run is there. A row never follows a run — a freed run would be read through a
+	 pointer the structure no longer owns — so the rows say a run is given rather than what it
+	 holds."
+
+	| state rows |
+	state := VkGraphicsPipeline
+		         vertexInputStateForBindings:
+		         VkGraphicsPipeline vertexBindingDescriptions
+		         attributes: VkGraphicsPipeline vertexAttributeDescriptions.
+	rows := [ state vertexInputRows ] ensure: [
+		        VkGraphicsPipeline freeVertexInputState: state ].
+	self
+		assert: (rows at: #vertexBindingDescriptionCount)
+		equals: VkGraphicsPipeline vertexBindingDescriptions size.
+	self
+		assert: (rows at: #vertexAttributeDescriptionCount)
+		equals: VkGraphicsPipeline vertexAttributeDescriptions size.
+	self assert: (rows at: #bindingRunGiven).
+	self assert: (rows at: #attributeRunGiven)
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexInputStateInitializesOnlyWhatIsConstantForTheType [
+	"The state structure's type is fixed by its type; both counts and both run pointers are a
+	 caller's choice. Neither description carries a chain header, so neither has anything
+	 constant for its type, and neither may declare an initializer: each is pointed at from a
+	 structure whose getter would run initialize over it."
+
+	| state setters |
+	state := VkPipelineVertexInputStateCreateInfo externalInstance.
+	[
+	self
+		assert: state sType
+		equals: VkStructureType pipelineVertexInputStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineVertexInputStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineVertexInputStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: ).
+	#( #VkVertexInputBindingDescription
+	   #VkVertexInputAttributeDescription ) do: [ :each |
+		self deny:
+			((Smalltalk at: each) includesSelector: #initializeConstantFields).
+		self deny: ((Smalltalk at: each) includesSelector: #sType:) ]
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexInputStateNamesOneRunOfEachDescription [
+	"What the one builder writes, read back through the declared fields and through the runs it
+	 points at. A builder is a function of its arguments, so no device is needed. Each count is
+	 the size of the collection it was given, and each run holds those descriptions in order at
+	 the declared stride, which is what the driver reads."
+
+	| state bindings attributes firstAttribute |
+	bindings := VkGraphicsPipeline vertexBindingDescriptions.
+	attributes := VkGraphicsPipeline vertexAttributeDescriptions.
+	state := VkGraphicsPipeline
+		         vertexInputStateForBindings: bindings
+		         attributes: attributes.
+	[
+	self
+		assert: state vertexBindingDescriptionCount
+		equals: bindings size.
+	self
+		assert: state vertexAttributeDescriptionCount
+		equals: attributes size.
+	self deny: state pVertexBindingDescriptions isNull.
+	self deny: state pVertexAttributeDescriptions isNull.
+	self
+		assert: (VkVertexInputBindingDescription fromHandle:
+				 state pVertexBindingDescriptions getHandle) stride
+		equals: bindings first stride.
+	firstAttribute := VkVertexInputAttributeDescription fromHandle:
+		                  state pVertexAttributeDescriptions getHandle.
+	self assert: firstAttribute format equals: attributes first format.
+	self
+		assert: (VkVertexInputAttributeDescription fromHandle:
+				 state pVertexAttributeDescriptions getHandle
+				 + VkVertexInputAttributeDescription byteSize) offset
+		equals: (attributes at: 2) offset ] ensure: [
+		VkGraphicsPipeline freeVertexInputState: state ]
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexInputTabsShowEveryRowTheirReportsAnswer [
+	"Each of the three tabs is its report laid out, so each must carry one row per entry the
+	 report answers: a value added to a report cannot then stay invisible. Building a table only
+	 reads, which is why each report is compared with itself afterwards."
+
+	| pairs |
+	pairs := {
+		         { VkPipelineVertexInputStateCreateInfo
+			         exampleStateOfTheVertexThisProjectDraws.
+		         #vertexInputRows.
+		         #inspectorVertexInput: }.
+		         { VkVertexInputBindingDescription
+			         exampleBindingOfTheVertexThisProjectDraws.
+		         #bindingRows.
+		         #inspectorBinding: }.
+		         { VkVertexInputAttributeDescription
+			         examplePositionAttributeOfTheVertexThisProjectDraws.
+		         #attributeRows.
+		         #inspectorAttribute: } }.
+	pairs do: [ :each |
+		| example rows table shown |
+		example := each first.
+		rows := example perform: each second.
+		table := example perform: each third with: SpPresenter new.
+		self assert: table items size equals: rows size.
+		shown := table items collect: [ :item | item second ].
+		rows valuesDo: [ :value | self assert: (shown includes: value) ].
+		self assert: (example perform: each second) equals: rows ]
+]
+
+{ #category : 'tests - vertex input' }
+VkBindingsTest >> testVertexLayoutDescribesAPositionAndAColourInOneVertex [
+	"The vertex layout this project draws with: one buffer, advanced per vertex, holding a
+	 two-float position followed by a three-float colour. The stride is derived from the two
+	 attributes rather than written again, so a format changed on one side cannot leave the
+	 stride naming a width no vertex has."
+
+	| bindings attributes |
+	bindings := VkGraphicsPipeline vertexBindingDescriptions.
+	attributes := VkGraphicsPipeline vertexAttributeDescriptions.
+	self assert: bindings size equals: 1.
+	self
+		assert: bindings first binding
+		equals: VkGraphicsPipeline vertexBufferBinding.
+	self
+		assert: bindings first stride
+		equals:
+		VkGraphicsPipeline positionByteCount
+		+ VkGraphicsPipeline colourByteCount.
+	self
+		assert: bindings first inputRate
+		equals: VkVertexInputRate perVertex.
+	self assert: attributes size equals: 2.
+	self
+		assert: (attributes collect: [ :each | each location ]) asArray
+		equals: {
+				VkGraphicsPipeline positionLocation.
+				VkGraphicsPipeline colourLocation }.
+	self
+		assert: (attributes collect: [ :each | each format ]) asArray
+		equals: {
+				VkFormat r32g32Sfloat.
+				VkFormat r32g32b32Sfloat }.
+	self
+		assert: (attributes collect: [ :each | each offset ]) asArray
+		equals: { 0. VkGraphicsPipeline positionByteCount }.
+	self
+		assert: (attributes collect: [ :each | each binding ]) asArray
+		equals: (Array new: 2 withAll: VkGraphicsPipeline vertexBufferBinding)
 ]
 
 { #category : 'tests - structures' }

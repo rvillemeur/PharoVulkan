@@ -1,5 +1,9 @@
 "
-Graphics pipeline for hello-triangle. Wraps VkPipeline + embedded VkPipelineLayout (no descriptor sets). Create with #createDevice:renderPass:vertexModule:fragmentModule:extent:, destroy with #destroy.
+Graphics pipeline for hello-triangle. Wraps VkPipeline + embedded VkPipelineLayout (no descriptor sets). Create with createDevice:renderPass:vertexModule:fragmentModule:extent:, destroy with destroy.
+
+The class side owns the vertex layout this project draws with: vertexBindingDescriptions and vertexAttributeDescriptions build declared descriptions in object memory from the named widths and locations, runOf: copies a collection of them into one contiguous external run at the declared stride, and vertexInputStateForBindings:attributes: answers the VkPipelineVertexInputStateCreateInfo that points at both runs. The state owns those runs: freeVertexInputState: gives them back through it. The stride is derived from positionByteCount and colourByteCount rather than written again, and PVGraphicsTest asserts it against the bytes PVTriangleScene uploads.
+
+The rest of the pipeline create info tree — the two shader stages, input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself — is still written at counted offsets inside initializeDevice:renderPass:vertexModule:fragmentModule:extent:, one declared structure per remaining unit of LAYOUT-PLAN.md.
 "
 Class {
 	#name : 'VkGraphicsPipeline',
@@ -14,12 +18,146 @@ Class {
 	#tag : 'Graphics'
 }
 
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> colourByteCount [
+	"A colour is three 32 bit floats, so it is twelve bytes wide."
+
+	^ 12
+]
+
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> colourLocation [
+	"The shader location the vertex colour arrives at, after the position."
+
+	^ 1
+]
+
 { #category : 'instance creation' }
 VkGraphicsPipeline class >> createDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint [
     | obj |
     obj := self new.
     obj initializeDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint.
     ^ obj
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeVertexInputRunsOf: aVertexInputState [
+	"Give back the two runs the state points at, and null each field as it goes: the state is
+	 the record of where those runs are, so a freed address left in it could be read or freed
+	 twice. A null field was never a run and is left alone."
+
+	aVertexInputState pVertexBindingDescriptions isNull ifFalse: [
+		aVertexInputState pVertexBindingDescriptions getHandle free ].
+	aVertexInputState pVertexAttributeDescriptions isNull ifFalse: [
+		aVertexInputState pVertexAttributeDescriptions getHandle free ].
+	aVertexInputState
+		pVertexBindingDescriptions: ExternalAddress null;
+		pVertexAttributeDescriptions: ExternalAddress null
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeVertexInputState: aVertexInputState [
+	"Everything the state owns, in the order that keeps each address readable until it is
+	 freed: the two runs it points at, then its own store."
+
+	self freeVertexInputRunsOf: aVertexInputState.
+	aVertexInputState getHandle free
+]
+
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> positionByteCount [
+	"A position is two 32 bit floats, so it is eight bytes wide. It is also the offset of the
+	 colour that follows it and part of the stride, both of which are derived from it rather
+	 than written again."
+
+	^ 8
+]
+
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> positionLocation [
+	"The shader location the vertex position arrives at — the first input of the vertex shader
+	 this project compiles."
+
+	^ 0
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> runOf: someDescriptions [
+	"One contiguous run outside object memory holding the given descriptions at their declared
+	 stride, which is how the driver reads an array it is pointed at. The descriptions
+	 themselves live in object memory, where the garbage collector may move them, so each is
+	 copied into its element. The caller frees the first element's handle, which is the
+	 address of the whole block; an empty collection allocates nothing and answers null,
+	 because a pointer into a block of no bytes is not something to hand a driver."
+
+	| elements |
+	someDescriptions ifEmpty: [ ^ ExternalAddress null ].
+	elements := someDescriptions first class externalArrayOf:
+		            someDescriptions size.
+	someDescriptions doWithIndex: [ :each :index |
+		each copyBytesInto: (elements at: index) ].
+	^ elements first getHandle
+]
+
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> vertexAttributeDescriptions [
+	"What one vertex holds: a two-float position at its start and a three-float colour after it,
+	 both read from the one bound buffer. The colour's offset is the width of the position, so
+	 the two cannot drift apart. The descriptions live in object memory and are copied into an
+	 external run when a state structure is built from them."
+
+	^ {
+		  (VkVertexInputAttributeDescription new
+			   location: self positionLocation;
+			   binding: self vertexBufferBinding;
+			   format: VkFormat r32g32Sfloat;
+			   offset: 0;
+			   yourself).
+		  (VkVertexInputAttributeDescription new
+			   location: self colourLocation;
+			   binding: self vertexBufferBinding;
+			   format: VkFormat r32g32b32Sfloat;
+			   offset: self positionByteCount;
+			   yourself) }
+]
+
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> vertexBindingDescriptions [
+	"The buffer bindings this project's pipeline reads vertices from: one buffer, advanced one
+	 vertex at a time. The stride is the position and the colour together, derived from the two
+	 widths so a format changed on one side cannot leave it naming a width no vertex has. The
+	 descriptions live in object memory and are copied into an external run when a state
+	 structure is built from them."
+
+	^ { (VkVertexInputBindingDescription new
+		   binding: self vertexBufferBinding;
+		   stride: self positionByteCount + self colourByteCount;
+		   inputRate: VkVertexInputRate perVertex;
+		   yourself) }
+]
+
+{ #category : 'vertex layout' }
+VkGraphicsPipeline class >> vertexBufferBinding [
+	"The one binding number this project's pipeline reads vertices from. Every attribute reads
+	 the same buffer, so they all name this binding."
+
+	^ 0
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> vertexInputStateForBindings: someBindings attributes: someAttributes [
+	"The vertex input state this project's pipeline is created with, outside object memory
+	 because the driver reads it after this method answers. It owns the two runs it points at,
+	 which freeVertexInputState: gives back through it."
+
+	| state |
+	state := VkPipelineVertexInputStateCreateInfo externalInstance.
+	^ state
+		  vertexBindingDescriptionCount: someBindings size;
+		  pVertexBindingDescriptions: (self runOf: someBindings);
+		  vertexAttributeDescriptionCount: someAttributes size;
+		  pVertexAttributeDescriptions: (self runOf: someAttributes);
+		  yourself
 ]
 
 { #category : 'lifecycle' }
@@ -45,21 +183,21 @@ VkGraphicsPipeline >> handle [
 { #category : 'initialization' }
 VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint [
 	"VkPipelineShaderStageCreateInfo (48 bytes each): 0:sType 8:pNext 16:flags 20:stage 24:module(ptr) 32:pName(ptr) 40:pSpecializationInfo(ptr)
-	 VkVertexInputBindingDescription (12 bytes): 0:binding 4:stride 8:inputRate
-	 VkVertexInputAttributeDescription (16 bytes): 0:location 4:binding 8:format 12:offset
-	 VkPipelineVertexInputStateCreateInfo (48 bytes): 0:sType 8:pNext 16:flags 20:bindingCount 24:pBindings(ptr) 32:attrCount 40:pAttribs(ptr)"
-	| emptyLayout nameBuf stagesBuf bindDesc attrDesc vertInput inputAssembly viewportState rasterState sampleState blendAttach blendState dynStates dynState createInfo pipeBuf result bindings attrs |
+	 The vertex input state and the two description runs it points at are declared structures,
+	 built by vertexInputStateForBindings:attributes: and freed through the class; the rest of
+	 the tree is still written at counted offsets."
+
+	| emptyLayout nameBuf stagesBuf vertInput inputAssembly viewportState rasterState sampleState blendAttach blendState dynStates dynState createInfo pipeBuf result |
 	device := aVkDevice.
 	emptyLayout := VkPipelineLayout new.
 	emptyLayout initializeOn: aVkDevice setLayouts: #().
 	layout := emptyLayout.
 	nameBuf := ExternalAddress allocate: 5.
 	stagesBuf := ExternalAddress allocate: 96.
-	bindings := self vertexBindingDescriptions.
-	attrs := self vertexAttributeDescriptions.
-	bindDesc := ExternalAddress allocate: bindings size * 12.
-	attrDesc := ExternalAddress allocate: attrs size * 16.
-	vertInput := ExternalAddress allocate: 48.
+	vertInput := self class
+		             vertexInputStateForBindings:
+		             self class vertexBindingDescriptions
+		             attributes: self class vertexAttributeDescriptions.
 	inputAssembly := ExternalAddress allocate: 32.
 	viewportState := ExternalAddress allocate: 48.
 	rasterState := ExternalAddress allocate: 64.
@@ -89,26 +227,6 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		stagesBuf pointerAt:   73 put: aFragmentModule handle getHandle.
 		stagesBuf pointerAt:   81 put: nameBuf.
 		stagesBuf pointerAt:   89 put: ExternalAddress null.
-		bindings doWithIndex: [:b :i |
-			| base |
-			base := (i - 1) * 12 + 1.
-			bindDesc unsignedLongAt: base     put: b binding.
-			bindDesc unsignedLongAt: base + 4 put: b stride.
-			bindDesc unsignedLongAt: base + 8 put: b inputRate].
-		attrs doWithIndex: [:a :i |
-			| base |
-			base := (i - 1) * 16 + 1.
-			attrDesc unsignedLongAt: base      put: a location.
-			attrDesc unsignedLongAt: base + 4  put: a binding.
-			attrDesc unsignedLongAt: base + 8  put: a format.
-			attrDesc unsignedLongAt: base + 12 put: a offset].
-		vertInput unsignedLongAt: 1  put: VkStructureType pipelineVertexInputStateCreateInfo.
-		vertInput pointerAt:   9  put: ExternalAddress null.
-		vertInput unsignedLongAt: 17 put: 0.
-		vertInput unsignedLongAt: 21 put: bindings size.
-		vertInput pointerAt:   25 put: bindDesc.
-		vertInput unsignedLongAt: 33 put: attrs size.
-		vertInput pointerAt:   41 put: attrDesc.
 		inputAssembly unsignedLongAt: 1  put: VkStructureType pipelineInputAssemblyStateCreateInfo.
 		inputAssembly pointerAt:   9  put: ExternalAddress null.
 		inputAssembly unsignedLongAt: 17 put: 0.
@@ -174,7 +292,7 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		createInfo unsignedLongAt: 17 put: 0.
 		createInfo unsignedLongAt: 21 put: 2.
 		createInfo pointerAt:   25 put: stagesBuf.
-		createInfo pointerAt:   33 put: vertInput.
+		createInfo pointerAt:   33 put: vertInput getHandle.
 		createInfo pointerAt:   41 put: inputAssembly.
 		createInfo pointerAt:   49 put: ExternalAddress null.
 		createInfo pointerAt:   57 put: viewportState.
@@ -192,8 +310,9 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		Vk checkResult: result.
 		handle := VkPipeline_H fromHandle: (pipeBuf pointerAt: 1)
 	] ensure: [
-		nameBuf free. stagesBuf free. bindDesc free. attrDesc free.
-		vertInput free. inputAssembly free. viewportState free. rasterState free.
+		nameBuf free. stagesBuf free.
+		self class freeVertexInputState: vertInput.
+		inputAssembly free. viewportState free. rasterState free.
 		sampleState free. blendAttach free. blendState free.
 		dynStates free. dynState free. createInfo free. pipeBuf free ]
 ]
@@ -201,18 +320,4 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 { #category : 'accessing' }
 VkGraphicsPipeline >> layout [
     ^ layout
-]
-
-{ #category : 'vertex input' }
-VkGraphicsPipeline >> vertexAttributeDescriptions [
-	"Default: location 0 = vec2 position at byte 0, location 1 = vec3 color at byte 8."
-	^ {
-		VkVertexAttributeDescription location: 0 binding: 0 format: VkFormat r32g32Sfloat offset: 0.
-		VkVertexAttributeDescription location: 1 binding: 0 format: VkFormat r32g32b32Sfloat offset: 8 }
-]
-
-{ #category : 'vertex input' }
-VkGraphicsPipeline >> vertexBindingDescriptions [
-	"Default: binding 0, stride 20 bytes (vec2 pos + vec3 color), per-vertex rate."
-	^ { VkVertexBindingDescription binding: 0 stride: 20 inputRate: 0 }
 ]

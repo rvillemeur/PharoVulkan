@@ -1150,6 +1150,30 @@ PVGraphicsTest >> testVertexDataSize [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testVertexLayoutAgreesWithTheVertexDataTheSceneUploads [
+	"The declared vertex layout and the buffer the scene fills are two descriptions of the same
+	 bytes, written in different classes. The stride must be the five floats per vertex the
+	 scene uploads, and the colour must start where the two position floats end, or the shader
+	 reads one vertex's colour as another's position and the triangle still renders."
+
+	| binding colour |
+	binding := VkGraphicsPipeline vertexBindingDescriptions first.
+	colour := VkGraphicsPipeline vertexAttributeDescriptions second.
+	self
+		assert: binding stride
+		equals:
+		PVTriangleScene floatsPerVertex * PVTriangleScene bytesPerFloat.
+	self
+		assert: colour offset
+		equals: VkGraphicsPipeline positionByteCount.
+	self
+		assert:
+		VkGraphicsPipeline positionByteCount
+		+ VkGraphicsPipeline colourByteCount
+		equals: binding stride
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testVertexShaderBuilds [
 	self
 		assertValidSpirv: PVHelloTriangleScene new buildVertexShader
