@@ -2560,6 +2560,27 @@ VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
 		equals: #( 'VkShaderModule >> handleForCreateInfo:' )
 ]
 
+{ #category : 'tests - layout' }
+VkBindingsTest >> testOnlyOneMethodCreatesASwapchain [
+	"One builder, one caller of the creation, and the request is written nowhere else. The
+	 tests are rejected from the senders: a test naming the call is itself a sender."
+
+	| callers |
+	callers := (SystemNavigation default allSendersOf:
+		            #createSwapchainKHR:createInfo:allocator:swapchain:) reject: [
+		           :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkSwapchain class >> handleForCreateInfo:on:' ).
+	self
+		assert: (VkSwapchainCreateInfoKHR writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals:
+		#( 'VkSwapchain class >> createInfoForSurface:format:capabilities:extent:' )
+]
+
 { #category : 'tests - image' }
 VkBindingsTest >> testOnlyOneMethodCreatesAnImage [
 	"One builder, one caller of the creation, and the request is written nowhere else. The
@@ -3621,6 +3642,78 @@ VkBindingsTest >> testSurfaceQueryStructuresInitializeNothing [
 ]
 
 { #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. The present mode, the composite
+	 alpha and the layer count are the same for every swapchain this project creates, but each
+	 is a caller's choice rather than a property of the structure, and the extent is nested by
+	 value, so an initializer writing anything else would write through to a nested store on
+	 every read."
+
+	| info setters |
+	info := VkSwapchainCreateInfoKHR externalInstance.
+	[
+	self assert: info sType equals: VkStructureType swapchainCreateInfoKHR ]
+		ensure: [ info getHandle free ].
+	setters := (VkSwapchainCreateInfoKHR >> #initializeConstantFields) messages
+		           select: [ :each |
+		           VkSwapchainCreateInfoKHR includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainCreateInfoLayoutMatchesTheCLayout [
+	"The request vkCreateSwapchainKHR reads: the chain header, the flags, the surface, how many
+	 images and in which format and colour space, the extent by value, the layers, the usage,
+	 the sharing mode and queue families, the transform and composite alpha to present with,
+	 the present mode, whether obscured pixels may be discarded, and the swapchain this one
+	 replaces. Both handles are pointer wide, and uFFI pads after the queue family count and
+	 after the clipped flag, which rounds the request to a hundred and four bytes."
+
+	| rows |
+	rows := VkSwapchainCreateInfoKHR layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #surface #minImageCount #imageFormat
+		           #imageColorSpace #imageExtent #imageArrayLayers #imageUsage
+		           #imageSharingMode #queueFamilyIndexCount
+		           #pQueueFamilyIndices #preTransform #compositeAlpha
+		           #presentMode #clipped #oldSwapchain ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 36 40 44 52 56 60 64 72 80 84 88 92 96 ).
+	self assert: VkSwapchainCreateInfoKHR byteSize equals: 104.
+	self
+		assert: (rows detect: [ :each | each first = #imageExtent ]) third
+		equals: VkExtent2D byteSize
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainCreationWritesNoScalarFieldAtAHandCountedOffset [
+	"The swapchain request is declared, so no method may write it at a counted offset. What is
+	 left is named: the present info, whose own unit has not come yet, and three blocks that
+	 are not structures — the image index an acquire writes, the count and the run of image
+	 handles the driver fills, and the out parameter a creation answers through."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: #pointerAt: #pointerAt:put: ).
+	offenders := (VkSwapchain methods , VkSwapchain class methods) select: [
+		             :method |
+		             method messages anySatisfy: [ :each |
+			             banned includes: each ] ].
+	self
+		assert: (offenders collect: [ :each |
+				 each methodClass name asString , ' >> ' , each selector ])
+				asSortedCollection asArray
+		equals: #( 'VkSwapchain >> acquireNextImage:fence:'
+			           'VkSwapchain >> imagesFromDriver'
+			           'VkSwapchain >> present:queue:waitSemaphore:'
+			           'VkSwapchain class >> handleForCreateInfo:on:' )
+]
+
+{ #category : 'tests - layout' }
 VkBindingsTest >> testSwapchainImageCountAsksForOneMoreThanTheSurfaceDemands [
 	"One image more than the surface demands, so a frame can be drawn while another is
 	 presented, and never more than the surface allows. A maximum of zero means the surface
@@ -3644,6 +3737,114 @@ VkBindingsTest >> testSwapchainImageCountAsksForOneMoreThanTheSurfaceDemands [
 	self
 		assert: (VkSwapchain imageCountFor: capabilities)
 		equals: 1 + VkSwapchain imagesBeyondMinimum
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainRequestAsksForWhatTheSurfaceReported [
+	"What the builder writes, with no device in reach: the surface's own transform, the pair it
+	 offered, the image count the rule asks for, and the extent given. The exclusive sharing
+	 mode, the flags, both queue family fields and the old swapchain are the zeros a fresh
+	 block holds, so none is written and each is asserted through its constant class or as a
+	 null. The surface handle is null here because a surface needs a display; what matters is
+	 that the request carries the handle it was given."
+
+	| capabilities surfaceFormat info |
+	capabilities := VkSurfaceCapabilitiesKHR
+		                exampleCapabilitiesAWindowSurfaceMightReport.
+	surfaceFormat := VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport.
+	info := VkSwapchain
+		        createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
+		        format: surfaceFormat
+		        capabilities: capabilities
+		        extent: VkImage exampleExtent.
+	[
+		self assert: info sType equals: VkStructureType swapchainCreateInfoKHR.
+		self assert: info flags equals: 0.
+		self
+			assert: info minImageCount
+			equals: (VkSwapchain imageCountFor: capabilities).
+		self assert: info imageFormat equals: surfaceFormat format.
+		self assert: info imageColorSpace equals: surfaceFormat colorSpace.
+		self assert: info imageExtent width equals: VkImage exampleExtent x.
+		self assert: info imageExtent height equals: VkImage exampleExtent y.
+		self assert: info imageArrayLayers equals: VkImage arrayLayerCount.
+		self assert: info imageUsage equals: VkImageUsage colorAttachmentBit.
+		self
+			assert: info imageSharingMode
+			equals: VkRenderConfig sharingModeExclusive.
+		self assert: info queueFamilyIndexCount equals: 0.
+		self assert: info pQueueFamilyIndices isNull.
+		self assert: info preTransform equals: capabilities currentTransform.
+		self assert: info compositeAlpha equals: VkCompositeAlpha opaqueBit.
+		self assert: info presentMode equals: VkRenderConfig presentModeFifo.
+		self assert: info clipped equals: VkSwapchain clipObscuredPixels.
+		self assert: info oldSwapchain isNull ] ensure: [ info getHandle free ]
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainRequestExampleIsTheRequestTheProjectMakes [
+	"The example is built by the one builder the creation path uses, so it reports exactly what
+	 a real creation would ask of a surface with these capabilities. It lives in object memory,
+	 so reading it frees nothing and a click in the browser leaks nothing."
+
+	| example built rows |
+	example := VkSwapchainCreateInfoKHR exampleRequestForAWindowSurface.
+	built := VkSwapchain
+		         createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
+		         format: VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport
+		         capabilities:
+		         VkSurfaceCapabilitiesKHR
+			         exampleCapabilitiesAWindowSurfaceMightReport
+		         extent: VkImage exampleExtent.
+	rows := [ built swapchainRows ] ensure: [ built getHandle free ].
+	self assert: example swapchainRows equals: rows.
+	self assert: example getHandle isExternalAddress not
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainRequestRowsNameTheFormatTheTransformAndThePresentMode [
+	"What the Swapchain tab reads. Every value is named through its constant class rather than
+	 restated, and the surface and old swapchain are reported as set or not because their
+	 addresses say nothing to a reader. Read only, so the tab leaves the store alone."
+
+	| info rows |
+	info := VkSwapchain
+		        createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
+		        format: VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport
+		        capabilities:
+		        VkSurfaceCapabilitiesKHR
+			        exampleCapabilitiesAWindowSurfaceMightReport
+		        extent: VkImage exampleExtent.
+	rows := [ info swapchainRows ] ensure: [ info getHandle free ].
+	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
+	self assert: (rows at: #colorSpaceName) equals: 'srgbNonlinearKHR'.
+	self assert: (rows at: #extent) equals: VkImage exampleExtent.
+	self assert: (rows at: #preTransformNames) equals: 'Identity'.
+	self assert: (rows at: #compositeAlphaNames) equals: 'Opaque'.
+	self assert: (rows at: #presentModeName) equals: 'presentModeFifo'.
+	self
+		assert: (rows at: #usageNames)
+		equals: (VkImageUsage nameForFlags: VkImageUsage colorAttachmentBit).
+	self assert: (rows at: #discardsObscuredPixels).
+	self deny: (rows at: #surfaceSet).
+	self deny: (rows at: #replacesASwapchain).
+	self deny: (rows at: #sharedBetweenQueueFamilies)
+]
+
+{ #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainRequestTabShowsEveryRowTheRequestReports [
+	"The Swapchain tab is the report laid out, so it must carry one row per entry
+	 swapchainRows answers: a value added to the report cannot then stay invisible. Building
+	 the table only reads, which is why the report is compared with itself afterwards."
+
+	| example rows table shown |
+	example := VkSwapchainCreateInfoKHR exampleRequestForAWindowSurface.
+	rows := example swapchainRows.
+	table := example inspectorSwapchain: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :each | self assert: (shown includes: each) ].
+	self assert: example swapchainRows equals: rows
 ]
 
 { #category : 'tests - structures' }

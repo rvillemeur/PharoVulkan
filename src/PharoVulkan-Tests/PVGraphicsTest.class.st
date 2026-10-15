@@ -1040,6 +1040,46 @@ PVGraphicsTest >> testSwapchainHasAnImageViewForEveryImage [
 			equals: backendWindow vulkanDrawableExtent ]
 ]
 
+{ #category : 'tests' }
+PVGraphicsTest >> testSwapchainRequestForARealSurfaceCarriesWhatTheSurfaceReported [
+	"What only a real surface can exercise: the request built from a driver report. The
+	 request must carry the surface's own transform and one of the pairs it offered, ask for
+	 an image count the surface allows, and name an extent inside the ones it accepts — the
+	 same request the live swapchain was created from, which is why its format is compared
+	 with the one the swapchain reports."
+
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	self windowSceneDo: [ :scene :backendWindow |
+		| capabilities chosen info rows |
+		capabilities := scene surface capabilities.
+		chosen := scene surface preferredFormat.
+		info := VkSwapchain
+			        createInfoForSurface: scene surface handle
+			        format: chosen
+			        capabilities: capabilities
+			        extent: scene swapchain extent.
+		rows := [
+		        self assert: info surface isNull not.
+		        self assert: info imageFormat equals: scene swapchain format.
+		        self assert: info preTransform equals: capabilities currentTransform.
+		        self assert: info minImageCount >= capabilities minImageCount.
+		        capabilities maxImageCount = VkSwapchain unlimitedImageCount ifFalse: [
+			        self assert: info minImageCount <= capabilities maxImageCount ].
+		        self
+			        assert: info imageExtent width >= capabilities minImageExtent width;
+			        assert: info imageExtent width <= capabilities maxImageExtent width;
+			        assert: info imageExtent height >= capabilities minImageExtent height;
+			        assert: info imageExtent height
+				        <= capabilities maxImageExtent height.
+		        info swapchainRows ] ensure: [ info getHandle free ].
+		self assert: (rows at: #surfaceSet).
+		self assert: (rows at: #extent) equals: scene swapchain extent.
+		self
+			assert: (rows at: #presentModeName)
+			equals: scene swapchain presentModeName ]
+]
+
 { #category : 'tests - window' }
 PVGraphicsTest >> testSwapchainViewReportsEveryImageWithoutMutating [
 	"The view is the only place that states what the driver handed us for this window, so it has
