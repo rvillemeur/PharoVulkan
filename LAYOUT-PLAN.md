@@ -110,13 +110,13 @@ are the ones that call into the driver.
 - **A constants class names its own values.** A view must never carry its own table of Vulkan
   names, so a class whose values a view shows sits under `VkValueConstants` or `VkFlagConstants`
   and answers `nameForValue:` or `nameForFlags:`. `VkDescriptorType` and `VkShaderStage` were
-  reparented for the Bindings tab. The other classes in the `Constants` tag — `VkImageTiling`,
-  `VkImageType` — are still plain holders, to be moved by the unit that needs each one named
-  rather than in one sweep — `VkAccess2` and `VkPipelineStage2` were moved by unit 3b, which shows
-  four of their masks, and `VkImageLayout` by unit 4c, whose Attachment tab names the layouts an
-  attachment enters and leaves in. `VkAttachmentOp` cannot be moved at all: its load and store
-  halves share their numbering. `VkApiVersion` and `VkRenderConfig` are not value tables and stay
-  where they are.
+  reparented for the Bindings tab. Every other value table in the `Constants` tag has since
+  followed, each moved by the unit whose view needed its names rather than in one sweep:
+  `VkAccess2` and `VkPipelineStage2` by unit 3b, which shows four of their masks, `VkImageLayout`
+  by unit 4c, whose Attachment tab names the layouts an attachment enters and leaves in, and
+  `VkImageTiling` and `VkImageType` by unit 4d, whose Image tab names both. `VkAttachmentOp`
+  cannot be moved at all: its load and store halves share their numbering. `VkApiVersion` and
+  `VkRenderConfig` are not value tables and stay where they are.
 - **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
   but not `at:put:`, which lands in the inner array, so the view rows across this project are not
   immutable however the older comments read. The guarantee that holds is that every row builder
@@ -284,6 +284,13 @@ are the ones that call into the driver.
   pairing method that nests them in `ensure:` blocks innermost first. A single builder writing all
   four would have had to own four blocks and free them in the right order, which is the hand-counted
   method's shape with the offsets removed.
+- **A count two requests restate is one count on the resource.** The image is created with one mip
+  level and one array layer, and its view covers every level and layer the image has, so the two
+  requests ask for the same number for the same reason. Unit 4a had named them
+  `viewMipLevelCount` and `viewArrayLayerCount` while only the view was declared; declaring the
+  image showed they were the image's own, so they became `mipLevelCount` and `arrayLayerCount`
+  and the view asks for those. A count that only looks equal — one create info per queue family
+  against however many queues that family is asked for, in unit 1a — stays two constants.
 
 ## 1 — Instance and device creation — **done 13 October 2026**
 
@@ -1042,7 +1049,7 @@ widest.
 | `VkSwapchain >> initializeDevice:` | 19 | `VkSwapchainCreateInfoKHR`, surface capabilities |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
-| `VkImage >> create` | 17 | `VkImageCreateInfo` |
+| ~~`VkImage >> create`~~ | ~~17~~ | `VkImageCreateInfo` — **done 15 October 2026** |
 | ~~`VkImage >> createView`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | ~~`VkRenderPass >> initializeDevice:`~~ | ~~31~~ | attachment, reference, subpass and render pass create infos — **done 15 October 2026** |
 | ~~`VkFramebuffer >> initializeDevice:`~~ | ~~9~~ | `VkFramebufferCreateInfo` — **done 15 October 2026** |
@@ -1188,3 +1195,46 @@ Left alone deliberately: `VkCommandBuffer` still passes `0` and `1` inline as th
 outside this unit; `VkPipelineBindPoint` now exists for whichever unit reaches them.
 
 The suite is 482 tests over the nine concrete test classes.
+
+### 4d — the image request, done 15 October 2026
+
+`VkImageCreateInfo` is eighty-eight bytes at 0, 8, 16, 20, 24, 28, 40, 44, 48, 52, 56, 60, 64, 72
+and 80: the chain header, the flags, the dimensionality, the format, a `VkExtent3D` carried by
+value at twenty-eight, the mip and layer counts, the sample count, the tiling, the usage, the
+sharing mode, the queue families as a count and a pointer, and the layout the image starts in.
+Four bytes of padding follow the count and four more follow the layout, which is what rounds the
+structure to eighty-eight. `VkExtent3D` was declared by unit 3c for the copy region, so this unit
+declared nothing nested of its own — the second time a structure has paid for a later unit.
+
+`VkImage >> create` wrote seventeen offsets by hand. The request is now written by
+`VkImage class >> createInfoForFormat:extent:usage:` and handed to the driver by
+`handleForCreateInfo:on:`, the only sender of `vkCreateImage` in the project; `create` calls the
+two and frees the request after the call returns. Eight of the fifteen fields are written. The
+flags, the tiling, the sharing mode, the initial layout and both queue family fields are the zeros
+a fresh block holds — `VkImageTiling optimal`, `VkRenderConfig sharingModeExclusive` and
+`VkImageLayout undefined` are all zero, and no image here is shared between families — and the
+test asserts each of them through its constant class rather than the code writing it.
+
+`imageDepth` is new and is written: a flat image must still be one texel deep, and a zero depth is
+refused by the driver. `mipLevelCount` and `arrayLayerCount` replace unit 4a's
+`viewMipLevelCount` and `viewArrayLayerCount`, because the view covers every level and layer the
+image was created with, so the two requests were naming one number twice. `VkImageTiling` and
+`VkImageType` were reparented onto `VkValueConstants` for the Image tab, which leaves no plain
+value table in the `Constants` tag except `VkAttachmentOp`, which cannot have one.
+
+Six tests red first: the layout, including that the nested extent occupies `VkExtent3D byteSize`;
+what the builder writes against the zeros it leaves; the one-writer and one-caller test; the
+scalar-poke ban, which now covers both of the class's structures and allows `pointerAt:` only in
+the two methods that make a handle; the rows; and the initializer. Two of unit 4a's tests were
+rewritten to the new constant names. The driver leg
+`VkImageTest >> testOneBuilderServesImagesOfSeveralExtentsOnThisMachine` creates three images of
+three extents from the one builder, asserts three distinct handles, and asserts each image reports
+back the extent it was asked for rather than the last one built.
+
+The example is `VkImageCreateInfo class >> exampleRequestForAColourAttachment`, which keeps no
+pointer because the request has none to keep, and the view is the Image tab: the dimensionality,
+the format, the extent and depth, the mip and layer counts, the tiling, the usage flags, the
+creation layout and whether the image is shared between queue families. `VkImageCreateInfo` earns
+`ReExcessiveVariablesRule` on both sides for its fifteen `OFFSET_` variables, accepted as before.
+
+The suite is 489 tests over the nine concrete test classes.
