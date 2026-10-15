@@ -1924,6 +1924,133 @@ VkBindingsTest >> testImageCopyWritesNoScalarFieldAtAHandCountedOffset [
 		(VkCommandBuffer includesSelector: #recordCopyOf:layout:toBuffer:region:)
 ]
 
+{ #category : 'tests - image' }
+VkBindingsTest >> testImageCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. The dimensionality, the tiling
+	 and the sample count are the same for every image this project creates, but each is a
+	 caller's choice rather than a property of the structure, and the extent is nested by
+	 value, so an initializer writing anything else would write through to a nested store on
+	 every read."
+
+	| info setters |
+	info := VkImageCreateInfo externalInstance.
+	[ self assert: info sType equals: VkStructureType imageCreateInfo ] ensure: [
+		info getHandle free ].
+	setters := (VkImageCreateInfo >> #initializeConstantFields) messages select: [
+		           :each | VkImageCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - image' }
+VkBindingsTest >> testImageCreateInfoLayoutMatchesTheCLayout [
+	"The request vkCreateImage reads: chain header, flags, the dimensionality, the format, the
+	 extent by value, the mip and layer counts, the sample count, the tiling, the usage, the
+	 sharing mode, the queue families as a count and a pointer, and the layout the image
+	 starts in. uFFI pads after the count and after the layout, which rounds the request to
+	 eighty-eight bytes."
+
+	| rows |
+	rows := VkImageCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #imageType #format #extent #mipLevels
+		           #arrayLayers #samples #tiling #usage #sharingMode
+		           #queueFamilyIndexCount #pQueueFamilyIndices #initialLayout ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 28 40 44 48 52 56 60 64 72 80 ).
+	self assert: VkImageCreateInfo byteSize equals: 88.
+	self
+		assert: ((rows detect: [ :each | each first = #extent ]) third)
+		equals: VkExtent3D byteSize
+]
+
+{ #category : 'tests - image' }
+VkBindingsTest >> testImageCreationWritesNoScalarFieldAtAHandCountedOffset [
+	"Both structures VkImage hands the driver are declared — the image request and the view
+	 request — so no method of the class, on either side, may poke a scalar or a pointer at a
+	 counted offset. Before unit 4a the two together wrote thirty-two of them. Reading a
+	 handle out of an out parameter is the one exception, and only the two methods that make
+	 a handle may do it."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: #pointerAt:put: ).
+	offenders := (VkImage methods , VkImage class methods) select: [ :method |
+		             method messages anySatisfy: [ :each | banned includes: each ] ].
+	self assertEmpty: (offenders collect: [ :each |
+			 each methodClass name , ' >> ' , each selector ]).
+	offenders := (VkImage methods , VkImage class methods) select: [ :method |
+		             method messages includes: #pointerAt: ].
+	self
+		assert: (offenders collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkImage class >> handleForCreateInfo:on:'
+			           'VkImage class >> handleForViewRequest:on:' )
+]
+
+{ #category : 'tests - image' }
+VkBindingsTest >> testImageRequestAsksForATwoDimensionalOptimalAttachment [
+	"What the builder writes, with no device in reach, against what it leaves as the zeros a
+	 fresh block holds. Optimal tiling, the exclusive sharing mode and the undefined initial
+	 layout are all zero, so none of them is written; they are asserted through their
+	 constant classes, so the request is still read in Vulkan's terms. The flags, the queue
+	 family count and its pointer are zero because no image here is shared between
+	 families."
+
+	| info |
+	info := VkImage
+		        createInfoForFormat: VkFormat b8g8r8a8Unorm
+		        extent: VkImage exampleExtent
+		        usage: VkImageUsage colorAttachmentBit.
+	[
+		self assert: info sType equals: VkStructureType imageCreateInfo.
+		self assert: info flags equals: 0.
+		self assert: info imageType equals: VkImageType type2D.
+		self assert: info format equals: VkFormat b8g8r8a8Unorm.
+		self assert: info extent width equals: VkImage exampleExtent x.
+		self assert: info extent height equals: VkImage exampleExtent y.
+		self assert: info extent depth equals: VkImage imageDepth.
+		self assert: info mipLevels equals: VkImage mipLevelCount.
+		self assert: info arrayLayers equals: VkImage arrayLayerCount.
+		self assert: info samples equals: VkRenderConfig sampleCount1Bit.
+		self assert: info usage equals: VkImageUsage colorAttachmentBit.
+		self assert: info tiling equals: VkImageTiling optimal.
+		self assert: info sharingMode equals: VkRenderConfig sharingModeExclusive.
+		self assert: info initialLayout equals: VkImageLayout undefined.
+		self assert: info queueFamilyIndexCount equals: 0.
+		self assert: info pQueueFamilyIndices isNull ] ensure: [ info getHandle free ]
+]
+
+{ #category : 'tests - image' }
+VkBindingsTest >> testImageRequestRowsNameTheTypeTheTilingAndTheLayout [
+	"What the Image tab reads. Every value is named through its constant class rather than
+	 restated, which is why VkImageTiling and VkImageType were reparented onto
+	 VkValueConstants by this unit. The extent is reported as a point and a depth, because a
+	 reader cares that the image is flat. Read only, so the tab leaves the store alone."
+
+	| info rows |
+	info := VkImage
+		        createInfoForFormat: VkFormat b8g8r8a8Unorm
+		        extent: VkImage exampleExtent
+		        usage: VkImageUsage colorAttachmentBit.
+	rows := [ info imageRows ] ensure: [ info getHandle free ].
+	self assert: (rows at: #imageTypeName) equals: 'type2D'.
+	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
+	self assert: (rows at: #tilingName) equals: 'optimal'.
+	self assert: (rows at: #initialLayoutName) equals: 'undefined'.
+	self assert: (rows at: #extent) equals: VkImage exampleExtent.
+	self assert: (rows at: #depth) equals: VkImage imageDepth.
+	self assert: (rows at: #mipLevels) equals: VkImage mipLevelCount.
+	self assert: (rows at: #arrayLayers) equals: VkImage arrayLayerCount.
+	self
+		assert: (rows at: #usageNames)
+		equals: (VkImageUsage nameForFlags: VkImageUsage colorAttachmentBit).
+	self assert: (rows at: #sharedBetweenQueueFamilies) equals: false
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testImageViewCreateInfoInitializesOnlyWhatIsConstantForTheType [
 	"The structure type is all a fresh request knows. The identity swizzle is constant for
@@ -2017,11 +2144,11 @@ VkBindingsTest >> testImageViewRequestNamesTheColourAspectAndTheIdentitySwizzle 
 		self assert: info subresourceRange baseMipLevel equals: 0.
 		self
 			assert: info subresourceRange levelCount
-			equals: VkImage viewMipLevelCount.
+			equals: VkImage mipLevelCount.
 		self assert: info subresourceRange baseArrayLayer equals: 0.
 		self
 			assert: info subresourceRange layerCount
-			equals: VkImage viewArrayLayerCount ] ensure: [ info getHandle free ]
+			equals: VkImage arrayLayerCount ] ensure: [ info getHandle free ]
 ]
 
 { #category : 'tests - structures' }
@@ -2431,6 +2558,25 @@ VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
 		assert: (writers collect: [ :each |
 				 each methodClass name , ' >> ' , each selector ]) asArray
 		equals: #( 'VkShaderModule >> handleForCreateInfo:' )
+]
+
+{ #category : 'tests - image' }
+VkBindingsTest >> testOnlyOneMethodCreatesAnImage [
+	"One builder, one caller of the creation, and the request is written nowhere else. The
+	 tests are rejected from the senders: a test naming the call is itself a sender."
+
+	| callers |
+	callers := (SystemNavigation default allSendersOf:
+		            #createImage:createInfo:allocator:pImage:) reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkImage class >> handleForCreateInfo:on:' ).
+	self
+		assert: (VkImageCreateInfo writerRows collect: [ :each | each at: #method ])
+				asArray
+		equals: #( 'VkImage class >> createInfoForFormat:extent:usage:' )
 ]
 
 { #category : 'tests - structures' }
@@ -3434,10 +3580,10 @@ VkBindingsTest >> testViewRowsNameTheFormatTheAspectAndTheSwizzle [
 	self deny: (rows at: #imageSet).
 	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
 	self assert: (rows at: #aspectNames) equals: 'Color'.
-	self assert: (rows at: #mipLevels) equals: (0 to: VkImage viewMipLevelCount - 1).
+	self assert: (rows at: #mipLevels) equals: (0 to: VkImage mipLevelCount - 1).
 	self
 		assert: (rows at: #arrayLayers)
-		equals: (0 to: VkImage viewArrayLayerCount - 1).
+		equals: (0 to: VkImage arrayLayerCount - 1).
 	self assert: (rows at: #swizzleNames) equals: 'identity, identity, identity, identity'.
 	self assert: (rows at: #identitySwizzle)
 ]

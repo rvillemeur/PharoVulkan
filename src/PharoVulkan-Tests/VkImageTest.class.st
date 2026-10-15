@@ -141,6 +141,39 @@ VkImageTest >> testImageReportsTheMemorySizeTheDriverAsked [
 ]
 
 { #category : 'tests - image' }
+VkImageTest >> testOneBuilderServesImagesOfSeveralExtentsOnThisMachine [
+	"Three images of three extents from the one request builder, on a real device. This is
+	 the shape that would break if the builder kept state between calls, wrote the extent
+	 into a block it shared, or freed the request before vkCreateImage had read it. Each
+	 image is destroyed here, and each reports back the extent it was asked for rather than
+	 the last one built."
+
+	| context extents images |
+	context := VkContext offscreenGraphicsContext.
+	[
+		extents := {
+			           (16 @ 16).
+			           VkImage exampleExtent.
+			           (32 @ 64) }.
+		images := extents collect: [ :each |
+			          VkImage
+				          on: context device
+				          format: VkFormat b8g8r8a8Unorm
+				          extent: each
+				          usage: VkImageUsage colorAttachmentBit ].
+		[
+			images with: extents do: [ :image :extent |
+				self deny: image handle getHandle isNull.
+				self assert: image extent equals: extent.
+				self assert: image memorySize >= (extent x * extent y * 4) ].
+			self
+				assert: (images collect: [ :each | each handle getHandle asInteger ])
+						asSet size
+				equals: images size ] ensure: [ images do: [ :each | each destroy ] ] ]
+			ensure: [ context destroy ]
+]
+
+{ #category : 'tests - image' }
 VkImageTest >> testOneRequestServesSeveralViewsOfOneImageOnThisMachine [
 	"The swapchain creates one view per image it got from the surface, in a loop over the same
 	 builder, and no machine without a window can run that loop: a swapchain needs a surface.

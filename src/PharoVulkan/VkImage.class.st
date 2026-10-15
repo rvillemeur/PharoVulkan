@@ -1,7 +1,9 @@
 "
 A colour attachment this project creates, allocates, views and destroys itself.
 
-A swapchain owns its images: it creates them from the surface, and VkSwapchain only reads them back. Rendering with no surface therefore has nothing to render into, so this class supplies the image instead. Key methods: create (writes the 88-byte VkImageCreateInfo), allocate (device-local memory for the size the driver asks for, kept in memorySize), createView (the VkImageView_H that VkFramebuffer takes) and destroy, which releases view, image and memory in that order and is safe to run twice.
+A swapchain owns its images: it creates them from the surface, and VkSwapchain only reads them back. Rendering with no surface therefore has nothing to render into, so this class supplies the image instead. Key methods: create, which pairs createInfoForFormat:extent:usage: with handleForCreateInfo:on: — the only caller of vkCreateImage — allocate (device-local memory for the size the driver asks for, kept in memorySize), createView (the VkImageView_H that VkFramebuffer takes) and destroy, which releases view, image and memory in that order and is safe to run twice.
+
+Both structures the driver reads here are declared rather than counted out in bytes: VkImageCreateInfo and VkImageViewCreateInfo, each with one writer on this class side. mipLevelCount and arrayLayerCount serve both — the view covers every level and layer the image was created with — and imageDepth is one, because every image here is flat.
 
 The tiling is VkImageTiling optimal, so the host cannot read this memory by mapping it; a readback has to copy the image into a buffer.
 "
@@ -22,6 +24,38 @@ Class {
 	#package : 'PharoVulkan',
 	#tag : 'Graphics'
 }
+
+{ #category : 'constants' }
+VkImage class >> arrayLayerCount [
+	"One layer: no path here renders into a layered image. The view covers every layer the
+	 image has, so this is the count the image is created with and the count the view reads."
+
+	^ 1
+]
+
+{ #category : 'instance creation' }
+VkImage class >> createInfoForFormat: aFormat extent: aPoint usage: usageFlags [
+	"The request every image here is created from. The flags, the tiling, the sharing mode,
+	 the initial layout and both queue family fields are the zeros a fresh block holds:
+	 VkImageTiling optimal, VkRenderConfig sharingModeExclusive and VkImageLayout undefined
+	 are all zero, and no image here is shared between queue families. The caller frees
+	 getHandle."
+
+	| info |
+	info := VkImageCreateInfo externalInstance.
+	info
+		imageType: VkImageType type2D;
+		format: aFormat;
+		mipLevels: self mipLevelCount;
+		arrayLayers: self arrayLayerCount;
+		samples: VkRenderConfig sampleCount1Bit;
+		usage: usageFlags.
+	info extent
+		width: aPoint x;
+		height: aPoint y;
+		depth: self imageDepth.
+	^ info
+]
 
 { #category : 'examples' }
 VkImage class >> exampleColorAttachmentOnThisMachine [
@@ -54,6 +88,24 @@ VkImage class >> exampleExtent [
 ]
 
 { #category : 'instance creation' }
+VkImage class >> handleForCreateInfo: aCreateInfo on: aDevice [
+	"The one call to vkCreateImage in the project. The out parameter is freed whichever way
+	 the call goes, and the result is checked before the handle is read: reading it after a
+	 failed call would hand a null image to vkGetImageMemoryRequirements, which is undefined
+	 behaviour and killed the image once."
+
+	| out result |
+	out := ExternalAddress allocate: ExternalAddress wordSize.
+	^ [ result := Vk
+		           createImage: aDevice handle
+		           createInfo: aCreateInfo getHandle
+		           allocator: ExternalAddress null
+		           pImage: out.
+	  Vk checkResult: result.
+	  VkImage_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
+]
+
+{ #category : 'instance creation' }
 VkImage class >> handleForViewRequest: aCreateInfo on: aDevice [
 	"The one call to vkCreateImageView in the project. The out parameter is freed whichever
 	 way the call goes; the result is checked before the handle is read, because reading it
@@ -70,23 +122,27 @@ VkImage class >> handleForViewRequest: aCreateInfo on: aDevice [
 	  VkImageView_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
 ]
 
+{ #category : 'constants' }
+VkImage class >> imageDepth [
+	"One texel deep: every image this project creates is a flat colour target, which is also
+	 why its dimensionality is type2D. The depth is written rather than left at zero, because
+	 a two dimensional image must still be one deep — a zero depth is refused by the driver."
+
+	^ 1
+]
+
+{ #category : 'constants' }
+VkImage class >> mipLevelCount [
+	"One level: nothing here samples an image with a mip chain. The view covers every level
+	 the image has, so this is the count the image is created with and the count the view
+	 reads."
+
+	^ 1
+]
+
 { #category : 'instance creation' }
 VkImage class >> on: aDevice format: aFormat extent: anExtent usage: usageFlags [
 	^ self new initializeDevice: aDevice format: aFormat extent: anExtent usage: usageFlags
-]
-
-{ #category : 'constants' }
-VkImage class >> viewArrayLayerCount [
-	"One array layer: neither the offscreen attachment nor a swapchain image is layered."
-
-	^ 1
-]
-
-{ #category : 'constants' }
-VkImage class >> viewMipLevelCount [
-	"Every view this project creates covers one mip level: no image here is mipmapped."
-
-	^ 1
 ]
 
 { #category : 'instance creation' }
@@ -102,10 +158,11 @@ VkImage class >> viewOn: aDevice image: anImageHandle format: aFormat [
 
 { #category : 'instance creation' }
 VkImage class >> viewRequestFor: anImageHandle format: aFormat [
-	"The request both view paths are created from: the swapchain's images and the offscreen
-	 attachment are viewed the same way, so the request is written once here. The swizzle
-	 stays as the zeroed block left it, which is VkComponentSwizzle identity, and so do the
-	 base mip level and the base array layer. The caller frees getHandle."
+	"The request both view paths are created from: a two dimensional colour view over the
+	 whole of one image. The level and layer counts are the image's own, because the view
+	 covers every level and layer the image was created with. The base level, the base layer
+	 and the swizzle are the zeros a fresh block holds, and a zero swizzle is the identity
+	 swizzle. The caller frees getHandle."
 
 	| info |
 	info := VkImageViewCreateInfo externalInstance.
@@ -115,8 +172,8 @@ VkImage class >> viewRequestFor: anImageHandle format: aFormat [
 		format: aFormat.
 	info subresourceRange
 		aspectMask: VkImageAspect colorBit;
-		levelCount: self viewMipLevelCount;
-		layerCount: self viewArrayLayerCount.
+		levelCount: self mipLevelCount;
+		layerCount: self arrayLayerCount.
 	^ info
 ]
 
@@ -158,44 +215,18 @@ VkImage >> attributeRows [
 		  ('Live' -> handle notNil printString) }
 ]
 
-{ #category : 'initialization' }
+{ #category : 'lifecycle' }
 VkImage >> create [
-	"VkImageCreateInfo, 88 bytes, 1-based offsets: 1:sType 9:pNext 17:flags 21:imageType
-	 25:format 29,33,37:extent w,h,d 41:mipLevels 45:arrayLayers 49:samples 53:tiling
-	 57:usage 61:sharingMode 65:queueFamilyIndexCount [69 pad] 73:pQueueFamilyIndices
-	 81:initialLayout [85 pad]. Offsets 69 and 85 are padding and are deliberately not
-	 written; ExternalAddress allocate: zeroes the block."
+	"The request is freed whichever way the creation goes: the driver reads it during the
+	 call and never afterwards."
 
-	| info outBuf result |
-	info := ExternalAddress allocate: 88.
-	[
-	info unsignedLongAt: 1 put: VkStructureType imageCreateInfo.
-	info pointerAt: 9 put: ExternalAddress null.
-	info unsignedLongAt: 17 put: 0.
-	info unsignedLongAt: 21 put: VkImageType type2D.
-	info unsignedLongAt: 25 put: format.
-	info unsignedLongAt: 29 put: extent x.
-	info unsignedLongAt: 33 put: extent y.
-	info unsignedLongAt: 37 put: 1.
-	info unsignedLongAt: 41 put: 1.
-	info unsignedLongAt: 45 put: 1.
-	info unsignedLongAt: 49 put: VkRenderConfig sampleCount1Bit.
-	info unsignedLongAt: 53 put: VkImageTiling optimal.
-	info unsignedLongAt: 57 put: usage.
-	info unsignedLongAt: 61 put: VkRenderConfig sharingModeExclusive.
-	info unsignedLongAt: 65 put: 0.
-	info pointerAt: 73 put: ExternalAddress null.
-	info unsignedLongAt: 81 put: VkImageLayout undefined.
-	outBuf := ExternalAddress allocate: 8.
-	[
-	result := Vk
-		          createImage: device handle
-		          createInfo: info
-		          allocator: ExternalAddress null
-		          pImage: outBuf.
-	Vk checkResult: result.
-	handle := VkImage_H fromHandle: (outBuf pointerAt: 1) ] ensure: [ outBuf free ] ]
-		ensure: [ info free ]
+	| info |
+	info := self class
+		        createInfoForFormat: format
+		        extent: extent
+		        usage: usage.
+	handle := [ self class handleForCreateInfo: info on: device ] ensure: [
+		          info getHandle free ]
 ]
 
 { #category : 'initialization' }
