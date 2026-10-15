@@ -136,6 +136,18 @@ are the ones that call into the driver.
   than naming twenty, and the colour attribute's offset is `positionByteCount`. A test in
   `PVGraphicsTest` then checks that same stride against the bytes `PVTriangleScene` really uploads,
   which is the one pair the project cannot derive from itself.
+- **Each element of a run owns what it points at.** The two shader stages of a graphics pipeline
+  ask for the same entry point name, and each allocates its own copy of it. One string shared by
+  both elements would be a single address recorded in two places, and freeing it through either
+  element would leave the other naming memory that has gone.
+- **A structure decodes its own fields, and a report that nests one asks it.**
+  `VkComputePipelineCreateInfo >> computePipelineRows` starts from `self stage stageRows` and adds
+  what the request itself asks for, rather than reading the stage's four fields again. The Pipeline
+  tab of a compute request and the Stage tab of a graphics stage then cannot drift apart.
+- **A constant belongs where the thing it names lives.** The name of the entered function is a
+  property of the compiled module, not of a kind of pipeline, so `defaultEntryPoint` sits on
+  `VkShaderModule class` and both stage builders ask it there. A copy per pipeline kind would let
+  one of them ask for a function the emitted SPIR-V does not declare.
 - **A request owns the runs it points at, and is the record of where they are.** The present
   request points at three runs of one entry, allocated for it and freed through it:
   `VkSwapchain class >> freePresentInfo:` reads each pointer back out of the structure, frees it
@@ -1086,7 +1098,7 @@ widest.
 
 | Method | Offsets written | Structures |
 |---|---|---|
-| `VkGraphicsPipeline >> initializeDevice:` | 22 of 29 left | the whole pipeline create info tree, one unit per structure: vertex input **done 15 October 2026**; the two shader stages, input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself remain |
+| `VkGraphicsPipeline >> initializeDevice:` | 80 left of 101 | the whole pipeline create info tree, one unit per structure: vertex input and the two shader stages **done 15 October 2026**; input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself remain |
 | ~~`VkSwapchain >> initializeDevice:`~~ | ~~19~~ | `VkSwapchainCreateInfoKHR` and the surface capabilities and formats it reads — **done 15 October 2026** |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | ~~`VkSwapchain >> present:`~~ | ~~8~~ | `VkPresentInfoKHR` — **done 15 October 2026** |
@@ -1510,3 +1522,52 @@ no new driver leg was added.
 `VkGraphicsPipeline` keeps `ReLongMethodsRule` and `ReExcessiveArgumentsRule` on the one method
 being taken apart; the three new structures and `VkVertexInputRate` have no critique. The suite is
 533 tests over the nine concrete test classes.
+
+### 4j — the two shader stages, done 15 October 2026
+
+The second of the graphics pipeline's structures, and the first that was already declared:
+`VkPipelineShaderStageCreateInfo` arrived with unit 4h, nested by value inside the compute request.
+A graphics pipeline needs two of them side by side, so this unit replaced the ninety-six byte block
+`VkGraphicsPipeline >> initializeDevice:` filled with fourteen counted offsets, and the five byte
+C string it wrote one character code at a time, with a run of two declared stages.
+
+`VkGraphicsPipeline class >> shaderStagesForVertexModule:fragmentModule:` is the one builder. It
+takes `externalArrayOf: shaderStagesPerPipeline` — one block, one view per element — and writes each
+element through the declared fields from a pair of stage flag and module handle, so the structure's
+own layout decides where every value lands. Each stage allocates its own copy of the entry point
+string: one string shared by both elements would be a single address recorded in two places, and
+freeing it through either would leave the other naming memory that has gone.
+`freeShaderStageEntryPointsOf:` frees each string and nulls the field as it goes, and
+`freeShaderStages:` then frees the run through its first element — the pairing unit 4g arrived at,
+now used for a run rather than for a single request.
+
+The name of the entered function moved. `VkComputePipeline class >> defaultEntryPoint` became
+`VkShaderModule class >> defaultEntryPoint`, because the name belongs to the compiled module rather
+than to a kind of pipeline, and both stage builders now ask the one constant. A test denies that the
+old selector still exists, asserts both builders send the new one, and sweeps the three pipeline
+classes for the name as a literal of their own. The SPIR-V emitters and the two matmul kernel
+classes still hold their own copies of the name; that is a follow-up, not this unit.
+
+`VkPipelineShaderStageCreateInfo >> stageRows` and the Stage tab are new, and
+`VkComputePipelineCreateInfo >> computePipelineRows` now starts from the rows of the stage nested
+inside it and adds what the request itself asks for. One place decodes a stage, so the Pipeline tab
+of a compute request and the Stage tab of a graphics stage cannot drift apart; the keys and values
+are what they were, so unit 4h's row test stayed green over the change. The example is
+`VkPipelineShaderStageCreateInfo class >> exampleStagesOfTheTriangleThisProjectDraws`, which builds
+the pair with null module handles, gives the strings back and answers two copies in object memory,
+so a freed address is never read from a copy.
+
+Seven tests red first: what the builder writes read back through both elements, that the two names
+are separate allocations, that freeing nulls both fields, the rows of a stage, the example, that the
+Stage tab carries one row per entry the report answers, and that one method writes a stage run —
+the compute builder is not listed there, because a writer counts only where it also names the
+structure it fills, and that one names the request class. The eighth,
+`PVGraphicsTest >> testShaderStagesForRealModulesCarryTheirOwnHandles`, builds the triangle's two
+real modules on this machine and asserts each stage carries its own module address: a builder that
+stamped one module into both stages would draw with the vertex shader twice, and that shows only as
+a blank frame.
+
+The offset count in the table above is now measured rather than estimated — eighty of the
+`unsignedLongAt:` and `pointerAt:` offsets remain in the method, of the hundred and one it held
+before unit 4i — so it no longer agrees with the twenty-nine the first inventory guessed. The suite
+is 541 tests over the nine concrete test classes.
