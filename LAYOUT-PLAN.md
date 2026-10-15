@@ -124,6 +124,18 @@ are the ones that call into the driver.
   checked on a machine with no display; what is left on the instance side is the creation itself,
   which needs a device. Splitting the builder out is also what removes a long-method critique,
   rather than rewrapping the lines of one long method.
+- **A plain Pharo object that only describes a C structure goes when that structure is declared.**
+  `VkVertexBindingDescription` and `VkVertexAttributeDescription` held the same four fields the C
+  descriptions hold, so that one method could copy them into a hand-counted run. With
+  `VkVertexInputBindingDescription` and `VkVertexInputAttributeDescription` declared, the defaults
+  build those directly and the two plain classes were removed: a second class holding the same
+  fields is a layout that can drift from the declared one, and the copy into the external run is
+  `copyBytesInto:` rather than a field-by-field transcription.
+- **A width used twice is derived once.** The vertex stride is the position and the colour
+  together, so `vertexBindingDescriptions` adds `positionByteCount` and `colourByteCount` rather
+  than naming twenty, and the colour attribute's offset is `positionByteCount`. A test in
+  `PVGraphicsTest` then checks that same stride against the bytes `PVTriangleScene` really uploads,
+  which is the one pair the project cannot derive from itself.
 - **A request owns the runs it points at, and is the record of where they are.** The present
   request points at three runs of one entry, allocated for it and freed through it:
   `VkSwapchain class >> freePresentInfo:` reads each pointer back out of the structure, frees it
@@ -1074,7 +1086,7 @@ widest.
 
 | Method | Offsets written | Structures |
 |---|---|---|
-| `VkGraphicsPipeline >> initializeDevice:` | 29 | the whole pipeline create info tree |
+| `VkGraphicsPipeline >> initializeDevice:` | 22 of 29 left | the whole pipeline create info tree, one unit per structure: vertex input **done 15 October 2026**; the two shader stages, input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself remain |
 | ~~`VkSwapchain >> initializeDevice:`~~ | ~~19~~ | `VkSwapchainCreateInfoKHR` and the surface capabilities and formats it reads — **done 15 October 2026** |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | ~~`VkSwapchain >> present:`~~ | ~~8~~ | `VkPresentInfoKHR` — **done 15 October 2026** |
@@ -1453,3 +1465,48 @@ dispatch tests create pipelines from the new request end to end.
 
 `VkComputePipeline` and both new structures have no critique. The suite is 523 tests over the nine
 concrete test classes.
+
+### 4i — the vertex input state, done 15 October 2026
+
+The first of the graphics pipeline's nine structures. `VkGraphicsPipeline >> initializeDevice:`
+wrote seven offsets into a forty-eight byte vertex input state and filled two runs of descriptions
+with a loop over hand-multiplied strides, from a pair of plain Pharo classes that held the same
+fields the C descriptions hold.
+
+Three structures declared. `VkVertexInputBindingDescription` is twelve bytes at 0, 4 and 8 — three
+uint32 fields with no hole; `VkVertexInputAttributeDescription` is sixteen bytes at 0, 4, 8 and 12,
+with `format` declared signed as a `VkFormat` is everywhere else here. Neither carries a chain
+header, because each is an element of a run the state points at, so neither declares an initializer
+and a test asserts that neither implements one nor `sType:`. `VkPipelineVertexInputStateCreateInfo`
+is forty-eight bytes at 0, 8, 16, 20, 24, 32 and 40, its `initializeConstantFields` stamping `sType`
+alone.
+
+`VkGraphicsPipeline class >> vertexBindingDescriptions` and `vertexAttributeDescriptions` moved to
+the class side and now build declared descriptions in object memory, so the whole of the vertex
+layout is checked with no device. `runOf:` copies a collection of them into one contiguous external
+run through `externalArrayOf:` and `copyBytesInto:` — the descriptions live where the garbage
+collector may move them, the driver reads a block it is pointed at — and answers null for an empty
+collection. `vertexInputStateForBindings:attributes:` is the one writer; `freeVertexInputRunsOf:`
+frees each run and nulls its field and `freeVertexInputState:` then frees the state, the pairing
+unit 4g arrived at. The two plain description classes were removed with their eight accessors: they
+had no sender left.
+
+Five constants name the layout: `vertexBufferBinding`, `positionLocation`, `colourLocation`,
+`positionByteCount` and `colourByteCount`. The stride is their sum and the colour's offset is the
+position's width, so a format changed on one side cannot leave either naming a width no vertex has.
+
+Nine tests red first: the three layouts against the C structures, that only the state initializes
+anything and neither description does, the layout the project draws with, what the builder writes
+read back through both runs at the declared stride, the rows of all three reports, the three
+examples including the state's copy with both runs freed and both fields nulled, that each of the
+three tabs carries one row per entry its report answers, and that one method writes the state. The
+tenth, `PVGraphicsTest >> testVertexLayoutAgreesWithTheVertexDataTheSceneUploads`, holds the stride
+against `PVTriangleScene floatsPerVertex * bytesPerFloat`: the pipeline and the buffer describe the
+same bytes from different classes, and a disagreement renders a triangle rather than failing. The
+existing offscreen pixel legs already drive a real pipeline built from the declared state — they
+read the interpolated vertex colours back, which is what a wrong offset or stride would spoil — so
+no new driver leg was added.
+
+`VkGraphicsPipeline` keeps `ReLongMethodsRule` and `ReExcessiveArgumentsRule` on the one method
+being taken apart; the three new structures and `VkVertexInputRate` have no critique. The suite is
+533 tests over the nine concrete test classes.
