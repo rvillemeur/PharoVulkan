@@ -248,6 +248,21 @@ are the ones that call into the driver.
 - **A wide struct earns `ReExcessiveVariablesRule`.** One `OFFSET_` class variable per field is
   what declaring the struct costs; `VkPhysicalDeviceLimits` and `VkWriteDescriptorSet` both
   carry the critique and it is accepted, not worked around.
+- **A nested structure carries no initializer of its own.** `initializeConstantFields` on the
+  parent must not touch a field carried by value: a getter for a nested field answers the nested
+  class through `fromHandle:`, which runs `initialize` over the parent's store. A nested class with
+  nothing constant for its type — a swizzle, a subresource range — therefore declares no
+  initializer at all, and a test asserts that it has none.
+- **A constant whose value is zero stays unwritten but still gets a name.** The identity swizzle is
+  zero, so writing it would write what the zeroed block already holds; the writer names it in a
+  comment and the test asserts it through the constant class, so the request is still read in
+  Vulkan's terms rather than as a number.
+- **Two writers of one structure become a builder, a caller and a pairing method.** One method
+  writes the request, one hands it to the driver and is the only sender of that call, and one pairs
+  them and frees the request. Both old writers then keep only what they do with the result.
+- **A path no headless machine can run is tested by its shape.** The swapchain's view loop needs a
+  surface. Running the same loop over one image, headlessly, is what would break on a builder that
+  kept state between calls or freed its request too early, which is what the loop risks.
 
 ## 1 — Instance and device creation — **done 13 October 2026**
 
@@ -1004,15 +1019,57 @@ widest.
 |---|---|---|
 | `VkGraphicsPipeline >> initializeDevice:` | 29 | the whole pipeline create info tree |
 | `VkSwapchain >> initializeDevice:` | 19 | `VkSwapchainCreateInfoKHR`, surface capabilities |
-| `VkSwapchain >> createImageViews` | 15 | `VkImageViewCreateInfo` |
+| ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
 | `VkImage >> create` | 17 | `VkImageCreateInfo` |
-| `VkImage >> createView` | 15 | `VkImageViewCreateInfo` |
+| ~~`VkImage >> createView`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | `VkRenderPass >> initializeDevice:` | 13 | attachment, subpass and render pass create infos |
 | `VkFramebuffer >> initializeDevice:` | 9 | `VkFramebufferCreateInfo` |
 | `VkComputePipeline >> create` | 13 | `VkComputePipelineCreateInfo`, shader stage create info |
 
-`VkImage >> createView` and `VkSwapchain >> createImageViews` write the same structure from two
-places, so declaring `VkImageViewCreateInfo` should leave one writer, as with the command pool.
+`VkImage >> createView` and `VkSwapchain >> createImageViews` wrote the same structure from two
+places, so declaring `VkImageViewCreateInfo` left one writer, as with the command pool; unit 4a
+did that first.
 `VkGraphicsPipeline >> initializeDevice:` is a tree of nine structures written by one method;
 it is worth splitting into one unit per structure rather than taken whole.
+
+### 4a — the image view request, done 15 October 2026
+
+`VkImageViewCreateInfo` is eighty bytes at 0, 8, 16, 24, 32, 36, 40 and 56: the chain header, the
+flags, the image as a handle, the view type and the format, then two structures carried by value.
+`VkComponentMapping` is sixteen bytes at 0, 4, 8 and 12, one swizzle per colour channel;
+`VkImageSubresourceRange` is twenty bytes at 0, 4, 8, 12 and 16. The two nested structures end the
+request at seventy-six bytes, which the padding to the chain pointer's alignment rounds to eighty.
+`VkImageSubresourceLayers`, declared by an earlier unit for the copy region, names a single mip
+level rather than a run of them, so a view needs its own range structure rather than that one.
+
+`VkImage >> createView` and `VkSwapchain >> createImageViews` each wrote fifteen offsets by hand,
+and the two copies of the layout had to be kept in step by reading both methods. The request is now
+written once by `VkImage class >> viewRequestFor:format:`, handed to the driver once by
+`VkImage class >> handleForViewRequest:on:` — the only sender of `vkCreateImageView` in the project
+— and the two are paired by `VkImage class >> viewOn:image:format:`, which frees the request
+whichever way the creation goes. The image's own `createView` keeps the view in its slot; the
+swapchain collects one view per image from the same method. `viewMipLevelCount` and
+`viewArrayLayerCount` name the two literals the old methods carried. The identity swizzle, the base
+mip level and the base array layer are the zeros a fresh block holds, so the writer names them in a
+comment rather than writing them, and `initializeConstantFields` stamps only `sType`: the nested
+structures must stay untouched there, because a getter for a nested field runs `initialize` over the
+parent's store.
+
+`VkComponentSwizzle` is a new `VkValueConstants` subclass naming the identity, zero and one sources,
+so a view can report what a request asks each channel to read instead of printing a number.
+
+Seven tests red first: the request's layout, the two nested layouts, the constant field — which also
+asserts that neither nested structure has an initializer of its own — what the builder writes
+against what it leaves at zero, the one-writer and one-caller test, the scalar-poke ban over both
+view methods, and the rows. The driver leg
+`VkImageTest >> testOneRequestServesSeveralViewsOfOneImageOnThisMachine` creates three views of one
+image in a loop and asserts three distinct handles. The swapchain's own loop needs a surface, so no
+headless machine can run it; the loop over one image is the same shape and would break on a builder
+that kept state between calls or freed the request too early.
+
+The example is `VkImageViewCreateInfo class >> exampleRequestForAColourAttachmentView`, built by the
+writer and copied into object memory so it leaves nothing allocated outside the image; the view is
+the View tab, which names the format and the swizzles through their constant classes, decodes the
+aspect bits, shows the mip and layer runs as intervals, and reports the image as set or not rather
+than as an address. The suite is 466 tests over the nine concrete test classes.
