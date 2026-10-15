@@ -54,8 +54,70 @@ VkImage class >> exampleExtent [
 ]
 
 { #category : 'instance creation' }
+VkImage class >> handleForViewRequest: aCreateInfo on: aDevice [
+	"The one call to vkCreateImageView in the project. The out parameter is freed whichever
+	 way the call goes; the result is checked before the handle is read, because reading it
+	 after a failed call would dereference whatever the out parameter held."
+
+	| out result |
+	out := ExternalAddress allocate: ExternalAddress wordSize.
+	^ [ result := Vk
+		           createImageView: aDevice handle
+		           createInfo: aCreateInfo getHandle
+		           allocator: ExternalAddress null
+		           pView: out.
+	  Vk checkResult: result.
+	  VkImageView_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
+]
+
+{ #category : 'instance creation' }
 VkImage class >> on: aDevice format: aFormat extent: anExtent usage: usageFlags [
 	^ self new initializeDevice: aDevice format: aFormat extent: anExtent usage: usageFlags
+]
+
+{ #category : 'constants' }
+VkImage class >> viewArrayLayerCount [
+	"One array layer: neither the offscreen attachment nor a swapchain image is layered."
+
+	^ 1
+]
+
+{ #category : 'constants' }
+VkImage class >> viewMipLevelCount [
+	"Every view this project creates covers one mip level: no image here is mipmapped."
+
+	^ 1
+]
+
+{ #category : 'instance creation' }
+VkImage class >> viewOn: aDevice image: anImageHandle format: aFormat [
+	"A view over one image, from the request every view here shares. The request is freed
+	 whichever way the creation goes."
+
+	| info |
+	info := self viewRequestFor: anImageHandle format: aFormat.
+	^ [ self handleForViewRequest: info on: aDevice ] ensure: [
+		  info getHandle free ]
+]
+
+{ #category : 'instance creation' }
+VkImage class >> viewRequestFor: anImageHandle format: aFormat [
+	"The request both view paths are created from: the swapchain's images and the offscreen
+	 attachment are viewed the same way, so the request is written once here. The swizzle
+	 stays as the zeroed block left it, which is VkComponentSwizzle identity, and so do the
+	 base mip level and the base array layer. The caller frees getHandle."
+
+	| info |
+	info := VkImageViewCreateInfo externalInstance.
+	info
+		image: anImageHandle;
+		viewType: VkRenderConfig imageViewType2D;
+		format: aFormat.
+	info subresourceRange
+		aspectMask: VkImageAspect colorBit;
+		levelCount: self viewMipLevelCount;
+		layerCount: self viewArrayLayerCount.
+	^ info
 ]
 
 { #category : 'initialization' }
@@ -138,39 +200,10 @@ VkImage >> create [
 
 { #category : 'initialization' }
 VkImage >> createView [
-	"VkImageViewCreateInfo, 80 bytes, 1-based: 1:sType 9:pNext 17:flags 25:image 33:viewType
-	 37:format 41..53:components r,g,b,a 57..73:subresourceRange aspectMask, baseMipLevel,
-	 levelCount, baseArrayLayer, layerCount. Same layout VkSwapchain writes for its own
-	 images; the component swizzles stay 0, which is VK_COMPONENT_SWIZZLE_IDENTITY."
+	"The view VkFramebuffer takes. The request and the call both live on the class side,
+	 shared with the swapchain's images, so this method only keeps what it is given."
 
-	| info outBuf result |
-	info := ExternalAddress allocate: 80.
-	[
-	info unsignedLongAt: 1 put: VkStructureType imageViewCreateInfo.
-	info pointerAt: 9 put: ExternalAddress null.
-	info unsignedLongAt: 17 put: 0.
-	info pointerAt: 25 put: handle getHandle.
-	info unsignedLongAt: 33 put: VkRenderConfig imageViewType2D.
-	info unsignedLongAt: 37 put: format.
-	info unsignedLongAt: 41 put: 0.
-	info unsignedLongAt: 45 put: 0.
-	info unsignedLongAt: 49 put: 0.
-	info unsignedLongAt: 53 put: 0.
-	info unsignedLongAt: 57 put: VkRenderConfig imageAspectColorBit.
-	info unsignedLongAt: 61 put: 0.
-	info unsignedLongAt: 65 put: 1.
-	info unsignedLongAt: 69 put: 0.
-	info unsignedLongAt: 73 put: 1.
-	outBuf := ExternalAddress allocate: 8.
-	[
-	result := Vk
-		          createImageView: device handle
-		          createInfo: info
-		          allocator: ExternalAddress null
-		          pView: outBuf.
-	Vk checkResult: result.
-	view := VkImageView_H fromHandle: (outBuf pointerAt: 1) ] ensure: [ outBuf free ] ]
-		ensure: [ info free ].
+	view := self class viewOn: device image: handle format: format.
 	^ view
 ]
 

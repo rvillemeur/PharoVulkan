@@ -52,33 +52,12 @@ VkSwapchain >> acquireNextImage: semaphore fence: fence [
 
 { #category : 'initialization' }
 VkSwapchain >> createImageViews [
-    "VkImageViewCreateInfo (80 bytes):
-     0:sType  8:pNext  16:flags  24:image  32:viewType  36:format  40:components(r,g,b,a)  56:subresourceRange(aspectMask,baseMipLevel,levelCount,baseArrayLayer,layerCount)"
-    | viewInfo outBuf result |
-    imageViews := OrderedCollection new.
-    images do: [ :img |
-        viewInfo := ExternalAddress allocate: 80.
-        [ viewInfo unsignedLongAt: 1  put: VkStructureType imageViewCreateInfo.
-          viewInfo pointerAt:   9  put: ExternalAddress null.
-          viewInfo unsignedLongAt: 17 put: 0.
-          viewInfo pointerAt:   25 put: img getHandle.
-          viewInfo unsignedLongAt: 33 put: VkRenderConfig imageViewType2D.
-          viewInfo unsignedLongAt: 37 put: format.
-          viewInfo unsignedLongAt: 41 put: 0.
-          viewInfo unsignedLongAt: 45 put: 0.
-          viewInfo unsignedLongAt: 49 put: 0.
-          viewInfo unsignedLongAt: 53 put: 0.
-          viewInfo unsignedLongAt: 57 put: VkRenderConfig imageAspectColorBit.
-          viewInfo unsignedLongAt: 61 put: 0.
-          viewInfo unsignedLongAt: 65 put: 1.
-          viewInfo unsignedLongAt: 69 put: 0.
-          viewInfo unsignedLongAt: 73 put: 1.
-          outBuf := ExternalAddress allocate: 8.
-          [ result := Vk createImageView: device handle createInfo: viewInfo allocator: ExternalAddress null pView: outBuf.
-            Vk checkResult: result.
-            imageViews add: (VkImageView_H fromHandle: (outBuf pointerAt: 1))
-          ] ensure: [ outBuf free ]
-        ] ensure: [ viewInfo free ] ]
+	"One view per image the surface gave back, created from the same request the offscreen
+	 attachment uses: VkImage class >> viewOn:image:format: writes it, so the swapchain no
+	 longer keeps a second copy of the layout."
+
+	imageViews := images collect: [ :each |
+		              VkImage viewOn: device image: each format: format ]
 ]
 
 { #category : 'lifecycle' }

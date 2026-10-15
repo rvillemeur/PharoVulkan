@@ -560,6 +560,31 @@ VkBindingsTest >> testCommandPoolWritesNoScalarFieldAtAHandCountedOffset [
 				 :message | banned includes: message ])
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testComponentMappingAndSubresourceRangeLayoutsMatchTheCLayout [
+	"Both are carried by value inside the image view request, so their own widths decide where
+	 the request's last field sits: four swizzles make sixteen bytes, five range words make
+	 twenty."
+
+	| mappingRows rangeRows |
+	mappingRows := VkComponentMapping layoutRows.
+	self
+		assert: (mappingRows collect: [ :each | each first ]) asArray
+		equals: #( #r #g #b #a ).
+	self
+		assert: (mappingRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 ).
+	self assert: VkComponentMapping byteSize equals: 16.
+	rangeRows := VkImageSubresourceRange layoutRows.
+	self
+		assert: (rangeRows collect: [ :each | each first ]) asArray
+		equals: #( #aspectMask #baseMipLevel #levelCount #baseArrayLayer #layerCount ).
+	self
+		assert: (rangeRows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 16 ).
+	self assert: VkImageSubresourceRange byteSize equals: 20
+]
+
 { #category : 'tests - layout' }
 VkBindingsTest >> testComputeSubmitCarriesOneCommandBufferAndNoSemaphore [
 	"The compute path submits one command buffer and waits with vkQueueWaitIdle, so its batch
@@ -1674,6 +1699,106 @@ VkBindingsTest >> testImageCopyWritesNoScalarFieldAtAHandCountedOffset [
 ]
 
 { #category : 'tests - structures' }
+VkBindingsTest >> testImageViewCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is all a fresh request knows. The identity swizzle is constant for
+	 every view this project asks for, but it is zero, so stamping it would write what the
+	 zeroed block already holds; the nested structures must stay untouched by the initializer,
+	 because a getter for a nested field runs initialize over the parent's store."
+
+	| info setters |
+	info := VkImageViewCreateInfo externalInstance.
+	[
+		self assert: info sType equals: VkStructureType imageViewCreateInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info image isNull.
+		self assert: info viewType equals: 0.
+		self assert: info format equals: 0 ] ensure: [ info getHandle free ].
+	setters := (VkImageViewCreateInfo >> #initializeConstantFields) messages
+		           select: [ :each | VkImageViewCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: ).
+	self deny: (VkComponentMapping includesSelector: #initializeConstantFields).
+	self deny:
+		(VkImageSubresourceRange includesSelector: #initializeConstantFields)
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testImageViewCreateInfoLayoutMatchesTheCLayout [
+	"The request vkCreateImageView reads: chain header, flags, the image the view looks at,
+	 the view type and the format it reads the image as, then the swizzle by value and the
+	 subresource range by value. The two nested structures end the request at seventy-six
+	 bytes, which the trailing padding to the eight byte alignment of the chain pointer rounds
+	 to eighty."
+
+	| rows |
+	rows := VkImageViewCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #image #viewType #format #components
+		           #subresourceRange ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 36 40 56 ).
+	self assert: VkImageViewCreateInfo byteSize equals: 80
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testImageViewCreationWritesNoScalarFieldAtAHandCountedOffset [
+	"Both view paths go through the declared request, so neither the image's createView nor the
+	 swapchain's createImageViews may poke a scalar or a pointer at a counted offset. The image
+	 create info and the swapchain create info are still written as blocks and belong to later
+	 units, so the ban names these two methods rather than their whole classes."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: #pointerAt: #pointerAt:put: ).
+	offenders := {
+		             (VkImage >> #createView).
+		             (VkSwapchain >> #createImageViews) } select: [ :method |
+		             method messages anySatisfy: [ :each | banned includes: each ] ].
+	self assertEmpty: (offenders collect: [ :each |
+			 each methodClass name , ' >> ' , each selector ])
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testImageViewRequestNamesTheColourAspectAndTheIdentitySwizzle [
+	"The request the builder writes, with no device in reach: the view reads the image it is
+	 given as a two dimensional image of the given format, over the colour aspect of one mip
+	 level and one array layer. The swizzle is the identity on all four channels, which the
+	 zeroed block already says, so the test asks the structure rather than the writer."
+
+	| info |
+	info := VkImage
+		        viewRequestFor: (VkImage_H fromHandle: ExternalAddress null)
+		        format: VkFormat b8g8r8a8Unorm.
+	[
+		self assert: info sType equals: VkStructureType imageViewCreateInfo.
+		self assert: info viewType equals: VkRenderConfig imageViewType2D.
+		self assert: info format equals: VkFormat b8g8r8a8Unorm.
+		self assert: info flags equals: 0.
+		self
+			assert: {
+					info components r.
+					info components g.
+					info components b.
+					info components a }
+			equals: (Array new: 4 withAll: VkComponentSwizzle identity).
+		self
+			assert: info subresourceRange aspectMask
+			equals: VkImageAspect colorBit.
+		self assert: info subresourceRange baseMipLevel equals: 0.
+		self
+			assert: info subresourceRange levelCount
+			equals: VkImage viewMipLevelCount.
+		self assert: info subresourceRange baseArrayLayer equals: 0.
+		self
+			assert: info subresourceRange layerCount
+			equals: VkImage viewArrayLayerCount ] ensure: [ info getHandle free ]
+]
+
+{ #category : 'tests - structures' }
 VkBindingsTest >> testInstanceCreateInfoInitializesOnlyWhatIsConstantForTheType [
 	"Only sType is constant for an instance create info: the counts and the name arrays are
 	 whatever the caller asks for. A field written in initialization is written again on every
@@ -2027,6 +2152,29 @@ VkBindingsTest >> testOnlyOneMethodCreatesAShaderModule [
 		assert: (writers collect: [ :each |
 				 each methodClass name , ' >> ' , each selector ]) asArray
 		equals: #( 'VkShaderModule >> handleForCreateInfo:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCreatesAnImageView [
+	"The offscreen image and every swapchain image are viewed through the same request, so one
+	 method writes it and one method hands it to the driver. Before this unit the request was
+	 written out twice, once here and once in the swapchain, and the two copies had to be kept
+	 in step by hand. The tests are rejected from the senders: a test naming the call is itself
+	 a sender."
+
+	| callers writers |
+	callers := (SystemNavigation default allSendersOf:
+		            #createImageView:createInfo:allocator:pView:) reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkImage class >> handleForViewRequest:on:' ).
+	writers := VkImageViewCreateInfo writerRows collect: [ :each |
+		           each at: #method ].
+	self
+		assert: writers asArray
+		equals: #( 'VkImage class >> viewRequestFor:format:' )
 ]
 
 { #category : 'tests - structures' }
@@ -2853,6 +3001,29 @@ VkBindingsTest >> testValueConstantsNameEveryConstantTheyDeclare [
 		self assert: (each nameForValue: -1) isNil ]
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testViewRowsNameTheFormatTheAspectAndTheSwizzle [
+	"What the View tab reads: the format and the swizzle under the names their constant classes
+	 carry, the aspect bits decoded, the mip and layer runs as intervals, and the image
+	 reported as set or not rather than as an address. The request the tab is built for has no
+	 image, so the row says so."
+
+	| rows |
+	rows := (VkImage
+		         viewRequestFor: (VkImage_H fromHandle: ExternalAddress null)
+		         format: VkFormat b8g8r8a8Unorm) ifNotNil: [ :info |
+		        [ info viewRows ] ensure: [ info getHandle free ] ].
+	self deny: (rows at: #imageSet).
+	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
+	self assert: (rows at: #aspectNames) equals: 'Color'.
+	self assert: (rows at: #mipLevels) equals: (0 to: VkImage viewMipLevelCount - 1).
+	self
+		assert: (rows at: #arrayLayers)
+		equals: (0 to: VkImage viewArrayLayerCount - 1).
+	self assert: (rows at: #swizzleNames) equals: 'identity, identity, identity, identity'.
+	self assert: (rows at: #identitySwizzle)
+]
+
 { #category : 'tests - layout' }
 VkBindingsTest >> testViewportAndScissorWriteNoScalarFieldAtAHandCountedOffset [
 	"The viewport and the rectangle are declared, so none of the methods that build or record
@@ -3024,8 +3195,10 @@ VkBindingsTest >> testVkHandleIsNull [
 VkBindingsTest >> testVkImageAllocatesMemoryWithNoScalarFieldAtAHandCountedOffset [
 	"The memory half of VkImage goes through declared structures, so neither allocate nor the
 	 methods it sends on the image may poke a scalar at a counted offset. The ban is on these
-	 methods rather than on the whole class: VkImage >> create and createView still write the
-	 image and image view create infos as blocks, and those structures belong to a later unit."
+	 methods rather than on the whole class: VkImage >> create still writes the image create
+	 info as a block, and that structure belongs to a later unit. The view request is declared,
+	 and testImageViewCreationWritesNoScalarFieldAtAHandCountedOffset holds createView to the
+	 same ban."
 
 	| banned offenders |
 	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:

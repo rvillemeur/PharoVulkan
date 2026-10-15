@@ -141,6 +141,43 @@ VkImageTest >> testImageReportsTheMemorySizeTheDriverAsked [
 ]
 
 { #category : 'tests - image' }
+VkImageTest >> testOneRequestServesSeveralViewsOfOneImageOnThisMachine [
+	"The swapchain creates one view per image it got from the surface, in a loop over the same
+	 builder, and no machine without a window can run that loop: a swapchain needs a surface.
+	 This leg runs the loop headlessly over one image instead, which is the shape that would
+	 break if the builder kept state between calls or freed the request too early. The views
+	 are separate objects and separate handles, and each is destroyed here because the image
+	 owns only the one in its own slot."
+
+	| context image views |
+	context := VkContext offscreenGraphicsContext.
+	[
+		image := VkImage
+			         on: context device
+			         format: VkFormat b8g8r8a8Unorm
+			         extent: VkImage exampleExtent
+			         usage: VkImageUsage colorAttachmentBit.
+		[
+			views := (1 to: 3) collect: [ :each |
+				         VkImage
+					         viewOn: context device
+					         image: image handle
+					         format: image format ].
+			[
+				views do: [ :each | self deny: each getHandle isNull ].
+				self
+					assert: (views collect: [ :each | each getHandle asInteger ]) asSet size
+					equals: views size ] ensure: [
+				views do: [ :each |
+					Vk
+						destroyImageView: context device handle
+						imageView: each
+						allocator: ExternalAddress null.
+					each invalidate ] ] ] ensure: [ image destroy ] ] ensure: [
+		context destroy ]
+]
+
+{ #category : 'tests - image' }
 VkImageTest >> testZeroExtentImageIsRefused [
 	"Pins what the driver here actually answers, observed before the test was written:
 	 vkCreateImage itself fails for a 0 by 0 extent, with VK_ERROR_OUT_OF_DEVICE_MEMORY
