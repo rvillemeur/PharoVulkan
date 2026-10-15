@@ -124,6 +124,13 @@ are the ones that call into the driver.
   checked on a machine with no display; what is left on the instance side is the creation itself,
   which needs a device. Splitting the builder out is also what removes a long-method critique,
   rather than rewrapping the lines of one long method.
+- **A request owns the runs it points at, and is the record of where they are.** The present
+  request points at three runs of one entry, allocated for it and freed through it:
+  `VkSwapchain class >> freePresentInfo:` reads each pointer back out of the structure, frees it
+  and writes null over the field, so a structure never holds an address that has been given back
+  and a caller cannot free the request and leak its runs. The same pairing is what lets an example
+  keep a copy: the runs go first, which clears the fields, and the Present tab then says the runs
+  are not there.
 - **`beReadOnlyObject` on a `Dictionary` is shallow.** It refuses writes to the dictionary object
   but not `at:put:`, which lands in the inner array, so the view rows across this project are not
   immutable however the older comments read. The guarantee that holds is that every row builder
@@ -1066,7 +1073,7 @@ widest.
 | `VkGraphicsPipeline >> initializeDevice:` | 29 | the whole pipeline create info tree |
 | ~~`VkSwapchain >> initializeDevice:`~~ | ~~19~~ | `VkSwapchainCreateInfoKHR` and the surface capabilities and formats it reads — **done 15 October 2026** |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
-| `VkSwapchain >> present:` | 8 | `VkPresentInfoKHR` |
+| ~~`VkSwapchain >> present:`~~ | ~~8~~ | `VkPresentInfoKHR` — **done 15 October 2026** |
 | ~~`VkImage >> create`~~ | ~~17~~ | `VkImageCreateInfo` — **done 15 October 2026** |
 | ~~`VkImage >> createView`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | ~~`VkRenderPass >> initializeDevice:`~~ | ~~31~~ | attachment, reference, subpass and render pass create infos — **done 15 October 2026** |
@@ -1358,3 +1365,38 @@ generated offset variables, accepted as for the other wide structures; the only 
 `VkSwapchain` is `ReLongMethodsRule` on `present:queue:waitSemaphore:`, which is its own plan row.
 
 The suite is 506 tests over the nine concrete test classes.
+
+### 4g — the present request, done 15 October 2026
+
+`VkSwapchain >> present:queue:waitSemaphore:` wrote eight offsets over sixty-four bytes and
+allocated four blocks in three nested `ensure:` blocks, with a comment whose offsets had drifted
+from the code below it. `VkPresentInfoKHR` is now declared: sixty-four bytes at 0, 8, 16, 24, 32,
+40, 48 and 56, every list pointed at rather than carried, so each pointer field is one pointer
+wide however many entries sit behind it. `initializeConstantFields` sets the structure type alone;
+both counts are a caller's choice.
+
+`VkSwapchain class >> presentInfoForSwapchain:imageIndex:waitSemaphore:` is the one writer and
+allocates the request together with the three runs of one entry it points at, through
+`runOfOneHandle:` and `runOfOneImageIndex:`. `freePresentRunsOf:` gives the runs back and clears
+each field as it goes; `freePresentInfo:` does that and then frees the request. The present itself
+is five lines: build, call, check the result, free in an `ensure:`. No run of per-swapchain results
+is asked for, because a present of one swapchain learns everything from the code the call answers.
+
+Three constants were named. `semaphoresPerPresent` and `swapchainsPerPresent` are the two counts —
+one each, because a frame waits for its own rendering and a scene draws into one surface.
+`imageIndexByteCount` is the width of an image index, delegating to `Vk class >> countByteCount`
+because an index is a uint32 as a count is, and it serves both the run a present points at and the
+block an acquire is given, which used to allocate a literal four bytes. `Vk class >> noTimeout` is
+the wait-forever sentinel the acquire passed as a literal; `PVHelloTriangleScene >> renderFrame`
+passed the same literal to its fence wait and now names it too.
+
+Eight tests red first: the layout against the C structure, that only the structure type is
+initialized, what the builder writes with the runs read back through the request's own pointers,
+that exactly one method presents, the rows the tab reads, the example's counts with every run field
+null, that the Present tab carries one row per entry the report answers, and the offset ban over
+both sides of `VkSwapchain`, which now names five methods and no structure among them. The driver
+leg `PVGraphicsTest >> testPresentRequestForARealSwapchainCarriesItsHandleAndIndex` builds the
+request from a live swapchain and reads its own handle and an index it holds back out of the runs.
+
+`VkSwapchain` has no critique left at all: `ReLongMethodsRule` on `present:queue:waitSemaphore:`,
+the last one, went with the rewrite. The suite is 514 tests over the nine concrete test classes.
