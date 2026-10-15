@@ -218,8 +218,7 @@ PVHelloTriangleScene >> initializeCtx: aVkContext backendWindow: aBackendWindow 
 			                on: ctx device
 			                renderPass: renderPass
 			                imageView: view
-			                width: ext x
-			                height: ext y ].
+			                extent: ext ].
 	imageAvailable := VkSemaphoreWrapper createDevice: ctx device.
 	renderFinished := VkSemaphoreWrapper createDevice: ctx device.
 	inFlightFence := VkFenceWrapper createSignaledDevice: ctx device

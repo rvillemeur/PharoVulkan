@@ -1568,6 +1568,137 @@ VkBindingsTest >> testFloat16SaturatesOutsideItsRange [
 	self assertHalfOf: (3.0 timesTwoPower: -26) is: 16r0001
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFramebufferCreateInfoInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is all a fresh request knows. The layer count is one for every
+	 framebuffer this project creates, but it is a caller's choice rather than a property of the
+	 structure, so the writer writes it; stamping it here would also make a request that names
+	 no attachment claim a layer."
+
+	| info setters |
+	info := VkFramebufferCreateInfo externalInstance.
+	[
+		self assert: info sType equals: VkStructureType framebufferCreateInfo.
+		self assert: info pNext isNull.
+		self assert: info flags equals: 0.
+		self assert: info renderPass isNull.
+		self assert: info attachmentCount equals: 0.
+		self assert: info pAttachments isNull.
+		self assert: info width equals: 0.
+		self assert: info height equals: 0.
+		self assert: info layers equals: 0 ] ensure: [ info getHandle free ].
+	setters := (VkFramebufferCreateInfo >> #initializeConstantFields) messages
+		           select: [ :each |
+		           VkFramebufferCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFramebufferCreateInfoLayoutMatchesTheCLayout [
+	"The request vkCreateFramebuffer reads: chain header, flags, the render pass whose
+	 attachments it binds, the attachment views as a count and a pointer, then the extent and
+	 the layer count. The three trailing words end the request at sixty bytes, which the padding
+	 to the chain pointer's alignment rounds to sixty-four."
+
+	| rows |
+	rows := VkFramebufferCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #renderPass #attachmentCount #pAttachments
+		           #width #height #layers ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 24 32 40 48 52 56 ).
+	self assert: VkFramebufferCreateInfo byteSize equals: 64
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFramebufferCreationWritesNoScalarFieldAtAHandCountedOffset [
+	"Every field of the request is declared, so no method of VkFramebuffer, on either side, may
+	 poke a scalar or a pointer at a counted offset. The attachment run is still a block, so
+	 pointerAt:put: is allowed in the one method that writes it and nowhere else."
+
+	| banned offenders |
+	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
+	             #unsignedShortAt:put: #unsignedLongLongAt:
+	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
+	             #floatAt: #floatAt:put: ).
+	offenders := (VkFramebuffer methods , VkFramebuffer class methods) select: [
+		             :method |
+		             method messages anySatisfy: [ :each | banned includes: each ] ].
+	self assertEmpty: (offenders collect: [ :each |
+			 each methodClass name , ' >> ' , each selector ]).
+	offenders := (VkFramebuffer methods , VkFramebuffer class methods) select: [
+		             :method |
+		             method messages anySatisfy: [ :each |
+			             #( #pointerAt: #pointerAt:put: ) includes: each ] ].
+	self
+		assert: (offenders collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals:
+		#( 'VkFramebuffer class >> attachmentsOutsideObjectMemory:'
+		   'VkFramebuffer class >> handleForCreateInfo:on:' )
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFramebufferRequestBindsOneAttachmentOverOneLayer [
+	"The request the builder writes, with no device in reach: the render pass it binds, one
+	 attachment view, the extent it covers and one layer. The attachment pointer leads to the
+	 view handles, which the request's rows read back by the named stride, because a run of
+	 handles has no field specification to read an offset from."
+
+	| views info |
+	views := VkFramebuffer attachmentsOutsideObjectMemory:
+		         { (VkImageView_H fromHandle: ExternalAddress null) }.
+	[
+		info := VkFramebuffer
+			        createInfoForRenderPass:
+			        (VkRenderPass_H fromHandle: ExternalAddress null)
+			        attachments: views
+			        extent: VkImage exampleExtent.
+		[
+			self assert: info sType equals: VkStructureType framebufferCreateInfo.
+			self assert: info flags equals: 0.
+			self
+				assert: info attachmentCount
+				equals: VkFramebuffer attachmentsPerFramebuffer.
+			self deny: info pAttachments isNull.
+			self assert: info width equals: VkImage exampleExtent x.
+			self assert: info height equals: VkImage exampleExtent y.
+			self assert: info layers equals: VkFramebuffer layersPerFramebuffer ]
+			ensure: [ info getHandle free ] ] ensure: [ views free ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testFramebufferRowsNameTheExtentTheLayersAndTheAttachments [
+	"What the Framebuffer tab reads: the extent as a point, the layer count, and the attachment
+	 views reported as how many the request names and whether each handle in the run is set. The
+	 handles are read by the named stride, so a row cannot be read off an offset counted by
+	 hand, and the render pass is reported as set or not rather than as an address."
+
+	| views rows |
+	views := VkFramebuffer attachmentsOutsideObjectMemory:
+		         { (VkImageView_H fromHandle: ExternalAddress null) }.
+	rows := [
+	        | info |
+	        info := VkFramebuffer
+		                createInfoForRenderPass:
+		                (VkRenderPass_H fromHandle: ExternalAddress null)
+		                attachments: views
+		                extent: VkImage exampleExtent.
+	        [ info framebufferRows ] ensure: [ info getHandle free ] ] ensure: [
+	        views free ].
+	self deny: (rows at: #renderPassSet).
+	self assert: (rows at: #extent) equals: VkImage exampleExtent.
+	self assert: (rows at: #layers) equals: VkFramebuffer layersPerFramebuffer.
+	self
+		assert: (rows at: #attachmentCount)
+		equals: VkFramebuffer attachmentsPerFramebuffer.
+	self
+		assert: (rows at: #attachmentsSet)
+		equals: (Array new: VkFramebuffer attachmentsPerFramebuffer withAll: false)
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testGeneratorIsIdempotent [
 	"Idempotency: generating an existing enum creates no new class."
@@ -2134,6 +2265,27 @@ VkBindingsTest >> testOnlyOneMethodCreatesAFenceAndOneASemaphore [
 			assert: (writers collect: [ :sender |
 					 sender methodClass name , ' >> ' , sender selector ]) asArray
 			equals: { each value } ]
+]
+
+{ #category : 'tests - structures' }
+VkBindingsTest >> testOnlyOneMethodCreatesAFramebuffer [
+	"One writer of the request and one caller of the creation, as for the image view. The tests
+	 are rejected from the senders: a test naming the call is itself a sender."
+
+	| callers writers |
+	callers := (SystemNavigation default allSendersOf:
+		            #createFramebuffer:createInfo:allocator:pFramebuffer:) reject: [
+		           :each | each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (callers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asSortedCollection asArray
+		equals: #( 'VkFramebuffer class >> handleForCreateInfo:on:' ).
+	writers := VkFramebufferCreateInfo writerRows collect: [ :each |
+		           each at: #method ].
+	self
+		assert: writers asArray
+		equals:
+		#( 'VkFramebuffer class >> createInfoForRenderPass:attachments:extent:' )
 ]
 
 { #category : 'tests - structures' }

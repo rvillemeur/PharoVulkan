@@ -807,6 +807,46 @@ PVGraphicsTest >> testOffscreenTriangleRulesHoldOnANonSquareTarget [
 					description: rule second , ' failed at ' , rule first printString ] ]
 ]
 
+{ #category : 'tests' }
+PVGraphicsTest >> testOneRequestServesSeveralFramebuffersOnThisMachine [
+	"The window path builds one framebuffer per swapchain image, in a loop over the same
+	 builder, and no machine without a window can run that loop: a swapchain needs a surface.
+	 This leg runs the loop headlessly over one view and one offscreen pass instead, which is
+	 the shape that would break if the builder kept state between calls, or freed the
+	 attachment run or the request before the driver had read it. Each framebuffer is destroyed
+	 here, because none of them is held by a target."
+
+	| context image pass framebuffers |
+	context := VkContext offscreenGraphicsContext.
+	[
+		image := VkImage
+			         on: context device
+			         format: PVOffscreenTarget colorFormat
+			         extent: VkImage exampleExtent
+			         usage: VkImageUsage colorAttachmentBit.
+		image createView.
+		pass := VkRenderPass
+			        createOffscreenColorPassDevice: context device
+			        format: PVOffscreenTarget colorFormat.
+		[
+			framebuffers := (1 to: 3) collect: [ :each |
+				                VkFramebuffer
+					                on: context device
+					                renderPass: pass
+					                imageView: image view
+					                extent: VkImage exampleExtent ].
+			[
+				framebuffers do: [ :each |
+					self deny: each handle getHandle isNull ].
+				self
+					assert: (framebuffers collect: [ :each |
+							 each handle getHandle asInteger ]) asSet size
+					equals: framebuffers size ] ensure: [
+				framebuffers do: [ :each | each destroy ] ] ] ensure: [
+			pass destroy.
+			image destroy ] ] ensure: [ context destroy ]
+]
+
 { #category : 'tests - driver lifecycle' }
 PVGraphicsTest >> testPrepareReleasesSceneWhenInitialisationFails [
 

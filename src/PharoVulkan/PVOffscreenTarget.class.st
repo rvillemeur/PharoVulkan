@@ -157,8 +157,7 @@ PVOffscreenTarget >> initializeDevice: aDevice extent: aPoint [
 		               on: aDevice
 		               renderPass: renderPass
 		               imageView: image view
-		               width: extent x
-		               height: extent y.
+		               extent: extent.
 	readbackBuffer := VkBuffer
 		                  on: aDevice
 		                  size: self byteSize
