@@ -997,6 +997,16 @@ and from a live scan rather than from anything stored. All fifteen rows agree to
 `<sampleInstance>` example was written: no test class in this project has one, and an example of a
 test is the test.
 
+The suite is 621 tests: 601 plus the twenty this unit added. Every one of them passes, but not in
+one run. A combined run of all 621 reported `620 passed, 1 failure` and could not say which test
+failed, because the forked runner published only the progress counter and the final `printString`.
+Run in four groups — 549 non-graphics, the 8 window tests of `PVGraphicsTest`, its other 44, and
+the 20 architecture tests — all four are green, so the one failure is state or order dependent and
+is the intermittent window behaviour already recorded under what is not in this plan. The four
+groups also measure where the time goes: the 549 non-graphics tests finish in under two minutes,
+and `PVGraphicsTest` alone accounts for the three quarters of an hour a combined run takes on
+lavapipe, during which the image answers nothing at all.
+
 Critics are clean on `PharoVulkan-Tests`. `BaselineOfPharoVulkan` reports one
 `ReCyclomaticComplexityRule` critique on `baseline:`, which a fifteen-package declaration written
 as one cascade will always draw, and which splitting the method would hide rather than fix.
@@ -1085,6 +1095,16 @@ as one cascade will always draw, and which splitting the method would hide rathe
   writes cannot be read back here. Pass method source through `compile_method`, whose argument is a
   JSON string and so needs no Smalltalk quote doubling at all, rather than through a file or
   through `compile:` on a literal built in the image.
+- **A forked runner publishes the names of what failed, not just a count.** A run that answers
+  `620 passed, 1 failure` and nothing else cannot be acted on, and repeating it costs the same
+  three quarters of an hour again. Collect `result failures` and `result errors` into a second
+  global as the run ends, and record the class and selector of anything the per-case handler
+  catches.
+- **Run the groups the change touched, and the whole suite rarely.** `PVGraphicsTest` is three
+  quarters of the wall clock of a full run and the reason the image goes silent; the other 549
+  tests take under two minutes. A unit that touches no graphics code is checked by its own packages
+  plus the reflective tests, and the full suite is worth its hour only when the result will be
+  acted on.
 - **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
