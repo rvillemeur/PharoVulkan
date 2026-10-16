@@ -9,6 +9,65 @@ Class {
 	#tag : 'Tests'
 }
 
+{ #category : 'dsl surface' }
+PVCompilerTest class >> bindingsPackageName [
+	^ #'PharoVulkan-Bindings'
+]
+
+{ #category : 'dsl surface' }
+PVCompilerTest class >> dslExtensionMethods [
+	"Every method this project adds to a class it does not own for a selector the compiler maps:
+	 the method belongs to one of this project's packages while the class it is installed on does
+	 not, which is what makes it an extension."
+
+	^ self mappedDslSelectors gather: [ :selector |
+		  (SystemNavigation default allImplementorsOf: selector) select: [ :method |
+			  (method package notNil and: [
+				   method package name beginsWith: self projectPackageNamePrefix ]) and: [
+				  method methodClass instanceSide package
+					  ifNil: [ true ]
+					  ifNotNil: [ :package |
+						  (package name beginsWith: self projectPackageNamePrefix) not ] ] ] ]
+]
+
+{ #category : 'dsl surface' }
+PVCompilerTest class >> mappedDslSelectors [
+	"The selectors PVSelectorTable maps, read out of the table itself so that a mapping added
+	 tomorrow is covered. A key is the selector followed by a colon and the receiver type, and no
+	 type name contains a colon, so the selector is what comes before the last one."
+
+	^ (PVSelectorTable standard table keys collect: [ :each |
+		   (each copyUpToLast: $:) asSymbol ]) asSet
+]
+
+{ #category : 'dsl surface' }
+PVCompilerTest class >> projectPackageNamePrefix [
+	"What every package of this project is called first, so a walk can tell this project's code
+	 from the image's own by asking the organiser rather than listing packages."
+
+	^ 'PharoVulkan'
+]
+
+{ #category : 'dsl surface' }
+PVCompilerTest class >> projectPackagesNamedBy: aMethod [
+	"The packages of this project whose classes aMethod names, read from its literals and from
+	 the literals of every block inside it, because a reference inside a block is a reference."
+
+	| found deep |
+	found := Set new.
+	deep := nil.
+	deep := [ :compiled |
+	        compiled literals do: [ :literal |
+		        literal isVariableBinding ifTrue: [
+			        literal value isBehavior ifTrue: [
+				        literal value instanceSide package ifNotNil: [ :package |
+					        (package name beginsWith: self projectPackageNamePrefix) ifTrue: [
+						        found add: package name asString ] ] ] ].
+		        literal class = CompiledBlock ifTrue: [ deep value: literal ] ] ].
+	deep value: aMethod.
+	^ found
+]
+
 { #category : 'helpers' }
 PVCompilerTest >> arrayStridesIn: bytes [
 	"The literal of every ArrayStride decoration in the module. An OpDecorate names its
@@ -538,6 +597,32 @@ PVCompilerTest >> testDefaultLocalSizeWhenPragmaAbsent [
 		            (PVKernelCompiler compile:
 			             PVKernelExamples >> #vectorAdd:a:b:out:).
 	self assert: literals equals: PVTypeAnnotation defaultLocalSize
+]
+
+{ #category : 'tests - dsl surface' }
+PVCompilerTest >> testEveryMappedSelectorThisProjectAddsToABaseClassStaysInsideItsOwnLayer [
+	"The selector table is the DSL surface: a kernel writes clamp:to: or coopMatLoad:, and the
+	 compiler maps the send to a SPIR-V operation. Where this project also implements one of those
+	 selectors on a class it does not own, the method is the host twin of the mapping, and it is
+	 subject to the same layering as the rest of the project: it may not sit in the bindings,
+	 which are the bottom layer and may name nothing above themselves, and it may only name
+	 classes of the package it sits in. Before the split these methods sat in the one package and
+	 neither question could be asked; the unit 8 rename answered the first one wrongly by default,
+	 putting all six in PharoVulkan-Bindings, two of them naming classes of Core and Compute."
+
+	| strays |
+	strays := OrderedCollection new.
+	self class dslExtensionMethods do: [ :method |
+		| home named |
+		home := method package name asString.
+		named := self class projectPackagesNamedBy: method.
+		home = self class bindingsPackageName asString ifTrue: [
+			strays add: method methodClass name , ' >> ' , method selector
+				, ' sits in the bindings' ].
+		(named reject: [ :each | each = home ]) do: [ :each |
+			strays add: method methodClass name , ' >> ' , method selector , ' sits in ' , home
+				, ' and names ' , each ] ].
+	self assertEmpty: strays
 ]
 
 { #category : 'tests - cfg shapes' }

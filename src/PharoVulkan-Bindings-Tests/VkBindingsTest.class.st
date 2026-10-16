@@ -11,6 +11,14 @@ Class {
 	#tag : 'Tests'
 }
 
+{ #category : 'layering' }
+VkBindingsTest class >> projectPackageNamePrefix [
+	"What every package of this project is called first, so a layering walk can tell this
+	 project's packages from the image's own without naming them."
+
+	^ 'PharoVulkan'
+]
+
 { #category : 'private' }
 VkBindingsTest >> assertHalfOf: aFloat is: anInteger [
 	self
@@ -3275,7 +3283,10 @@ VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage [
 	 constant tables they are written in terms of. Nothing here may name a class of a package above
 	 it, because a package that loads on its own cannot be made to wait for the lifecycle, the
 	 compiler or the renderer. Blocks are read as well as methods: most driver calls in this project
-	 sit inside an ensure: block, and so do several of the reads a report row makes."
+	 sit inside an ensure: block, and so do several of the reads a report row makes. The walk asks
+	 the package for its methods rather than for its classes, because a package also owns the
+	 methods it adds to classes it does not define, and those are where unit 8's rename hid a
+	 reference from here to Core and another to Compute for a whole commit."
 
 	| deep bindings offenders |
 	deep := nil.
@@ -3291,15 +3302,13 @@ VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage [
 		  found ].
 	bindings := VkRenderConfig package.
 	offenders := OrderedCollection new.
-	bindings definedClasses do: [ :each |
-		{ each. each class } do: [ :side |
-			side methods do: [ :method |
-				(deep value: method value: Set new) do: [ :target |
-					(target package notNil and: [ target package ~= bindings ]) ifTrue: [
-						((target package name beginsWith: 'PharoVulkan') ifTrue: [
-							 offenders add:
-								 side name , ' >> ' , method selector , ' -> '
-								 , target name ]) ] ] ] ] ].
+	bindings methods do: [ :method |
+		(deep value: method value: Set new) do: [ :target |
+			(target package notNil and: [ target package ~= bindings ]) ifTrue: [
+				(target package name beginsWith: self class projectPackageNamePrefix) ifTrue: [
+					offenders add:
+						method methodClass name , ' >> ' , method selector , ' -> '
+						, target name ] ] ] ].
 	self assertEmpty: offenders
 ]
 
@@ -3324,27 +3333,6 @@ VkBindingsTest >> testNoOffsetIsCountedInTheGraphicsPipelineAnyMore [
 			 [ :a :b | a <= b ]) asArray
 		equals: #( 'VkGraphicsPipeline class >> dynamicState'
 			   'VkGraphicsPipeline class >> handleForRequest:on:' )
-]
-
-{ #category : 'tests' }
-VkBindingsTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
-	"The kernel DSL sends asF16 and asF32. The host answers must be the rounding the device
-	 performs, so that running a half kernel's body on the host is a check on the kernel and
-	 not a different calculation."
-
-	{
-		0.0.
-		1.0.
-		-2.5.
-		65504.0.
-		(1 / 3).
-		(1.0 timesTwoPower: -24) } do: [ :each |
-		self
-			assert: each asF16
-			equals: (PVFloat16 floatFromWord: (PVFloat16 wordForFloat: each)).
-		self assert: each asF32 equals: each asFloat ].
-	self assert: 3 asF32 equals: 3.0.
-	self assert: Float infinity asF16 equals: Float infinity
 ]
 
 { #category : 'tests - structures' }

@@ -1016,7 +1016,9 @@ VkCoreTest >> testNoCoreMethodBuildsADescriptorPool [
 	 and binds its sets, and a Core method that answers one makes the layer below depend on the
 	 layer above. VkDevice had such a method, with no sender anywhere, and D2 removed it. Every
 	 method of the package is read, blocks included, because most driver calls here sit inside an
-	 ensure: block and a scan of method literals alone would miss them."
+	 ensure: block and a scan of method literals alone would miss them. The package is asked for
+	 its methods rather than its classes, because a package also owns the methods it adds to
+	 classes it does not define, and a walk over the classes cannot see those at all."
 
 	| deep offenders |
 	deep := nil.
@@ -1029,12 +1031,31 @@ VkCoreTest >> testNoCoreMethodBuildsADescriptorPool [
 				  (each isKindOf: CompiledBlock) ifTrue: [ deep value: each value: found ] ] ].
 		  found ].
 	offenders := OrderedCollection new.
-	VkDevice package definedClasses do: [ :each |
-		{ each. each class } do: [ :side |
-			side methods do: [ :method |
-				(deep value: method value: Set new) ifNotEmpty: [
-					offenders add: side name , ' >> ' , method selector ] ] ] ].
+	VkDevice package methods do: [ :method |
+		(deep value: method value: Set new) ifNotEmpty: [
+			offenders add: method methodClass name , ' >> ' , method selector ] ].
 	self assertEmpty: offenders
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer [
+	"The kernel DSL sends asF16 and asF32. The host answers must be the rounding the device
+	 performs, so that running a half kernel's body on the host is a check on the kernel and
+	 not a different calculation."
+
+	{
+		0.0.
+		1.0.
+		-2.5.
+		65504.0.
+		(1 / 3).
+		(1.0 timesTwoPower: -24) } do: [ :each |
+		self
+			assert: each asF16
+			equals: (PVFloat16 floatFromWord: (PVFloat16 wordForFloat: each)).
+		self assert: each asF32 equals: each asFloat ].
+	self assert: 3 asF32 equals: 3.0.
+	self assert: Float infinity asF16 equals: Float infinity
 ]
 
 { #category : 'tests' }
