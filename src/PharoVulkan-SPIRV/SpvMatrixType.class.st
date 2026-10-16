@@ -1,0 +1,43 @@
+"
+SPIR-V matrix type (mat4 = vec4f x 4 columns). Used by PVSPIRVEmitter for mat4 type declarations.
+"
+Class {
+	#name : 'SpvMatrixType',
+	#superclass : 'SpvType',
+	#instVars : [
+		'columnType',
+		'columns'
+	],
+	#category : 'PharoVulkan-SPIRV-Types',
+	#package : 'PharoVulkan-SPIRV',
+	#tag : 'Types'
+}
+
+{ #category : 'accessing' }
+SpvMatrixType >> columnType [ ^ columnType
+]
+
+{ #category : 'accessing' }
+SpvMatrixType >> columnType: x [ columnType := x
+]
+
+{ #category : 'accessing' }
+SpvMatrixType >> columns [ ^ columns
+]
+
+{ #category : 'accessing' }
+SpvMatrixType >> columns: x [ columns := x
+]
+
+{ #category : 'emitting' }
+SpvMatrixType >> instruction [
+    ^ SpvInstruction
+        opcode: SpvOpcode opTypeMatrix
+        resultType: nil
+        resultId: id
+        operands: { columnType id. columns }
+]
+
+{ #category : 'accessing' }
+SpvMatrixType >> key [ ^ Array with: #matrix with: columnType id with: columns
+]

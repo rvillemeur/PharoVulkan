@@ -49,11 +49,11 @@ SpvBuilderTest >> buildVectorAddModule [
 
     "Descriptor binding decorations"
     b addDecoration: bufA id decoration: SpvDecoration descriptorSet literals: { 0 }.
-    b addDecoration: bufA id decoration: SpvDecoration binding         literals: { 0 }.
+    b addDecoration: bufA id decoration: SpvDecoration bindingDecoration         literals: { 0 }.
     b addDecoration: bufB id decoration: SpvDecoration descriptorSet literals: { 0 }.
-    b addDecoration: bufB id decoration: SpvDecoration binding         literals: { 1 }.
+    b addDecoration: bufB id decoration: SpvDecoration bindingDecoration         literals: { 1 }.
     b addDecoration: bufR id decoration: SpvDecoration descriptorSet literals: { 0 }.
-    b addDecoration: bufR id decoration: SpvDecoration binding         literals: { 2 }.
+    b addDecoration: bufR id decoration: SpvDecoration bindingDecoration         literals: { 2 }.
     b addDecoration: invIdGlobal id decoration: SpvDecoration builtIn
         literals: { SpvBuiltIn globalInvocationId }.
 
@@ -248,6 +248,19 @@ SpvBuilderTest >> testCooperativeMatrixTypeIsOnePerShapeAndRole [
 		equals: (builder types
 				 cooperativeMatrixType: f16
 				 shape: (shapeOf value: SpvCooperativeMatrixType matrixBUse)) id
+]
+
+{ #category : 'tests - package' }
+SpvBuilderTest >> testEveryClassOfTheSpirvPackageAnswersItsOwnBinding [
+	"A class-side method named after a reflection selector hides the real one. The decoration
+	 number used to be answered by a class-side method named binding, so asking SpvDecoration for
+	 its binding answered that integer rather than the global variable holding the class, and
+	 every tool reading a class through its binding failed on it: Renraku's unreferenced-class
+	 rule raised 'SmallInteger did not understand #isReferenced'. Each class of the package is
+	 asked, because the next constant named after a reflection selector would break the same way."
+
+	SpvBuilder package definedClasses do: [ :each |
+		self assert: each binding value identicalTo: each ]
 ]
 
 { #category : 'tests' }

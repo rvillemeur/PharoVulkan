@@ -2057,7 +2057,7 @@ PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding
 		literals: { self class computeDescriptorSet }.
 	module
 		addDecoration: bVar id
-		decoration: SpvDecoration binding
+		decoration: SpvDecoration bindingDecoration
 		literals: { binding }.
 	^ bVar
 ]

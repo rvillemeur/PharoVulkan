@@ -602,7 +602,7 @@ PVTiledMatmulKernel >> newBufferVariableOfType: aPointerType binding: anInteger 
 		literals: { PVSPIRVEmitter computeDescriptorSet }.
 	builder module
 		addDecoration: variable id
-		decoration: SpvDecoration binding
+		decoration: SpvDecoration bindingDecoration
 		literals: { anInteger }.
 	^ variable
 ]

@@ -40,11 +40,11 @@ SpvEmitterTest >> buildVectorAddModule [
 	mod addGlobalVariable: bufR.
 	mod addGlobalVariable: gidVar.
 	mod addDecoration: bufA id decoration: SpvDecoration descriptorSet literals: (Array with: 0).
-	mod addDecoration: bufA id decoration: SpvDecoration binding literals: (Array with: 0).
+	mod addDecoration: bufA id decoration: SpvDecoration bindingDecoration literals: (Array with: 0).
 	mod addDecoration: bufB id decoration: SpvDecoration descriptorSet literals: (Array with: 0).
-	mod addDecoration: bufB id decoration: SpvDecoration binding literals: (Array with: 1).
+	mod addDecoration: bufB id decoration: SpvDecoration bindingDecoration literals: (Array with: 1).
 	mod addDecoration: bufR id decoration: SpvDecoration descriptorSet literals: (Array with: 0).
-	mod addDecoration: bufR id decoration: SpvDecoration binding literals: (Array with: 2).
+	mod addDecoration: bufR id decoration: SpvDecoration bindingDecoration literals: (Array with: 2).
 	mod addDecoration: gidVar id decoration: SpvDecoration builtIn literals: (Array with: SpvBuiltIn globalInvocationId).
 	c0Id := cp constantUInt32: 0.
 	gidRef := em globalRef: gidVar id type: pUvec3.

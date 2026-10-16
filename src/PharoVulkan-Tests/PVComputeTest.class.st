@@ -73,11 +73,11 @@ PVComputeTest >> buildVectorAddSpirv [
 	bufR := b addGlobalVariable: pStruct storageClass: SpvStorageClass storageBuffer.
 	invIdGlobal := b addGlobalVariable: pUvec3 storageClass: SpvStorageClass input.
 	b addDecoration: bufA id decoration: SpvDecoration descriptorSet literals: { 0 }.
-	b addDecoration: bufA id decoration: SpvDecoration binding literals: { 0 }.
+	b addDecoration: bufA id decoration: SpvDecoration bindingDecoration literals: { 0 }.
 	b addDecoration: bufB id decoration: SpvDecoration descriptorSet literals: { 0 }.
-	b addDecoration: bufB id decoration: SpvDecoration binding literals: { 1 }.
+	b addDecoration: bufB id decoration: SpvDecoration bindingDecoration literals: { 1 }.
 	b addDecoration: bufR id decoration: SpvDecoration descriptorSet literals: { 0 }.
-	b addDecoration: bufR id decoration: SpvDecoration binding literals: { 2 }.
+	b addDecoration: bufR id decoration: SpvDecoration bindingDecoration literals: { 2 }.
 	b addDecoration: invIdGlobal id decoration: SpvDecoration builtIn literals: { SpvBuiltIn globalInvocationId }.
 	voidType := types voidType.
 	mainFn := b newFunction: voidType.
