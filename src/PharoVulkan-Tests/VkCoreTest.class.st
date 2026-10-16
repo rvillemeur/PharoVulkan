@@ -1010,6 +1010,33 @@ VkCoreTest >> testMemoryTypeRowsNameEveryTypeTheDriverReports [
 	self assert: device memoryTypeRows equals: rows
 ]
 
+{ #category : 'tests - layering' }
+VkCoreTest >> testNoCoreMethodBuildsADescriptorPool [
+	"A descriptor pool belongs to a dispatch, not to a device: the compute package allocates one
+	 and binds its sets, and a Core method that answers one makes the layer below depend on the
+	 layer above. VkDevice had such a method, with no sender anywhere, and D2 removed it. Every
+	 method of the package is read, blocks included, because most driver calls here sit inside an
+	 ensure: block and a scan of method literals alone would miss them."
+
+	| deep offenders |
+	deep := nil.
+	deep := [ :compiled :found |
+		  compiled literals do: [ :each |
+			  each isVariableBinding
+				  ifTrue: [
+					  (each value == VkDescriptorPool) ifTrue: [ found add: each value ] ]
+				  ifFalse: [
+				  (each isKindOf: CompiledBlock) ifTrue: [ deep value: each value: found ] ] ].
+		  found ].
+	offenders := OrderedCollection new.
+	VkDevice package definedClasses do: [ :each |
+		{ each. each class } do: [ :side |
+			side methods do: [ :method |
+				(deep value: method value: Set new) ifNotEmpty: [
+					offenders add: side name , ' >> ' , method selector ] ] ] ].
+	self assertEmpty: offenders
+]
+
 { #category : 'tests' }
 VkCoreTest >> testOffscreenGraphicsContextQueueCanDraw [
 	"The context handed back must be able to draw with no window and no surface

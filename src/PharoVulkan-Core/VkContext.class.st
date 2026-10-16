@@ -13,9 +13,9 @@ Class {
 		'deviceRequirements',
 		'chosenDeviceName'
 	],
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Core-Device',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Device'
 }
 
 { #category : 'factory' }

@@ -9,9 +9,9 @@ Class {
 		'physicalDevice',
 		'context'
 	],
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-Device',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Device'
 }
 
 { #category : 'factory' }
@@ -57,14 +57,6 @@ VkDevice >> createCommandPool: queueFamilyIndex [
 	 in one place."
 
 	^ VkCommandPool on: self queueFamilyIndex: queueFamilyIndex
-]
-
-{ #category : 'factory' }
-VkDevice >> createDescriptorPool: aMaxSetCount descriptorCount: aDescriptorCount [
-    ^ VkDescriptorPool
-	      on: self
-	      maxSets: aMaxSetCount
-	      descriptorCount: aDescriptorCount
 ]
 
 { #category : 'factory' }

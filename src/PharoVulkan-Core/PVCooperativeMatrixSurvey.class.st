@@ -11,9 +11,9 @@ Class {
 		'deviceReports',
 		'chosenDeviceName'
 	],
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-CooperativeMatrix',
+	#package : 'PharoVulkan-Core',
+	#tag : 'CooperativeMatrix'
 }
 
 { #category : 'instance creation' }

@@ -8,9 +8,9 @@ Key methods: subgroup, workgroup, device, queueFamily, nameOf: and isDefined:.
 Class {
 	#name : 'VkScope',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-CooperativeMatrix',
+	#package : 'PharoVulkan-Core',
+	#tag : 'CooperativeMatrix'
 }
 
 { #category : 'constants' }

@@ -7,9 +7,9 @@ Key methods: checkResult: (raises VkError on non-success), ffiLibrary (class-sid
 Class {
 	#name : 'Vk',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Graphics',
+	#category : 'PharoVulkan-Bindings',
 	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#tag : 'Bindings'
 }
 
 { #category : 'PharoVulkan' }

@@ -12,9 +12,9 @@ Class {
 		'name',
 		'address'
 	],
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-Device',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Device'
 }
 
 { #category : 'instance creation' }

@@ -15,9 +15,9 @@ Class {
 		'saturatingAccumulation',
 		'scope'
 	],
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-CooperativeMatrix',
+	#package : 'PharoVulkan-Core',
+	#tag : 'CooperativeMatrix'
 }
 
 { #category : 'layout' }

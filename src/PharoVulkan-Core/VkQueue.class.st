@@ -8,9 +8,9 @@ Class {
 		'handle',
 		'familyIndex'
 	],
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Core-Commands',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Commands'
 }
 
 { #category : 'constants' }

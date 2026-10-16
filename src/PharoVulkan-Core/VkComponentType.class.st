@@ -6,9 +6,9 @@ Key methods: the class-side value accessors (float16, float32, sint8, …), name
 Class {
 	#name : 'VkComponentType',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-CooperativeMatrix',
+	#package : 'PharoVulkan-Core',
+	#tag : 'CooperativeMatrix'
 }
 
 { #category : 'constants' }

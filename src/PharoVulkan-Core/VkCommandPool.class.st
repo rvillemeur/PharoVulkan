@@ -9,9 +9,9 @@ Class {
 		'device',
 		'queueFamilyIndex'
 	],
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-Commands',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Commands'
 }
 
 { #category : 'constants' }

@@ -12,9 +12,9 @@ Class {
 		'device',
 		'mappedPointer'
 	],
-	#category : 'PharoVulkan-Core',
-	#package : 'PharoVulkan',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-Resources',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Resources'
 }
 
 { #category : 'constants' }
