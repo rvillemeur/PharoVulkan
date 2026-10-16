@@ -34,11 +34,10 @@ VkSwapchain class >> acceptablePresentResults [
 
 { #category : 'constants' }
 VkSwapchain class >> clipObscuredPixels [
-	"VK_TRUE for the clipped field: the driver may discard pixels another window covers.
-	 Nothing here reads a presented image back, so the pixels that would be discarded are
-	 never looked at, and discarding them is what lets a driver present without a copy."
+	"Delegates so the value has one home: whether a driver may discard obscured pixels is render
+	 configuration."
 
-	^ 1
+	^ VkRenderConfig clipObscuredPixels
 ]
 
 { #category : 'instance creation' }
@@ -120,16 +119,12 @@ VkSwapchain class >> handleForCreateInfo: aCreateInfo on: aDevice [
 	  VkSwapchainKHR_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
 ]
 
-{ #category : 'instance creation' }
+{ #category : 'private' }
 VkSwapchain class >> imageCountFor: aCapabilities [
-	"How many images to ask the surface for: one more than it demands, held down to what it
-	 allows. A maximum of zero is no maximum, so the clamp is skipped there rather than
-	 clamping the request to nothing."
+	"Delegates so the rule has one home: every value it reads is a field of the capabilities, so
+	 the capabilities answer the count and this class asks."
 
-	| wanted |
-	wanted := aCapabilities minImageCount + self imagesBeyondMinimum.
-	aCapabilities maxImageCount = self unlimitedImageCount ifTrue: [ ^ wanted ].
-	^ wanted min: aCapabilities maxImageCount
+	^ aCapabilities swapchainImageCount
 ]
 
 { #category : 'constants' }
@@ -153,11 +148,10 @@ VkSwapchain class >> imageIndexByteCount [
 
 { #category : 'constants' }
 VkSwapchain class >> imagesBeyondMinimum [
-	"One image more than the surface demands, so a frame can be drawn into one image while
-	 another is being presented. Asking for exactly the minimum makes every frame wait for
-	 the presentation engine to let go of an image."
+	"Delegates so the value has one home: how many images beyond the minimum to ask for is render
+	 configuration."
 
-	^ 1
+	^ VkRenderConfig swapchainImagesBeyondMinimum
 ]
 
 { #category : 'instance creation' }
@@ -184,19 +178,12 @@ VkSwapchain class >> presentInfoForSwapchain: aSwapchainHandle imageIndex: anIma
 		  yourself
 ]
 
-{ #category : 'accessing' }
+{ #category : 'constants' }
 VkSwapchain class >> presentModeNameFor: aValue [
-	"The name of a present mode, found by asking VkRenderConfig which of its present-mode
-	 constants carries the value, so nothing showing a mode can name one the creation code
-	 stopped using. VkRenderConfig holds constants of several kinds, so the selectors are
-	 selected by prefix rather than by protocol. Answers the number itself where no constant
-	 matches."
+	"Delegates so the lookup has one home: the names are the present-mode constants
+	 VkRenderConfig holds, and it is the class that can answer which one carries a value."
 
-	^ (VkRenderConfig class selectors
-		   detect: [ :each |
-			   ('presentMode*' match: each) and: [
-				   (VkRenderConfig perform: each) = aValue ] ]
-		   ifNone: [ ^ aValue printString ]) asString
+	^ VkRenderConfig presentModeNameFor: aValue
 ]
 
 { #category : 'structures' }
@@ -243,11 +230,9 @@ VkSwapchain class >> swapchainsPerPresent [
 
 { #category : 'constants' }
 VkSwapchain class >> unlimitedImageCount [
-	"What VkSurfaceCapabilitiesKHR reports as maxImageCount when the surface sets no upper
-	 bound. It is a sentinel and not a count: clamping a request to it would ask for a
-	 swapchain of no images."
+	"Delegates so the value has one home: the sentinel belongs to the structure that reports it."
 
-	^ 0
+	^ VkSurfaceCapabilitiesKHR unlimitedImageCount
 ]
 
 { #category : 'rendering' }

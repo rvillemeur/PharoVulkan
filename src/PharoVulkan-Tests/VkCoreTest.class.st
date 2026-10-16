@@ -1124,7 +1124,7 @@ VkCoreTest >> testPipelineLayoutLivesBelowBothPipelineKinds [
 	reached remove: VkPipelineLayout ifAbsent: [ nil ].
 	reached do: [ :each |
 		(each package name beginsWith: 'PharoVulkan') ifTrue: [
-			self assert: each package name equals: 'PharoVulkan' ] ]
+			self assert: each package name equals: VkStructure package name ] ]
 ]
 
 { #category : 'tests' }

@@ -15,11 +15,10 @@ Class {
 
 { #category : 'constants' }
 VkFramebuffer class >> attachmentByteCount [
-	"An attachment entry is one handle wide. The run has no field specification to read a
-	 width from, because uFFI in this image cannot declare an array field, so the stride is
-	 named here."
+	"Delegates so the stride has one home: the run is laid out for the create info structure
+	 that points at it, and that structure names the width of an entry."
 
-	^ ExternalAddress wordSize
+	^ VkFramebufferCreateInfo attachmentByteCount
 ]
 
 { #category : 'instance creation' }

@@ -14,40 +14,45 @@ Class {
 { #category : 'baselines' }
 BaselineOfPharoVulkan >> baseline: spec [
 	"The packages are declared in the order the split creates them, and each one requires only the
-	 packages it actually references: PharoVulkan-SPIRV emits SPIR-V and reaches nothing else, so it
-	 loads first, and PharoVulkan-Compiler sits on it alone — it answers bytes and talks to no
-	 driver, which is what the compiler group loads without any Vulkan code. PharoVulkan-Core holds
-	 the device lifecycle, so it requires the bindings it calls through and the SPIR-V package that
-	 declares the type error it raises. PharoVulkan-Compute dispatches and PharoVulkan-Graphics
-	 renders, so both require the compiler that answers them a module as well as the lifecycle that
-	 answers them a device, and Graphics requires Compute for the kernel sources its shaders are
-	 compiled from. All four are part of 'default': a user of this project opens a device, runs
-	 something on it and draws. The generator and the examples are left out of 'default' because a
-	 user of the bindings needs neither. Loading 'tests' brings the examples in, because the test
-	 classes read the example classes."
+	 packages it actually references. PharoVulkan-Bindings declares the structures, the handles,
+	 the constants and the foreign calls, and reaches nothing else, so it loads first and requires
+	 nothing. PharoVulkan-SPIRV emits SPIR-V and reaches nothing either; PharoVulkan-Compiler sits
+	 on it alone — it answers bytes and talks to no driver, which is what the compiler group loads
+	 without any Vulkan code. PharoVulkan-Core holds the device lifecycle, so it requires the
+	 bindings it calls through and the SPIR-V package that declares the type error it raises.
+	 PharoVulkan-Compute dispatches and PharoVulkan-Graphics renders, so both require the compiler
+	 that answers them a module as well as the lifecycle that answers them a device, and Graphics
+	 requires Compute for the kernel sources its shaders are compiled from. All of these are part
+	 of 'default': a user of this project opens a device, runs something on it and draws. The
+	 generator and the examples are left out of 'default' because a user of the bindings needs
+	 neither. Loading 'tests' brings the examples in, because the test classes read the example
+	 classes."
 
 	<baseline>
 	spec for: #common do: [
 		spec
+			package: 'PharoVulkan-Bindings';
 			package: 'PharoVulkan-SPIRV';
 			package: 'PharoVulkan-Compiler'
 			with: [ spec requires: #( 'PharoVulkan-SPIRV' ) ];
-			package: 'PharoVulkan'
-			with: [ spec requires: #( 'PharoVulkan-SPIRV' 'PharoVulkan-Compiler' ) ];
 			package: 'PharoVulkan-Core'
-			with: [ spec requires: #( 'PharoVulkan' 'PharoVulkan-SPIRV' ) ];
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Compute'
 			with: [
 				spec requires:
-					#( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compiler'
+					#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compiler'
 					   'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Graphics'
 			with: [
 				spec requires:
-					#( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compute'
+					#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compute'
 					   'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Generator'
-			with: [ spec requires: #( 'PharoVulkan-SPIRV' 'PharoVulkan' ) ];
+			with: [
+				spec requires:
+					#( 'PharoVulkan-SPIRV' 'PharoVulkan-Bindings' ) ];
 			package: 'PharoVulkan-Examples'
 			with: [ spec requires: #( 'PharoVulkan-Graphics' ) ];
 			package: 'PharoVulkan-Tests'
@@ -56,6 +61,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 					#( 'PharoVulkan-Graphics' 'PharoVulkan-Examples'
 					   'PharoVulkan-Generator' ) ].
 		spec
+			group: 'bindings' with: #( 'PharoVulkan-Bindings' );
 			group: 'spirv' with: #( 'PharoVulkan-SPIRV' );
 			group: 'compiler' with: #( 'PharoVulkan-SPIRV' 'PharoVulkan-Compiler' );
 			group: 'core' with: #( 'PharoVulkan-Core' );
@@ -63,7 +69,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 			group: 'graphics' with: #( 'PharoVulkan-Graphics' );
 			group: 'default'
 			with:
-				#( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compute'
+				#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compute'
 				   'PharoVulkan-Graphics' );
 			group: 'generator' with: #( 'PharoVulkan-Generator' );
 			group: 'examples' with: #( 'PharoVulkan-Examples' );

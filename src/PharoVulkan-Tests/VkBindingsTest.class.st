@@ -2301,6 +2301,28 @@ VkBindingsTest >> testFramebufferRowsNameTheExtentTheLayersAndTheAttachments [
 		equals: (Array new: VkFramebuffer attachmentsPerFramebuffer withAll: false)
 ]
 
+{ #category : 'tests - layering' }
+VkBindingsTest >> testGeneratorInstallsIntoThePackageTheBindingsAreIn [
+	"Every generate method names the package it installs a generated class into as a string
+	 literal. A literal cannot be checked by the compiler, and no generate method is reached in
+	 anger while the class it would write already exists, so a stale name would only be found the
+	 next time the bindings were regenerated against a newer vk.xml. This states that each name
+	 is a package that exists and is the one the declared structures live in."
+
+	| named |
+	named := Set new.
+	#( generateHandle: generateEnum: generateStruct: ) do: [ :selector |
+		(VkBindingGenerator >> selector) literals do: [ :each |
+			(each isString and: [ each beginsWith: 'PharoVulkan' ]) ifTrue: [
+				named add: each asString ] ] ].
+	self assert: named size equals: 1.
+	named do: [ :each |
+		self
+			assert: (PackageOrganizer default packageNamed: each ifAbsent: [ nil ]) notNil
+			description: each , ' is not a package in this image'.
+		self assert: each equals: VkStructure package name ]
+]
+
 { #category : 'tests' }
 VkBindingsTest >> testGeneratorIsIdempotent [
 	"Idempotency: generating an existing enum creates no new class."
@@ -3245,6 +3267,40 @@ VkBindingsTest >> testNestedPropertiesNameReadsThroughTheOuterStore [
 	self
 		assert: query properties deviceNameString
 		equals: (String new: fieldSize withAll: $A)
+]
+
+{ #category : 'tests - layering' }
+VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage [
+	"The bindings are the bottom of this project: declared structures, declared calls and the
+	 constant tables they are written in terms of. Nothing here may name a class of a package above
+	 it, because a package that loads on its own cannot be made to wait for the lifecycle, the
+	 compiler or the renderer. Blocks are read as well as methods: most driver calls in this project
+	 sit inside an ensure: block, and so do several of the reads a report row makes."
+
+	| deep bindings offenders |
+	deep := nil.
+	deep := [ :compiled :found |
+		  compiled literals do: [ :each |
+			  each isVariableBinding
+				  ifTrue: [
+				  each value isBehavior ifTrue: [
+					  found add: each value instanceSide ] ]
+				  ifFalse: [
+				  (each isKindOf: CompiledBlock) ifTrue: [
+					  deep value: each value: found ] ] ].
+		  found ].
+	bindings := VkRenderConfig package.
+	offenders := OrderedCollection new.
+	bindings definedClasses do: [ :each |
+		{ each. each class } do: [ :side |
+			side methods do: [ :method |
+				(deep value: method value: Set new) do: [ :target |
+					(target package notNil and: [ target package ~= bindings ]) ifTrue: [
+						((target package name beginsWith: 'PharoVulkan') ifTrue: [
+							 offenders add:
+								 side name , ' >> ' , method selector , ' -> '
+								 , target name ]) ] ] ] ] ].
+	self assertEmpty: offenders
 ]
 
 { #category : 'tests - graphics request' }

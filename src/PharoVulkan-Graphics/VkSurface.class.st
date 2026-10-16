@@ -28,11 +28,10 @@ VkSurface class >> formatPreferredFrom: surfaceFormats [
 
 { #category : 'constants' }
 VkSurface class >> formatRenderedIn [
-	"The format the render pass, the shaders and the readback of this project are all written
-	 for. It is taken whenever a surface offers it so that a presented frame and an offscreen
-	 frame are the same bytes in the same order."
+	"Delegates so the value has one home: the format this project renders in is render
+	 configuration, read by the surface choice above and by the format report below."
 
-	^ VkFormat b8g8r8a8Unorm
+	^ VkRenderConfig formatRenderedIn
 ]
 
 { #category : 'instance creation' }

@@ -24,18 +24,18 @@ VkCommandBuffer class >> barriersPerDependency [
 
 { #category : 'constants' }
 VkCommandBuffer class >> clearComponentByteCount [
-	"A clear colour component is a float, and the clear values are a union of arrays rather than
-	 a declared structure, so there is no field specification to read a width from and the
-	 stride is named here."
+	"Delegates so the value has one home: the stride belongs to the request that declares the
+	 pointer the colours are written through."
 
-	^ 4
+	^ VkRenderPassBeginInfo clearComponentByteCount
 ]
 
 { #category : 'constants' }
 VkCommandBuffer class >> clearComponentCount [
-	"Four components per clear colour, in the order Vulkan reads them."
+	"Delegates so the value has one home: the stride belongs to the request that declares the
+	 pointer the colours are written through."
 
-	^ 4
+	^ VkRenderPassBeginInfo clearComponentCount
 ]
 
 { #category : 'recording' }
@@ -210,10 +210,9 @@ VkCommandBuffer class >> scissorsPerCommand [
 
 { #category : 'constants' }
 VkCommandBuffer class >> subpassContents [
-	"Every subpass in this project is recorded in the buffer that begins the pass, because the
-	 pool allocates primary buffers only."
+	"Delegates so the value has one home: the choice of inline subpasses is render configuration."
 
-	^ VkSubpassContents inline
+	^ VkRenderConfig subpassContents
 ]
 
 { #category : 'structures' }

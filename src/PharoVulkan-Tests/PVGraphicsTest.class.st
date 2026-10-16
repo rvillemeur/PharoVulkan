@@ -85,24 +85,27 @@ PVGraphicsTest class >> graphicsClassNamesWithoutDeviceCoverage [
 
 { #category : 'coverage' }
 PVGraphicsTest class >> graphicsClasses [
-	"The classes tagged Graphics. A class answers its own tag with packageTag name, because
-	 RPackageOrganizer is gone in Pharo 13 and Package does not answer its tags."
+	"The classes of the graphics package. Before the split these were a tag inside one package;
+	 they are a package of their own now, so the question is asked of the package. Asking the
+	 package is also what keeps this honest: a graphics class added to that package is covered by
+	 this test the moment it exists. The package manifest is left out: it carries the package
+	 comment and the critic settings, so no test can put it on a device and none should."
 
-	^ self projectClasses select: [ :each |
-		  each packageTag name = self graphicsTagName ]
+	^ ((PackageOrganizer default packageNamed: self graphicsPackageName)
+		   definedClasses reject: [ :each | each inheritsFrom: PackageManifest ]) asSet
 ]
 
 { #category : 'coverage' }
-PVGraphicsTest class >> graphicsTagName [
+PVGraphicsTest class >> graphicsPackageName [
 
-	^ 'Graphics'
+	^ #'PharoVulkan-Graphics'
 ]
 
 { #category : 'coverage' }
 PVGraphicsTest class >> projectClasses [
 
-	^ (PackageOrganizer default packageNamed: self projectPackageName)
-		  definedClasses asSet
+	^ (self projectPackageNames gather: [ :each |
+		   (PackageOrganizer default packageNamed: each) definedClasses ]) asSet
 ]
 
 { #category : 'coverage' }
@@ -140,9 +143,17 @@ PVGraphicsTest class >> projectClassesReferencedBy: aCompiledMethod [
 ]
 
 { #category : 'coverage' }
-PVGraphicsTest class >> projectPackageName [
+PVGraphicsTest class >> projectPackageNames [
+	"Every package of this project that holds code under test. The split gave the project eight
+	 code packages where it had one, so the walk below asks the organiser for them by prefix
+	 rather than naming one package: a class that moves between them stays project code, and a
+	 ninth package is covered the day it is created. The test package itself is left out, because
+	 the walk starts there and asks what the tests reach."
 
-	^ #PharoVulkan
+	^ (PackageOrganizer default packages
+		   select: [ :each | each name beginsWith: 'PharoVulkan' ])
+		  collect: [ :each | each name ] thenReject: [ :each |
+		  each = self testPackageName asString ]
 ]
 
 { #category : 'coverage' }
