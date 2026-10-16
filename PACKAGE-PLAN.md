@@ -65,7 +65,7 @@ manifest.
 |---------|---------|------------|
 | `PharoVulkan-Bindings` | 144 | nothing |
 | `PharoVulkan-SPIRV` | 51 | nothing |
-| `PharoVulkan-Compiler` | 32 | SPIRV |
+| `PharoVulkan-Compiler` | 31 | SPIRV |
 | `PharoVulkan-Core` | 16 | Bindings |
 | `PharoVulkan-Graphics` | 17 | Bindings, Core, Compiler, SPIRV, Compute |
 | `PharoVulkan-Compute` | 15 | Bindings, Core, Compiler, SPIRV |
@@ -257,7 +257,8 @@ Leaf first, so each commit moves classes whose dependents are already where they
 2. **Generator — done 16 October 2026.** Thirteen classes, two outgoing edges, nothing depends on it.
 3. **SPIRV — done 16 October 2026.** Fifty-one classes. D1 taken here, because `PVTypeError`
    lands in this package.
-4. **Compiler.** Thirty-two classes, including the `Compiler-Pipeline` tag. Take D3 here.
+4. **Compiler — done 16 October 2026.** Thirty-one classes, including the `Compiler-Pipeline` tag.
+   D3 taken here.
 5. **Core.** Seventeen classes, including the six taken out of the `Graphics` tag. Take D2 here.
 6. **Compute.** Fifteen classes.
 7. **Graphics.** Seventeen classes, including the `SDL2` tag.
@@ -460,6 +461,55 @@ in `SpvSerializer >> emitAnnotations`, which relies on a block temp being nil an
 Found on the way past, for later rather than now: `SpvIRBranch` and `SpvIRReturnValue` are complete,
 commented, and reachable from nothing — the IR has two node kinds the compiler never builds.
 
+## What unit 4 did
+
+Done 16 October 2026.
+
+`PharoVulkan-Compiler` created with a package comment, holding the thirty-one classes of the
+`Compiler` and `Compiler-Pipeline` tags — the plan said thirty-two, which was one too many. The
+`Compiler-Pipeline` tag becomes `Pipeline` inside the new package, and the twenty-three classes that
+had no tag of their own are grouped rather than left uncategorised: `Pipeline` (8: the stage classes
+in the order they run, `PVBytecodeDecoder`, `PVStackSimulator`, `PVCFGBuilder`,
+`PVStructuredCFGRecognizer`, `PVSSAConstructor`, `PVTypeInferencer`, `PVSPIRVEmitter` and the
+`PVKernelCompiler` that drives them), `Bytecode` (2), `SSA` (4), `Graph` (5), `Annotations` (3),
+`Selectors` (2), `Types` (6: the host-side type tokens and `PVWorkItem`) and `Validation` (1).
+`PharoVulkan` is down to 195 classes, and both old tags are gone.
+
+**D3 is settled, in the shape the plan recommended.** The block-aware scan of the thirty-one classes
+found one outgoing reference that was not to `PharoVulkan-SPIRV`: `PVSPIRVEmitter class >>
+cooperativeMatrixOrder` read `PVCooperativeMatrixKernel matrixOrder`, so the compiler depended on
+the compute package for a number. `SpvCooperativeMatrixShape class >> canonicalOrder` now holds the
+value, below both readers, and the emitter and the kernel both delegate to it —
+`PVCompilerTest >> testCooperativeMatrixOrderHasOneHomeBelowBothReaders` was written first, failed
+with a doesNotUnderstand on the new selector, and passes now. The device-reported-shape tests in
+`PVComputeTest` stayed green. After the move the package's outgoing edges are to
+`PharoVulkan-SPIRV` and nothing else, which is what the target table says; incoming references come
+from Compute, Graphics, the tests and the examples, all of which the table allows.
+
+`PVWorkItem` had no class comment. One was written before the move, saying what a kernel asks a work
+item and why the same object serves the device and the host reference run. No other class in the
+package was missing one.
+
+The baseline now declares `PharoVulkan-Compiler` requiring `PharoVulkan-SPIRV` alone, `PharoVulkan`
+requiring both, and a `compiler` group of SPIRV plus Compiler — the group that loads the whole
+Pharo-to-SPIR-V path with no driver code in the image.
+
+Suite 595, no failures, no errors. One run reported an error in
+`VkBindingsTest >> testOnlyOneMethodPresentsASwapchain`, which passes alone and passed again when
+the suite was run with nothing else going on: that test reads `allSendersOf:` and a reflective scan
+was running in another expression at the same time. **Do not run a reflective scan while the forked
+suite is running.** Critics on the package: sixty critiques, every one code-level and none of them
+caused by the move — nineteen inconsistent classifications, thirteen long methods and eight
+cyclomatic complexity on the emitter and the recogniser, nine excessive-argument methods, a
+read-before-written temp in `PVKernelCompiler >> compile`, two variables referenced once in
+`PVBlockSimulator`, and seven classes no sender names.
+
+Found on the way past, for later rather than now: those seven classes are referenced by nothing at
+all, not even in a comment or as a symbol — `PVPhiNode`, `PVSSAVar`, `PVVec2`, `PVVec3`, `PVVec4`,
+`PVBVec3` and `PVMat4`. The phi nodes and SSA variables the pipeline actually builds are
+`PVRegisterOp` instructions and plain associations, and the type tokens are symbols, so the classes
+and their comments describing what builds them are stale.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
@@ -498,6 +548,7 @@ is not part of a package move.
 Renaming `PVKernelExamples` to say what D4 concludes it is, dropping the unused `extent:` argument
 from `VkGraphicsPipeline >> initializeDevice:renderPass:vertexModule:fragmentModule:extent:`, and
 the group 5 structures `LAYOUT-PLAN.md` names are all separate work.
-So are the two unreachable IR node classes `SpvIRBranch` and `SpvIRReturnValue`, and the two
-class-side selectors that hide a system one without breaking anything today,
+So are the two unreachable IR node classes `SpvIRBranch` and `SpvIRReturnValue`, the seven
+unreachable compiler classes `PVPhiNode`, `PVSSAVar`, `PVVec2`, `PVVec3`, `PVVec4`, `PVBVec3` and
+`PVMat4`, and the two class-side selectors that hide a system one without breaking anything today,
 `PVKernelCompiler class >> compile:` and `SpvMemorySemantics class >> release`.
