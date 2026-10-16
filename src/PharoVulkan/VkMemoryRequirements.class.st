@@ -16,47 +16,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkMemoryRequirements class >> exampleRequirementsOfAColorAttachmentOnThisMachine [
-	"One click: what this machine's driver demands to back a 64 by 64 colour attachment, next
-	 to the arithmetic size of its pixels. The driver's number is the larger of the two here,
-	 which is why VkImage binds what it is told and never width * height * 4."
-
-	<sampleInstance>
-	| context |
-	context := VkContext offscreenGraphicsContext.
-	^ [
-	  | image requirements |
-	  image := VkImage
-		           on: context device
-		           format: VkFormat b8g8r8a8Unorm
-		           extent: 64 @ 64
-		           usage: VkImageUsage colorAttachmentBit.
-	  requirements := [ image memoryRequirements ] ensure: [ image destroy ].
-	  {
-		  (#requirements -> requirements).
-		  (#arithmeticSize -> (64 * 64 * 4)) } ] ensure: [ context destroy ]
-]
-
-{ #category : 'examples' }
-VkMemoryRequirements class >> exampleRequirementsOfAStorageBufferOnThisMachine [
-	"One click: what this machine's driver demands to back a small storage buffer. The numbers
-	 are the device's, not the project's — the request is for four floats, and the driver is
-	 free to ask for more bytes and for an alignment of its choosing."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  | buffer |
-	  buffer := VkBuffer
-		            on: context device
-		            size: VkBuffer exampleByteSize
-		            usage: VkBuffer storageBufferUsage.
-	  [ buffer memoryRequirements ] ensure: [ buffer destroy ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkMemoryRequirements class >> fieldsDesc [
 	"The driver writes all three fields: there is no chain header to carry a structure type.

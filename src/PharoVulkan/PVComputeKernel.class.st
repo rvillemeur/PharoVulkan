@@ -33,52 +33,6 @@ PVComputeKernel class >> descriptorSetCount [
 	^ 1
 ]
 
-{ #category : 'examples' }
-PVComputeKernel class >> exampleBufferCount [
-	"One buffer per storage-buffer parameter of exampleKernelMethod: a, b and the output."
-	^ 3
-]
-
-{ #category : 'examples' }
-PVComputeKernel class >> exampleElementCount [
-	"The example dispatches one workgroup, so it sizes the buffers to one workgroup's worth
-	 of elements: the local size the module declares."
-	^ 64
-]
-
-{ #category : 'examples' }
-PVComputeKernel class >> exampleKernelMethod [
-	^ PVKernelExamples >> #vectorAdd:a:b:out:
-]
-
-{ #category : 'examples' }
-PVComputeKernel class >> exampleVectorAddKernelOnThisMachine [
-	"One click: the kernel the README's playground builds, prepared and dispatched once on
-	 whichever device is here, then released with its buffers and its context, as every
-	 example here does. The pipeline tab reads the binding list and the SPIR-V module the
-	 instance keeps, so the kernel still answers afterwards. Where no device is available it
-	 answers the same kernel unprepared, which is what the inspector should show on such a
-	 machine."
-	<sampleInstance>
-	| context kernel buffers |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self fromMethod: self exampleKernelMethod on: nil ].
-	^ [
-	  kernel := self fromMethod: self exampleKernelMethod on: context.
-	  buffers := (1 to: self exampleBufferCount) collect: [ :each |
-		             VkBuffer
-			             storageBuffer: self exampleElementCount
-			             on: context device ].
-	  buffers do: [ :each | kernel bindBuffer: each ].
-	  kernel prepare.
-	  kernel dispatch: 1 y: 1 z: 1.
-	  kernel destroy.
-	  buffers do: [ :each | each destroy ].
-	  kernel ] ensure: [ context destroy ]
-]
-
 { #category : 'factory' }
 PVComputeKernel class >> fromMethod: aCompiledMethod on: aContext [
 	| spirv |

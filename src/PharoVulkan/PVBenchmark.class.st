@@ -50,53 +50,6 @@ PVBenchmark class >> elementTypes [
 	^ PVKernelExamples matmulKernels keys asSortedCollection asArray
 ]
 
-{ #category : 'examples' }
-PVBenchmark class >> exampleBenchmarkOnOrder64Matmul [
-	"One click: the baseline matmul timed at a size small enough to be cheap. The
-	 Benchmark tab holds the numbers; a 64 by 64 dispatch may well be quicker than the
-	 host clock, which the table reports as such rather than inventing a rate."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ (self on: context order: 64 repeats: 10)
-		    run;
-		    yourself ] ensure: [ context destroy ]
-
-]
-
-{ #category : 'examples' }
-PVBenchmark class >> exampleHalfBenchmarkOnOrder64Matmul [
-	"One click: the half precision matmul timed on its own, so the Benchmark tab names f16 in
-	 its first row. PVPrecisionComparison is the one to open for a ratio against float."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ (self on: context order: 64 repeats: 10 elementType: #f16)
-		    run;
-		    yourself ] ensure: [ context destroy ]
-]
-
-{ #category : 'examples' }
-PVBenchmark class >> exampleTiledHalfBenchmarkOnOrder256Matmul [
-	"One click: the tiled half precision kernel timed on its own, so the Benchmark tab names
-	 both the precision and the kernel that produced the rate under it. PVPrecisionComparison
-	 on the tiled family is the one to open for a ratio against float."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  (self
-		   on: context
-		   order: 256
-		   repeats: 10
-		   kernel: (PVKernelExamples tiledMatmulFor: #f16))
-		  run;
-		  yourself ] ensure: [ context destroy ]
-]
-
 { #category : 'accessing' }
 PVBenchmark class >> kernelMethodFor: anElementTypeSymbol [
 	"The naive matmul of one precision. An unknown precision raises, because there is no

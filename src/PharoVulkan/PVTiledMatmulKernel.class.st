@@ -61,19 +61,6 @@ PVTiledMatmulKernel class >> entryPointName [
 	^ 'main'
 ]
 
-{ #category : 'examples' }
-PVTiledMatmulKernel class >> exampleTiledMatmulModule [
-	"One click: the hand-built module, with its bytes already built. The Module tab reads
-	 the shared tiles, the barriers and the loops back out of those bytes, and says what
-	 spirv-val makes of them."
-
-	<sampleInstance>
-	| kernel |
-	kernel := self new.
-	kernel spirv.
-	^ kernel
-]
-
 { #category : 'constants' }
 PVTiledMatmulKernel class >> rowComponent [
 	"The invocation id component the kernel reads as a matrix row. The naive matmul reads x

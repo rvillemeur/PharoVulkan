@@ -34,26 +34,6 @@ VkCooperativeMatrixConfiguration class >> componentTypeFieldNames [
 	^ #( aType bType cType resultType )
 ]
 
-{ #category : 'examples' }
-VkCooperativeMatrixConfiguration class >> exampleFirstConfigurationOfferedHere [
-	"One click: the first cooperative matrix configuration any device on this machine offers.
-	 Answers nil on a machine where no device reports the extension, which is a fact about
-	 the machine rather than a failure. The Members tab shows what a kernel would have to
-	 match exactly."
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  ((Vk enumeratePhysicalDevices: context instance)
-		   inject: OrderedCollection new
-		   into: [ :all :handle |
-			   all
-				   addAll: ((VkPhysicalDevice on: handle)
-						    cooperativeMatrixConfigurationsOn: context instance);
-				   yourself ]) ifNotEmpty: [ :all | all first ] ifEmpty: [ nil ] ]
-		  ensure: [ context destroy ]
-]
-
 { #category : 'layout' }
 VkCooperativeMatrixConfiguration class >> fieldLayout [
 	"The members of VkCooperativeMatrixPropertiesKHR, in the order vk.xml declares them.

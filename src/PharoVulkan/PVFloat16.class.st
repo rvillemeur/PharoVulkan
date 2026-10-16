@@ -37,15 +37,6 @@ PVFloat16 class >> bytesPerHalf [
 	^ 2
 ]
 
-{ #category : 'examples' }
-PVFloat16 class >> exampleHalfOfOneThird [
-	"A third is not representable in any binary format, so this half shows the rounding:
-	 the Half tab names its fields and re-encodes its own value."
-
-	<sampleInstance>
-	^ self fromFloat: 1 / 3
-]
-
 { #category : 'constants' }
 PVFloat16 class >> exponentBias [
 	^ 15

@@ -13,18 +13,6 @@ Class {
 	#tag : 'Compiler-Pipeline'
 }
 
-{ #category : 'examples' }
-PVStructuredCFGRecognizer class >> exampleRecogniserOnLoopKernel [
-	"A recogniser loaded with the control-flow graph of a kernel that holds one loop,
-	 the shape PVLoopNode represents. Inspect it and open the Recognition tab to see
-	 which blocks the answered node accounts for."
-
-	<sampleInstance>
-	| bytecodes |
-	bytecodes := PVBytecodeDecoder decode: (PVKernelExamples >> #accumulateUpTo:).
-	^ self new initialize: (PVCFGBuilder buildBytecodeBlocks: bytecodes)
-]
-
 { #category : 'recognizing' }
 PVStructuredCFGRecognizer class >> recognizeFrom: aBlockArray [
 	^ self new initialize: aBlockArray; recognize

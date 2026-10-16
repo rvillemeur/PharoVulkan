@@ -18,17 +18,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineInputAssemblyStateCreateInfo class >> exampleStateOfTheTriangleListThisProjectDraws [
-	"One click: the input assembly state every pipeline here is created from, needing no device.
-	 The copy lives in object memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline inputAssemblyState.
-	^ [ state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineInputAssemblyStateCreateInfo class >> fieldsDesc [
 	"The topology and the restart flag are a uint32 pair after the flags, so uFFI puts them at

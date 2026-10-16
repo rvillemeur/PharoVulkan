@@ -17,17 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkMemoryBarrier2 class >> exampleBarrierRecordedBeforeAHostRead [
-	"One click: the barrier every compute run in this project records before reading its result
-	 back, built by the recorder itself so the masks shown are the masks used."
-
-	<sampleInstance>
-	| barrier |
-	barrier := VkCommandBuffer hostReadBarrier.
-	^ [ barrier copyIntoObjectMemory ] ensure: [ barrier getHandle free ]
-]
-
 { #category : 'field definition' }
 VkMemoryBarrier2 class >> fieldsDesc [
 	"Synchronization2 widened all four masks to sixty-four bits, so each is a quad word and the

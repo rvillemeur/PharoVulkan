@@ -17,25 +17,6 @@ Class {
 	#tag : 'SPIRV'
 }
 
-{ #category : 'examples' }
-SpvCooperativeMatrixShape class >> exampleShapeThisMachineReports [
-	"One click: the shape a device here really offers, taken from the first configuration
-	 vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR reports, as the A operand of a
-	 multiply-accumulate. Answers nil where no device offers the extension, which is the
-	 honest answer on such a machine."
-
-	<sampleInstance>
-	| configuration |
-	configuration := VkCooperativeMatrixConfiguration
-		                 exampleFirstConfigurationOfferedHere.
-	configuration ifNil: [ ^ nil ].
-	^ self
-		  rows: configuration mSize
-		  columns: configuration kSize
-		  scope: configuration scope
-		  use: SpvCooperativeMatrixType matrixAUse
-]
-
 { #category : 'instance creation' }
 SpvCooperativeMatrixShape class >> rows: rowCount columns: columnCount scope: aScope use: aUse [
 	^ self new

@@ -20,25 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkComputePipelineCreateInfo class >> exampleRequestForAComputeShader [
-	"One click: the request this project creates a compute pipeline from, built with null
-	 handles so no device is needed. The entry point string is given back and the field nulled
-	 before the copy is taken, so the copy names no freed address; the copy lives in object
-	 memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| request |
-	request := VkComputePipeline
-		           createInfoForModule:
-		           (VkShaderModule_H fromHandle: ExternalAddress null)
-		           entryPoint: VkShaderModule defaultEntryPoint
-		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null).
-	^ [
-	  VkComputePipeline freeEntryPointOf: request.
-	  request copyIntoObjectMemory ] ensure: [ request getHandle free ]
-]
-
 { #category : 'field definition' }
 VkComputePipelineCreateInfo class >> fieldsDesc [
 	"One compute pipeline to create. The stage is nested by value, not pointed at, so the

@@ -13,19 +13,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkBaseOutStructure class >> exampleHeaderOfAFeatureStructure [
-	"One click: the chain header a walker sees when it reaches a synchronization2 feature
-	 structure. The header is a view over memory that belongs to that structure, so it is
-	 copied into object memory before the block is freed."
-
-	<sampleInstance>
-	| features |
-	features := VkPhysicalDeviceSynchronization2Features externalInstance.
-	^ [ (self fromHandle: features getHandle) copyIntoObjectMemory ] ensure: [
-		  features getHandle free ]
-]
-
 { #category : 'field definition' }
 VkBaseOutStructure class >> fieldsDesc [
 	"The two fields every structure in a pNext chain starts with. pNext is declared void*

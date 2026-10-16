@@ -39,31 +39,6 @@ VkShaderModule class >> defaultEntryPoint [
 	^ 'main'
 ]
 
-{ #category : 'examples' }
-VkShaderModule class >> exampleModuleOfTheVectorAddKernelOnThisMachine [
-	"One click: the kernel the README's playground builds, compiled to SPIR-V and loaded as a
-	 shader module on whichever device is here, then destroyed with its context. The byte
-	 count lives in the instance, so the Module tab still answers afterwards. Where no device
-	 is available it answers an empty module, which is what the inspector should show on such
-	 a machine."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | module |
-	  module := self
-		            fromBytes:
-			            (PVKernelCompiler compile:
-				             PVComputeKernel exampleKernelMethod)
-		            device: context device.
-	  module destroy.
-	  module ] ensure: [ context destroy ]
-]
-
 { #category : 'factory' }
 VkShaderModule class >> fromBytes: spirvBytes device: aDevice [
     ^ self new initializeFromBytes: spirvBytes device: aDevice

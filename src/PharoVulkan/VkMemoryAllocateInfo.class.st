@@ -17,34 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkMemoryAllocateInfo class >> exampleAllocationForAStorageBufferOnThisMachine [
-	"One click: the allocation request a small storage buffer leads to on this machine. Both
-	 numbers are answers, not choices: the size is what the driver demanded for the buffer, and
-	 the memory type index is the first type on this device that both suits the buffer and is
-	 host visible and coherent."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  | buffer requirements info |
-	  buffer := VkBuffer
-		            on: context device
-		            size: VkBuffer exampleByteSize
-		            usage: VkBuffer storageBufferUsage.
-	  requirements := [ buffer memoryRequirements ] ensure: [ buffer destroy ].
-	  info := self externalInstance.
-	  [
-	  info
-		  allocationSize: requirements size;
-		  memoryTypeIndex: (context device physicalDevice
-				   findMemoryType: requirements memoryTypeBits
-				   properties: VkMemoryProperty hostVisibleAndCoherent).
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkMemoryAllocateInfo class >> fieldsDesc [
 	"allocationSize is a VkDeviceSize and so eight bytes wide and eight byte aligned, which

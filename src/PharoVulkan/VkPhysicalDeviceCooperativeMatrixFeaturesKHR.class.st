@@ -15,24 +15,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceCooperativeMatrixFeaturesKHR class >> exampleCooperativeMatrixOfThisMachine [
-	"One click: whether the device a plain compute context lands on offers the subgroup-wide
-	 matrix multiply, copied out of the chain before that memory was freed. A device without
-	 the extension answers the query all the same and clears both flags, which is how
-	 VkContext decides to leave this structure out of the feature chain."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  VkPhysicalDeviceFeatures2
-		  of: context physicalDevice handle
-		  chainedWith: self
-		  do: [ :head :features | features copyIntoObjectMemory ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceCooperativeMatrixFeaturesKHR class >> fieldsDesc [
 	"VkPhysicalDeviceCooperativeMatrixFeaturesKHR as the C header declares it. Robust buffer

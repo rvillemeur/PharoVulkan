@@ -14,22 +14,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceProperties2 class >> exampleChainedQueryOfThisMachine [
-	"One click: the query head as the driver left it, copied out of the chain before that memory
-	 was freed. Its pNext reads as null in the copy, because the block it pointed at is gone."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  self
-		  of: context physicalDevice handle
-		  chainedWith: VkPhysicalDeviceSubgroupProperties
-		  do: [ :head :block | head copyIntoObjectMemory ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceProperties2 class >> fieldsDesc [
 	"pNext is eight byte aligned, so the C layout pads after sType; declaring the pointer as a

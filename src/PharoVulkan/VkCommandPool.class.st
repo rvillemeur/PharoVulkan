@@ -37,27 +37,6 @@ VkCommandPool class >> creationFlags [
 	^ VkCommandPoolCreateFlag resetCommandBufferBit
 ]
 
-{ #category : 'examples' }
-VkCommandPool class >> examplePoolForTheComputeQueueOnThisMachine [
-	"One click: the pool every compute dispatch here allocates its command buffer from, created
-	 for this machine's compute queue family and then destroyed with its context. The family
-	 and the flags live in the instance, so the Pool tab still answers afterwards. Where no
-	 device is available it answers an unmade pool, which is what the inspector should show on
-	 such a machine."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | pool |
-	  pool := context device createCommandPool: context computeQueueFamily.
-	  pool destroy.
-	  pool ] ensure: [ context destroy ]
-]
-
 { #category : 'private' }
 VkCommandPool class >> handleForCreateInfo: aCreateInfo on: aDevice [
 	"The driver writes the new pool handle into an out parameter, which is read before the

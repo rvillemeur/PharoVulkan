@@ -21,23 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkBufferCreateInfo class >> exampleStorageBufferRequest [
-	"One click: the request VkBuffer builds for a small storage buffer. No device is asked, so
-	 nothing is created here; the two fields the project fills, and the degenerate state of the
-	 rest, can be read in the Layout and Fields tabs. The answer lives in object memory, so it
-	 outlives the external block it was built in."
-
-	<sampleInstance>
-	| info |
-	info := self externalInstance.
-	^ [
-	  info
-		  size: VkBuffer exampleByteSize;
-		  usage: VkBuffer storageBufferUsage.
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkBufferCreateInfo class >> fieldsDesc [
 	"size is a VkDeviceSize, so eight bytes wide and eight byte aligned: four bytes of padding

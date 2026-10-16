@@ -9,20 +9,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkFeatureStructure class >> exampleFlagsEveryFeatureStructureDeclares [
-	"One click: every feature structure this project declares, with the flags its layout
-	 exposes, read out of a freshly zeroed block. No device is asked here, so every flag reads
-	 as clear; the shape of the view is the point, not the answer. The rows are copies in
-	 object memory, so they outlive the block each one was read from."
-
-	<sampleInstance>
-	^ self subclasses collect: [ :each |
-		  | instance |
-		  instance := each externalInstance.
-		  [ each name -> instance flagRows ] ensure: [ instance getHandle free ] ]
-]
-
 { #category : 'accessing' }
 VkFeatureStructure class >> headerFieldNames [
 	"The chain header, named once for the whole structure hierarchy."

@@ -26,24 +26,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkImageCreateInfo class >> exampleRequestForAColourAttachment [
-	"One click: the request every image in this project is created from, written by its one
-	 writer for the example extent. No device is touched. The answer is a copy in object
-	 memory, so the external block is freed with the example and the Image tab reads bytes
-	 that are still there; the request points at nothing, so the copy carries no address that
-	 has gone."
-
-	<sampleInstance>
-	| info |
-	info := VkImage
-		        createInfoForFormat: VkFormat b8g8r8a8Unorm
-		        extent: VkImage exampleExtent
-		        usage:
-		        (VkImageUsage colorAttachmentBit bitOr: VkImageUsage transferSrcBit).
-	^ [ info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkImageCreateInfo class >> fieldsDesc [
 	"The extent is a VkExtent3D carried by value, so uFFI places its three words inside this

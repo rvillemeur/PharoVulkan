@@ -13,17 +13,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkAttachmentReference class >> exampleReferenceToTheColourAttachment [
-	"One click: the reference every subpass here reads, written by its one writer. The answer
-	 is a copy in object memory, so the external block is freed with the example."
-
-	<sampleInstance>
-	| reference |
-	reference := VkRenderPass colorAttachmentReference.
-	^ [ reference copyIntoObjectMemory ] ensure: [ reference getHandle free ]
-]
-
 { #category : 'field definition' }
 VkAttachmentReference class >> fieldsDesc [
 	"Which attachment of the pass a subpass reads, and the layout it reads it in."

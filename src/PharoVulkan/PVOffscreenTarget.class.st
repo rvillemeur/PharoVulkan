@@ -37,41 +37,6 @@ PVOffscreenTarget class >> colorFormat [
 	^ VkFormat b8g8r8a8Unorm
 ]
 
-{ #category : 'constants' }
-PVOffscreenTarget class >> exampleClearColor [
-	"Visibly not black, so an example that rendered nothing cannot be mistaken for one that
-	 rendered a clear."
-
-	^ #( 0.25 0.5 0.75 1.0 )
-]
-
-{ #category : 'examples' }
-PVOffscreenTarget class >> exampleClearedTargetOnThisMachine [
-	"One click: a 32 by 32 target cleared on whatever device this machine offers, with its
-	 Vulkan objects released before it is handed back. The readback bytes stay in the instance,
-	 so the Pixels tab still shows the colour the GPU wrote."
-
-	<sampleInstance>
-	| context queue pool target |
-	context := VkContext offscreenGraphicsContext.
-	^ [
-	  queue := context computeQueue.
-	  pool := context device createCommandPool: context computeQueueFamily.
-	  [
-	  target := self on: context device extent: self exampleExtent.
-	  target clearColor: self exampleClearColor.
-	  target renderWith: [ :c |  ] on: queue pool: pool.
-	  target destroy.
-	  target ] ensure: [ pool destroy ] ] ensure: [ context destroy ]
-]
-
-{ #category : 'constants' }
-PVOffscreenTarget class >> exampleExtent [
-	"Small enough that every sampled pixel can be checked by eye in the inspector."
-
-	^ 32 @ 32
-]
-
 { #category : 'instance creation' }
 PVOffscreenTarget class >> on: aDevice extent: aPoint [
 	^ self new initializeDevice: aDevice extent: aPoint

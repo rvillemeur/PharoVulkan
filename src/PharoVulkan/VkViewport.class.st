@@ -17,20 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkViewport class >> exampleViewportCoveringAnExampleTarget [
-	"One click: the viewport every draw in this project binds, built by the recorder for a
-	 non-square example extent so the width and the height cannot be read for each other. No
-	 device is touched. The structure is copied into object memory and its block freed, and it
-	 holds no pointer, so the copy is the whole viewport."
-
-	<sampleInstance>
-	| viewport |
-	viewport := VkCommandBuffer viewportForExtent:
-		            VkBufferImageCopy exampleExtent.
-	^ [ viewport copyIntoObjectMemory ] ensure: [ viewport getHandle free ]
-]
-
 { #category : 'field definition' }
 VkViewport class >> fieldsDesc [
 	^ #( float x; float y; float width; float height; float minDepth;

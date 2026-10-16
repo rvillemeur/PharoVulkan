@@ -16,23 +16,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceVulkanMemoryModelFeatures class >> exampleVulkanMemoryModelOfThisMachine [
-	"One click: the memory model flags of the device a plain compute context lands on, copied
-	 out of the chain before that memory was freed. A device that reports the model usually
-	 reports the device scope and the availability-visibility chains with it."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  VkPhysicalDeviceFeatures2
-		  of: context physicalDevice handle
-		  chainedWith: self
-		  do: [ :head :features | features copyIntoObjectMemory ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceVulkanMemoryModelFeatures class >> fieldsDesc [
 	"The three VkBool32 members are declared as the uint32 they are."

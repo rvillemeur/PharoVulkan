@@ -20,18 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkApplicationInfo class >> exampleApiVersionThisProjectAsksFor [
-	"One click: the application info both instance paths pass, built in object memory so the
-	 click frees nothing. Every field but the API version stays as a fresh store gives it:
-	 null names and version zero, which is what tells a driver to apply no workaround."
-
-	<sampleInstance>
-	^ self new
-		  apiVersion: VkContext instanceApiVersion;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkApplicationInfo class >> fieldsDesc [
     ^ #(

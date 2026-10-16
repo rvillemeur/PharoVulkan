@@ -15,29 +15,6 @@ Class {
 	#tag : 'Compiler'
 }
 
-{ #category : 'examples' }
-PVWorkItem class >> exampleWorkItemInA512Grid [
-	<sampleInstance>
-	^ self x: 3 y: 7 z: 0 gridWidth: 512
-]
-
-{ #category : 'examples' }
-PVWorkItem class >> exampleWorkItemInsideItsWorkgroup [
-	"An invocation whose position in the dispatch and position in its workgroup differ: slot
-	 5 of a workgroup 16 wide, which is global invocation 21. Inspect it and read the
-	 Dispatch tab to see the two indices side by side."
-
-	<sampleInstance>
-	^ self
-		  x: 21
-		  y: 0
-		  z: 0
-		  localX: 5
-		  localY: 0
-		  localZ: 0
-		  gridWidth: 512
-]
-
 { #category : 'constants' }
 PVWorkItem class >> workItemTypeSuffix [
 	"The key suffix PVSelectorTable gives every mapping whose receiver is a WorkItem."

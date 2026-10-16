@@ -17,18 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkSemaphoreSubmitInfo class >> exampleWaitOnAFrameSemaphore [
-	"One click: the semaphore info a frame's batch carries on either side, built by the
-	 recorder's own builder. No device is touched, so the semaphore handle is null and the tab
-	 says so; the stage mask is the one the window path really waits at."
-
-	<sampleInstance>
-	| info |
-	info := VkQueue semaphoreSubmitInfoFor: ExternalAddress null.
-	^ [ info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkSemaphoreSubmitInfo class >> fieldsDesc [
 	^ #( int32 sType; void* pNext; VkSemaphore_H* semaphore; uint64 value;

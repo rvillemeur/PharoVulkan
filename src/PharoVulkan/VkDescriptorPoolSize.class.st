@@ -13,18 +13,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDescriptorPoolSize class >> exampleThreeStorageBufferDescriptors [
-	"One click: the pool size a three-buffer compute kernel asks for. Built in object memory,
-	 so nothing has to be freed, and rebuilt on every call. The counts come from
-	 VkDescriptorPool rather than from literals here, so the example follows the pool."
-	<sampleInstance>
-	^ self new
-		  type: VkDescriptorPool descriptorType;
-		  descriptorCount: VkDescriptorPool exampleDescriptorCount;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkDescriptorPoolSize class >> fieldsDesc [
 	"VkDescriptorPoolSize: how many descriptors of one type the pool holds. Both members are

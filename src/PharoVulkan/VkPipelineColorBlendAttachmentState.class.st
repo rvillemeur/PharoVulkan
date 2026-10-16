@@ -21,19 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineColorBlendAttachmentState class >> exampleAttachmentThisProjectWritesEveryChannelOf [
-	"One click: the one attachment state every pipeline here is created from, read out of the
-	 run the colour blend state owns. The copy lives in object memory, so it still reads after
-	 the run and the state have gone."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline colorBlendState.
-	^ [ (self fromHandle: state pAttachments getHandle) copyIntoObjectMemory ]
-		  ensure: [ VkGraphicsPipeline freeColorBlendState: state ]
-]
-
 { #category : 'field definition' }
 VkPipelineColorBlendAttachmentState class >> fieldsDesc [
 	"Eight four-byte fields and no chain header: an attachment state is pointed at by a create

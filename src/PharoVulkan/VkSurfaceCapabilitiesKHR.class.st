@@ -23,40 +23,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkSurfaceCapabilitiesKHR class >> exampleCapabilitiesAWindowSurfaceMightReport [
-	<sampleInstance>
-	"One click: a plausible report for a window surface, built in object memory so a click
-	 frees nothing. The driver is the only writer of this structure, so there is nothing to
-	 call here and the fields are filled through the generated accessors: a surface needs a
-	 display, and an example must run on a machine that has none. Every value is a constant
-	 some other class already names, so this cannot drift from what the project asks a real
-	 surface for."
-
-	| capabilities |
-	capabilities := self new.
-	capabilities
-		minImageCount: self exampleMinImageCount;
-		maxImageCount: VkSwapchain unlimitedImageCount;
-		maxImageArrayLayers: VkImage arrayLayerCount;
-		supportedTransforms: VkSurfaceTransform identityBit;
-		currentTransform: VkSurfaceTransform identityBit;
-		supportedCompositeAlpha: VkCompositeAlpha opaqueBit;
-		supportedUsageFlags: VkImageUsage colorAttachmentBit.
-	{ capabilities currentExtent. capabilities minImageExtent.
-	  capabilities maxImageExtent } do: [ :each |
-		each width: VkImage exampleExtent x; height: VkImage exampleExtent y ].
-	^ capabilities
-]
-
-{ #category : 'examples' }
-VkSurfaceCapabilitiesKHR class >> exampleMinImageCount [
-	"The fewest images a surface can demand and still let one frame be presented while the
-	 next is drawn. Real drivers report two or three."
-
-	^ 2
-]
-
 { #category : 'field definition' }
 VkSurfaceCapabilitiesKHR class >> fieldsDesc [
 	"The capabilities the driver reports for a surface. The three extents are VkExtent2D

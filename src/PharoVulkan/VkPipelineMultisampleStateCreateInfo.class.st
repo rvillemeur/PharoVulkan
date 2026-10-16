@@ -22,17 +22,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineMultisampleStateCreateInfo class >> exampleStateOfTheOneSamplePerPixelThisProjectTakes [
-	"One click: the multisample state every pipeline here is created from, needing no device.
-	 The copy lives in object memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline multisampleState.
-	^ [ state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineMultisampleStateCreateInfo class >> fieldsDesc [
 	"The sample count, the shading flag and the shading fraction are four bytes each at twenty,

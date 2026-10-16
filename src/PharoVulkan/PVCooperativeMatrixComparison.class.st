@@ -29,22 +29,6 @@ PVCooperativeMatrixComparison class >> compiledKernelSelector [
 	^ #coopMatrixProductOf:by:into:
 ]
 
-{ #category : 'examples' }
-PVCooperativeMatrixComparison class >> exampleComparisonOnThisMachine [
-	"One click: the same product run from the hand-built module and from the module the
-	 DSL compiles, on whichever device here offers cooperative matrix. Answers an unrun
-	 comparison where no device offers the extension, which is what the inspector should
-	 show on such a machine rather than a row of zeros."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext cooperativeMatrixContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [ (self on: context) run ] ensure: [ context destroy ]
-]
-
 { #category : 'constants' }
 PVCooperativeMatrixComparison class >> leftAtRow: aRow col: aColumn [
 	"Deliberately asymmetric, so a row and column swap inside the kernel cannot pass

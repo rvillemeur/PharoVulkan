@@ -24,24 +24,6 @@ VkDescriptorSetLayoutBinding class >> descriptorsPerBinding [
 	^ 1
 ]
 
-{ #category : 'examples' }
-VkDescriptorSetLayoutBinding class >> exampleStorageBufferBindingsOfATwoBufferKernel [
-	"One click: the bindings a kernel reading one buffer and writing another declares, built
-	 in object memory and then moved into the external run a layout hands the driver. The
-	 answer is the run, read back through the declared accessors and kept in object memory, so
-	 the block can be freed and the elements still read."
-
-	<sampleInstance>
-	| elements kept |
-	elements := self externalArrayOf: 2.
-	^ [
-	  (0 to: 1) do: [ :index |
-		  (self storageBufferAt: index stages: VkShaderStage computeBit)
-			  copyBytesInto: (elements at: index + 1) ].
-	  kept := elements collect: [ :each | each copyIntoObjectMemory ].
-	  kept ] ensure: [ elements first getHandle free ]
-]
-
 { #category : 'field definition' }
 VkDescriptorSetLayoutBinding class >> fieldsDesc [
 	^ #( uint32 binding; uint32 descriptorType; uint32 descriptorCount;

@@ -15,24 +15,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceShaderFloat16Int8Features class >> exampleShaderArithmeticWidthsOfThisMachine [
-	"One click: whether the device a plain compute context lands on can compute with half
-	 floats and with eight bit integers, copied out of the chain before that memory was
-	 freed. shaderFloat16 is the flag the f16 compute path needs; holding halves in a buffer
-	 is a separate feature, over in VkPhysicalDevice16BitStorageFeatures."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  VkPhysicalDeviceFeatures2
-		  of: context physicalDevice handle
-		  chainedWith: self
-		  do: [ :head :features | features copyIntoObjectMemory ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceShaderFloat16Int8Features class >> fieldsDesc [
 	"VkPhysicalDeviceShaderFloat16Int8Features as the C header declares it. Both flags are

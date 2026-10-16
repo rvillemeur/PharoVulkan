@@ -118,18 +118,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceLimits class >> exampleLimitsOfThisMachine [
-	"One click: every limit this machine's driver reports. The block is a member of a properties
-	 structure whose store is a ByteArray inside the image, so the limits still read after the
-	 context that queried them has gone."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ context physicalDevice limits ] ensure: [ context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceLimits class >> fieldsDesc [
 	"The members of VkPhysicalDeviceLimits in specification order. The eight byte aligned

@@ -63,16 +63,6 @@ PVHelloTriangleScene class >> displayUnavailableReasonIn: anEnvironment [
 	  , ' is set, so the window path cannot be exercised here'
 ]
 
-{ #category : 'constants' }
-PVHelloTriangleScene class >> exampleExtent [
-	^ 800 @ 600
-]
-
-{ #category : 'constants' }
-PVHelloTriangleScene class >> exampleFrameCount [
-	^ 300
-]
-
 { #category : 'reporting' }
 PVHelloTriangleScene class >> framebufferLabel [
 
@@ -107,36 +97,6 @@ PVHelloTriangleScene class >> prepare: aVkContext backendWindow: aBackendWindow 
 	[ scene initializeCtx: aVkContext backendWindow: aBackendWindow ]
 		ifCurtailed: [ scene destroy ].
 	^ scene
-]
-
-{ #category : 'examples' }
-PVHelloTriangleScene class >> renderTriangle [
-	"Open a window, render exampleFrameCount frames, then tear everything down.
-	 Every acquired resource is released by an ensure: block, in reverse order of
-	 creation: scene, then context, then window, then the OSWindow driver. A raise
-	 or a user interrupt mid-loop must not leave a live VkInstance, an SDL window
-	 still registered with the driver, or the driver itself swapped out — with the
-	 validation layers off, that state resurfaces as a segfault on the next run."
-
-	<sampleInstance>
-	| attrs |
-	attrs := PVWindowAttributes newVulkan.
-	attrs
-		title: self windowTitle;
-		extent: self exampleExtent;
-		windowCentered: true.
-	^ PVVulkanDriver installDuring: [
-		  | win |
-		  win := OSWindow createWithAttributes: attrs.
-		  [ | backendWin ctx |
-		  backendWin := win backendWindow.
-		  ctx := VkContext graphicsContextForExtensions:
-			         backendWin requiredInstanceExtensions.
-		  [ | scene |
-		  scene := self prepare: ctx backendWindow: backendWin.
-		  [ 1 to: self exampleFrameCount do: [ :i | scene renderFrame ] ]
-			  ensure: [ scene destroy ].
-		  scene ] ensure: [ ctx destroy ] ] ensure: [ win destroy ] ]
 ]
 
 { #category : 'reporting' }

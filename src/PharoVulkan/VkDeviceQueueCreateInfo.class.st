@@ -21,22 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDeviceQueueCreateInfo class >> exampleOneQueueOnTheFirstFamily [
-	"One click: the request the context makes of every device it creates, with the structure
-	 type, the family and the queue count side by side in the Fields tab. The count comes from
-	 VkContext rather than from a literal here, so the example follows the code that builds the
-	 real one. pQueuePriorities stays null, because an example must not hold a pointer to a
-	 store it does not own; the live array is covered by
-	 VkCoreTest >> testDeviceQueueCreateInfoAsksForOneQueueAtFullPriority."
-
-	<sampleInstance>
-	^ self new
-		  queueFamilyIndex: self firstQueueFamily;
-		  queueCount: VkContext queuesPerFamily;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkDeviceQueueCreateInfo class >> fieldsDesc [
 	"VkDeviceQueueCreateInfo as the C header declares it. VkDeviceQueueCreateFlags is a

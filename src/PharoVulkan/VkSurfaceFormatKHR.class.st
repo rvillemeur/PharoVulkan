@@ -15,22 +15,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkSurfaceFormatKHR class >> exampleFormatAWindowSurfaceMightReport [
-	<sampleInstance>
-	"One click: the format and colour space pair this project renders in, which is the one
-	 every surface it has met offers. Built in object memory, so a click frees nothing, and
-	 filled through the generated accessors: the driver is the only writer of this
-	 structure."
-
-	| surfaceFormat |
-	surfaceFormat := self new.
-	surfaceFormat
-		format: VkSurface formatRenderedIn;
-		colorSpace: VkColorSpace srgbNonlinearKHR.
-	^ surfaceFormat
-]
-
 { #category : 'field definition' }
 VkSurfaceFormatKHR class >> fieldsDesc [
 	"One format and colour space pair the surface accepts. The format is the same

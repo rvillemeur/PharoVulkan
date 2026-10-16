@@ -20,33 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkRenderPassCreateInfo class >> exampleRequestForTheOffscreenColourPass [
-	"One click: the request every render pass in this project is created from, built by its
-	 one writer over the two structures it points at. No device is touched. Both pointers are
-	 cleared before the copy is kept, because the structures they point at are freed with the
-	 example; the counts stay at one, which is what the writer wrote, and the Request tab
-	 then says the runs are not there."
-
-	<sampleInstance>
-	| description |
-	description := VkRenderPass
-		               attachmentDescriptionForFormat: VkFormat b8g8r8a8Unorm
-		               finalLayout: VkImageLayout transferSrcOptimal.
-	^ [ | reference |
-	  reference := VkRenderPass colorAttachmentReference.
-	  [ | subpass |
-	  subpass := VkRenderPass subpassDescriptionReading: reference.
-	  [ | info |
-	  info := VkRenderPass createInfoForAttachment: description subpass: subpass.
-	  [ info
-		    pAttachments: ExternalAddress null;
-		    pSubpasses: ExternalAddress null.
-	    info copyIntoObjectMemory ] ensure: [ info getHandle free ] ] ensure: [
-		  subpass getHandle free ] ] ensure: [ reference getHandle free ] ] ensure: [
-		  description getHandle free ]
-]
-
 { #category : 'field definition' }
 VkRenderPassCreateInfo class >> fieldsDesc [
 	"A count and a pointer for each of the three lists the request carries: the attachments,

@@ -17,24 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDevice16BitStorageFeatures class >> exampleSixteenBitStorageOfThisMachine [
-	"One click: the places the device a plain compute context lands on lets a half float
-	 live, copied out of the chain before that memory was freed. storageBuffer16BitAccess is
-	 the one the f16 compute path needs; a device may well report that one and refuse half
-	 floats in uniforms, push constants and interface variables."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  VkPhysicalDeviceFeatures2
-		  of: context physicalDevice handle
-		  chainedWith: self
-		  do: [ :head :features | features copyIntoObjectMemory ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDevice16BitStorageFeatures class >> fieldsDesc [
 	"VkPhysicalDevice16BitStorageFeatures as the C header declares it: four VkBool32 flags for

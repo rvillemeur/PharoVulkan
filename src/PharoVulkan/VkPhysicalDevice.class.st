@@ -33,30 +33,6 @@ VkPhysicalDevice class >> cooperativeMatrixPropertiesCommandName [
 	^ 'vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR'
 ]
 
-{ #category : 'examples' }
-VkPhysicalDevice class >> exampleExtensionsOfThisMachine [
-    "One click: the extension list of whatever device this image finds. The names are cached
-     in the instance, so the object still answers them after the context is destroyed, which
-     is why the example can hand back a device whose handle has gone."
-    <sampleInstance>
-    | context |
-    context := VkContext computeContext.
-    ^ [ context physicalDevice
-            extensionNames;
-            yourself ] ensure: [ context destroy ]
-]
-
-{ #category : 'examples' }
-VkPhysicalDevice class >> exampleMemoryTypesOfThisMachine [
-	"One click: the memory-type table of whatever device this image finds. The properties
-	 buffer is read once at construction and never freed by the context, which is why the
-	 example can hand back a device whose context has gone."
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ context physicalDevice ] ensure: [ context destroy ]
-]
-
 { #category : 'decoding' }
 VkPhysicalDevice class >> extensionNameIn: aBuffer at: anOffset [
     "The name field is a fixed 256 bytes holding a NUL-terminated string, so stop at the

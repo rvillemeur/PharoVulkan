@@ -14,19 +14,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkFenceCreateInfo class >> exampleRequestForASignalledFence [
-	"One click: the request a frame loop's first fence is created from, the one field a caller
-	 writes set to the signalled bit. The Layout and Fields tabs show what the driver reads."
-
-	<sampleInstance>
-	| info |
-	info := self externalInstance.
-	^ [
-	  info flags: VkFenceCreateFlag signaledBit.
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkFenceCreateInfo class >> fieldsDesc [
 	"VkFenceCreateInfo, read by vkCreateFence. A chain header and one word of flags from

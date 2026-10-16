@@ -17,26 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkBufferImageCopy class >> exampleExtent [
-	"A non-square extent, so the example cannot hide a width and a height written to each
-	 other's field."
-
-	^ 3 @ 2
-]
-
-{ #category : 'examples' }
-VkBufferImageCopy class >> exampleRegionForAWholeImageReadback [
-	"One click: the region every image readback in this project records, built by the recorder
-	 itself for an example extent, so the Copy tab shows the packing and the aspect the
-	 recording really uses."
-
-	<sampleInstance>
-	| region |
-	region := VkCommandBuffer regionForExtent: self exampleExtent.
-	^ [ region copyIntoObjectMemory ] ensure: [ region getHandle free ]
-]
-
 { #category : 'field definition' }
 VkBufferImageCopy class >> fieldsDesc [
 	"The three nested structures are carried by value, not by pointer, so they are declared by

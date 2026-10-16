@@ -22,20 +22,6 @@ Class {
 	#tag : 'Compiler'
 }
 
-{ #category : 'examples' }
-PVNestedLoopNode class >> exampleNestedLoopOfTheTiledMatmul [
-	"One click: the node the recogniser builds for the tiled matmul written in Pharo
-	 source, the kernel this shape was added for. The Blocks tab shows which bytecode block
-	 took each role."
-
-	<sampleInstance>
-	| blocks |
-	blocks := PVCFGBuilder buildBytecodeBlocks:
-		          (PVBytecodeDecoder decode:
-			           (PVKernelExamples >> #tiledMatmulF32:a:b:out:tileA:tileB:)).
-	^ PVStructuredCFGRecognizer recognizeFrom: blocks
-]
-
 { #category : 'accessing' }
 PVNestedLoopNode >> coveredBlocks [
 	"Every bytecode block this node accounts for. See PVSelectionNode >> coveredBlocks."

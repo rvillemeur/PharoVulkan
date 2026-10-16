@@ -21,23 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkWriteDescriptorSet class >> exampleStorageBufferAtFirstBinding [
-	"One click: the write a compute kernel sends for the storage buffer at its first binding,
-	 with the structure type, the binding, the count and the descriptor type side by side in
-	 the Fields tab. The counts and the type come from VkDescriptorSet and VkDescriptorPool
-	 rather than from literals here, so the example follows the code that writes the real one.
-	 dstSet and pBufferInfo stay null, because an example must not hold a pointer to a store it
-	 does not own; the live pointers are covered by VkBindingsTest and by
-	 VkDescriptorPool class >> exampleStorageBufferPoolForThreeBuffers."
-	<sampleInstance>
-	^ self new
-		  dstBinding: VkDescriptorSet firstBinding;
-		  descriptorCount: VkDescriptorSet descriptorsPerWrite;
-		  descriptorType: VkDescriptorPool descriptorType;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkWriteDescriptorSet class >> fieldsDesc [
 	"VkWriteDescriptorSet, read by vkUpdateDescriptorSets. dstSet is a handle and therefore

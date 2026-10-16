@@ -16,21 +16,6 @@ Class {
 	#tag : 'Compute'
 }
 
-{ #category : 'examples' }
-PVSubgroupDotProduct class >> exampleSubgroupDotOf1024Elements [
-	"One click: a dot product over 1024 elements reduced in hardware. The Reduction tab holds
-	 the two subgroup widths and the two totals. On a device that reports no subgroup
-	 arithmetic the run refuses, and the example answers the refusing run so the tab can say
-	 why rather than raising past the click."
-
-	<sampleInstance>
-	| context run |
-	context := VkContext computeContext.
-	^ [ run := self on: context size: 1024.
-	    run available ifTrue: [ run run ].
-	    run ] ensure: [ context destroy ]
-]
-
 { #category : 'constants' }
 PVSubgroupDotProduct class >> factorPeriod [
 	"The first input repeats 1.0 up to this many values. Every product is then a small

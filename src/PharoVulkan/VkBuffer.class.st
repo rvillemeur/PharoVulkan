@@ -27,30 +27,6 @@ VkBuffer class >> byteMask [
 	^ 16rFF
 ]
 
-{ #category : 'constants' }
-VkBuffer class >> exampleByteSize [
-	"Four floats: small enough that every row of the capacity view reads at a glance."
-
-	^ 16
-]
-
-{ #category : 'examples' }
-VkBuffer class >> exampleStorageBufferOfFourFloats [
-	"One click: a buffer whose capacity rule can be read in the inspector. The size lives in
-	 the instance, so the object still answers after its handle and its context have gone."
-
-	<sampleInstance>
-	| context buffer |
-	context := VkContext computeContext.
-	^ [
-	  buffer := self
-		            on: context device
-		            size: self exampleByteSize
-		            usage: self storageBufferUsage.
-	  buffer destroy.
-	  buffer ] ensure: [ context destroy ]
-]
-
 { #category : 'factory' }
 VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
     ^ self new initializeDevice: aDevice size: byteSize usage: usageFlags

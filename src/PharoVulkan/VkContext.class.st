@@ -48,34 +48,6 @@ VkContext class >> cooperativeMatrixContext [
 	^ self computeContextRequiring: #( #supportsCooperativeMatrix #supportsVulkanMemoryModel )
 ]
 
-{ #category : 'examples' }
-VkContext class >> exampleDeviceChosenByCapabilityOnThisMachine [
-	"One click: the context a cooperative matrix kernel would run on, destroyed before it is
-	 handed over. The Device choice tab names the requirement and the device that met it,
-	 which on this machine is not the first device enumerated. Falls back to the plain
-	 compute context where no device offers the extension."
-	<sampleInstance>
-	| context |
-	context := [ self cooperativeMatrixContext ]
-		           on: VkError
-		           do: [ :signal | self computeContext ].
-	context destroy.
-	^ context
-]
-
-{ #category : 'examples' }
-VkContext class >> exampleOffscreenContextOnThisMachine [
-	"One click: the context an offscreen graphics render would use on whatever device
-	 this image finds, destroyed before it is handed back. The Device choice tab names
-	 the requirement (supportsGraphicsAndComputeOnOneQueue) and the device that met it,
-	 which destroy does not clear."
-	<sampleInstance>
-	| context |
-	context := self offscreenGraphicsContext.
-	context destroy.
-	^ context
-]
-
 { #category : 'constants' }
 VkContext class >> featureEnabled [
     "VK_TRUE."

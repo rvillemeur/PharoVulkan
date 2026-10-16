@@ -17,20 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDescriptorPoolCreateInfo class >> exampleForOneSetOfThreeDescriptors [
-	"One click: the create info VkDescriptorPool writes for a three-buffer compute kernel, with
-	 the two counts that used to be one number side by side in the Layout tab. pPoolSizes stays
-	 null: an example answers an object that outlives the call, and a pointer to a store this
-	 example does not own would be read after that store has gone. The live pointer is covered
-	 by VkBindingsTest and by VkDescriptorPool class >> exampleStorageBufferPoolForThreeBuffers."
-	<sampleInstance>
-	^ self new
-		  maxSets: VkDescriptorPool exampleMaxSets;
-		  poolSizeCount: VkDescriptorPool poolSizeCount;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkDescriptorPoolCreateInfo class >> fieldsDesc [
 	"VkDescriptorPoolCreateInfo. pNext and pPoolSizes are eight byte aligned, so uFFI puts a

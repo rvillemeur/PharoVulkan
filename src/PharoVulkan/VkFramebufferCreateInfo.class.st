@@ -20,30 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkFramebufferCreateInfo class >> exampleRequestBindingOneColourAttachment [
-	"One click: the request every framebuffer in this project is created from, built by its
-	 writer for the example extent. No device is touched, so the render pass and the
-	 attachment handle are left unset and the Framebuffer tab says so. The attachment run is
-	 freed with the example, so the copy's pointer to it is cleared rather than left
-	 dangling: the tab reads through that pointer, and reading a freed block is how an image
-	 dies. The count stays at one, which is what the writer wrote, and the tab then answers no
-	 handles."
-
-	<sampleInstance>
-	| run |
-	run := VkFramebuffer attachmentsOutsideObjectMemory:
-		       { (VkImageView_H fromHandle: ExternalAddress null) }.
-	^ [ | info |
-	  info := VkFramebuffer
-		          createInfoForRenderPass: (VkRenderPass_H fromHandle: ExternalAddress null)
-		          attachments: run
-		          extent: VkImage exampleExtent.
-	  [ info pAttachments: ExternalAddress null.
-	    info copyIntoObjectMemory ] ensure: [ info getHandle free ] ] ensure: [
-		  run free ]
-]
-
 { #category : 'field definition' }
 VkFramebufferCreateInfo class >> fieldsDesc [
 	"The render pass is a handle, so it is declared as one. The attachment views are a run of

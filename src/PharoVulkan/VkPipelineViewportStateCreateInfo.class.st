@@ -20,18 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineViewportStateCreateInfo class >> exampleStateOfTheDynamicViewportThisProjectUses [
-	"One click: the viewport state every pipeline here is created from, needing no device. Both
-	 counts are there and neither run is, which is how a dynamic rectangle is declared. The
-	 copy lives in object memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline viewportState.
-	^ [ state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineViewportStateCreateInfo class >> fieldsDesc [
 	"A count and a run pointer for the viewports, then the same pair for the scissors. Each

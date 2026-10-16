@@ -21,27 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkInstanceCreateInfo class >> exampleComputeInstanceRequest [
-	"One click: the structure the compute path hands vkCreateInstance, built by the real
-	 builder and copied into object memory before the external blocks go, so the click frees
-	 everything it allocated. No instance is created, so no context needs destroying. The copy
-	 is for looking at and not for passing on: its application info pointer still reads as the
-	 address of a block that has since been freed."
-
-	<sampleInstance>
-	| context appInfo createInfo |
-	context := VkContext new.
-	appInfo := context buildApplicationInfo.
-	^ [
-	  createInfo := context
-		                buildInstanceCreateInfo: appInfo
-		                extensions: VkContext computeInstanceExtensionNames.
-	  [ createInfo copyIntoObjectMemory ] ensure: [
-		  context freeInstanceCreateInfo: createInfo ] ] ensure: [
-		  context freeApplicationInfo: appInfo ]
-]
-
 { #category : 'field definition' }
 VkInstanceCreateInfo class >> fieldsDesc [
 	"pApplicationInfo is a VkApplicationInfo* and is declared void* all the same: uFFI's

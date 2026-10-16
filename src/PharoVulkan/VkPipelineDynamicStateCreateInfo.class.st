@@ -27,21 +27,6 @@ VkPipelineDynamicStateCreateInfo class >> dynamicStateByteCount [
 	^ 4
 ]
 
-{ #category : 'examples' }
-VkPipelineDynamicStateCreateInfo class >> exampleStateOfTheRectanglesThisProjectSetsWhileRecording [
-	"One click: the dynamic state every pipeline here is created from, needing no device. The
-	 run of state values is given back before the copy is taken, because the run goes with the
-	 state it was built with and a copy pointing at freed memory would read it; the copy lives
-	 in object memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline dynamicState.
-	^ [
-	  VkGraphicsPipeline freeDynamicStatesOf: state.
-	  state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineDynamicStateCreateInfo class >> fieldsDesc [
 	"A count at twenty and the run of state values at twenty-four, which the pointer pads out

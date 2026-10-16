@@ -31,35 +31,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkSwapchainCreateInfoKHR class >> exampleRequestForAWindowSurface [
-	<sampleInstance>
-	"One click: the request this project makes of a window surface that reports the example
-	 capabilities and offers the example format. Built by the one builder the creation path
-	 uses, so the example cannot drift from what a real creation asks for, and answered as a
-	 copy in object memory so a click frees nothing. The surface handle is null, because a
-	 surface needs a display and an example must run on a machine that has none."
-
-	| info |
-	info := VkSwapchain
-		        createInfoForSurface: self exampleSurfaceHandle
-		        format: VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport
-		        capabilities:
-		        VkSurfaceCapabilitiesKHR
-			        exampleCapabilitiesAWindowSurfaceMightReport
-		        extent: VkImage exampleExtent.
-	^ [ info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
-{ #category : 'examples' }
-VkSwapchainCreateInfoKHR class >> exampleSurfaceHandle [
-	"A surface handle that points nowhere. An example must run on a machine with no display,
-	 so there is no surface to ask for a real one; the request only carries the handle on to
-	 the driver, which an example never reaches."
-
-	^ VkSurfaceKHR_H fromHandle: ExternalAddress null
-]
-
 { #category : 'field definition' }
 VkSwapchainCreateInfoKHR class >> fieldsDesc [
 	"The surface and the swapchain this one replaces are handles, so each is declared as one

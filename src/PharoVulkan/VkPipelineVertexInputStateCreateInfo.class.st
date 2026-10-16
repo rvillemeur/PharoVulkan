@@ -20,25 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineVertexInputStateCreateInfo class >> exampleStateOfTheVertexThisProjectDraws [
-	<sampleInstance>
-	"One click: the vertex input state this project's pipeline is created with, rebuilt on every
-	 call. The two runs are freed and their fields nulled before the copy, so the answered state
-	 in object memory says the runs are not there rather than pointing at memory that has gone,
-	 and the external store is freed whatever happens. The Binding and Attribute tabs of the
-	 description examples show what those runs held."
-
-	| state |
-	state := VkGraphicsPipeline
-		         vertexInputStateForBindings:
-		         VkGraphicsPipeline vertexBindingDescriptions
-		         attributes: VkGraphicsPipeline vertexAttributeDescriptions.
-	^ [
-	  VkGraphicsPipeline freeVertexInputRunsOf: state.
-	  state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineVertexInputStateCreateInfo class >> fieldsDesc [
 	"The vertex input stage of a pipeline: a run of binding descriptions and a run of attribute

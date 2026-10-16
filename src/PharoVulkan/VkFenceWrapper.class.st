@@ -32,26 +32,6 @@ VkFenceWrapper class >> createSignaledDevice: aVkDevice [
 	^ self createDevice: aVkDevice flags: VkFenceCreateFlag signaledBit
 ]
 
-{ #category : 'examples' }
-VkFenceWrapper class >> exampleSignalledFenceOnThisMachine [
-	"One click: the fence a frame loop starts with, created already signalled so the first wait
-	 returns at once, then destroyed with its context. The flags live in the instance, so the
-	 Fence tab still names the bit afterwards. Where no device is available it answers an
-	 uncreated fence, which is what the inspector should show on such a machine."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | fence |
-	  fence := self createSignaledDevice: context device.
-	  fence destroy.
-	  fence ] ensure: [ context destroy ]
-]
-
 { #category : 'constants' }
 VkFenceWrapper class >> unsignaledFlags [
 	"A fence asked for with no flags starts unsignalled, which is what everything but a frame

@@ -21,22 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkSubpassDescription class >> exampleSubpassReadingOneColourAttachment [
-	"One click: the one subpass of every pass here, written by its one writer. Its pointer to
-	 the reference is cleared before the copy is kept, because the reference is freed with
-	 the example: a kept address would say a run is there when its memory has gone back."
-
-	<sampleInstance>
-	| reference |
-	reference := VkRenderPass colorAttachmentReference.
-	^ [ | subpass |
-	  subpass := VkRenderPass subpassDescriptionReading: reference.
-	  [ subpass pColorAttachments: ExternalAddress null.
-	    subpass copyIntoObjectMemory ] ensure: [ subpass getHandle free ] ] ensure: [
-		  reference getHandle free ]
-]
-
 { #category : 'field definition' }
 VkSubpassDescription class >> fieldsDesc [
 	"Five counts and the flags among five pointers to attachment references. Each pointer is

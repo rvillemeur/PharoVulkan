@@ -16,16 +16,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkVertexInputBindingDescription class >> exampleBindingOfTheVertexThisProjectDraws [
-	<sampleInstance>
-	"One click: the one buffer binding this project's pipeline reads its vertices from, which is
-	 the description VkGraphicsPipeline hands the driver. Built in object memory, so a click
-	 frees nothing, and rebuilt on every call."
-
-	^ VkGraphicsPipeline vertexBindingDescriptions first
-]
-
 { #category : 'field definition' }
 VkVertexInputBindingDescription class >> fieldsDesc [
 	"How wide one vertex is in the buffer bound at a binding number, and whether the buffer

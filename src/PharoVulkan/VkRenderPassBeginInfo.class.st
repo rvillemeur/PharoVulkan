@@ -18,32 +18,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkRenderPassBeginInfo class >> exampleBeginInfoForAClearedPass [
-	"One click: the begin info every pass in this project opens with, built by the recorder for
-	 an example extent and the clear colour the window path uses. No device is touched, so the
-	 render pass and the framebuffer are left unset. The clear values are freed with the
-	 example, so the copy's pointer to them is cleared rather than left dangling: the Pass tab
-	 follows that pointer, and following a freed block is how an image dies. The count stays at
-	 one, which is what the recorder writes, and the tab says the values are out of reach."
-
-	<sampleInstance>
-	| values |
-	values := VkCommandBuffer clearValuesOutsideObjectMemory:
-		          VkRenderConfig clearColorBlackOpaque.
-	^ [
-	  | info |
-	  info := VkCommandBuffer
-		          renderPassBeginInfoFor: (VkRenderPass_H fromHandle: ExternalAddress null)
-		          framebuffer: (VkFramebuffer_H fromHandle: ExternalAddress null)
-		          extent: VkBufferImageCopy exampleExtent
-		          clearValues: values.
-	  [
-	  info pClearValues: ExternalAddress null.
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ] ] ensure: [
-		  values free ]
-]
-
 { #category : 'field definition' }
 VkRenderPassBeginInfo class >> fieldsDesc [
 	"The render area is carried by value; the clear values are pointed at, because a clear value

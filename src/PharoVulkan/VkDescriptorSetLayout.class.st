@@ -14,31 +14,6 @@ Class {
 	#tag : 'Compute'
 }
 
-{ #category : 'examples' }
-VkDescriptorSetLayout class >> exampleLayoutForATwoBufferKernelOnThisMachine [
-	"One click: the layout a kernel reading one buffer and writing another is created from,
-	 built on this machine's device and then destroyed with its context. The bindings live in
-	 the instance, so the Bindings tab still answers after the handle and the device have
-	 gone."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | kernelLayout |
-	  kernelLayout := self on: context device.
-	  0 to: 1 do: [ :binding |
-		  kernelLayout
-			  addStorageBufferBinding: binding
-			  stageFlags: VkShaderStage computeBit ].
-	  kernelLayout create.
-	  kernelLayout destroy.
-	  kernelLayout ] ensure: [ context destroy ]
-]
-
 { #category : 'factory' }
 VkDescriptorSetLayout class >> on: aDevice [
     ^ self new initializeOn: aDevice

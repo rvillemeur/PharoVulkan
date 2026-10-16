@@ -26,17 +26,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineRasterizationStateCreateInfo class >> exampleStateOfTheFilledTrianglesThisProjectDraws [
-	"One click: the rasterization state every pipeline here is created from, needing no device.
-	 The copy lives in object memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline rasterizationState.
-	^ [ state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineRasterizationStateCreateInfo class >> fieldsDesc [
 	"Every field after the flags is four bytes wide and tightly packed, so uFFI lays the three

@@ -17,16 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkVertexInputAttributeDescription class >> examplePositionAttributeOfTheVertexThisProjectDraws [
-	<sampleInstance>
-	"One click: the position attribute of the vertex this project draws — two floats at the
-	 start of each vertex. Built in object memory, so a click frees nothing, and rebuilt on
-	 every call; the colour attribute that follows it is the second of the same list."
-
-	^ VkGraphicsPipeline vertexAttributeDescriptions first
-]
-
 { #category : 'field definition' }
 VkVertexInputAttributeDescription class >> fieldsDesc [
 	"Where one value a vertex shader reads sits inside a vertex: the location it arrives at, the

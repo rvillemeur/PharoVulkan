@@ -22,25 +22,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineShaderStageCreateInfo class >> exampleStagesOfTheTriangleThisProjectDraws [
-	"One click: the two stages the triangle this project draws is created from, built with null
-	 module handles so no device is needed. The entry point strings are given back before the
-	 copies are taken, so each copy says the name is gone rather than naming an address that
-	 has been freed; the copies live in object memory, so they still read after the run goes."
-
-	<sampleInstance>
-	| stages |
-	stages := VkGraphicsPipeline
-		          shaderStagesForVertexModule:
-		          (VkShaderModule_H fromHandle: ExternalAddress null)
-		          fragmentModule: (VkShaderModule_H fromHandle: ExternalAddress null).
-	^ [
-	  VkGraphicsPipeline freeShaderStageEntryPointsOf: stages.
-	  stages collect: [ :each | each copyIntoObjectMemory ] ] ensure: [
-		  stages first getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineShaderStageCreateInfo class >> fieldsDesc [
 	"One shader stage of a pipeline. flags and stage are a uint32 pair, so uFFI puts them at

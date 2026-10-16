@@ -16,30 +16,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDescriptorSetLayoutCreateInfo class >> exampleRequestForTwoStorageBuffers [
-	"One click: the request VkDescriptorSetLayout builds for a two-buffer compute kernel. No
-	 device is asked, so no layout is created; the count and the array pointer the project
-	 fills, and the degenerate state of the rest, can be read in the Layout and Fields tabs.
-	 The answer lives in object memory, so it outlives the blocks it was built in — which is
-	 also why its array pointer is cleared along with the chain pointer: both named memory
-	 that has been given back."
-
-	<sampleInstance>
-	| info elements kept |
-	info := self externalInstance.
-	elements := VkDescriptorSetLayoutBinding externalArrayOf: 2.
-	^ [
-	  info
-		  bindingCount: elements size;
-		  pBindings: elements first getHandle.
-	  kept := info copyIntoObjectMemory.
-	  kept pBindings: ExternalAddress null.
-	  kept ] ensure: [
-		  elements first getHandle free.
-		  info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkDescriptorSetLayoutCreateInfo class >> fieldsDesc [
 	^ #( int32 sType; void* pNext; uint32 flags; uint32 bindingCount;

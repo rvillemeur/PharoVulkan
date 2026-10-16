@@ -25,19 +25,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceProperties class >> examplePropertiesOfThisMachine [
-	"One click: the properties the local driver writes, with the Layout view beside them. The
-	 store is a ByteArray inside the image, so the bytes still read after the context that
-	 queried them has gone."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ Vk getPhysicalDeviceProperties: context physicalDevice handle ]
-		  ensure: [ context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceProperties class >> fieldsDesc [
 	"limits is a VkPhysicalDeviceLimits by value, so its own members carry their alignment and

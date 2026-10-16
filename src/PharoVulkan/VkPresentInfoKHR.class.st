@@ -21,25 +21,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPresentInfoKHR class >> examplePresentRequestForOneSwapchain [
-	<sampleInstance>
-	"One click: the request this project makes to present one image, built by its one writer.
-	 No device is touched. The three runs are given back before the copy is kept, which clears
-	 the fields that pointed at them, so the example holds no address that has been freed; the
-	 counts stay at what the writer wrote, and the Present tab then says the runs are not
-	 there."
-
-	| info |
-	info := VkSwapchain
-		        presentInfoForSwapchain: ExternalAddress null
-		        imageIndex: VkSwapchain exampleImageIndex
-		        waitSemaphore: ExternalAddress null.
-	^ [
-	  VkSwapchain freePresentRunsOf: info.
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPresentInfoKHR class >> fieldsDesc [
 	"A count and a run for the semaphores the present waits on, a count and a run for the

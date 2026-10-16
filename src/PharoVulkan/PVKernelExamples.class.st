@@ -8,9 +8,9 @@ Class {
 		'out0',
 		'out1'
 	],
-	#category : 'PharoVulkan-Example',
+	#category : 'PharoVulkan-Compute',
 	#package : 'PharoVulkan',
-	#tag : 'Example'
+	#tag : 'Compute'
 }
 
 { #category : 'accessing' }

@@ -19,15 +19,6 @@ VkResult class >> asExternalTypeOn: aFFICallout [
 	^ FFIInt32 asExternalTypeOn: aFFICallout
 ]
 
-{ #category : 'examples' }
-VkResult class >> exampleSuboptimalPresentResult [
-	"The code a present answers after the window has been resized: not a failure, which is the
-	 distinction the Result codes inspector tab makes visible."
-
-	<sampleInstance>
-	^ self withCode: self vkSuboptimalKHR
-]
-
 { #category : 'result-codes' }
 VkResult class >> nameForCode: anInteger [
 	"The Vulkan spelling of a result code, derived from the declaring selectors rather than

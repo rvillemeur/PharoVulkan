@@ -14,24 +14,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceSynchronization2Features class >> exampleSynchronization2OfThisMachine [
-	"One click: whether the device a plain compute context lands on reports
-	 synchronization2, copied out of the chain before that memory was freed. Every submission
-	 in this project goes through vkQueueSubmit2, so a device that clears the flag runs
-	 nothing here."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  VkPhysicalDeviceFeatures2
-		  of: context physicalDevice handle
-		  chainedWith: self
-		  do: [ :head :features | features copyIntoObjectMemory ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceSynchronization2Features class >> fieldsDesc [
 	"VkPhysicalDeviceSynchronization2Features as the C header declares it. VkBool32 is uint32.

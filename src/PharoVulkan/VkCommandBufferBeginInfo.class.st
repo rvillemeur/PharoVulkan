@@ -15,20 +15,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkCommandBufferBeginInfo class >> exampleRequestForAOneTimeRecording [
-	"One click: the request every recording in this project opens with, the one field a caller
-	 writes set to the flag the class names. The inheritance pointer stays null, which is what
-	 a primary buffer must present."
-
-	<sampleInstance>
-	| info |
-	info := self externalInstance.
-	^ [
-	  info flags: VkCommandBuffer recordingFlags.
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkCommandBufferBeginInfo class >> fieldsDesc [
 	"VkCommandBufferBeginInfo, read by vkBeginCommandBuffer. The usage flags from

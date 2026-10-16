@@ -19,21 +19,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkImageViewCreateInfo class >> exampleRequestForAColourAttachmentView [
-	"One click: the request every image view in this project is created from, built by its
-	 writer for the format the swapchain uses. No device is touched, so the image stays
-	 unset and the View tab says so. The request is copied into object memory and its own
-	 block freed, so the example leaves nothing allocated outside the image."
-
-	<sampleInstance>
-	| info |
-	info := VkImage
-		        viewRequestFor: (VkImage_H fromHandle: ExternalAddress null)
-		        format: VkFormat b8g8r8a8Unorm.
-	^ [ info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkImageViewCreateInfo class >> fieldsDesc [
 	"The image is a handle, so it is declared as one and answers isNull. The swizzle and the

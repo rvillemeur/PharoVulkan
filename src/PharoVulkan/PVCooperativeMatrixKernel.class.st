@@ -36,59 +36,6 @@ PVCooperativeMatrixKernel class >> entryPointName [
 	^ 'main'
 ]
 
-{ #category : 'examples' }
-PVCooperativeMatrixKernel class >> exampleCooperativeMatrixModule [
-	"One click: the hand-built cooperative matrix module. Its Module tab says what the bytes
-	 declare, and spirv-val accepts them; running it needs a device that offers the
-	 extension, which exampleCooperativeMatrixProductOnThisMachine looks for."
-
-	<sampleInstance>
-	| kernel |
-	kernel := self new.
-	kernel spirv.
-	^ kernel
-]
-
-{ #category : 'examples' }
-PVCooperativeMatrixKernel class >> exampleCooperativeMatrixProductOnThisMachine [
-	"One click: an eight by eight product computed by cooperative matrix instructions on
-	 whichever device here offers them, as floats. The left matrix is a ramp and the right
-	 one the identity, so the answer reads back as the ramp. Answers nil where no device
-	 offers the extension, which is the honest result on such a machine."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext cooperativeMatrixContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ nil ].
-	^ [
-	  self new
-		  productOf: self exampleRampMatrix
-		  by: self exampleIdentityMatrix
-		  on: context ] ensure: [ context destroy ]
-]
-
-{ #category : 'examples' }
-PVCooperativeMatrixKernel class >> exampleIdentityMatrix [
-	"Row major identity of the reported order: multiplying by it leaves the other matrix
-	 alone, so a wrong row or column order shows up at a glance."
-
-	| order |
-	order := self matrixOrder.
-	^ (0 to: self elementCount - 1) collect: [ :each |
-		  each \\ order = (each // order)
-			  ifTrue: [ 1.0 ]
-			  ifFalse: [ 0.0 ] ]
-]
-
-{ #category : 'examples' }
-PVCooperativeMatrixKernel class >> exampleRampMatrix [
-	"Row major, one value per element, small enough that halves carry them exactly."
-
-	^ (1 to: self elementCount) collect: [ :each | each / 8.0 ]
-]
-
 { #category : 'constants' }
 PVCooperativeMatrixKernel class >> firstElementIndex [
 	"The matrices fill their buffers from the start: one tile per dispatch."

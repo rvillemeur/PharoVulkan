@@ -29,19 +29,6 @@ PVTiledMatmulComparison class >> compiledKernelMethod [
 	^ PVKernelExamples >> #tiledMatmulF32:a:b:out:tileA:tileB:
 ]
 
-{ #category : 'examples' }
-PVTiledMatmulComparison class >> exampleComparisonAtOrder256 [
-	"One click: the three matmul kernels timed against each other at an order big enough to
-	 show the difference and small enough to be quick. The Comparison tab holds the
-	 numbers, and the last two rows say the three kernels agree."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ (self on: context order: 256 repeats: 10) run ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'instance creation' }
 PVTiledMatmulComparison class >> on: aContext order: n repeats: count [
 	"Both kernels read the matrix order from the dispatch grid, so a grid has to exist that

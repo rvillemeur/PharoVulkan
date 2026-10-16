@@ -22,24 +22,6 @@ SpvCooperativeMatrixType class >> columnMajorLayout [
 	^ 1
 ]
 
-{ #category : 'examples' }
-SpvCooperativeMatrixType class >> exampleAccumulatorTypeOfOneSubgroup [
-	"One click: the accumulator type the cooperative matrix kernel uses, registered in a
-	 fresh module so its id and its operand constants are real. The Instruction tab shows
-	 the words it serialises to."
-
-	<sampleInstance>
-	| builder |
-	builder := SpvBuilder new.
-	^ builder types
-		  cooperativeMatrixType: (builder types floatType: 32)
-		  shape: (SpvCooperativeMatrixShape
-				   rows: PVCooperativeMatrixKernel matrixOrder
-				   columns: PVCooperativeMatrixKernel matrixOrder
-				   scope: SpvScope subgroup
-				   use: self matrixAccumulatorUse)
-]
-
 { #category : 'constants' }
 SpvCooperativeMatrixType class >> matrixAUse [
 	"CooperativeMatrixUse MatrixAKHR = 0, the left operand of a multiply-accumulate."

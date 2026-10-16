@@ -20,22 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDependencyInfo class >> exampleDependencyCarryingOneMemoryBarrier [
-	"One click: the dependency the recorder hands to vkCmdPipelineBarrier2, carrying one memory
-	 barrier and no buffer or image barrier. The barrier it points at is freed with the example,
-	 so the pointer is shown for its placement, not to be followed."
-
-	<sampleInstance>
-	| barrier |
-	barrier := VkCommandBuffer hostReadBarrier.
-	^ [
-	  | info |
-	  info := VkCommandBuffer dependencyForBarrier: barrier.
-	  [ info copyIntoObjectMemory ] ensure: [ info getHandle free ] ] ensure: [
-		  barrier getHandle free ]
-]
-
 { #category : 'field definition' }
 VkDependencyInfo class >> fieldsDesc [
 	"Each count is one word and each pointer eight byte aligned, so uFFI pads after the second

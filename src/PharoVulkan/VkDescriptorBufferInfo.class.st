@@ -14,19 +14,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDescriptorBufferInfo class >> exampleWholeStorageBuffer [
-	"One click: the buffer info a compute kernel writes for one of its storage buffers, which
-	 is the whole buffer from its start. Built in object memory, so nothing has to be freed,
-	 and rebuilt on every call. The buffer handle stays null: an example answers an object that
-	 outlives the call, and a handle to a buffer this example does not own would be read after
-	 that buffer has gone."
-	<sampleInstance>
-	^ self new
-		  range: self wholeSize;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkDescriptorBufferInfo class >> fieldsDesc [
 	"VkDescriptorBufferInfo: which buffer a descriptor points at, and which part of it. buffer

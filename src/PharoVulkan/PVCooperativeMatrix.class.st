@@ -17,20 +17,6 @@ Class {
 	#tag : 'Compute'
 }
 
-{ #category : 'examples' }
-PVCooperativeMatrix class >> exampleProductOfTheHostTwin [
-	"One click: the eight by eight product the DSL kernel computes, worked out in the
-	 image rather than on a device. The left matrix is a ramp and the right one the
-	 identity, so the product reads back as the ramp."
-
-	<sampleInstance>
-	| order ramp identity |
-	order := PVCooperativeMatrixKernel matrixOrder.
-	ramp := PVCooperativeMatrixKernel exampleRampMatrix coopMatLoad: 0.
-	identity := PVCooperativeMatrixKernel exampleIdentityMatrix coopMatLoad: 0.
-	^ ramp coopMatMulAdd: identity
-]
-
 { #category : 'instance creation' }
 PVCooperativeMatrix class >> order: anOrder elements: aCollection [
 	"The elements are copied, so a matrix cannot change under its holder when the buffer

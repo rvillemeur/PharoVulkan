@@ -34,43 +34,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkGraphicsPipelineCreateInfo class >> exampleRequestOfTheTriangleThisProjectDraws [
-	"One click: the request the triangle this project draws is created from, built with null
-	 handles so no device is needed. Everything the request points at is given back before the
-	 copy is taken — the six states it owns through the pipeline, and then the stage run and the
-	 vertex input state, which belong to the caller and are freed after the copy — so the
-	 answered request says those addresses are not there rather than naming memory that has
-	 gone. The copy lives in object memory, so the Request tab still reads after every external
-	 store goes."
-
-	<sampleInstance>
-	| stages vertInput request |
-	stages := VkGraphicsPipeline
-		          shaderStagesForVertexModule:
-		          (VkShaderModule_H fromHandle: ExternalAddress null)
-		          fragmentModule:
-		          (VkShaderModule_H fromHandle: ExternalAddress null).
-	vertInput := VkGraphicsPipeline
-		             vertexInputStateForBindings:
-		             VkGraphicsPipeline vertexBindingDescriptions
-		             attributes: VkGraphicsPipeline vertexAttributeDescriptions.
-	request := VkGraphicsPipeline
-		           requestForStages: stages
-		           vertexInput: vertInput
-		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null)
-		           renderPass: (VkRenderPass_H fromHandle: ExternalAddress null).
-	^ [
-	  VkGraphicsPipeline freeNestedStatesOf: request.
-	  request
-		  pStages: ExternalAddress null;
-		  pVertexInputState: ExternalAddress null.
-	  request copyIntoObjectMemory ] ensure: [
-		  request getHandle free.
-		  VkGraphicsPipeline freeVertexInputState: vertInput.
-		  VkGraphicsPipeline freeShaderStages: stages ]
-]
-
 { #category : 'field definition' }
 VkGraphicsPipelineCreateInfo class >> fieldsDesc [
 	"The one request a graphics pipeline is created from. Every nested state is pointed at

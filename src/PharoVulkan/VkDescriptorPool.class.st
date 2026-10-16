@@ -44,54 +44,6 @@ VkDescriptorPool class >> descriptorTypeRowName [
 	^ 'Descriptor type'
 ]
 
-{ #category : 'examples' }
-VkDescriptorPool class >> exampleDescriptorCount [
-	"Three storage buffers in that one set, as the vector-add kernel binds."
-	^ 3
-]
-
-{ #category : 'examples' }
-VkDescriptorPool class >> exampleElementCount [
-	^ 64
-]
-
-{ #category : 'examples' }
-VkDescriptorPool class >> exampleMaxSets [
-	"One set, the shape a compute kernel allocates: every binding lives in that one set."
-	^ 1
-]
-
-{ #category : 'examples' }
-VkDescriptorPool class >> exampleStorageBufferPoolForThreeBuffers [
-	"One click: the pool a three-buffer compute kernel allocates, with one set allocated out
-	 of it, then released with its context. The two counts and the allocation count live in
-	 the instance, so the pool still answers after its handle and its device have gone, which
-	 is what the Pool tab shows."
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | pool setLayout set |
-	  setLayout := VkDescriptorSetLayout on: context device.
-	  0 to: self exampleDescriptorCount - 1 do: [ :binding |
-		  setLayout
-			  addStorageBufferBinding: binding
-			  stageFlags: VkShaderStage computeBit ].
-	  setLayout create.
-	  pool := self
-		          on: context device
-		          maxSets: self exampleMaxSets
-		          descriptorCount: self exampleDescriptorCount.
-	  set := pool allocateSet: setLayout.
-	  set handle invalidate.
-	  pool destroy.
-	  setLayout destroy.
-	  pool ] ensure: [ context destroy ]
-]
-
 { #category : 'constants' }
 VkDescriptorPool class >> handleByteCount [
 	"A Vulkan handle is pointer wide. The driver writes one handle per call into the block this

@@ -25,31 +25,6 @@ VkShaderModuleCreateInfo class >> codeWordByteCount [
 	^ 4
 ]
 
-{ #category : 'examples' }
-VkShaderModuleCreateInfo class >> exampleRequestForTheVectorAddKernel [
-	"One click: the request VkShaderModule builds for the README's playground kernel, compiled
-	 here and measured. No device is asked, so no module is created; the byte count the
-	 project fills and the degenerate state of the rest can be read in the Layout and Fields
-	 tabs. The answer lives in object memory with its code pointer cleared, because the block
-	 the pointer named has been freed."
-
-	<sampleInstance>
-	| info bytes code kept |
-	info := self externalInstance.
-	bytes := PVKernelCompiler compile:
-		         PVComputeKernel exampleKernelMethod.
-	code := VkShaderModule codeOutsideObjectMemory: bytes.
-	^ [
-	  info
-		  codeSize: bytes size;
-		  pCode: code.
-	  kept := info copyIntoObjectMemory.
-	  kept pCode: ExternalAddress null.
-	  kept ] ensure: [
-		  code free.
-		  info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkShaderModuleCreateInfo class >> fieldsDesc [
 	^ #( int32 sType; void* pNext; uint32 flags; uint64 codeSize; void* pCode )

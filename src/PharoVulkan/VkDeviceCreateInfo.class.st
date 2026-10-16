@@ -25,22 +25,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkDeviceCreateInfo class >> exampleGraphicsDeviceRequest [
-	"One click: the request the graphics path makes of a device, with the structure type, the
-	 one queue create info and the extension count side by side in the Fields tab. The counts
-	 come from VkContext rather than from literals here, so the example follows the code that
-	 builds the real one. The pointers stay null, because an example must not hold a pointer to
-	 a store it does not own; the live create info is covered by
-	 VkCoreTest >> testDeviceCreateInfoCarriesEveryEnabledExtension."
-
-	<sampleInstance>
-	^ self new
-		  queueCreateInfoCount: VkContext queueCreateInfosPerDevice;
-		  enabledExtensionCount: VkContext graphicsExtensionNames size;
-		  yourself
-]
-
 { #category : 'field definition' }
 VkDeviceCreateInfo class >> fieldsDesc [
 	"VkDeviceCreateInfo as the C header declares it. The three array pointers and

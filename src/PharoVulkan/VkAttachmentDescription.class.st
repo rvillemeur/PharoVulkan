@@ -20,21 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkAttachmentDescription class >> exampleColourAttachmentOfTheOffscreenPass [
-	"One click: the attachment description the offscreen pass is built from, written by its
-	 one writer. No device is touched. The answer is a copy in object memory, so the external
-	 block is freed with the example and the Attachment tab reads bytes that are still
-	 there."
-
-	<sampleInstance>
-	| description |
-	description := VkRenderPass
-		               attachmentDescriptionForFormat: VkFormat b8g8r8a8Unorm
-		               finalLayout: VkImageLayout transferSrcOptimal.
-	^ [ description copyIntoObjectMemory ] ensure: [ description getHandle free ]
-]
-
 { #category : 'field definition' }
 VkAttachmentDescription class >> fieldsDesc [
 	"Nine words, no chain header: the driver reads an attachment description in place rather

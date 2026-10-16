@@ -17,19 +17,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPhysicalDeviceSubgroupProperties class >> exampleSubgroupPropertiesOfThisMachine [
-	"One click: the subgroup width and operations this machine's driver reports, with the
-	 Features view beside them. The block is copied into object memory by the query, so it still
-	 reads after the context has gone."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ context physicalDevice subgroupProperties ]
-		  ensure: [ context destroy ]
-]
-
 { #category : 'field definition' }
 VkPhysicalDeviceSubgroupProperties class >> fieldsDesc [
 	"quadOperationsInAllStages is a VkBool32, so it is declared as the uint32 it is."

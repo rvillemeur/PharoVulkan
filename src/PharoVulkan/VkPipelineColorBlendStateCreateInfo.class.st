@@ -24,21 +24,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkPipelineColorBlendStateCreateInfo class >> exampleStateOfTheOneAttachmentThisProjectWritesTo [
-	"One click: the colour blend state every pipeline here is created from, needing no device.
-	 The attachment run is given back before the copy is taken, because the run goes with the
-	 state it was built with and a copy pointing at freed memory would read it; the copy lives
-	 in object memory, so it still reads after the external store goes."
-
-	<sampleInstance>
-	| state |
-	state := VkGraphicsPipeline colorBlendState.
-	^ [
-	  VkGraphicsPipeline freeColorBlendAttachmentsOf: state.
-	  state copyIntoObjectMemory ] ensure: [ state getHandle free ]
-]
-
 { #category : 'field definition' }
 VkPipelineColorBlendStateCreateInfo class >> fieldsDesc [
 	"The logic operation flag and its operation are a pair at twenty and twenty-four, the

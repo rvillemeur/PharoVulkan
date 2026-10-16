@@ -21,26 +21,6 @@ VkSemaphoreWrapper class >> createDevice: aVkDevice [
     ^ obj
 ]
 
-{ #category : 'examples' }
-VkSemaphoreWrapper class >> exampleSemaphoreOnThisMachine [
-	"One click: one of the two semaphores a frame loop uses to order acquire against present,
-	 created on this machine and destroyed with its context. Where no device is available it
-	 answers an uncreated semaphore, which is what the inspector should show on such a
-	 machine."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | semaphore |
-	  semaphore := self createDevice: context device.
-	  semaphore destroy.
-	  semaphore ] ensure: [ context destroy ]
-]
-
 { #category : 'lifecycle' }
 VkSemaphoreWrapper >> destroy [
 

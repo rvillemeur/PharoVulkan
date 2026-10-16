@@ -15,38 +15,6 @@ Class {
 	#tag : 'Compute'
 }
 
-{ #category : 'examples' }
-PVPrecisionComparison class >> examplePrecisionComparisonOnOrder256Matmul [
-	"One click: the same matmul timed in every precision the compiler can emit. The Precision
-	 tab holds the two times and the ratio between them. Order 256 is large enough for the
-	 host clock to see and small enough to finish while you watch."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ self on: context order: 256 repeats: 10 ] ensure: [ context destroy ]
-]
-
-{ #category : 'examples' }
-PVPrecisionComparison class >> exampleTiledPrecisionComparisonOnOrder512Matmul [
-	"One click: the tiled matmul timed in every precision the compiler can emit, which is the
-	 comparison half precision is worth making. The naive kernel is bound by global memory
-	 traffic, so the ratio measured there sits near one whatever the storage format; the tiled
-	 kernel reads each tile sixteen times out of shared memory, so a narrower tile reaches the
-	 time. Order 512 with ten dispatches is the configuration Phase 7-G measured the float
-	 kernel at, so the Precision tab reads against a number already recorded."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [
-	  self
-		  on: context
-		  order: 512
-		  repeats: 10
-		  family: PVKernelExamples tiledMatmulFamily ] ensure: [ context destroy ]
-]
-
 { #category : 'instance creation' }
 PVPrecisionComparison class >> on: aContext order: n repeats: count [
 	^ self

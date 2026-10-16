@@ -67,15 +67,6 @@ VkSwapchain class >> createInfoForSurface: aSurfaceHandle format: aSurfaceFormat
 	^ info
 ]
 
-{ #category : 'examples' }
-VkSwapchain class >> exampleImageIndex [
-	"The first image of a swapchain, which is the one an acquire answers for the first frame.
-	 An example and a test both need an index to present, and neither reaches a driver that
-	 would hand one out."
-
-	^ 0
-]
-
 { #category : 'structures' }
 VkSwapchain class >> freePresentInfo: aPresentInfo [
 	"Gives back everything presentInfoForSwapchain:imageIndex:waitSemaphore: allocated: the

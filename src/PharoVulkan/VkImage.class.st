@@ -57,36 +57,6 @@ VkImage class >> createInfoForFormat: aFormat extent: aPoint usage: usageFlags [
 	^ info
 ]
 
-{ #category : 'examples' }
-VkImage class >> exampleColorAttachmentOnThisMachine [
-	"One click: the colour attachment an offscreen render would draw into on whatever device
-	 this image finds, with its view created, then destroyed before it is handed back. Format,
-	 extent, usage and the memory size the driver asked for live in the instance, so the
-	 object still answers them after its handles and its context have gone."
-
-	<sampleInstance>
-	| context image |
-	context := VkContext offscreenGraphicsContext.
-	^ [
-	  image := self
-		           on: context device
-		           format: VkFormat b8g8r8a8Unorm
-		           extent: self exampleExtent
-		           usage:
-		           (VkImageUsage colorAttachmentBit bitOr: VkImageUsage transferSrcBit).
-	  image createView.
-	  image destroy.
-	  image ] ensure: [ context destroy ]
-]
-
-{ #category : 'constants' }
-VkImage class >> exampleExtent [
-	"Small enough that a readback can be checked by eye, and a multiple of 64 so a driver
-	 that pads rows still pads by whole tiles."
-
-	^ 64 @ 64
-]
-
 { #category : 'instance creation' }
 VkImage class >> handleForCreateInfo: aCreateInfo on: aDevice [
 	"The one call to vkCreateImage in the project. The out parameter is freed whichever way

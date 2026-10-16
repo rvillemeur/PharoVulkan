@@ -20,22 +20,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkSubmitInfo2 class >> exampleComputeBatchOfOneCommandBuffer [
-	"One click: the batch the compute path submits, built by the recorder's own builder. No
-	 device is touched, so the command buffer info the batch points at is a null handle and
-	 neither semaphore side is asked for. The Batch tab never follows a pointer, so the object
-	 memory copy is enough to read every row."
-
-	<sampleInstance>
-	| batch |
-	batch := VkQueue
-		         submitInfoFor: ExternalAddress null
-		         waitSemaphoreInfo: nil
-		         signalSemaphoreInfo: nil.
-	^ [ batch copyIntoObjectMemory ] ensure: [ batch getHandle free ]
-]
-
 { #category : 'field definition' }
 VkSubmitInfo2 class >> fieldsDesc [
 	^ #( int32 sType; void* pNext; uint32 flags;

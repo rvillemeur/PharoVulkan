@@ -16,22 +16,6 @@ Class {
 	#tag : 'Bindings'
 }
 
-{ #category : 'examples' }
-VkCommandBufferAllocateInfo class >> exampleRequestForOnePrimaryBuffer [
-	"One click: the request every command buffer in this project is allocated from, with the
-	 pool pointer cleared because no pool is made here. The Layout and Fields tabs show what
-	 the driver reads; the structure type is the only field a fresh block carries."
-
-	<sampleInstance>
-	| info |
-	info := self externalInstance.
-	^ [
-	  info
-		  level: VkCommandPool allocationLevel;
-		  commandBufferCount: VkCommandPool buffersPerAllocation.
-	  info copyIntoObjectMemory ] ensure: [ info getHandle free ]
-]
-
 { #category : 'field definition' }
 VkCommandBufferAllocateInfo class >> fieldsDesc [
 	"VkCommandBufferAllocateInfo, read by vkAllocateCommandBuffers. The pool is a handle and

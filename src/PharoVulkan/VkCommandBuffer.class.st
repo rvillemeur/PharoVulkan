@@ -87,27 +87,6 @@ VkCommandBuffer class >> dependencyForBarrier: aMemoryBarrier [
 		  yourself
 ]
 
-{ #category : 'examples' }
-VkCommandBuffer class >> exampleBufferFromTheComputePoolOnThisMachine [
-	"One click: the primary command buffer a compute dispatch here records into, cut from a
-	 pool on this machine's compute queue family. The pool is destroyed with its context, which
-	 frees the buffer with it, so the Buffer tab shows the level and the family it was
-	 allocated with over a handle it reports as dead. Where no device is available it answers
-	 an unallocated buffer, which is what the inspector should show on such a machine."
-
-	<sampleInstance>
-	| context |
-	context := [ VkContext computeContext ]
-		           on: VkError
-		           do: [ :error | nil ].
-	context ifNil: [ ^ self new ].
-	^ [
-	  | pool |
-	  pool := context device createCommandPool: context computeQueueFamily.
-	  [ pool allocateBuffer ] ensure: [ pool destroy ] ] ensure: [
-		  context destroy ]
-]
-
 { #category : 'constants' }
 VkCommandBuffer class >> firstScissorIndex [
 	"The scissor slot the one rectangle is bound to."

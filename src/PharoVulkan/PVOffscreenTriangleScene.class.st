@@ -56,30 +56,6 @@ PVOffscreenTriangleScene class >> dominantChannelOfColour: aColour [
 ]
 
 { #category : 'constants' }
-PVOffscreenTriangleScene class >> exampleExtent [
-	"Big enough that a probe a quarter of the way in from a vertex lands two pixels clear of
-	 the edge, small enough that reading every pixel in a test stays quick."
-
-	^ 32 @ 32
-]
-
-{ #category : 'examples' }
-PVOffscreenTriangleScene class >> exampleRenderedTriangleOnThisMachine [
-	"One click: the hello triangle drawn once on whatever device this machine offers, with
-	 every Vulkan object released before the scene is handed back. The pixels the GPU wrote
-	 stay in the instance, so the Expected versus measured tab works on the result."
-
-	<sampleInstance>
-	| context scene |
-	context := VkContext offscreenGraphicsContext.
-	^ [
-	  scene := self on: context extent: self exampleExtent.
-	  scene renderOnce.
-	  scene destroy.
-	  scene ] ensure: [ context destroy ]
-]
-
-{ #category : 'constants' }
 PVOffscreenTriangleScene class >> fullChannel [
 	"What an 8-bit unsigned normalised channel reads at 1.0."
 

@@ -16,18 +16,6 @@ Class {
 	#tag : 'Core'
 }
 
-{ #category : 'examples' }
-PVCooperativeMatrixSurvey class >> exampleSurveyOfThisMachine [
-	"One click: which devices on this machine report VK_KHR_cooperative_matrix, and why the
-	 cooperative matrix path is skipped. The survey reads everything while the context is
-	 alive, so the Cooperative matrix tab still answers after the context is destroyed."
-
-	<sampleInstance>
-	| context |
-	context := VkContext computeContext.
-	^ [ self on: context ] ensure: [ context destroy ]
-]
-
 { #category : 'instance creation' }
 PVCooperativeMatrixSurvey class >> on: aContext [
 	^ self new setContext: aContext
