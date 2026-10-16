@@ -9,9 +9,9 @@ Class {
 		'device',
 		'setLayouts'
 	],
-	#category : 'PharoVulkan-Compute-Pipeline',
-	#package : 'PharoVulkan-Compute',
-	#tag : 'Pipeline'
+	#category : 'PharoVulkan-Core-Resources',
+	#package : 'PharoVulkan-Core',
+	#tag : 'Resources'
 }
 
 { #category : 'factory' }

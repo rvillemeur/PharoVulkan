@@ -16,9 +16,9 @@ Class {
 		'pipeline',
 		'vertexBuffer'
 	],
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Scenes',
+	#package : 'PharoVulkan-Graphics',
+	#tag : 'Scenes'
 }
 
 { #category : 'constants' }

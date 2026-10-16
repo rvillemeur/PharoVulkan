@@ -8,9 +8,9 @@ Class {
 		'handle',
 		'device'
 	],
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Targets',
+	#package : 'PharoVulkan-Graphics',
+	#tag : 'Targets'
 }
 
 { #category : 'constants' }

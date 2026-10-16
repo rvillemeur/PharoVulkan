@@ -4,8 +4,8 @@ Exposes SDL_Vulkan_* functions via uFFI. All methods are class-side.
 Class {
 	#name : 'SDL2Vulkan',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-SDL2',
-	#package : 'PharoVulkan',
+	#category : 'PharoVulkan-Graphics-SDL2',
+	#package : 'PharoVulkan-Graphics',
 	#tag : 'SDL2'
 }
 

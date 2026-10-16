@@ -18,9 +18,9 @@ Class {
 		'extent',
 		'imageCount'
 	],
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Presentation',
+	#package : 'PharoVulkan-Graphics',
+	#tag : 'Presentation'
 }
 
 { #category : 'constants' }

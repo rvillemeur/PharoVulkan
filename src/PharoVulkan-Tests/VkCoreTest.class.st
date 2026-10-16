@@ -1095,6 +1095,38 @@ VkCoreTest >> testPhysicalDeviceSelection [
 	self assert: (ctx physicalDevice findComputeQueueFamily >= 0)
 ]
 
+{ #category : 'tests - layering' }
+VkCoreTest >> testPipelineLayoutLivesBelowBothPipelineKinds [
+	"A pipeline layout is descriptor set layouts and push constant ranges, which both a compute
+	 pipeline and a graphics pipeline are created from, so it belongs below both rather than inside
+	 the compute package that happened to need it first. It can live here because it reaches nothing
+	 above the bindings: the set layouts arrive as arguments, so it names no descriptor class at all.
+	 Blocks are read too, because the driver call sits inside an ensure: block."
+
+	| deep reached |
+	deep := nil.
+	deep := [ :compiled :found |
+		  compiled literals do: [ :each |
+			  each isVariableBinding
+				  ifTrue: [
+				  each value isBehavior ifTrue: [
+					  found add: each value instanceSide ] ]
+				  ifFalse: [
+				  (each isKindOf: CompiledBlock) ifTrue: [
+					  deep value: each value: found ] ] ].
+		  found ].
+	self
+		assert: VkPipelineLayout package name
+		equals: VkDevice package name.
+	reached := Set new.
+	{ VkPipelineLayout. VkPipelineLayout class } do: [ :side |
+		side methods do: [ :method | deep value: method value: reached ] ].
+	reached remove: VkPipelineLayout ifAbsent: [ nil ].
+	reached do: [ :each |
+		(each package name beginsWith: 'PharoVulkan') ifTrue: [
+			self assert: each package name equals: 'PharoVulkan' ] ]
+]
+
 { #category : 'tests' }
 VkCoreTest >> testQueueFamilyRowsNameEveryFamilyAndAgreeWithTheFinders [
 	"The Queue families view must cover every family and agree with the finders a context

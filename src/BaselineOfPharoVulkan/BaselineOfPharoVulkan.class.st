@@ -18,11 +18,13 @@ BaselineOfPharoVulkan >> baseline: spec [
 	 loads first, and PharoVulkan-Compiler sits on it alone — it answers bytes and talks to no
 	 driver, which is what the compiler group loads without any Vulkan code. PharoVulkan-Core holds
 	 the device lifecycle, so it requires the bindings it calls through and the SPIR-V package that
-	 declares the type error it raises. PharoVulkan-Compute dispatches, so it requires the compiler
-	 that answers it a module as well as the lifecycle that answers it a device. Both are part of
-	 'default': a user of this project opens a device and runs something on it. The generator and the
-	 examples are left out of 'default' because a user of the bindings needs neither. Loading
-	 'tests' brings the examples in, because the test classes read the example classes."
+	 declares the type error it raises. PharoVulkan-Compute dispatches and PharoVulkan-Graphics
+	 renders, so both require the compiler that answers them a module as well as the lifecycle that
+	 answers them a device, and Graphics requires Compute for the kernel sources its shaders are
+	 compiled from. All four are part of 'default': a user of this project opens a device, runs
+	 something on it and draws. The generator and the examples are left out of 'default' because a
+	 user of the bindings needs neither. Loading 'tests' brings the examples in, because the test
+	 classes read the example classes."
 
 	<baseline>
 	spec for: #common do: [
@@ -39,22 +41,30 @@ BaselineOfPharoVulkan >> baseline: spec [
 				spec requires:
 					#( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compiler'
 					   'PharoVulkan-SPIRV' ) ];
+			package: 'PharoVulkan-Graphics'
+			with: [
+				spec requires:
+					#( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compute'
+					   'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Generator'
 			with: [ spec requires: #( 'PharoVulkan-SPIRV' 'PharoVulkan' ) ];
 			package: 'PharoVulkan-Examples'
-			with: [ spec requires: #( 'PharoVulkan-Compute' ) ];
+			with: [ spec requires: #( 'PharoVulkan-Graphics' ) ];
 			package: 'PharoVulkan-Tests'
 			with: [
 				spec requires:
-					#( 'PharoVulkan-Compute' 'PharoVulkan-Examples'
+					#( 'PharoVulkan-Graphics' 'PharoVulkan-Examples'
 					   'PharoVulkan-Generator' ) ].
 		spec
 			group: 'spirv' with: #( 'PharoVulkan-SPIRV' );
 			group: 'compiler' with: #( 'PharoVulkan-SPIRV' 'PharoVulkan-Compiler' );
 			group: 'core' with: #( 'PharoVulkan-Core' );
 			group: 'compute' with: #( 'PharoVulkan-Compute' );
+			group: 'graphics' with: #( 'PharoVulkan-Graphics' );
 			group: 'default'
-			with: #( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compute' );
+			with:
+				#( 'PharoVulkan' 'PharoVulkan-Core' 'PharoVulkan-Compute'
+				   'PharoVulkan-Graphics' );
 			group: 'generator' with: #( 'PharoVulkan-Generator' );
 			group: 'examples' with: #( 'PharoVulkan-Examples' );
 			group: 'tests'

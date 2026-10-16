@@ -4,8 +4,8 @@ SDL2 backend window subclass that adds Vulkan surface support. Overrides createS
 Class {
 	#name : 'OSSDL2VulkanBackendWindow',
 	#superclass : 'OSSDL2BackendWindow',
-	#category : 'PharoVulkan-SDL2',
-	#package : 'PharoVulkan',
+	#category : 'PharoVulkan-Graphics-SDL2',
+	#package : 'PharoVulkan-Graphics',
 	#tag : 'SDL2'
 }
 

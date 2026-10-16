@@ -6,9 +6,9 @@ Two scenes draw with them — `PVGlslTriangleScene` into a window and `PVGlslOff
 Class {
 	#name : 'PVGlslTriangleShaders',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Shaders',
+	#package : 'PharoVulkan-Graphics',
+	#tag : 'Shaders'
 }
 
 { #category : 'compiling' }

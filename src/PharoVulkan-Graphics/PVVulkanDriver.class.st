@@ -4,8 +4,8 @@ OSWindow driver subclass that registers the Vulkan-capable SDL2 backend. Returne
 Class {
 	#name : 'PVVulkanDriver',
 	#superclass : 'OSSDL2Driver',
-	#category : 'PharoVulkan-SDL2',
-	#package : 'PharoVulkan',
+	#category : 'PharoVulkan-Graphics-SDL2',
+	#package : 'PharoVulkan-Graphics',
 	#tag : 'SDL2'
 }
 

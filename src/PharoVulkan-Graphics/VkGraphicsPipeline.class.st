@@ -17,9 +17,9 @@ Class {
 		'device',
 		'layout'
 	],
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Pipeline',
+	#package : 'PharoVulkan-Graphics',
+	#tag : 'Pipeline'
 }
 
 { #category : 'constants' }

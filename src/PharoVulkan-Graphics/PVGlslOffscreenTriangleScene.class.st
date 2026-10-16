@@ -6,9 +6,9 @@ That comparison is the point of the class: it turns the DSL's claim from ""emits
 Class {
 	#name : 'PVGlslOffscreenTriangleScene',
 	#superclass : 'PVOffscreenTriangleScene',
-	#category : 'PharoVulkan-Graphics',
-	#package : 'PharoVulkan',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Scenes',
+	#package : 'PharoVulkan-Graphics',
+	#tag : 'Scenes'
 }
 
 { #category : 'testing' }

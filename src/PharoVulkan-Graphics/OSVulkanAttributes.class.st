@@ -4,7 +4,7 @@ Window attribute record carrying Vulkan-specific window creation flags. Consulte
 Class {
 	#name : 'OSVulkanAttributes',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-SDL2',
-	#package : 'PharoVulkan',
+	#category : 'PharoVulkan-Graphics-SDL2',
+	#package : 'PharoVulkan-Graphics',
 	#tag : 'SDL2'
 }
