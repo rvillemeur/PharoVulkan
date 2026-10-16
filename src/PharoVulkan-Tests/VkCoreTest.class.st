@@ -483,7 +483,7 @@ VkCoreTest >> testCooperativeMatrixSurveyReportsAfterItsContextIsGone [
 	 the survey must hold what it read rather than ask again when the table is drawn."
 
 	| survey |
-	survey := PVCooperativeMatrixSurvey exampleSurveyOfThisMachine.
+	survey := PVCooperativeMatrixExamples surveyOfThisMachine.
 	self assert: survey deviceReports notEmpty.
 	self assert: (survey reportRows last at: #name) equals: 'Verdict'
 ]
@@ -534,7 +534,7 @@ VkCoreTest >> testDescriptorPoolViewNamesBothCountsAndTheTypeItRequests [
 	 cannot name a type the pool does not request. Building the tab must not change what the
 	 pool reports."
 	| pool rows |
-	pool := VkDescriptorPool exampleStorageBufferPoolForThreeBuffers.
+	pool := VkResourceExamples storageBufferPoolForThreeBuffers.
 	rows := pool poolReport.
 	self
 		assert: (self valueOfRowNamed: VkDescriptorPool maxSetsRowName in: rows)

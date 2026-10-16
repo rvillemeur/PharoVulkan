@@ -33,6 +33,24 @@ PVComputeKernel class >> descriptorSetCount [
 	^ 1
 ]
 
+{ #category : 'constants' }
+PVComputeKernel class >> exampleBufferCount [
+	"One buffer per storage-buffer parameter of exampleKernelMethod: a, b and the output."
+	^ 3
+]
+
+{ #category : 'constants' }
+PVComputeKernel class >> exampleElementCount [
+	"The example dispatches one workgroup, so it sizes the buffers to one workgroup's worth
+	 of elements: the local size the module declares."
+	^ 64
+]
+
+{ #category : 'constants' }
+PVComputeKernel class >> exampleKernelMethod [
+	^ PVKernelExamples >> #vectorAdd:a:b:out:
+]
+
 { #category : 'factory' }
 PVComputeKernel class >> fromMethod: aCompiledMethod on: aContext [
 	| spirv |

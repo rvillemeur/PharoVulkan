@@ -37,6 +37,21 @@ PVOffscreenTarget class >> colorFormat [
 	^ VkFormat b8g8r8a8Unorm
 ]
 
+{ #category : 'constants' }
+PVOffscreenTarget class >> exampleClearColor [
+	"Visibly not black, so an example that rendered nothing cannot be mistaken for one that
+	 rendered a clear."
+
+	^ #( 0.25 0.5 0.75 1.0 )
+]
+
+{ #category : 'constants' }
+PVOffscreenTarget class >> exampleExtent [
+	"Small enough that every sampled pixel can be checked by eye in the inspector."
+
+	^ 32 @ 32
+]
+
 { #category : 'instance creation' }
 PVOffscreenTarget class >> on: aDevice extent: aPoint [
 	^ self new initializeDevice: aDevice extent: aPoint

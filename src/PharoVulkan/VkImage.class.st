@@ -57,6 +57,14 @@ VkImage class >> createInfoForFormat: aFormat extent: aPoint usage: usageFlags [
 	^ info
 ]
 
+{ #category : 'constants' }
+VkImage class >> exampleExtent [
+	"Small enough that a readback can be checked by eye, and a multiple of 64 so a driver
+	 that pads rows still pads by whole tiles."
+
+	^ 64 @ 64
+]
+
 { #category : 'instance creation' }
 VkImage class >> handleForCreateInfo: aCreateInfo on: aDevice [
 	"The one call to vkCreateImage in the project. The out parameter is freed whichever way

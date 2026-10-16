@@ -45,6 +45,23 @@ VkDescriptorPool class >> descriptorTypeRowName [
 ]
 
 { #category : 'constants' }
+VkDescriptorPool class >> exampleDescriptorCount [
+	"Three storage buffers in that one set, as the vector-add kernel binds."
+	^ 3
+]
+
+{ #category : 'constants' }
+VkDescriptorPool class >> exampleElementCount [
+	^ 64
+]
+
+{ #category : 'constants' }
+VkDescriptorPool class >> exampleMaxSets [
+	"One set, the shape a compute kernel allocates: every binding lives in that one set."
+	^ 1
+]
+
+{ #category : 'constants' }
 VkDescriptorPool class >> handleByteCount [
 	"A Vulkan handle is pointer wide. The driver writes one handle per call into the block this
 	 class hands it, so the block is this many bytes per handle."

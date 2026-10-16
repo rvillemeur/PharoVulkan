@@ -528,7 +528,7 @@ PVCompilerTest >> testDefaultLocalSizeWhenPragmaAbsent [
 PVCompilerTest >> testExampleRecogniserOnLoopKernelIsRecognised [
 
 	| recogniser |
-	recogniser := PVStructuredCFGRecognizer exampleRecogniserOnLoopKernel.
+	recogniser := PVCompilerExamples recogniserOnLoopKernel.
 	self assert: (recogniser recognize isKindOf: PVLoopNode).
 	self assert: (recogniser recognitionReport allSatisfy: [ :each | each value ])
 ]
@@ -717,7 +717,7 @@ PVCompilerTest >> testNestedLoopNodeRolesReadEverySlotWithoutMovingAnything [
 	 without the view changing, and reading it leaves the recognised graph as it was."
 
 	| node idsBefore rows roles |
-	node := PVNestedLoopNode exampleNestedLoopOfTheTiledMatmul.
+	node := PVCompilerExamples nestedLoopOfTheTiledMatmul.
 	idsBefore := node coveredBlocks collect: [ :each | each id ].
 	rows := node roleRows.
 	roles := rows collect: [ :each | each at: #role ].
@@ -1187,7 +1187,7 @@ PVCompilerTest >> testWorkItemImplementsEverySelectorTheTableMapsForIt [
 	 without a host-side method fails here."
 
 	| item |
-	item := PVWorkItem exampleWorkItemInA512Grid.
+	item := PVComputeExamples workItemInA512Grid.
 	self deny: item kernelSelectors isEmpty.
 	item kernelSelectors do: [ :selector |
 		self
@@ -1198,7 +1198,7 @@ PVCompilerTest >> testWorkItemImplementsEverySelectorTheTableMapsForIt [
 { #category : 'tests' }
 PVCompilerTest >> testWorkItemReportCoversTheWholeVocabulary [
 	| item values |
-	item := PVWorkItem exampleWorkItemInA512Grid.
+	item := PVComputeExamples workItemInA512Grid.
 	self assert: item dispatchReport size equals: item kernelSelectors size.
 	values := item dispatchReport collect: [ :each | each at: #value ].
 	self deny: (values includes: 'not implemented').

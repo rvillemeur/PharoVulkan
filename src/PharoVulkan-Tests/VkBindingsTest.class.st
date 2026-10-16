@@ -411,8 +411,8 @@ VkBindingsTest >> testColorBlendExamplesAndTabsAgree [
 	 answer and its tab shows those three."
 
 	| attachment state rows table shown |
-	attachment := VkPipelineColorBlendAttachmentState
-		              exampleAttachmentThisProjectWritesEveryChannelOf.
+	attachment := VkPipelineExamples
+		              blendAttachmentThisProjectWritesEveryChannelOf.
 	rows := attachment blendAttachmentRows.
 	table := attachment inspectorBlendAttachment: SpPresenter new.
 	self assert: table items size equals: rows size.
@@ -421,8 +421,8 @@ VkBindingsTest >> testColorBlendExamplesAndTabsAgree [
 	self
 		assert: attachment colorWriteMask
 		equals: VkColorComponent allChannels.
-	state := VkPipelineColorBlendStateCreateInfo
-		         exampleStateOfTheOneAttachmentThisProjectWritesTo.
+	state := VkPipelineExamples
+		         colourBlendStateOfTheOneAttachmentThisProjectWritesTo.
 	self
 		assert: state attachmentCount
 		equals: VkGraphicsPipeline colorAttachmentsPerPipeline.
@@ -889,8 +889,8 @@ VkBindingsTest >> testComputePipelineRequestExampleIsTheRequestTheProjectMakes [
 	 everything a caller does not choose stays as it was."
 
 	| request |
-	request := VkComputePipelineCreateInfo
-		           exampleRequestForAComputeShader.
+	request := VkPipelineExamples
+		           requestForAComputeShader.
 	self
 		assert: request sType
 		equals: VkStructureType computePipelineCreateInfo.
@@ -1002,7 +1002,7 @@ VkBindingsTest >> testComputePipelineRequestTabShowsEveryRowTheRequestReports [
 	 Building the table only reads, which is why the report is compared with itself afterwards."
 
 	| example rows table shown |
-	example := VkComputePipelineCreateInfo exampleRequestForAComputeShader.
+	example := VkPipelineExamples requestForAComputeShader.
 	rows := example computePipelineRows.
 	table := example inspectorComputePipeline: SpPresenter new.
 	self assert: table items size equals: rows size.
@@ -1244,7 +1244,7 @@ VkBindingsTest >> testDescriptorBufferInfoWholeSizeFillsTheRangeField [
 		equals: (2 raisedTo: rangeRow third * 8) - 1.
 	self assert: VkDescriptorBufferInfo new range equals: 0.
 	self
-		assert: VkDescriptorBufferInfo exampleWholeStorageBuffer range
+		assert: VkMemoryExamples wholeStorageBuffer range
 		equals: VkDescriptorBufferInfo wholeSize
 ]
 
@@ -1304,7 +1304,7 @@ VkBindingsTest >> testDescriptorPoolCreateInfoLayoutRowsReadTheStoreAndLeaveItAl
 	 head is derived from the count the example sets, so it follows a change to the example."
 
 	| info before rows maxSetsRow expected |
-	info := VkDescriptorPoolCreateInfo exampleForOneSetOfThreeDescriptors.
+	info := VkDescriptorExamples poolForOneSetOfThreeDescriptors.
 	before := info getHandle copy.
 	rows := VkDescriptorPoolCreateInfo layoutRows.
 	rows do: [ :each | info headOfFieldAt: each second size: each third ].
@@ -1419,7 +1419,7 @@ VkBindingsTest >> testDescriptorSetAllocateInfoFieldReportNamesWhatItAsksFor [
 	 has set reads as not set."
 
 	| info rows valueOf |
-	info := VkDescriptorSetAllocateInfo exampleForOneSetOfThreeBindings.
+	info := VkDescriptorExamples allocationForOneSetOfThreeBindings.
 	rows := info fieldReport.
 	valueOf := [ :fieldName |
 	            (rows detect: [ :each | each first = fieldName ]) second ].
@@ -1696,8 +1696,8 @@ VkBindingsTest >> testDynamicStateExampleAndTabAgree [
 	 is the rows the copy can still answer and the tab shows those."
 
 	| state rows table shown |
-	state := VkPipelineDynamicStateCreateInfo
-		         exampleStateOfTheRectanglesThisProjectSetsWhileRecording.
+	state := VkPipelineExamples
+		         dynamicStateOfTheRectanglesThisProjectSetsWhileRecording.
 	rows := state dynamicStateRows.
 	self
 		assert: (rows at: #dynamicStateCount)
@@ -2133,7 +2133,7 @@ VkBindingsTest >> testFloat16KeepsInfinitiesAndNotANumberApart [
 { #category : 'tests' }
 VkBindingsTest >> testFloat16NamesTheFieldsOfOneThird [
 	| half |
-	half := PVFloat16 exampleHalfOfOneThird.
+	half := PVComputeExamples halfOfOneThird.
 	self assert: half word equals: 16r3555.
 	self assert: half sign equals: 0.
 	self assert: half biasedExponent equals: 13.
@@ -2464,8 +2464,8 @@ VkBindingsTest >> testGraphicsRequestRowsNameWhatItAsksFor [
 	 what it holds."
 
 	| request rows |
-	request := VkGraphicsPipelineCreateInfo
-		           exampleRequestOfTheTriangleThisProjectDraws.
+	request := VkPipelineExamples
+		           requestOfTheTriangleThisProjectDraws.
 	rows := request graphicsRequestRows.
 	self
 		assert: (rows at: #stageCount)
@@ -2493,8 +2493,8 @@ VkBindingsTest >> testGraphicsRequestTabShowsEveryRowItsReportAnswers [
 	 is why the report is compared with itself afterwards."
 
 	| request rows table shown |
-	request := VkGraphicsPipelineCreateInfo
-		           exampleRequestOfTheTriangleThisProjectDraws.
+	request := VkPipelineExamples
+		           requestOfTheTriangleThisProjectDraws.
 	rows := request graphicsRequestRows.
 	table := request inspectorGraphicsRequest: SpPresenter new.
 	self assert: table items size equals: rows size.
@@ -2883,8 +2883,8 @@ VkBindingsTest >> testInputAssemblyExampleAndTabAgree [
 	 the external store has gone, and the tab carries one row per entry the report answers."
 
 	| state rows table shown |
-	state := VkPipelineInputAssemblyStateCreateInfo
-		         exampleStateOfTheTriangleListThisProjectDraws.
+	state := VkPipelineExamples
+		         inputAssemblyStateOfTheTriangleListThisProjectDraws.
 	rows := state inputAssemblyRows.
 	self assert: state topology equals: VkPrimitiveTopology triangleList.
 	table := state inspectorInputAssembly: SpPresenter new.
@@ -3133,8 +3133,8 @@ VkBindingsTest >> testMultisampleStateExampleAndTabAgree [
 	 answers."
 
 	| state rows table shown |
-	state := VkPipelineMultisampleStateCreateInfo
-		         exampleStateOfTheOneSamplePerPixelThisProjectTakes.
+	state := VkPipelineExamples
+		         multisampleStateOfTheOneSamplePerPixelThisProjectTakes.
 	rows := state multisampleRows.
 	self
 		assert: state rasterizationSamples
@@ -4006,7 +4006,7 @@ VkBindingsTest >> testPresentRequestExampleKeepsTheCountsAndNoFreedRun [
 	 memory, so a click frees nothing."
 
 	| example rows |
-	example := VkPresentInfoKHR examplePresentRequestForOneSwapchain.
+	example := VkSwapchainExamples presentRequestForOneSwapchain.
 	rows := example presentRows.
 	self
 		assert: (rows at: #waitSemaphoreCount)
@@ -4058,7 +4058,7 @@ VkBindingsTest >> testPresentRequestTabShowsEveryRowTheRequestReports [
 	 reads, which is why the report is compared with itself afterwards."
 
 	| example rows table shown |
-	example := VkPresentInfoKHR examplePresentRequestForOneSwapchain.
+	example := VkSwapchainExamples presentRequestForOneSwapchain.
 	rows := example presentRows.
 	table := example inspectorPresent: SpPresenter new.
 	self assert: table items size equals: rows size.
@@ -4159,8 +4159,8 @@ VkBindingsTest >> testRasterizationStateExampleAndTabAgree [
 	 answers."
 
 	| state rows table shown |
-	state := VkPipelineRasterizationStateCreateInfo
-		         exampleStateOfTheFilledTrianglesThisProjectDraws.
+	state := VkPipelineExamples
+		         rasterizationStateOfTheFilledTrianglesThisProjectDraws.
 	rows := state rasterizationRows.
 	self assert: state polygonMode equals: VkPolygonMode fill.
 	table := state inspectorRasterization: SpPresenter new.
@@ -4472,7 +4472,7 @@ VkBindingsTest >> testResultCodesViewMarksTheInspectedCodeAndNothingElse [
 	 that code untouched."
 
 	| result view marked |
-	result := VkResult exampleSuboptimalPresentResult.
+	result := VkSwapchainExamples suboptimalPresentResult.
 	view := result inspectorResultCodes: SpPresenter new.
 	self assert: view items size equals: VkResult resultCodeSelectors size.
 	marked := view items select: [ :each | each code = result code ].
@@ -4621,8 +4621,8 @@ VkBindingsTest >> testShaderStageExampleIsTheStagesTheProjectDraws [
 	 copies are taken, so each row says the name is gone rather than naming a freed address."
 
 	| stages |
-	stages := VkPipelineShaderStageCreateInfo
-		          exampleStagesOfTheTriangleThisProjectDraws.
+	stages := VkPipelineExamples
+		          stagesOfTheTriangleThisProjectDraws.
 	self
 		assert: stages size
 		equals: VkGraphicsPipeline shaderStagesPerPipeline.
@@ -4695,8 +4695,8 @@ VkBindingsTest >> testShaderStageTabShowsEveryRowTheStageReports [
 	 reads, which is why the report is compared with itself afterwards."
 
 	| stage rows table shown |
-	stage := VkPipelineShaderStageCreateInfo
-		         exampleStagesOfTheTriangleThisProjectDraws first.
+	stage := VkPipelineExamples
+		         stagesOfTheTriangleThisProjectDraws first.
 	rows := stage stageRows.
 	table := stage inspectorStage: SpPresenter new.
 	self assert: table items size equals: rows size.
@@ -4946,8 +4946,8 @@ VkBindingsTest >> testSurfaceCapabilitiesRowsNameTheTransformsTheAlphaAndTheUsag
 	 alone."
 
 	| capabilities rows |
-	capabilities := VkSurfaceCapabilitiesKHR
-		                exampleCapabilitiesAWindowSurfaceMightReport.
+	capabilities := VkSwapchainExamples
+		                capabilitiesAWindowSurfaceMightReport.
 	rows := capabilities surfaceRows.
 	self
 		assert: (rows at: #minImageCount)
@@ -4977,7 +4977,7 @@ VkBindingsTest >> testSurfaceFormatChoicePrefersTheFormatTheProjectRendersIn [
 	 presenting in another format. A surface that offered nothing has nothing to choose."
 
 	| offered other |
-	offered := VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport.
+	offered := VkSwapchainExamples formatAWindowSurfaceMightReport.
 	other := VkSurfaceFormatKHR new.
 	other
 		format: VkFormat r32g32b32Sfloat;
@@ -4999,7 +4999,7 @@ VkBindingsTest >> testSurfaceFormatRowsNameTheFormatAndTheColourSpace [
 	 dropped."
 
 	| surfaceFormat rows |
-	surfaceFormat := VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport.
+	surfaceFormat := VkSwapchainExamples formatAWindowSurfaceMightReport.
 	rows := surfaceFormat formatRows.
 	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
 	self assert: (rows at: #colorSpaceName) equals: 'srgbNonlinearKHR'.
@@ -5159,8 +5159,8 @@ VkBindingsTest >> testSwapchainImageCountAsksForOneMoreThanTheSurfaceDemands [
 	 ask for a swapchain with nothing in it."
 
 	| capabilities |
-	capabilities := VkSurfaceCapabilitiesKHR
-		                exampleCapabilitiesAWindowSurfaceMightReport.
+	capabilities := VkSwapchainExamples
+		                capabilitiesAWindowSurfaceMightReport.
 	self
 		assert: (VkSwapchain imageCountFor: capabilities)
 		equals:
@@ -5187,9 +5187,9 @@ VkBindingsTest >> testSwapchainRequestAsksForWhatTheSurfaceReported [
 	 that the request carries the handle it was given."
 
 	| capabilities surfaceFormat info |
-	capabilities := VkSurfaceCapabilitiesKHR
-		                exampleCapabilitiesAWindowSurfaceMightReport.
-	surfaceFormat := VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport.
+	capabilities := VkSwapchainExamples
+		                capabilitiesAWindowSurfaceMightReport.
+	surfaceFormat := VkSwapchainExamples formatAWindowSurfaceMightReport.
 	info := VkSwapchain
 		        createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
 		        format: surfaceFormat
@@ -5226,13 +5226,13 @@ VkBindingsTest >> testSwapchainRequestExampleIsTheRequestTheProjectMakes [
 	 so reading it frees nothing and a click in the browser leaks nothing."
 
 	| example built rows |
-	example := VkSwapchainCreateInfoKHR exampleRequestForAWindowSurface.
+	example := VkSwapchainExamples requestForAWindowSurface.
 	built := VkSwapchain
 		         createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
-		         format: VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport
+		         format: VkSwapchainExamples formatAWindowSurfaceMightReport
 		         capabilities:
-		         VkSurfaceCapabilitiesKHR
-			         exampleCapabilitiesAWindowSurfaceMightReport
+		         VkSwapchainExamples
+			         capabilitiesAWindowSurfaceMightReport
 		         extent: VkImage exampleExtent.
 	rows := [ built swapchainRows ] ensure: [ built getHandle free ].
 	self assert: example swapchainRows equals: rows.
@@ -5248,10 +5248,10 @@ VkBindingsTest >> testSwapchainRequestRowsNameTheFormatTheTransformAndThePresent
 	| info rows |
 	info := VkSwapchain
 		        createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
-		        format: VkSurfaceFormatKHR exampleFormatAWindowSurfaceMightReport
+		        format: VkSwapchainExamples formatAWindowSurfaceMightReport
 		        capabilities:
-		        VkSurfaceCapabilitiesKHR
-			        exampleCapabilitiesAWindowSurfaceMightReport
+		        VkSwapchainExamples
+			        capabilitiesAWindowSurfaceMightReport
 		        extent: VkImage exampleExtent.
 	rows := [ info swapchainRows ] ensure: [ info getHandle free ].
 	self assert: (rows at: #formatName) equals: 'b8g8r8a8Unorm'.
@@ -5276,7 +5276,7 @@ VkBindingsTest >> testSwapchainRequestTabShowsEveryRowTheRequestReports [
 	 the table only reads, which is why the report is compared with itself afterwards."
 
 	| example rows table shown |
-	example := VkSwapchainCreateInfoKHR exampleRequestForAWindowSurface.
+	example := VkSwapchainExamples requestForAWindowSurface.
 	rows := example swapchainRows.
 	table := example inspectorSwapchain: SpPresenter new.
 	self assert: table items size equals: rows size.
@@ -5401,16 +5401,16 @@ VkBindingsTest >> testVertexInputExamplesAreTheDescriptionsTheProjectDraws [
 	 than pointing at memory that has gone, and both counts survive the copy."
 
 	| binding attribute state |
-	binding := VkVertexInputBindingDescription
-		           exampleBindingOfTheVertexThisProjectDraws.
-	attribute := VkVertexInputAttributeDescription
-		             examplePositionAttributeOfTheVertexThisProjectDraws.
+	binding := VkPipelineExamples
+		           bindingOfTheVertexThisProjectDraws.
+	attribute := VkPipelineExamples
+		             positionAttributeOfTheVertexThisProjectDraws.
 	self
 		assert: binding stride
 		equals: VkGraphicsPipeline vertexBindingDescriptions first stride.
 	self assert: attribute format equals: VkFormat r32g32Sfloat.
-	state := VkPipelineVertexInputStateCreateInfo
-		         exampleStateOfTheVertexThisProjectDraws.
+	state := VkPipelineExamples
+		         vertexInputStateOfTheTriangleThisProjectDraws.
 	self
 		assert: state sType
 		equals: VkStructureType pipelineVertexInputStateCreateInfo.
@@ -5557,16 +5557,16 @@ VkBindingsTest >> testVertexInputTabsShowEveryRowTheirReportsAnswer [
 
 	| pairs |
 	pairs := {
-		         { VkPipelineVertexInputStateCreateInfo
-			         exampleStateOfTheVertexThisProjectDraws.
+		         { VkPipelineExamples
+			         vertexInputStateOfTheTriangleThisProjectDraws.
 		         #vertexInputRows.
 		         #inspectorVertexInput: }.
-		         { VkVertexInputBindingDescription
-			         exampleBindingOfTheVertexThisProjectDraws.
+		         { VkPipelineExamples
+			         bindingOfTheVertexThisProjectDraws.
 		         #bindingRows.
 		         #inspectorBinding: }.
-		         { VkVertexInputAttributeDescription
-			         examplePositionAttributeOfTheVertexThisProjectDraws.
+		         { VkPipelineExamples
+			         positionAttributeOfTheVertexThisProjectDraws.
 		         #attributeRows.
 		         #inspectorAttribute: } }.
 	pairs do: [ :each |
@@ -5785,8 +5785,8 @@ VkBindingsTest >> testViewportStateExampleAndTabAgree [
 	 the external store has gone, and the tab carries one row per entry the report answers."
 
 	| state rows table shown |
-	state := VkPipelineViewportStateCreateInfo
-		         exampleStateOfTheDynamicViewportThisProjectUses.
+	state := VkPipelineExamples
+		         viewportStateOfTheDynamicViewportThisProjectUses.
 	rows := state viewportRows.
 	self
 		assert: state viewportCount

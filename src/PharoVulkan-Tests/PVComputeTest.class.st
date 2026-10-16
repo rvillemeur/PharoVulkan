@@ -595,7 +595,7 @@ PVComputeTest >> testComputeKernelPipelineExampleReportsEveryBindingAfterItsCont
 	 back from the module's OpExecutionMode, so it cannot drift from the group the example
 	 dispatches."
 	| kernel rows bindings |
-	kernel := PVComputeKernel exampleVectorAddKernelOnThisMachine.
+	kernel := PVComputeExamples vectorAddKernelOnThisMachine.
 	rows := kernel pipelineReport.
 	bindings := rows select: [ :each |
 		            (each at: #name) beginsWith: PVComputeKernel bindingRowPrefix ].
@@ -1193,7 +1193,7 @@ PVComputeTest >> testSubgroupDotExampleReportsEveryRowAfterItsContextIsGone [
 
 	| run |
 	ctx subgroupArithmeticAvailable ifFalse: [ ^ self skip ].
-	run := PVSubgroupDotProduct exampleSubgroupDotOf1024Elements.
+	run := PVComputeExamples subgroupDotOf1024Elements.
 	self assert: run reportedSubgroupSize isInteger.
 	self assert: (run reportRows anySatisfy: [ :each |
 			 (each at: #name) = 'Subgroup width measured' ])
@@ -1264,7 +1264,7 @@ PVComputeTest >> testTiledComparisonExampleReportsEveryRowAfterItsContextIsGone 
 	 every row has to come from what the run kept rather than from the device."
 
 	| comparison rows |
-	comparison := PVTiledMatmulComparison exampleComparisonAtOrder256.
+	comparison := PVBenchmarkExamples tiledMatmulComparisonAtOrder256.
 	rows := comparison reportRows.
 	self assert: rows size > 1.
 	rows do: [ :each |

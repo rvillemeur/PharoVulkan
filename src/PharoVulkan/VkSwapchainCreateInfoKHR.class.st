@@ -31,6 +31,15 @@ Class {
 	#tag : 'Bindings'
 }
 
+{ #category : 'constants' }
+VkSwapchainCreateInfoKHR class >> exampleSurfaceHandle [
+	"A surface handle that points nowhere. An example must run on a machine with no display,
+	 so there is no surface to ask for a real one; the request only carries the handle on to
+	 the driver, which an example never reaches."
+
+	^ VkSurfaceKHR_H fromHandle: ExternalAddress null
+]
+
 { #category : 'field definition' }
 VkSwapchainCreateInfoKHR class >> fieldsDesc [
 	"The surface and the swapchain this one replaces are handles, so each is declared as one

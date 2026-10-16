@@ -15,10 +15,10 @@ PVSpirvValidatorTest >> testBuiltInsFromWordsNamesWhatTheKernelReads [
 	 kernel reads only the index."
 
 	self
-		assert: PVSpirvValidator exampleValidatorOnMatmulKernel builtInsFromWords asSet
+		assert: PVValidationExamples validatorOnMatmulKernel builtInsFromWords asSet
 		equals: #( 'globalInvocationId' 'numWorkgroups' ) asSet.
 	self
-		assert: PVSpirvValidator exampleValidatorOnComputeLoopKernel builtInsFromWords asSet
+		assert: PVValidationExamples validatorOnComputeLoopKernel builtInsFromWords asSet
 		equals: #( 'globalInvocationId' ) asSet
 ]
 
@@ -93,7 +93,7 @@ PVSpirvValidatorTest >> testEveryWorkgroupVariableIsNamedByTheEntryPoint [
 	| shared plain tiles |
 	shared := PVSpirvValidator on: (PVKernelCompiler compile:
 			           (PVKernelExamples >> #broadcastFirstOf:data:out:tile:)).
-	plain := PVSpirvValidator exampleValidatorOnMatmulKernel.
+	plain := PVValidationExamples validatorOnMatmulKernel.
 	tiles := shared variableIdsInStorageClass: SpvStorageClass workgroup.
 	self assert: tiles size equals: 1.
 	self assert: (tiles allSatisfy: [ :id |
@@ -107,8 +107,8 @@ PVSpirvValidatorTest >> testEveryWorkgroupVariableIsNamedByTheEntryPoint [
 PVSpirvValidatorTest >> testExamplesCoverBothVerdicts [
 	"The two one-click examples must stay on opposite sides of the verdict."
 	PVSpirvValidator isAvailable ifFalse: [ self skip ].
-	self assert: PVSpirvValidator exampleValidatorOnVectorAddKernel isValid.
-	self deny: PVSpirvValidator exampleValidatorOnScalarKernel isValid
+	self assert: PVValidationExamples validatorOnVectorAddKernel isValid.
+	self deny: PVValidationExamples validatorOnScalarKernel isValid
 ]
 
 { #category : 'tests - lookup' }
@@ -204,10 +204,10 @@ PVSpirvValidatorTest >> testLocalSizeFromWordsReadsTheDeclaredWorkgroup [
 	"Decoded from the module, not asked of the annotation: this is what the driver sees."
 
 	self
-		assert: PVSpirvValidator exampleValidatorOnMatmulKernel localSizeFromWords
+		assert: PVValidationExamples validatorOnMatmulKernel localSizeFromWords
 		equals: #( 16 16 1 ).
 	self
-		assert: PVSpirvValidator exampleValidatorOnComputeLoopKernel localSizeFromWords
+		assert: PVValidationExamples validatorOnComputeLoopKernel localSizeFromWords
 		equals: PVTypeAnnotation defaultLocalSize
 ]
 
@@ -270,7 +270,7 @@ PVSpirvValidatorTest >> testSubgroupDotKernelValidates [
 	 what states the reduction was encoded the way the specification asks."
 
 	PVSpirvValidator isAvailable ifFalse: [ ^ self skip ].
-	self assert: PVSpirvValidator exampleValidatorOnSubgroupDotKernel isValid
+	self assert: PVValidationExamples validatorOnSubgroupDotKernel isValid
 ]
 
 { #category : 'tests' }
@@ -310,7 +310,7 @@ PVSpirvValidatorTest >> testVariableCountInStorageClassSeesTheSharedTiles [
 
 	| tiled plain |
 	tiled := PVSpirvValidator on: PVTiledMatmulKernel new spirv.
-	plain := PVSpirvValidator exampleValidatorOnMatmulKernel.
+	plain := PVValidationExamples validatorOnMatmulKernel.
 	self
 		assert: (tiled variableCountInStorageClass: SpvStorageClass workgroup)
 		equals: PVTiledMatmulKernel tileCount.

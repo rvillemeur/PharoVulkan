@@ -29,6 +29,15 @@ PVTriangleScene class >> bytesPerFloat [
 ]
 
 { #category : 'constants' }
+PVTriangleScene class >> exampleExtent [
+	"The extent each concrete scene's example renders at. A window scene wants a size a person
+	 can see; an offscreen scene wants one a test can read every pixel of, so there is no
+	 sensible value here."
+
+	^ self subclassResponsibility
+]
+
+{ #category : 'constants' }
 PVTriangleScene class >> floatsPerVertex [
 	"x and y in clip space, then r, g and b."
 

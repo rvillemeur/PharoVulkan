@@ -17,6 +17,14 @@ Class {
 	#tag : 'Bindings'
 }
 
+{ #category : 'constants' }
+VkBufferImageCopy class >> exampleExtent [
+	"A non-square extent, so the example cannot hide a width and a height written to each
+	 other's field."
+
+	^ 3 @ 2
+]
+
 { #category : 'field definition' }
 VkBufferImageCopy class >> fieldsDesc [
 	"The three nested structures are carried by value, not by pointer, so they are declared by

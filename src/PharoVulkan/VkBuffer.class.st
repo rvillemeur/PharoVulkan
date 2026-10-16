@@ -27,6 +27,13 @@ VkBuffer class >> byteMask [
 	^ 16rFF
 ]
 
+{ #category : 'constants' }
+VkBuffer class >> exampleByteSize [
+	"Four floats: small enough that every row of the capacity view reads at a glance."
+
+	^ 16
+]
+
 { #category : 'factory' }
 VkBuffer class >> on: aDevice size: byteSize usage: usageFlags [
     ^ self new initializeDevice: aDevice size: byteSize usage: usageFlags

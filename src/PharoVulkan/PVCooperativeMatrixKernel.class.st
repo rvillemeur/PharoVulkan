@@ -37,6 +37,26 @@ PVCooperativeMatrixKernel class >> entryPointName [
 ]
 
 { #category : 'constants' }
+PVCooperativeMatrixKernel class >> exampleIdentityMatrix [
+	"Row major identity of the reported order: multiplying by it leaves the other matrix
+	 alone, so a wrong row or column order shows up at a glance."
+
+	| order |
+	order := self matrixOrder.
+	^ (0 to: self elementCount - 1) collect: [ :each |
+		  each \\ order = (each // order)
+			  ifTrue: [ 1.0 ]
+			  ifFalse: [ 0.0 ] ]
+]
+
+{ #category : 'constants' }
+PVCooperativeMatrixKernel class >> exampleRampMatrix [
+	"Row major, one value per element, small enough that halves carry them exactly."
+
+	^ (1 to: self elementCount) collect: [ :each | each / 8.0 ]
+]
+
+{ #category : 'constants' }
 PVCooperativeMatrixKernel class >> firstElementIndex [
 	"The matrices fill their buffers from the start: one tile per dispatch."
 

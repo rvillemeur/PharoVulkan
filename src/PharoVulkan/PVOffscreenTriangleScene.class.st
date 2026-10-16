@@ -56,6 +56,14 @@ PVOffscreenTriangleScene class >> dominantChannelOfColour: aColour [
 ]
 
 { #category : 'constants' }
+PVOffscreenTriangleScene class >> exampleExtent [
+	"Big enough that a probe a quarter of the way in from a vertex lands two pixels clear of
+	 the edge, small enough that reading every pixel in a test stays quick."
+
+	^ 32 @ 32
+]
+
+{ #category : 'constants' }
 PVOffscreenTriangleScene class >> fullChannel [
 	"What an 8-bit unsigned normalised channel reads at 1.0."
 

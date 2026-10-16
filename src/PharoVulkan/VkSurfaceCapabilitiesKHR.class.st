@@ -23,6 +23,14 @@ Class {
 	#tag : 'Bindings'
 }
 
+{ #category : 'constants' }
+VkSurfaceCapabilitiesKHR class >> exampleMinImageCount [
+	"The fewest images a surface can demand and still let one frame be presented while the
+	 next is drawn. Real drivers report two or three."
+
+	^ 2
+]
+
 { #category : 'field definition' }
 VkSurfaceCapabilitiesKHR class >> fieldsDesc [
 	"The capabilities the driver reports for a surface. The three extents are VkExtent2D
