@@ -164,6 +164,26 @@ example itself. The recommendation is that it goes to `PharoVulkan-Compute` and 
 `PVGlslTriangleScene` goes to `PharoVulkan-Examples`. Its name should then say what it is, but
 renaming it is a separate unit and not part of the split.
 
+**D5 — the policy constants the structures ask for.** Four report methods in the bindings ask a
+resource class for the rule they report against, which is the view rule working as intended — a
+report that restates a rule can disagree with it — but it makes `Bindings` depend on `Core` and on
+`Graphics`:
+`VkRenderPassBeginInfo >> clearColorComponents` and `passRows` read
+`VkCommandBuffer clearComponentCount` and `clearComponentByteCount`;
+`VkSurfaceCapabilitiesKHR >> surfaceRows` reads `VkSwapchain unlimitedImageCount` and
+`VkSwapchain imageCountFor:`;
+`VkSurfaceFormatKHR >> formatRows` reads `VkSurface formatRenderedIn`;
+`VkSwapchainCreateInfoKHR >> swapchainRows` reads `VkSwapchain presentModeNameFor:` and
+`VkSwapchain clipObscuredPixels`.
+The recommendation is to move each value down to the layer both sides sit above rather than to
+allow the edge: the policy constants to `VkRenderConfig`, which already holds
+`sharingModeExclusive` for exactly this reason; the present mode names to a constants class of
+their own, since no `VkPresentMode` exists yet and the values currently live on `VkSwapchain`; and
+`imageCountFor:` inverted, so that the capabilities structure answers the count it allows and
+`VkSwapchain` delegates to it. This was found by the scan after unit 1, when the example methods
+stopped hiding it. Take it in unit 8, with `VkSwapchain` and `VkSurface` still answering the same
+values through delegation so that nothing outside the bindings changes.
+
 ## What a unit looks like
 
 One package, moved whole:
@@ -188,7 +208,7 @@ blame survives either way.
 
 Leaf first, so each commit moves classes whose dependents are already where they will stay.
 
-1. **Examples.** Create `PharoVulkan-Examples`. Move the 130 example and `open…` methods to the
+1. **Examples — done 16 October 2026.** Create `PharoVulkan-Examples`. Move the 130 example and `open…` methods to the
    protocol `*PharoVulkan-Examples` on the classes that own them, which makes them extension
    methods of the new package without moving a class. Move `PVGlslTriangleScene`. Decide D4 and
    move `PVKernelExamples` to the compute side. Twenty of the moved methods are helper constants
@@ -222,6 +242,34 @@ Leaf first, so each commit moves classes whose dependents are already where they
 11. **Documentation.** Replace the package table in `CLAUDE.md` with the one above, say that each
     package's allowed dependencies are enforced by `PVArchitectureTest` rather than by the table,
     and update `doc/architecture.md` and the `README.md` load instructions to name the groups.
+
+## What unit 1 did
+
+Done 16 October 2026.
+
+`PharoVulkan-Examples` created, with a package comment saying that nothing may depend on it.
+131 methods reclassified to the protocol `*PharoVulkan-Examples` over 96 classes: the 111 carrying
+`<sampleInstance>` and the 20 `example…` helper constants they read. The project has 112 sample
+instance methods in all; the one not reclassified is
+`PVGlslTriangleScene class >> renderTriangle`, whose class moved into the package itself. The helpers moved because
+every sender is either an example or a test; no production method reads one.
+`PVGlslTriangleScene` moved to the new package, tag `Examples` — it is a demonstration scene, and
+nothing in the renderer subclasses it or refers to it.
+`PVKernelExamples` moved the other way, from the `Example` tag to `Compute`, which settles decision
+D4: twenty production references compile its kernel sources, so it is a kernel library and not an
+example. The `Example` tag is gone.
+
+Suite after the move: 593 tests, no failures, no errors, over the nine concrete test classes.
+Critics on the two moved classes report only what they reported before the move — argument counts
+and length on the tiled matmul kernel sources, which is inherent to a kernel that takes its buffers
+as arguments.
+
+The scan was re-run with each method attributed to the package that now owns it, which is what
+turned up decision D5: the layering violations fell from roughly ninety references to seven, and the
+seven are D2, D3 and the four report methods of D5. Every `Bindings → Core`, `Bindings → Graphics`,
+`Bindings → Compute`, `Bindings → Compiler`, `SPIRV → Core` and `SPIRV → Compute` reference that the
+first scan found was an example, and all of them are now `Examples → …` edges, which the layering
+allows.
 
 ## Rules this plan sets
 
