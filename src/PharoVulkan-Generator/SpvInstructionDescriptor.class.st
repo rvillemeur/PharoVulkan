@@ -13,9 +13,9 @@ Class {
 		'operands',
 		'capabilities'
 	],
-	#category : 'PharoVulkan-Generator',
-	#package : 'PharoVulkan',
-	#tag : 'Generator'
+	#category : 'PharoVulkan-Generator-SPIRV',
+	#package : 'PharoVulkan-Generator',
+	#tag : 'SPIRV'
 }
 
 { #category : 'accessing' }

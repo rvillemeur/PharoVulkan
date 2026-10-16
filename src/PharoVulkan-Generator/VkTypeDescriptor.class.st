@@ -13,9 +13,9 @@ Class {
 		'requires',
 		'alias'
 	],
-	#category : 'PharoVulkan-Generator',
-	#package : 'PharoVulkan',
-	#tag : 'Generator'
+	#category : 'PharoVulkan-Generator-Vulkan',
+	#package : 'PharoVulkan-Generator',
+	#tag : 'Vulkan'
 }
 
 { #category : 'accessing' }
