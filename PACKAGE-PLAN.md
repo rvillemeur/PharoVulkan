@@ -208,13 +208,16 @@ blame survives either way.
 
 Leaf first, so each commit moves classes whose dependents are already where they will stay.
 
-1. **Examples — done 16 October 2026.** Create `PharoVulkan-Examples`. Move the 130 example and `open…` methods to the
-   protocol `*PharoVulkan-Examples` on the classes that own them, which makes them extension
-   methods of the new package without moving a class. Move `PVGlslTriangleScene`. Decide D4 and
-   move `PVKernelExamples` to the compute side. Twenty of the moved methods are helper constants
-   named `example…` that the examples read — `exampleExtent`, `exampleElementCount` and the like —
-   and they move with the examples that use them unless a test or production method reads them,
-   which must be checked per method.
+1. **Examples — done 16 October 2026.** Create `PharoVulkan-Examples` and, inside it, one example
+   class per subject — `VkPipelineExamples`, `VkContextExamples`, `PVValidationExamples` and so on —
+   each holding as class-side methods the examples of the thing it is named after. Move every
+   `<sampleInstance>` method into the example class of its group, dropping the `example` prefix from
+   the selector and sending to the subject class where the method used to send to `self`. Move
+   `PVGlslTriangleScene`. Decide D4 and move `PVKernelExamples` to the compute side. Two kinds of
+   method stay where they are: the twenty `example…` fixture constants, because they are read by
+   tests and one of them is a `subclassResponsibility` the scene hierarchy overrides, and
+   `renderTriangle`, which `doc/glsl-api-tutorial.md` documents as the method a user writes on their
+   own scene.
 2. **Generator.** Thirteen classes, two outgoing edges, nothing depends on it.
 3. **SPIRV.** Fifty classes. Take D1 here if the recommendation stands, because `PVTypeError`
    lands in this package.
@@ -247,22 +250,61 @@ Leaf first, so each commit moves classes whose dependents are already where they
 
 Done 16 October 2026.
 
-`PharoVulkan-Examples` created, with a package comment saying that nothing may depend on it.
-131 methods reclassified to the protocol `*PharoVulkan-Examples` over 96 classes: the 111 carrying
-`<sampleInstance>` and the 20 `example…` helper constants they read. The project has 112 sample
-instance methods in all; the one not reclassified is
-`PVGlslTriangleScene class >> renderTriangle`, whose class moved into the package itself. The helpers moved because
-every sender is either an example or a test; no production method reads one.
-`PVGlslTriangleScene` moved to the new package, tag `Examples` — it is a demonstration scene, and
-nothing in the renderer subclasses it or refers to it.
+`PharoVulkan-Examples` created, with a package comment saying that nothing may depend on it, and
+seventeen example classes created inside it, each with a class comment that says what the group
+covers and what a click actually does:
+
+| Example class | Tag | Examples | Subject |
+|---|---|---|---|
+| `VkDeviceRequestExamples` | Bindings | 4 | what this project asks of an instance and a device |
+| `VkFeatureStructureExamples` | Bindings | 11 | the feature and property structures a driver fills |
+| `VkMemoryExamples` | Bindings | 5 | buffer requests, allocations and requirements |
+| `VkDescriptorExamples` | Bindings | 6 | pools, layouts, bindings and writes |
+| `VkCommandExamples` | Bindings | 8 | one submission, from allocation to fence |
+| `VkPipelineExamples` | Bindings | 16 | every structure a pipeline is created from |
+| `VkRenderPassExamples` | Bindings | 8 | the offscreen colour pass, attachment outwards |
+| `VkSwapchainExamples` | Bindings | 5 | the window path, with no display touched |
+| `VkContextExamples` | Core | 7 | what this machine answers about itself |
+| `VkResourceExamples` | Compute | 6 | live driver objects a kernel is dispatched through |
+| `PVComputeExamples` | Compute | 5 | the compute path at DSL level |
+| `PVBenchmarkExamples` | Compute | 6 | the examples that measure rather than demonstrate |
+| `PVCooperativeMatrixExamples` | Compute | 6 | the device product and the host twin it is checked against |
+| `SpvTypeExamples` | SPIRV | 2 | the SPIR-V types that carry a shape |
+| `PVValidationExamples` | Compiler | 10 | `spirv-val` over every kernel this project compiles |
+| `PVCompilerExamples` | Compiler | 3 | what the compiler saw and what it made |
+| `PVSceneExamples` | Graphics | 2 | the offscreen graphics path, end to end |
+
+110 `<sampleInstance>` methods moved into them. Each move drops the `example` prefix from the
+selector and rewrites what was `self` to the subject class, so `VkDeviceCreateInfo class >>
+exampleGraphicsDeviceRequest` became `VkDeviceRequestExamples class >> graphicsDeviceRequest`
+sending to `VkDeviceCreateInfo`. Thirty-nine senders, all in tests and in other examples, were
+rewritten with the same parse-tree rewriter rather than by hand. Three selectors were renamed
+further than the prefix drop, because dropping it alone would have collided or read badly inside
+the group: `poolForOneSetOfThreeDescriptors`, `allocationForOneSetOfThreeBindings` and
+`layoutRequestForTwoStorageBuffers`.
+
+Twenty-one methods stayed on their own classes and were reclassified back out of
+`*PharoVulkan-Examples`: the twenty `example…` fixture constants, which tests read and which
+`PVTriangleScene class >> exampleExtent` declares as a `subclassResponsibility` with two overrides,
+and `PVHelloTriangleScene class >> renderTriangle`. No extension method of
+`PharoVulkan-Examples` is left; the package is seventeen classes it defines and nothing else.
+
+`PVGlslTriangleScene` moved to the new package, tag `Graphics` — it is a demonstration scene, and
+nothing in the renderer subclasses it or refers to it. Its own `renderTriangle` stayed on it, for
+the same documentation reason.
 `PVKernelExamples` moved the other way, from the `Example` tag to `Compute`, which settles decision
 D4: twenty production references compile its kernel sources, so it is a kernel library and not an
 example. The `Example` tag is gone.
 
-Suite after the move: 593 tests, no failures, no errors, over the nine concrete test classes.
-Critics on the two moved classes report only what they reported before the move — argument counts
-and length on the tiled matmul kernel sources, which is inherent to a kernel that takes its buffers
-as arguments.
+Gates. All 111 examples in the package were run one after another, and every one answered without
+raising. Suite after the move: 593 tests, no failures, no errors, over the nine concrete test
+classes. Critics on the new package report one rule, `ReClassNotReferencedRule`, against the seven
+example classes no test happens to name; `ManifestPharoVulkanExamples` declares that as a false
+positive, with the reason that an example class is a click target and a reference from production
+code would mean an example had become part of the library. The MCP `run_critics` call reads the
+rules rather than the manifest, so it still lists them; the Critics browser does not. One real
+critique was fixed: `VkSwapchainExamples class >> requestForAWindowSurface` named its own class
+where the sender rewrite had put the class name, and now sends to `self`.
 
 The scan was re-run with each method attributed to the package that now owns it, which is what
 turned up decision D5: the layering violations fell from roughly ninety references to seven, and the
@@ -276,10 +318,16 @@ allows.
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
   ensurePackage: '…')` and `cls packageTag: …`. Editing `src/` or the `#package:` pragma in a Tonel
   file is not a way to move a class.
-- **An example is an extension method of the examples package.** Moving an example out of the
-  class it demonstrates would break the one click the standards ask for, so the method stays on the
-  class and changes protocol to `*PharoVulkan-Examples`. The package owns it; the class still
-  answers it.
+- **An example lives in an example class.** The examples of a subject are class-side methods of a
+  class named after that subject — `VkPipelineExamples`, `PVBenchmarkExamples` — which lives in
+  `PharoVulkan-Examples` under a tag mirroring the package the subject came from. One click from
+  the browser still runs an example, and the subject class is left holding only the library. An
+  extension method on the subject class is not a way to do this: the package then owns a method the
+  class still declares, which is what a reader sees as the class's own protocol.
+- **What stays on the subject class.** A constant the tests read, and a method the documentation
+  tells a user to write themselves, belong to the class rather than to the examples. The fixture
+  constants named `example…` and `renderTriangle` stayed for those two reasons; everything carrying
+  `<sampleInstance>` moved.
 - **A package's allowed dependencies are declared once.** `PVArchitectureTest` holds the sets, and
   a new edge is added there deliberately or not at all.
 - **A shared value gets its own home.** The rule `LAYOUT-PLAN.md` recorded for
