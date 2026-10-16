@@ -7,9 +7,9 @@ Class {
 	#instVars : [
 		'ctx'
 	],
-	#category : 'PharoVulkan-Tests-Core',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-Tests-Tests',
+	#package : 'PharoVulkan-Core-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'private' }

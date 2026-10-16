@@ -25,8 +25,16 @@ BaselineOfPharoVulkan >> baseline: spec [
 	 requires Compute for the kernel sources its shaders are compiled from. All of these are part
 	 of 'default': a user of this project opens a device, runs something on it and draws. The
 	 generator and the examples are left out of 'default' because a user of the bindings needs
-	 neither. Loading 'tests' brings the examples in, because the test classes read the example
-	 classes."
+	 neither."
+	"There is one test package per code package that has tests, named for the package it covers
+	 and ending in -Tests, which is the convention Pharo's own tools and critics expect. Each
+	 requires the package it covers and whatever else its tests build on, which for most of them
+	 includes the examples the test classes read. PharoVulkan-Compute-Tests also requires
+	 PharoVulkan-Compiler-Tests: the control-flow shapes the recogniser accepts are written down
+	 as kernels there, and running two of them on a device is how the compute tests show that
+	 acceptance is real. PharoVulkan-Tests survives as a package of one class, because a rule
+	 about how packages may depend on each other belongs to no single package; it requires the six
+	 so that loading it loads everything the rule is about."
 
 	<baseline>
 	spec for: #common do: [
@@ -37,8 +45,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 			with: [ spec requires: #( 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Core'
 			with: [
-				spec requires:
-					#( 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' ) ];
+				spec requires: #( 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Compute'
 			with: [
 				spec requires:
@@ -51,15 +58,47 @@ BaselineOfPharoVulkan >> baseline: spec [
 					   'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Generator'
 			with: [
-				spec requires:
-					#( 'PharoVulkan-SPIRV' 'PharoVulkan-Bindings' ) ];
+				spec requires: #( 'PharoVulkan-SPIRV' 'PharoVulkan-Bindings' ) ];
 			package: 'PharoVulkan-Examples'
 			with: [ spec requires: #( 'PharoVulkan-Graphics' ) ];
+			package: 'PharoVulkan-Bindings-Tests'
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compute'
+					   'PharoVulkan-Graphics' 'PharoVulkan-Generator'
+					   'PharoVulkan-Examples' ) ];
+			package: 'PharoVulkan-SPIRV-Tests'
+			with: [
+				spec requires:
+					#( 'PharoVulkan-SPIRV' 'PharoVulkan-Core' 'PharoVulkan-Compute' ) ];
+			package: 'PharoVulkan-Compiler-Tests'
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' 'PharoVulkan-Compute'
+					   'PharoVulkan-Examples' ) ];
+			package: 'PharoVulkan-Core-Tests'
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Core' 'PharoVulkan-Bindings' 'PharoVulkan-Compute'
+					   'PharoVulkan-SPIRV' 'PharoVulkan-Examples' ) ];
+			package: 'PharoVulkan-Compute-Tests'
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Compute' 'PharoVulkan-Bindings' 'PharoVulkan-Core'
+					   'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' 'PharoVulkan-Examples'
+					   'PharoVulkan-Compiler-Tests' ) ];
+			package: 'PharoVulkan-Graphics-Tests'
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Graphics' 'PharoVulkan-Bindings' 'PharoVulkan-Core'
+					   'PharoVulkan-Compute' 'PharoVulkan-Compiler'
+					   'PharoVulkan-Examples' ) ];
 			package: 'PharoVulkan-Tests'
 			with: [
 				spec requires:
-					#( 'PharoVulkan-Graphics' 'PharoVulkan-Examples'
-					   'PharoVulkan-Generator' ) ].
+					#( 'PharoVulkan-Bindings-Tests' 'PharoVulkan-SPIRV-Tests'
+					   'PharoVulkan-Compiler-Tests' 'PharoVulkan-Core-Tests'
+					   'PharoVulkan-Compute-Tests' 'PharoVulkan-Graphics-Tests' ) ].
 		spec
 			group: 'bindings' with: #( 'PharoVulkan-Bindings' );
 			group: 'spirv' with: #( 'PharoVulkan-SPIRV' );
@@ -74,5 +113,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 			group: 'generator' with: #( 'PharoVulkan-Generator' );
 			group: 'examples' with: #( 'PharoVulkan-Examples' );
 			group: 'tests'
-			with: #( 'default' 'PharoVulkan-Examples' 'PharoVulkan-Tests' ) ]
+			with:
+				#( 'default' 'PharoVulkan-Examples' 'PharoVulkan-Generator'
+				   'PharoVulkan-Tests' ) ]
 ]

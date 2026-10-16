@@ -8,9 +8,9 @@ touching production code or needing a device that reports them.
 Class {
 	#name : 'PVQueueFamilyStub',
 	#superclass : 'VkPhysicalDevice',
-	#category : 'PharoVulkan-Tests-Core',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Core'
+	#category : 'PharoVulkan-Core-Tests-Fixtures',
+	#package : 'PharoVulkan-Core-Tests',
+	#tag : 'Fixtures'
 }
 
 { #category : 'factory' }

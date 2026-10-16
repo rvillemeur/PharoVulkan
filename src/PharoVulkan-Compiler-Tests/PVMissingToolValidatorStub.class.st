@@ -4,9 +4,9 @@ Test stub standing in for a machine with no spirv-val installed: its class-side 
 Class {
 	#name : 'PVMissingToolValidatorStub',
 	#superclass : 'PVSpirvValidator',
-	#category : 'PharoVulkan-Tests-Compiler',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Compiler'
+	#category : 'PharoVulkan-Compiler-Tests-Fixtures',
+	#package : 'PharoVulkan-Compiler-Tests',
+	#tag : 'Fixtures'
 }
 
 { #category : 'lookup' }

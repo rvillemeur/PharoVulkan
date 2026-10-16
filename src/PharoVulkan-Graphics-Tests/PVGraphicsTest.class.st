@@ -4,9 +4,9 @@ SUnit test suite for the graphics path. Verifies shader SPIR-V construction (bui
 Class {
 	#name : 'PVGraphicsTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-Graphics',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Tests-Tests',
+	#package : 'PharoVulkan-Graphics-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'coverage' }
@@ -55,11 +55,12 @@ PVGraphicsTest class >> deviceReachableClasses [
 
 { #category : 'coverage' }
 PVGraphicsTest class >> deviceTestMethods [
-	"Every method of the test package that builds a device context, test and helper alike. The
+	"Every method of the test packages that builds a device context, test and helper alike. The
 	 helpers count: a test reaches the device through windowSceneDo: and its siblings."
 
-	^ ((PackageOrganizer default packageNamed: self testPackageName)
-		   definedClasses gather: [ :each | each methods , each class methods ])
+	^ ((self testPackageNames gather: [ :each |
+		    (PackageOrganizer default packageNamed: each) definedClasses ])
+		   gather: [ :each | each methods , each class methods ])
 		  select: [ :method |
 			  self deviceGatewaySelectors anySatisfy: [ :selector |
 				  method messages includes: selector ] ]
@@ -143,23 +144,40 @@ PVGraphicsTest class >> projectClassesReferencedBy: aCompiledMethod [
 ]
 
 { #category : 'coverage' }
-PVGraphicsTest class >> projectPackageNames [
-	"Every package of this project that holds code under test. The split gave the project eight
-	 code packages where it had one, so the walk below asks the organiser for them by prefix
-	 rather than naming one package: a class that moves between them stays project code, and a
-	 ninth package is covered the day it is created. The test package itself is left out, because
-	 the walk starts there and asks what the tests reach."
+PVGraphicsTest class >> projectPackageNamePrefix [
+	"What every package of this project is called first. The walks below ask the organiser by
+	 prefix rather than naming the packages one at a time, so a package added to the project is
+	 read the day it is created."
 
-	^ (PackageOrganizer default packages
-		   select: [ :each | each name beginsWith: 'PharoVulkan' ])
-		  collect: [ :each | each name ] thenReject: [ :each |
-		  each = self testPackageName asString ]
+	^ 'PharoVulkan'
 ]
 
 { #category : 'coverage' }
-PVGraphicsTest class >> testPackageName [
+PVGraphicsTest class >> projectPackageNames [
+	"Every package of this project that holds code under test. The test packages are left out,
+	 because the walk starts there and asks what the tests reach."
 
-	^ #'PharoVulkan-Tests'
+	^ (PackageOrganizer default packages select: [ :each |
+		   (each name beginsWith: self projectPackageNamePrefix) and: [ 
+			   (each name endsWith: self testPackageNameSuffix) not ] ])
+		  collect: [ :each | each name ]
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> testPackageNameSuffix [
+	"What every test package of this project is called last. Pharo's own convention, which
+	 Renraku checks, is that a package holding test classes ends in this, so asking the organiser
+	 for the suffix finds the test packages and nothing else. A seventh test package is read the
+	 day it is created."
+
+	^ '-Tests'
+]
+
+{ #category : 'coverage' }
+PVGraphicsTest class >> testPackageNames [
+	^ (PackageOrganizer default packages select: [ :each |
+		   (each name beginsWith: self projectPackageNamePrefix) and: [ 
+			   each name endsWith: self testPackageNameSuffix ] ]) collect: [ :each | each name ]
 ]
 
 { #category : 'private' }
@@ -1203,6 +1221,20 @@ PVGraphicsTest >> testSwapchainViewReportsEveryImageWithoutMutating [
 		assert: scene swapchainReport
 			  = { 'swapchain' -> PVHelloTriangleScene releasedLabel }
 		description: 'a released scene must report the release, not a swapchain it dropped'
+]
+
+{ #category : 'tests - coverage' }
+PVGraphicsTest >> testTheCoveragePopulationsAreNotEmpty [
+	"The coverage test above compares two collections, so it passes when both are empty, and
+	 unit 7 of the package split made them empty for a whole commit by moving the graphics
+	 classes out of the package this class asked for them by name. Nothing failed, because there
+	 was nothing left to fail. This states the populations that test is built on: graphics classes
+	 to cover, and test methods that reach a device to cover them from. A move that empties either
+	 one fails here instead of passing quietly."
+
+	self deny: self class graphicsClasses isEmpty.
+	self deny: self class deviceTestMethods isEmpty.
+	self deny: self class projectClasses isEmpty
 ]
 
 { #category : 'tests' }

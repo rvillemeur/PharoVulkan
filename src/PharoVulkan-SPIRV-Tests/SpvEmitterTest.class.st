@@ -4,9 +4,9 @@ Tests for SpvModuleEmitter (Phase 3). Verifies that IR nodes lower correctly to 
 Class {
 	#name : 'SpvEmitterTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-SPIRV',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'SPIRV'
+	#category : 'PharoVulkan-SPIRV-Tests-Tests',
+	#package : 'PharoVulkan-SPIRV-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'helpers' }

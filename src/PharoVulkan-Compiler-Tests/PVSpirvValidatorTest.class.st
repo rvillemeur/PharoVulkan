@@ -4,9 +4,9 @@ Tests PVSpirvValidator: the PATH lookup for the spirv-val executable, the verdic
 Class {
 	#name : 'PVSpirvValidatorTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-Compiler',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Compiler'
+	#category : 'PharoVulkan-Compiler-Tests-Tests',
+	#package : 'PharoVulkan-Compiler-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'tests' }

@@ -4,9 +4,9 @@ Test stub standing in for a device that reports no subgroup arithmetic: availabl
 Class {
 	#name : 'PVNoSubgroupArithmeticStub',
 	#superclass : 'PVSubgroupDotProduct',
-	#category : 'PharoVulkan-Tests-Compute',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Tests-Fixtures',
+	#package : 'PharoVulkan-Compute-Tests',
+	#tag : 'Fixtures'
 }
 
 { #category : 'querying' }

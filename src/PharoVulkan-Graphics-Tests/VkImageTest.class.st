@@ -6,9 +6,9 @@ Separate from VkCoreTest for two reasons: every test here builds VkContext offsc
 Class {
 	#name : 'VkImageTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-Graphics',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Tests-Tests',
+	#package : 'PharoVulkan-Graphics-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'tests - image' }

@@ -6,9 +6,9 @@ and end-to-end construction of a compute vector-add SPIR-V module.
 Class {
 	#name : 'SpvBuilderTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-SPIRV',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'SPIRV'
+	#category : 'PharoVulkan-SPIRV-Tests-Tests',
+	#package : 'PharoVulkan-SPIRV-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'helpers' }

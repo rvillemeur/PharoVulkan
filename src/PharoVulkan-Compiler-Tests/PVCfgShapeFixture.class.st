@@ -4,9 +4,9 @@ Kernels with known control-flow graph shapes, used to pin the exact boundary of 
 Class {
 	#name : 'PVCfgShapeFixture',
 	#superclass : 'Object',
-	#category : 'PharoVulkan-Tests-Compiler',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Compiler'
+	#category : 'PharoVulkan-Compiler-Tests-Fixtures',
+	#package : 'PharoVulkan-Compiler-Tests',
+	#tag : 'Fixtures'
 }
 
 { #category : 'recognised shapes' }

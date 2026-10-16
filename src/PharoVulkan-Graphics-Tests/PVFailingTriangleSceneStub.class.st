@@ -1,12 +1,18 @@
+"
+A scene whose initialisation always raises, used to show that PVHelloTriangleScene class >>
+prepare:backendWindow: destroys a half-initialised scene instead of stranding the Vulkan objects
+it had already created. Counts the destroy calls on the class side, because the instance the
+raise curtails is never handed to the test. Key methods: resetDestroyCount, destroyCount.
+"
 Class {
 	#name : 'PVFailingTriangleSceneStub',
 	#superclass : 'PVHelloTriangleScene',
 	#classInstVars : [
 		'destroyCount'
 	],
-	#category : 'PharoVulkan-Tests-Graphics',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Graphics'
+	#category : 'PharoVulkan-Graphics-Tests-Fixtures',
+	#package : 'PharoVulkan-Graphics-Tests',
+	#tag : 'Fixtures'
 }
 
 { #category : 'accessing' }
@@ -24,7 +30,7 @@ PVFailingTriangleSceneStub class >> resetDestroyCount [
 	destroyCount := 0
 ]
 
-{ #category : 'initialization' }
+{ #category : 'releasing' }
 PVFailingTriangleSceneStub >> destroy [
 	self class noteDestroy.
 	super destroy

@@ -6,9 +6,9 @@ without requiring libvulkan to be installed.
 Class {
 	#name : 'VkBindingsTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-Bindings',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Bindings'
+	#category : 'PharoVulkan-Bindings-Tests-Tests',
+	#package : 'PharoVulkan-Bindings-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'private' }

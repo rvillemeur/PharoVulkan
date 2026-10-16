@@ -4,9 +4,9 @@ SUnit test suite for the Pharo→SPIR-V compiler pipeline. Covers each stage: by
 Class {
 	#name : 'PVCompilerTest',
 	#superclass : 'TestCase',
-	#category : 'PharoVulkan-Tests-Compiler',
-	#package : 'PharoVulkan-Tests',
-	#tag : 'Compiler'
+	#category : 'PharoVulkan-Compiler-Tests-Tests',
+	#package : 'PharoVulkan-Compiler-Tests',
+	#tag : 'Tests'
 }
 
 { #category : 'helpers' }
