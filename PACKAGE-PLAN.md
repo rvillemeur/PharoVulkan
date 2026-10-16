@@ -64,7 +64,7 @@ manifest.
 | Package | Classes | Depends on |
 |---------|---------|------------|
 | `PharoVulkan-Bindings` | 144 | nothing |
-| `PharoVulkan-SPIRV` | 50 | nothing |
+| `PharoVulkan-SPIRV` | 51 | nothing |
 | `PharoVulkan-Compiler` | 32 | SPIRV |
 | `PharoVulkan-Core` | 16 | Bindings |
 | `PharoVulkan-Graphics` | 17 | Bindings, Core, Compiler, SPIRV, Compute |
@@ -255,7 +255,7 @@ Leaf first, so each commit moves classes whose dependents are already where they
    `renderTriangle`, which `doc/glsl-api-tutorial.md` documents as the method a user writes on their
    own scene.
 2. **Generator — done 16 October 2026.** Thirteen classes, two outgoing edges, nothing depends on it.
-3. **SPIRV.** Fifty classes. Take D1 here if the recommendation stands, because `PVTypeError`
+3. **SPIRV — done 16 October 2026.** Fifty-one classes. D1 taken here, because `PVTypeError`
    lands in this package.
 4. **Compiler.** Thirty-two classes, including the `Compiler-Pipeline` tag. Take D3 here.
 5. **Core.** Seventeen classes, including the six taken out of the `Graphics` tag. Take D2 here.
@@ -271,10 +271,13 @@ Leaf first, so each commit moves classes whose dependents are already where they
    `VkBindingsTest` further is not part of this unit: it is one test class for one package, which
    is what the convention asks for, and the excessive-methods critique on it is a separate
    question.
-10. **Baseline and architecture test.** Rewrite `BaselineOfPharoVulkan` with the eight code
-    packages, the six test packages, real `requires:` edges matching the table above, and groups:
-    `bindings`, `spirv`, `compiler` (SPIR-V plus compiler, no driver code), `compute`, `graphics`,
-    `default` (everything but the generator and the examples), `examples`, `tests`. Write
+10. **Baseline and architecture test.** The baseline is no longer rewritten once at the end: each
+    unit declares the package it creates as part of that unit, so the image on disk is loadable at
+    every commit rather than only at the last one. What is left here is the final shape —
+    `BaselineOfPharoVulkan` holding the eight code packages, the six test packages, real
+    `requires:` edges matching the table above, and groups: `bindings`, `spirv`, `compiler`
+    (SPIR-V plus compiler, no driver code), `compute`, `graphics`, `default` (everything but the
+    generator and the examples), `examples`, `tests` — and the architecture test. Write
     `PVArchitectureTest`: one test per package asserting that its outgoing references stay inside
     its allowed set, with the allowed sets declared on the class side so that adding an edge means
     stating it. It must read each method's literals **and** the literals of every block inside it,
@@ -392,6 +395,71 @@ the literal has never been reached in anger; unit 8 makes it true, and should as
 `VkBindingsTest >> vkXmlPath` names the directory `'PharoVulkan'` for `vk.xml`, which is a path on
 disk rather than a package and is unaffected.
 
+## What unit 3 did
+
+Done 16 October 2026.
+
+`PharoVulkan-SPIRV` created with a package comment, holding fifty-one classes: the forty-nine of the
+`SPIRV` tag, plus `PVTypeError` by decision D1 and `SpvValidationError`, which the plan's count of
+fifty had missed. The package is flat no longer — Renraku reports a class with no tag, and fifty-one
+untagged classes is fifty-one critiques — so it carries seven tags: `Builder` (8: `SpvBuilder`,
+`SpvModule`, `SpvFunction`, `SpvBlock`, `SpvInstruction`, `SpvGlobalVariable`, `SpvConstantPool`,
+`SpvTypeRegistry`), `Types` (14: `SpvType` and its subclasses, with `SpvCooperativeMatrixShape`),
+`IR` (13: `SpvIRNode` and its subclasses), `Emitter` (2: `SpvModuleEmitter`, `SpvSerializer`),
+`Validator` (1: `SpvValidator`), `Constants` (11: the specification enumerations and `GlslStd450`)
+and `Exceptions` (2: `PVTypeError`, `SpvValidationError`).
+
+**D1 is settled, as recommended.** Every raiser of `PVTypeError` was read first: `VkBuffer >>
+elementsAs:`, `put:as:` and `VkBuffer class >> storageBuffer:of:on:` in `Core`; `PVBenchmark`,
+`PVCooperativeMatrix`, `PVSubgroupDotProduct`, `PVTiledMatmulComparison`, `PVPrecisionComparison`,
+`PVCooperativeMatrixKernel` and `PVKernelExamples` in `Compute`; `PVKernelCompiler`,
+`PVSPIRVEmitter` and `PVTypeInferencer` in `Compiler-Pipeline`. Three layers raise it, so it belongs
+below all three, which is this package. `SpvValidationError` is raised by `SpvValidator` alone and
+so has no decision to take. `VkError` stays in `Bindings`, and the `Exceptions` tag there now holds
+only it. The block-aware scan of the fifty-one classes found **no outgoing reference into any other
+PharoVulkan package**: the package is the leaf the target table says it is.
+
+`cls package:` leaves the class in the old package's tag. After the move, `PharoVulkan` still
+reported `Exceptions=3` and 228 defined classes rather than 226, because the two exceptions had been
+moved out of the package while the tag object kept its own list. `PackageTag >> removeClass:` on the
+old tag fixes it. Any later unit that moves a class out of a tag it shares with classes that stay
+must check the old tag afterwards, not just the new package.
+
+The baseline was rewritten here rather than at unit 10, as the three packages that exist now had to
+be loadable: `PharoVulkan-SPIRV` requiring nothing, `PharoVulkan` requiring it,
+`PharoVulkan-Generator` requiring both, `PharoVulkan-Examples` requiring `PharoVulkan`, and
+`PharoVulkan-Tests` requiring `PharoVulkan`, the examples and the generator, with groups `spirv`,
+`default`, `generator`, `examples` and `tests` — the examples are in `tests` because the test
+classes read them, and out of `default` because a user of the bindings needs neither them nor the
+generator.
+
+**A real bug the critics gate found.** `ReClassNotReferencedRule` did not report on `SpvDecoration`;
+it raised `'Instance of SmallInteger did not understand #isReferenced'`. The cause was ours:
+`SpvDecoration class >> binding` answered the decoration number 33, which hid `Class >> binding`,
+so asking that class for its binding answered an integer instead of the global variable holding the
+class. Every tool that reads a class reflectively failed on that one class. Fixed in the order the
+standards ask: `SpvBuilderTest >> testEveryClassOfTheSpirvPackageAnswersItsOwnBinding` was written
+first and seen to fail, the constant was renamed to `bindingDecoration` with a comment saying why it
+cannot carry the decoration's own name, the six senders were rewritten, and the test went green. The
+test asks every class of the package, so the next constant named after a reflection selector is
+caught by it. A sweep of all `PharoVulkan` packages for class-side methods that hide a `Class`,
+`Behavior` or `Object` selector found five others: `Vk class >> ffiLibrary` and `SDL2Vulkan class >>
+ffiLibrary` and `VkTypes class >> initialize` are the hooks uFFI and Pharo ask for, so they are
+right; `PVKernelCompiler class >> compile:` and `SpvMemorySemantics class >> release` hide
+`Behavior >> compile:` and `Object >> release` and are recorded below rather than changed here,
+because nothing is broken by them today.
+
+Suite 594, no failures, no errors — the 593 of the nine test classes plus the new one. Critics on the
+package: nineteen critiques, all code-level and none of them caused by the move — fourteen
+inconsistent method classifications on the `instruction` and `key` methods of the type lattice, two
+classes no sender names (`SpvIRBranch` and `SpvIRReturnValue`, which the block-aware scan confirms
+nothing in the image or the tests references at all), excessive methods on `SpvOpcode class`, which
+is a table of opcodes, excessive instance variables on `SpvModule`, and a temp read before written
+in `SpvSerializer >> emitAnnotations`, which relies on a block temp being nil and is not a bug.
+
+Found on the way past, for later rather than now: `SpvIRBranch` and `SpvIRReturnValue` are complete,
+commented, and reachable from nothing — the IR has two node kinds the compiler never builds.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
@@ -412,6 +480,14 @@ disk rather than a package and is unaffected.
 - **A shared value gets its own home.** The rule `LAYOUT-PLAN.md` recorded for
   `VkPipelineCreation` is what decisions D1 and D3 apply: when two layers need the same value, it
   belongs below both of them, not in whichever one wrote it first.
+- **The baseline names the package in the same unit that creates it.** A unit that creates a
+  package and leaves `BaselineOfPharoVulkan` naming only the old one leaves a repository that
+  cannot be loaded, because the new package's directory is not in the baseline. The `requires:`
+  edges are written from the scan that unit did, not guessed.
+- **A class-side constant may not be named after a reflection selector.** `Class >> binding`,
+  `Behavior >> compile:` and the rest are how tools read a class; a constant of the same name
+  hides them and breaks the tools rather than the code that reads the constant. See what unit 3
+  found.
 - **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
@@ -422,3 +498,6 @@ is not part of a package move.
 Renaming `PVKernelExamples` to say what D4 concludes it is, dropping the unused `extent:` argument
 from `VkGraphicsPipeline >> initializeDevice:renderPass:vertexModule:fragmentModule:extent:`, and
 the group 5 structures `LAYOUT-PLAN.md` names are all separate work.
+So are the two unreachable IR node classes `SpvIRBranch` and `SpvIRReturnValue`, and the two
+class-side selectors that hide a system one without breaking anything today,
+`PVKernelCompiler class >> compile:` and `SpvMemorySemantics class >> release`.
