@@ -66,7 +66,7 @@ manifest.
 | `PharoVulkan-Bindings` | 144 | nothing |
 | `PharoVulkan-SPIRV` | 51 | nothing |
 | `PharoVulkan-Compiler` | 31 | SPIRV |
-| `PharoVulkan-Core` | 16 | Bindings |
+| `PharoVulkan-Core` | 17 | Bindings, SPIRV |
 | `PharoVulkan-Graphics` | 17 | Bindings, Core, Compiler, SPIRV, Compute |
 | `PharoVulkan-Compute` | 15 | Bindings, Core, Compiler, SPIRV |
 | `PharoVulkan-Generator` | 13 | Bindings, SPIRV |
@@ -75,7 +75,10 @@ manifest.
 `Bindings` takes the `Constants` tag with it, because the constants classes have no client outside
 the bindings and no life of their own; they stay a tag inside the package.
 `Core` takes `VkContext`, `VkCommandBuffer`, `VkQueue`, `VkFenceWrapper` and `VkSemaphoreWrapper`
-out of the `Graphics` tag, where they do not belong: the compute path uses all five.
+out of the `Graphics` tag, where they do not belong: the compute path uses all five. It also takes
+`VkPipelineLayout` out of the `Compute` tag by decision D7, because both pipeline kinds are created
+from one; that is why the row says seventeen classes rather than sixteen, and why it names SPIRV as
+well — `VkBuffer` raises `PVTypeError`, which D1 put there.
 `Vk` leaves the `Graphics` tag too, but for `Bindings` rather than `Core`: see decision D6.
 `Graphics` takes the five `SDL2` classes, rather than keeping a package of five classes whose only
 client is the one window this project opens.
@@ -220,6 +223,16 @@ Nothing else moves with it: `VkExtensionCommand` already sits in the `Core` tag 
 extension function pointers rather than a declared call, so it stays where it is until unit 5 reads
 it again.
 
+**D7 — where `VkPipelineLayout` lives.** Taken in unit 7, after unit 6's scan showed that the
+whole allowed `Graphics → Compute` edge rested on two references. A pipeline layout is descriptor
+set layouts and push constant ranges; both a compute pipeline and a graphics pipeline are created
+from one, and its set layouts arrive as arguments, so it names no descriptor class and reaches
+nothing above the bindings. It therefore belongs in `PharoVulkan-Core`, below both readers, in the
+way `VkPipelineCreation` already holds the values both pipeline kinds ask for. The second reference
+stays: `PVGlslTriangleShaders` compiles two methods out of `PVKernelExamples`, which is a library
+of kernel sources rather than compute behaviour, and moving methods out of it belongs to the rename
+D4 asks for.
+
 ## What a unit looks like
 
 One package, moved whole:
@@ -263,7 +276,8 @@ Leaf first, so each commit moves classes whose dependents are already where they
    `Graphics` tag. D2 taken here.
 6. **Compute — done 16 October 2026.** Sixteen classes: fifteen, plus the `PVKernelExamples` that
    unit 1 moved here by D4. No decision was due.
-7. **Graphics.** Seventeen classes, including the `SDL2` tag.
+7. **Graphics — done 16 October 2026.** Seventeen classes, including the `SDL2` tag. D7 taken
+   here: `VkPipelineLayout` moves down to `PharoVulkan-Core`, below both pipeline kinds.
 8. **Bindings.** Whatever is left in `PharoVulkan` is the bindings and the constants, so this unit
    is a package rename rather than a move. Check how Iceberg records a package rename before doing
    it; if it records it badly, create `PharoVulkan-Bindings` and move the 143 classes like every
@@ -619,6 +633,60 @@ which is a pipeline layout rather than a compute one, and `PVGlslTriangleShaders
 methods out of `PVKernelExamples`. Neither is compute-specific, so unit 7 should ask whether the
 edge is wanted or whether `VkPipelineLayout` belongs below both pipeline kinds, the way
 `VkPipelineCreation` already holds the values both of them ask for.
+
+## What unit 7 did
+
+Done 16 October 2026.
+
+`PharoVulkan-Graphics` created with a package comment, holding seventeen classes under six tags:
+`Pipeline` (2: `VkRenderPass`, `VkGraphicsPipeline`), `Presentation` (2: `VkSurface`,
+`VkSwapchain`), `Targets` (3: `VkImage`, `VkFramebuffer`, `PVOffscreenTarget`), `Scenes`
+(4: `PVTriangleScene` and its three subclasses), `Shaders` (1: `PVGlslTriangleShaders`) and `SDL2`
+(5: `SDL2Vulkan`, `PVVulkanDriver`, `PVWindowAttributes`, `OSVulkanAttributes`,
+`OSSDL2VulkanBackendWindow`), which the plan said to keep as a tag rather than make a package of
+five classes whose only client is the one window this project opens. Every class already had a class
+comment. `PharoVulkan` is down to 146 defined classes: the 104 of `Bindings`, the 39 of `Constants`,
+`VkError`, the manifest and the dead `PVTmpArrayStructProbe`.
+
+**The question unit 6 left is settled, as decision D7: `VkPipelineLayout` moves down to
+`PharoVulkan-Core`.** A pipeline layout is descriptor set layouts and push constant ranges, which
+both pipeline kinds are created from, and it had no business being compute's to lend. It can live
+below both because it reaches nothing above the bindings — the set layouts arrive as arguments, so
+it names no descriptor class at all. `VkCoreTest >>
+testPipelineLayoutLivesBelowBothPipelineKinds` was written first and failed on the package name; it
+passes now, and it also asserts that the class's own references, blocks included, stay inside the
+bindings, so the move cannot be undone quietly. `PharoVulkan-Compute` is fifteen classes, and its
+`Pipeline` tag now holds `VkComputePipeline` alone.
+
+The other half of the question is answered differently: `PVGlslTriangleShaders` compiles two methods
+out of `PVKernelExamples`, and that edge stays. The kernel sources are a library both the benchmarks
+and the shaders compile from, the target table allows `Graphics → Compute`, and moving two methods
+out of that library is part of the rename D4 asks for rather than part of a package move. So this
+package's outgoing references are the bindings and their constants (`Vk` from 25 methods, 34
+declared structures, `VkRenderConfig` from 7), `PharoVulkan-Core` (`VkContext`, `VkCommandPool`,
+`VkFenceWrapper`, `VkSemaphoreWrapper`, `VkShaderModule`, `VkBuffer`, and now `VkPipelineLayout`),
+`PharoVulkan-Compute` (`PVKernelExamples` alone), `PharoVulkan-Compiler` (`PVKernelCompiler`) and
+`PharoVulkan-SPIRV` (the builder and the specification constants) — the full allowed set, and
+nothing else inside this project.
+
+The baseline declares `PharoVulkan-Graphics` requiring all five, adds a `graphics` group, and
+extends `default` to the bindings, the lifecycle, compute and graphics: a user of this project opens
+a device, runs something on it and draws. `PharoVulkan-Examples` and `PharoVulkan-Tests` now require
+`PharoVulkan-Graphics`.
+
+Critics on the package: eight critiques, every one code-level and none caused by the move — two
+excessive-argument methods on `VkGraphicsPipeline` (one of them the `extent:` the plan already
+records as unused), long methods and high complexity on `PVVulkanDriver >>
+createWindowWithAttributes:osWindow:`, which mirrors the driver method it overrides, long `destroy`,
+`buildVertexShader` and `buildFragmentShader` on `PVTriangleScene`, and a read-before-written
+temporary in the driver method that is a false positive: `aBackendWindow` is assigned inside the
+`WindowMapMutex critical:` block and read after it.
+
+The tag residue trap bit again, in a new shape. After the moves the old package still reported the
+five SDL2 classes among its `definedClasses`, and they were listed under a tag named `Graphics`
+rather than under the `SDL2` tag they came from, which had disappeared. So the residue is not
+reliably in the tag a class was taken out of: clear it by removing each stray from every tag of the
+old package, and check `definedClasses` for classes whose `package` is no longer that package.
 
 ## Rules this plan sets
 
