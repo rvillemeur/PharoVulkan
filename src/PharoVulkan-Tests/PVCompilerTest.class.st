@@ -477,6 +477,22 @@ PVCompilerTest >> testCooperativeMatrixModuleHasOneTypePerOperandAndOneMulAdd [
 		equals: 1
 ]
 
+{ #category : 'tests - cooperative matrix' }
+PVCompilerTest >> testCooperativeMatrixOrderHasOneHomeBelowBothReaders [
+	"The shape a cooperative matrix kernel names must be one the device reports, so the hand-built
+	 kernel and a compiled one have to agree on it. The value therefore lives on the SPIR-V shape
+	 class, below both of them, and neither the emitter nor the kernel may hold a second copy: the
+	 emitter used to read it out of PVCooperativeMatrixKernel, which made the compiler depend on
+	 the compute package for a number."
+
+	self
+		assert: PVSPIRVEmitter cooperativeMatrixOrder
+		equals: SpvCooperativeMatrixShape canonicalOrder.
+	self
+		assert: PVCooperativeMatrixKernel matrixOrder
+		equals: SpvCooperativeMatrixShape canonicalOrder
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testDecoderHandlesInstVarAndDup [
 | ops opcodes |

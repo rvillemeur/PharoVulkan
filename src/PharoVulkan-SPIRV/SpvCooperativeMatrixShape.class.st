@@ -17,6 +17,16 @@ Class {
 	#tag : 'Types'
 }
 
+{ #category : 'constants' }
+SpvCooperativeMatrixShape class >> canonicalOrder [
+	"The one M, N, K combination the target device reports for VK_KHR_cooperative_matrix: M8 N8 K8,
+	 square, so one number covers all three. A kernel must name a reported shape exactly, and both
+	 the hand-built kernel and the compiled one take their shape from here — the value belongs to
+	 the SPIR-V type that models the shape rather than to either reader."
+
+	^ 8
+]
+
 { #category : 'instance creation' }
 SpvCooperativeMatrixShape class >> rows: rowCount columns: columnCount scope: aScope use: aUse [
 	^ self new

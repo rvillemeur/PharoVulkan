@@ -96,10 +96,10 @@ PVCooperativeMatrixKernel class >> matrixOperandCount [
 
 { #category : 'constants' }
 PVCooperativeMatrixKernel class >> matrixOrder [
-	"The one shape lavapipe reports for VK_KHR_cooperative_matrix is M8 N8 K8, and a kernel
-	 must name a reported shape exactly. Square, so one number covers M, N and K."
+	"Delegates so the value has one home: the shape is a SPIR-V level fact that
+	 SpvCooperativeMatrixShape already models, and the emitter reads the same method."
 
-	^ 8
+	^ SpvCooperativeMatrixShape canonicalOrder
 ]
 
 { #category : 'constants' }
