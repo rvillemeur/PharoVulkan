@@ -254,7 +254,7 @@ Leaf first, so each commit moves classes whose dependents are already where they
    tests and one of them is a `subclassResponsibility` the scene hierarchy overrides, and
    `renderTriangle`, which `doc/glsl-api-tutorial.md` documents as the method a user writes on their
    own scene.
-2. **Generator.** Thirteen classes, two outgoing edges, nothing depends on it.
+2. **Generator — done 16 October 2026.** Thirteen classes, two outgoing edges, nothing depends on it.
 3. **SPIRV.** Fifty classes. Take D1 here if the recommendation stands, because `PVTypeError`
    lands in this package.
 4. **Compiler.** Thirty-two classes, including the `Compiler-Pipeline` tag. Take D3 here.
@@ -361,6 +361,36 @@ turns up decision D6, `Vk` sitting in the `Graphics` tag while every layer calls
 `Bindings → Compute`, `Bindings → Compiler`, `SPIRV → Core` and `SPIRV → Compute` reference that the
 first scan found was an example, and all of them are now `Examples → …` edges, which the layering
 allows.
+
+## What unit 2 did
+
+Done 16 October 2026.
+
+`PharoVulkan-Generator` created with a package comment and the thirteen classes of the `Generator`
+tag moved into it, under two tags rather than one: `Vulkan` holds the XML reader `PVXmlParser` and
+`PVXmlElement`, the five descriptors it answers and `VkBindingGenerator`; `SPIRV` holds
+`SpvGrammarParser`, its two descriptors and `SpvBuilderGenerator`. The `Generator` tag in
+`PharoVulkan` is gone, and that package is down to 277 classes.
+
+The block-aware scan of the thirteen classes before the move: one incoming reference, from
+`VkBindingsTest >> testGeneratorIsIdempotent`, and three outgoing — `SpvBuilder` in `SPIRV`,
+`VkHandle` and `VkStructure` in `Bindings`, and `Vk`, which decision D6 moves to `Bindings` as well.
+So the package depends on `Bindings` and `SPIRV` and nothing depends on it, which is what the target
+table says.
+
+Suite 593, no failures, no errors. Critics on the new package report long methods and high
+cyclomatic complexity on the parsers and the emitters, and three classes no sender names; all of it
+is code-level and none of it can be affected by which package a class sits in, so it is what the
+same classes reported before the move. A hand-written XML parser and a source emitter are long by
+nature, and splitting them is not what this plan is for.
+
+Found on the way past, for unit 8 rather than now: `VkBindingGenerator >> generateHandle:`,
+`generateEnum:` and `generateStruct:` install into the literal package name
+`'PharoVulkan-Bindings'`, which does not exist yet — the bindings are in `PharoVulkan`. Nothing
+installs there today because every generate method answers early when the class already exists, so
+the literal has never been reached in anger; unit 8 makes it true, and should assert that it is.
+`VkBindingsTest >> vkXmlPath` names the directory `'PharoVulkan'` for `vk.xml`, which is a path on
+disk rather than a package and is unaffected.
 
 ## Rules this plan sets
 
