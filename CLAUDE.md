@@ -25,12 +25,12 @@ See `prompt.md` §Phase 1 for the full spec.
 | `PharoVulkan-Compiler`        | Pharo bytecode → SPIR-V, 9-stage pipeline                   |
 | `PharoVulkan-Graphics`        | Render pass, swapchain, vertex input, graphics pipeline     |
 | `PharoVulkan-SDL2`            | SDL2 Vulkan surface integration, extends OSWindow           |
-| `PharoVulkan-Tests-Bindings`  | Tests for binding correctness                               |
-| `PharoVulkan-Tests-SPIRV`     | Tests for SPIR-V builder                                    |
-| `PharoVulkan-Tests-Core`      | Tests for Vulkan lifecycle                                  |
-| `PharoVulkan-Tests-Compute`   | Tests for compute pipeline                                  |
-| `PharoVulkan-Tests-Compiler`  | Tests for each compiler stage                               |
-| `PharoVulkan-Tests-Graphics`  | Tests for graphics pipeline                                 |
+| `PharoVulkan-Bindings-Tests`  | Tests for binding correctness                               |
+| `PharoVulkan-SPIRV-Tests`     | Tests for SPIR-V builder                                    |
+| `PharoVulkan-Core-Tests`      | Tests for Vulkan lifecycle                                  |
+| `PharoVulkan-Compute-Tests`   | Tests for compute pipeline                                  |
+| `PharoVulkan-Compiler-Tests`  | Tests for each compiler stage                               |
+| `PharoVulkan-Graphics-Tests`  | Tests for graphics pipeline                                 |
 
 Source layout: `src/<PackageName>/` using Tonel format.
 Iceberg manages commits — do not use git directly.

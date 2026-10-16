@@ -89,9 +89,13 @@ Each package keeps internal tags where it has more than one obvious grouping, so
 nothing: `Bindings` keeps `Constants`, `Compiler` keeps `Compiler-Pipeline`, `Graphics` keeps
 `SDL2`.
 
-Test packages, one per code package that has tests: `PharoVulkan-Tests-Bindings`,
-`-Tests-SPIRV`, `-Tests-Compiler`, `-Tests-Core`, `-Tests-Compute`, `-Tests-Graphics`.
-Each stub and fixture goes with the test class that uses it.
+Test packages, one per code package that has tests, each named for the package it covers and
+ending in `-Tests`: `PharoVulkan-Bindings-Tests`, `PharoVulkan-SPIRV-Tests`,
+`PharoVulkan-Compiler-Tests`, `PharoVulkan-Core-Tests`, `PharoVulkan-Compute-Tests`,
+`PharoVulkan-Graphics-Tests`. The suffix is decision D9: Pharo's own convention, which Renraku
+checks, is that a package holding test classes ends in `-Tests`.
+Each stub and fixture goes with the test class that uses it, under a `Fixtures` tag, so that the
+`Tests` tag of a test package holds test classes and nothing else.
 `PharoVulkan-Tests` survives as a package of one class, `PVArchitectureTest`, because a rule about
 how packages may depend on each other belongs to no single package.
 
@@ -233,6 +237,26 @@ stays: `PVGlslTriangleShaders` compiles two methods out of `PVKernelExamples`, w
 of kernel sources rather than compute behaviour, and moving methods out of it belongs to the rename
 D4 asks for.
 
+**D8 — whether a test package may depend on another test package.** One edge exists among the test
+classes, and it is the only one: `PVComputeTest` runs two of the kernels declared by
+`PVCfgShapeFixture`, which lives with the compiler tests. The fixture is a set of kernels with
+known control-flow shapes, written to pin the boundary of what `PVStructuredCFGRecognizer` accepts,
+so it belongs with the tests of the recogniser. Running two of those kernels on a real device is
+how the compute tests show that the acceptance is real rather than a claim about bytes, so the
+reference is the point of the test rather than an accident. The decision is therefore to allow the
+one edge and to declare it: `PharoVulkan-Compute-Tests` requires `PharoVulkan-Compiler-Tests` in
+the baseline, and `PVArchitectureTest` will state the same edge. Taken in unit 9.
+
+**D9 — how a test package is named.** The plan first wrote the test packages as
+`PharoVulkan-Tests-<Name>`, following the table that was already in `CLAUDE.md`. Renraku's
+`ReTestClassNotInPackageWithTestEndingNameRule` wants the name to **end** in `-Tests`, so the
+prefix form put one critique on each of the nine test classes the moment they left
+`PharoVulkan-Tests`, which does end in it. The decision is to follow the convention:
+`PharoVulkan-<Name>-Tests`. It clears all nine critiques, and it sorts each test package beside
+the code package it covers in the browser. `PharoVulkan-Tests` keeps its name, which already ends
+in the suffix. Taken in unit 9, after the six packages existed and before they were committed, so
+no `src/` directory had to be renamed on disk.
+
 ## What a unit looks like
 
 One package, moved whole:
@@ -281,12 +305,12 @@ Leaf first, so each commit moves classes whose dependents are already where they
 8. **Bindings — done 16 October 2026.** A package rename rather than a move: the organiser renames
    `PharoVulkan` to `PharoVulkan-Bindings` with its classes, tags and manifest in one step, and git
    records the 146 Tonel files as renames. D5 taken here.
-9. **Tests.** Create the six test packages, move each test class with the stubs and fixtures it
-   uses, and leave `PharoVulkan-Tests` holding only the architecture test. Rename each test class
-   to `<Package>Test` where its name does not already say which package it covers. Splitting
-   `VkBindingsTest` further is not part of this unit: it is one test class for one package, which
-   is what the convention asks for, and the excessive-methods critique on it is a separate
-   question.
+9. **Tests — done 16 October 2026.** Create the six test packages, move each test class with the
+   stubs and fixtures it uses, and leave `PharoVulkan-Tests` holding only the architecture test.
+   D8 and D9 taken here. No test class was renamed: each of the nine names already says either the
+   package it covers or the subject it is about. Splitting `VkBindingsTest` further is not part of
+   this unit: it is one test class for one package, which is what the convention asks for, and the
+   excessive-methods critique on it is a separate question.
 10. **Baseline and architecture test.** The baseline is no longer rewritten once at the end: each
     unit declares the package it creates as part of that unit, so the image on disk is loadable at
     every commit rather than only at the last one. What is left here is the final shape —
@@ -794,6 +818,76 @@ that suspended the fork and stranded a live window for twenty minutes of apparen
 log to a file is no help here either: the image runs on the host filesystem, so a file it writes is
 not a file this session can read.
 
+## What unit 9 did
+
+The six test packages exist, each named for the code package it covers and ending in `-Tests` by
+decision D9, and `PharoVulkan-Tests` is down to its manifest, waiting for the architecture test
+unit 10 writes. Every class moved with `cls package: pkgObject tag: tagName`, which leaves no tag
+residue, and each package carries a `Tests` tag holding test classes and a `Fixtures` tag holding
+the stubs and fixtures those tests build, so a reader can tell the two apart in the browser:
+
+| Package | Tests | Fixtures |
+|---------|-------|----------|
+| `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (287) | — |
+| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (16), `SpvEmitterTest` (2) | — |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (79), `PVSpirvValidatorTest` (30) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
+| `PharoVulkan-Core-Tests` | `VkCoreTest` (67) | `PVQueueFamilyStub` |
+| `PharoVulkan-Compute-Tests` | `PVComputeTest` (59) | `PVNoSubgroupArithmeticStub` |
+| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (52), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
+| `PharoVulkan-Tests` | `PVArchitectureTest`, in unit 10 | — |
+
+No test class was renamed. The convention asks for `<Package>Test`, and the nine names already
+satisfy what the convention is for: five say the package (`VkBindingsTest`, `VkCoreTest`,
+`PVComputeTest`, `PVCompilerTest`, `PVGraphicsTest`) and four say the subject they are about
+(`SpvBuilderTest`, `SpvEmitterTest`, `PVSpirvValidatorTest`, `VkImageTest`), which is the better
+name for a second test class in a package that already has one.
+
+The baseline names all fifteen packages, with one `requires:` set per test package written from a
+scan of what each one's classes actually reference: `-Bindings-Tests` on Bindings, Core, Compute,
+Graphics, Generator and Examples; `-SPIRV-Tests` on SPIRV, Core and Compute; `-Compiler-Tests` on
+Compiler, SPIRV, Compute and Examples; `-Core-Tests` on Core, Bindings, Compute, SPIRV and
+Examples; `-Compute-Tests` on Compute, Bindings, Core, Compiler, SPIRV, Examples and
+`-Compiler-Tests` (decision D8); `-Graphics-Tests` on Graphics, Bindings, Core, Compute, Compiler
+and Examples; and `PharoVulkan-Tests` on the six. Most of them require the examples because the
+test classes read the `<sampleInstance>` examples unit 1 created. The `tests` group loads
+`default`, the examples, the generator and `PharoVulkan-Tests`, which pulls the six in through its
+own `requires:`. A check of the baseline against the organiser reports no package declared that
+does not exist and none in the image that is not declared.
+
+Unit 7's silent coverage hole was closed here rather than left to the architecture test.
+`PVGraphicsTest class` had asked the organiser for one package by name; it now derives both
+populations from the organiser, by the prefix `'PharoVulkan'` and the suffix `'-Tests'`
+(`projectPackageNamePrefix`, `testPackageNameSuffix`, `testPackageNames`, `projectPackageNames`),
+so a package added to either side is read the day it is created. The new instance-side test
+`testTheCoveragePopulationsAreNotEmpty` states that the three populations the coverage tests walk
+are not empty, which is the assertion whose absence let unit 7's hole stay green for a commit.
+It was seen green, then red after the classes moved, then green again after the derivation was
+fixed — the sequence the standing cycle asks for.
+
+Two fixture classes had no class comment, which the critics on the new packages surfaced:
+`PVFailingTriangleSceneStub`, whose initialisation always raises so that
+`PVHelloTriangleScene class >> prepare:backendWindow:` can be shown to destroy a half-initialised
+scene, and `PVRecordingContextStub`, which answers itself for `computeQueue` and `device` and
+counts `waitIdle`. Both now say what they are and why they count on the class side.
+`PVFailingTriangleSceneStub >> destroy` was reclassified to `releasing`, which is where its
+superclass puts it.
+
+Critics on the seven packages are clean except for what was already there before the split:
+`ReExcessiveMethodsRule` on the four large test classes, `ReLongMethodsRule` on three module
+builders, `ReCyclomaticComplexityRule` on the two layering tests, and one
+`ReTempsReadBeforeWrittenRule`. The nine `ReTestClassNotInPackageWithTestEndingNameRule` critiques
+the prefix naming introduced are gone with D9.
+
+The suite is 600 tests over the nine classes — 599 plus the new guard test — and it passed twice:
+once before the D9 rename and once after it, both times in a forked instrumented run that records
+every exception rather than trusting the package-level count. The six package-reading tests were
+also run one at a time after the rename, because they are the only tests the rename could break.
+The image was saved before and after the rename. One warning for the next unit: during the first
+of the two runs the image stopped answering `evaluate_pharo` entirely, including `1 + 1`, for
+about fifteen minutes while the graphics tests held the VM inside a driver call. That is not a
+hang to debug — the suite finished and reported 600 run, 0 failed — so the right response is to
+wait and keep polling the one global.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
@@ -846,6 +940,12 @@ not a file this session can read.
   `PackageOrganizer default renamePackage: aPackage to: aName` carries the classes, the tags, the
   manifest and the package comment across in one step, leaves no tag residue, and gives Iceberg a
   directory rename that git records as renames of the files rather than as deletions and additions.
+- **A test package is named `<Package>-Tests`.** Pharo's tools and Renraku's
+  `ReTestClassNotInPackageWithTestEndingNameRule` read the end of the name, not the start, so the
+  prefix form `PharoVulkan-Tests-<Name>` puts a critique on every test class in it. See decision D9.
+- **A silent image is not always a stuck image.** A graphics test holds the VM inside a driver
+  call, and while it does, `evaluate_pharo` cannot answer anything at all. Judge a forked run by
+  the global it publishes once it answers again, not by the timeouts.
 - **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
