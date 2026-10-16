@@ -345,6 +345,52 @@ are the ones that call into the driver.
   and the view asks for those. A count that only looks equal — one create info per queue family
   against however many queues that family is asked for, in unit 1a — stays two constants.
 
+- **A zeroed block is part of the declaration, so a builder writes only what carries meaning.**
+  `externalInstance` mallocs and zeroes, so a disabled `VkBool32`, a reserved flags word and a
+  float factor nothing reads are left unwritten and the builder's comment says so. The six state
+  builders of a graphics pipeline together write eight values: the topology, the two counts, the
+  polygon mode, the cull mode, the front face, the line width, the sample count and the colour
+  write mask. Writing the zeros as well would say they were chosen, and would hide which fields
+  this project really decides.
+- **uFFI declares no array field, so an array of scalars becomes one field per element.**
+  `float blendConstants[4]` is refused with `Unable to resolve external type: [`, so
+  `VkPipelineColorBlendStateCreateInfo` declares `blendConstantRed`, `blendConstantGreen`,
+  `blendConstantBlue` and `blendConstantAlpha` at 40, 44, 48 and 52. The size and the offsets are
+  the C structure's, each component is named, and nothing counts an offset.
+- **A run of plain values has a named stride, not a layout.** The dynamic states a pipeline is
+  created with are enumeration values rather than structures, so there is no field specification
+  to read a width from and no indexable view over the run. `VkPipelineDynamicStateCreateInfo class
+  >> dynamicStateByteCount` names the stride, as `codeWordByteCount` does for a shader module's
+  words, and the builder and the reader both ask it, so neither can drift.
+- **A flags word of no bits may carry a name, and naming it is a hook rather than an override of
+  the decoder.** `VK_CULL_MODE_NONE` is zero and means culling nothing, which is a mode rather
+  than an absence of bits, and an empty string in a view reads as a missing value. Unit 4m first
+  overrode `nameForFlags:` on `VkCullMode`, which broke the rule
+  `VkCoreTest >> testFlagNamesJoinEveryNamedBitAndSurfaceAnUnnamedOne` states over every flag
+  class. `VkFlagConstants class >> nameForNoBits` now answers the empty string, the decoder asks it
+  for a word of zero, `VkCullMode` overrides that one method, and the hierarchy test states the
+  rule as the class's own answer rather than as a constant.
+- **A value both kinds of a resource share gets a home of its own, and the class that held it
+  delegates.** The number of requests one create call takes and the index that means a pipeline
+  derives from no other belong to pipeline creation, not to compute or to graphics, so
+  `VkPipelineCreation` holds `pipelinesPerCreate` and `noBasePipelineIndex` and
+  `VkComputePipeline class` keeps both selectors as one-line delegations. The alternative —
+  the graphics builder asking `VkComputePipeline` for them — reads as a dependency that is not
+  there.
+- **A request owns the states nested under it; what needs a device stays with the caller.**
+  `VkGraphicsPipeline class >> requestForStages:vertexInput:layout:renderPass:` builds and owns the
+  six states that are a function of nothing, and takes the stage run and the vertex input state,
+  which need a shader module and a vertex layout. `freeNestedStatesOf:` gives the six back and
+  nulls each field, `freeRequest:` then frees the request's own store, and the caller frees what it
+  passed in. The four states freed by their own store alone are named by
+  `statesTheRequestOwnsOutright`, so the two that own runs of their own cannot be freed the short
+  way by accident.
+- **A test that frees reads the fields before the store goes.** The first colour blend free test
+  called `freeColorBlendState:` and then read `pAttachments` off the state to check the field had
+  been nulled — a use-after-free on an external store, which killed the image and cost the units
+  in flight. A free test now frees only the run, asserts over the still-live store, and frees that
+  store in `ensure:`.
+
 ## 1 — Instance and device creation — **done 13 October 2026**
 
 Taken first: every test in the project goes through it, and it is the only place with `pNext`
@@ -1091,14 +1137,14 @@ tabs. The suite is 458 tests over the nine concrete test classes.
 **Group 3 is complete.** Every structure the project writes while recording a command buffer or
 submitting it is declared.
 
-## 4 — Graphics
+## 4 — Graphics — **done 16 October 2026**
 
 Last, because the graphics path is the one the tests exercise least and the structures are the
 widest.
 
 | Method | Offsets written | Structures |
 |---|---|---|
-| `VkGraphicsPipeline >> initializeDevice:` | 80 left of 101 | the whole pipeline create info tree, one unit per structure: vertex input and the two shader stages **done 15 October 2026**; input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself remain |
+| ~~`VkGraphicsPipeline >> initializeDevice:`~~ | ~~101~~ | the whole pipeline create info tree, one unit per structure: vertex input, the two shader stages, input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself — **done 16 October 2026** |
 | ~~`VkSwapchain >> initializeDevice:`~~ | ~~19~~ | `VkSwapchainCreateInfoKHR` and the surface capabilities and formats it reads — **done 15 October 2026** |
 | ~~`VkSwapchain >> createImageViews`~~ | ~~15~~ | `VkImageViewCreateInfo` — **done 15 October 2026** |
 | ~~`VkSwapchain >> present:`~~ | ~~8~~ | `VkPresentInfoKHR` — **done 15 October 2026** |
@@ -1571,3 +1617,186 @@ The offset count in the table above is now measured rather than estimated — ei
 `unsignedLongAt:` and `pointerAt:` offsets remain in the method, of the hundred and one it held
 before unit 4i — so it no longer agrees with the twenty-nine the first inventory guessed. The suite
 is 541 tests over the nine concrete test classes.
+
+### 4k — the input assembly state, done 16 October 2026
+
+`VkPipelineInputAssemblyStateCreateInfo` is thirty-two bytes at 0, 8, 16, 20 and 24: the chain
+header, the reserved flags, the topology and the `VkBool32` for primitive restart, which uFFI pads
+to thirty-two. `initializeConstantFields` stamps `sType` alone.
+
+`VkGraphicsPipeline class >> inputAssemblyState` is the one writer. It writes the topology and the
+restart flag and nothing else, because `externalInstance` hands back a zeroed block.
+`VkPrimitiveTopology` is new and holds `triangleList`; `primitiveRestartDisabled` names the zero
+the flag is written with, since a flag written on purpose and a flag left zero say different things
+about what this project decided. `VkRenderConfig class >> primitiveTopologyTriangleList` became a
+delegation, so the value has one home.
+
+`inputAssemblyRows` names the topology through `VkPrimitiveTopology nameForValue:` and says whether
+primitive restart is on; the Input assembly tab shows the two rows, and
+`exampleStateOfTheTriangleListThisProjectDraws` answers the state in object memory with its
+external store freed. Six tests red first: the layout against the C structure, that only `sType` is
+initialized, what the builder asks for, the rows, the example with its tab, and that one method
+writes the state.
+
+### 4l — the viewport state, done 16 October 2026
+
+`VkPipelineViewportStateCreateInfo` is forty-eight bytes at 0, 8, 16, 20, 24, 32 and 40: the chain
+header and the flags, then a count and a pointer for the viewports and the same pair for the
+scissors.
+
+Both pointers stay null, which is the point of the unit: the viewport and the scissor are dynamic
+states here, so the pipeline is created with the counts alone and `PVTriangleScene` sets the
+rectangles while recording. `VkGraphicsPipeline class >> viewportState` writes the two counts from
+`viewportsPerPipeline` and `scissorsPerPipeline`, and the rows say for each whether a run is given,
+so the Viewport tab shows a count of one against a run that is not there — which is what a dynamic
+rectangle looks like from the request's side, and would otherwise read as a bug.
+
+Six tests red first, the same five shapes as unit 4k plus one asserting that neither run is given
+while both counts are one.
+
+### 4m — the rasterization state, done 16 October 2026
+
+`VkPipelineRasterizationStateCreateInfo` is sixty-four bytes at 0, 8, 16, 20, 24, 28, 32, 36, 40,
+44, 48, 52 and 56: the chain header and the flags, three `VkBool32` words and three enumerations in
+one run of words, then the three depth bias floats and the line width.
+
+`VkGraphicsPipeline class >> rasterizationState` writes four values — the fill polygon mode, no
+culling, a counter-clockwise front face and `lineWidthEveryDeviceAccepts` — and leaves the depth
+clamp, the discard, the depth bias and its three factors as the zeroed block left them. Three
+constants classes are new: `VkPolygonMode`, `VkFrontFace` and `VkCullMode`. The cull mode is a flags
+word whose zero is a mode of its own, so it first overrode `nameForFlags:`; the hierarchy rule
+`VkCoreTest` states caught that in the full run and unit 4q replaced the override with
+`nameForNoBits`, which is now one of the rules above.
+
+`rasterizationRows` names the three enumerations, the line width and whether each of the three
+disabled features is on, so the tab reports what was decided and what was left alone. Seven tests
+red first: the five shapes, that the state asks for filled triangles with no culling, and that a
+cull mode of zero reads as `none` rather than as nothing at all.
+
+### 4n — the multisample state, done 16 October 2026
+
+`VkPipelineMultisampleStateCreateInfo` is forty-eight bytes at 0, 8, 16, 20, 24, 28, 32, 40 and 44:
+the chain header and the flags, the sample count and the sample shading flag, the minimum sample
+shading float, then the sample mask pointer — which uFFI aligns to forty — and the two alpha flags.
+
+`multisampleState` writes the sample count and `everySampleShaded`, and leaves the shading flag, the
+mask pointer and both alpha flags zero: one sample per pixel is what the offscreen legs read back,
+and a mask of no pointer means every sample. `VkSampleCount` is new and holds `count1Bit`;
+`VkRenderConfig class >> sampleCount1Bit` became a delegation.
+
+Seven tests red first: the five shapes, that the state takes one sample per pixel with no mask
+given, and that the sample count has one home the render config delegates to.
+
+### 4o — the colour blend state and its attachment, done 16 October 2026
+
+Two structures. `VkPipelineColorBlendAttachmentState` is thirty-two bytes at 0, 4, 8, 12, 16, 20, 24
+and 28 — the blend enable flag, six blend factors and operations, and the colour write mask — and
+carries no chain header, because it is an element of a run the state points at, so it declares no
+initializer at all. `VkPipelineColorBlendStateCreateInfo` is fifty-six bytes at 0, 8, 16, 20, 24,
+28, 32, 40, 44, 48 and 52: the chain header and the flags, the logic operation flag and the
+operation, the attachment count and the run pointer, then the four blend constants.
+
+uFFI refuses `float blendConstants[4]`, so the four constants are declared one field per component
+at their C offsets; that is a rule above now. `colorBlendState` builds a run of
+`colorAttachmentsPerPipeline` attachments through `externalArrayOf:`, writes each one's colour write
+mask and points the state at the run's first element. Blending itself is off, so no blend factor or
+operation is written — which is why no `VkBlendFactor`, `VkBlendOp` or `VkLogicOp` class was
+created: naming values nothing writes would be speculative, and the rows report only what is
+decided. `VkColorComponent` is new, with the four channel bits and `allChannels` as their sum, and
+`VkRenderConfig class >> colorWriteMaskRGBA` became a delegation.
+
+The state owns its run: `freeColorBlendAttachmentsOf:` frees it and nulls the field,
+`freeColorBlendState:` then frees the state's own store. `colorBlendRows` nests the attachment's own
+rows when the run is there and omits them when it is not, and `inspectorColorBlend:` builds its
+items from the rows it finds, so the tab and the report agree in both states — the example gives the
+run back before taking its copy.
+
+Ten tests red first: the five shapes for each of the two structures, that every channel is written,
+and that the state gives back the run it allocated. That last test is the one that killed the image:
+it first read `pAttachments` after `freeColorBlendState:` had freed the store holding it, and the
+units in flight were lost with the image. It now frees the run alone, asserts over the live store
+and frees that store in `ensure:`.
+
+### 4p — the dynamic state, done 16 October 2026
+
+`VkPipelineDynamicStateCreateInfo` is thirty-two bytes at 0, 8, 16, 20 and 24: the chain header, the
+flags, the count and the pointer to the run of states.
+
+The run holds enumeration values rather than structures, so there is no indexable view over it:
+`dynamicStateByteCount` names the stride, the builder writes each value at `index - 1 * stride + 1`
+and `dynamicStateValues` reads them back the same way, answering `#()` for a null pointer. That is a
+rule above. `dynamicStatesSetWhileRecording` names the two states this project sets — the viewport
+and the scissor, which is what makes unit 4l's two null runs correct — and `VkDynamicState` is new
+and holds both. The state owns its run, with the `freeDynamicStatesOf:` and `freeDynamicState:`
+pairing.
+
+`dynamicStateRows` reports the count, whether the run is given and the names of the states joined,
+read back out of the run rather than restated from the builder's list. Seven tests red first: the
+five shapes, that the two rectangles are the states set while recording, and that the values read
+back through the named stride are the ones written.
+
+### 4q — the graphics pipeline request, done 16 October 2026
+
+The last structure of the tree and of the plan. `VkGraphicsPipelineCreateInfo` is one hundred and
+forty-four bytes at 0, 8, 16, 20, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128 and
+136: the chain header, the flags and the stage count, the stage run, nine state pointers, the
+pipeline layout and the render pass as handles, the subpass, and the base pipeline a derivative
+would name. Every nested state is pointed at rather than nested by value, unlike the single stage
+inside a compute request, which is why each of those fields is one pointer wide.
+
+`VkGraphicsPipeline class >> requestForStages:vertexInput:layout:renderPass:` is the one writer. It
+builds and owns the six states that are a function of nothing, and takes the stage run and the
+vertex input state, which need a shader module and a vertex layout; `freeNestedStatesOf:` gives the
+six back and nulls each field, and `freeRequest:` then frees the request's own store.
+`statesTheRequestOwnsOutright` names the four freed by their store alone, so the two owning runs
+cannot be freed the short way. `subpassThisPipelineDrawsIn` names the zero: the render pass declares
+one subpass. `handleForRequest:on:` is now the only caller of `vkCreateGraphicsPipelines`, with the
+out parameter the compute path already established — a run of one handle, read by `pointerAt:` and
+freed whatever the result.
+
+`VkPipelineCreation` is new and holds `pipelinesPerCreate` and `noBasePipelineIndex`, which both
+kinds of pipeline ask for; `VkComputePipeline class` keeps both selectors as delegations. That is a
+rule above.
+
+`stateFieldNames` takes the nine state field names from the declared layout, selecting those whose
+name ends in `State`, and `statesGiven` answers which of them a request points at, so a state added
+to `fieldsDesc` is reported without the report being touched. `graphicsRequestRows` adds the stage
+count, the layout and render pass, the subpass and the base pipeline. No row follows a pointer: a
+request whose states have been given back holds freed addresses, and the example is exactly that —
+it frees the six, nulls the stage run and the vertex input state it does not own, and answers a copy
+in object memory.
+
+`initializeDevice:renderPass:vertexModule:fragmentModule:extent:` is now four statements of setup,
+one request and one `ensure:`; its `ReLongMethodsRule` critique is gone and the long-standing
+`ReExcessiveArgumentsRule` one remains, on it and on `createDevice:...`. The `extent:` argument is
+read by neither: the viewport and the scissor are dynamic, so it was already unused before this
+unit, and dropping it would change the creation API and its callers — a follow-up, not this unit.
+
+Nine tests red first: the layout against the C structure, that only `sType` is initialized, what
+the request points at with its stages, states, subpass and base pipeline index, that it gives back
+every state it owns, the rows, the Request tab, that one method writes it, that the two creation
+constants have one home both kinds of pipeline ask, and the sweep over `VkGraphicsPipeline` and its
+class side asserting that the only two methods left sending `unsignedLongAt:` or `pointerAt:` are
+`dynamicState`, which writes a run of plain words, and `handleForRequest:on:`, which reads the out
+parameter. `PVGraphicsTest` is the driver leg: its fifty-one tests build real pipelines through the
+declared request and read the triangle's pixels back.
+
+The full run of `VkCoreTest` then failed one test — the cull mode override from unit 4m against the
+rule every flag class keeps — which is fixed as described above and is the one regression this group
+of seven units produced. The suite is 593 tests over the nine concrete test classes.
+
+Every method in the plan's inventory is now struck through: each of the thirty-three methods that
+wrote three or more counted offsets into a block it allocated builds declared structures instead.
+What still reads or writes a block by hand is what has no field specification to read a width from,
+and each is named by the test that bans the rest: an out parameter the driver answers a handle,
+count or boolean through, a run of handles, image indices or C strings, and the run of dynamic state
+enumerations.
+
+Two readers of driver-filled structures were never in the inventory, because the inventory counted
+methods that *write* offsets, and they are the next thing worth converting:
+`VkPhysicalDevice >> memoryPropertyFlagsOfType:` and `memoryHeapIndexOfType:` index into
+`VkPhysicalDeviceMemoryProperties` at `5 + (index * 8)` with the layout written out as a comment,
+and `VkCooperativeMatrixConfiguration class >> readFrom:at:` reads each member through an
+`offsetOf:` table of its own. Both are the shape unit 4e converted for the surface queries — a
+structure the driver fills, declared with no initializer and answered as `copyIntoObjectMemory` —
+so a group 5 of two units would finish the job.
