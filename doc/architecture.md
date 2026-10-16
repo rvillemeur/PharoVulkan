@@ -13,43 +13,90 @@ PharoVulkan has two independent paths sharing the same binding and core layers:
 
 ## Package Layers
 
+Fifteen packages: eight of code, seven of tests. An arrow upward in this diagram is a dependency
+downward in the layering, and nothing reaches up: `PharoVulkan-Bindings` and `PharoVulkan-SPIRV`
+name no other package of this project at all.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       Application / Tests                           │
-│  PVHelloTriangleScene   PVComputeKernel   PVKernelExamples          │
+│  PharoVulkan-Examples        PharoVulkan-<Name>-Tests (6)           │
+│  one <Subject>Examples       one test package per code package,     │
+│  class per subject           plus PharoVulkan-Tests for the         │
+│                              architecture test                      │
 ├──────────────────────────────┬──────────────────────────────────────┤
-│   Pharovulkan-graphics       │      PharoVulkan-Compute             │
-│  VkSwapchain  VkRenderPass   │  VkComputePipeline  VkDescriptorPool │
-│  VkFramebuffer VkGraphics-   │  VkDescriptorSet    VkPipelineLayout │
-│  Pipeline  VkSurface         │  PVComputeKernel                     │
+│   PharoVulkan-Graphics       │      PharoVulkan-Compute             │
+│  VkSurface  VkSwapchain      │  VkComputePipeline  VkDescriptorPool │
+│  VkRenderPass VkFramebuffer  │  VkDescriptorSet  VkDescriptorSet-   │
+│  VkGraphicsPipeline          │  Layout  PVComputeKernel             │
+│  PVHelloTriangleScene        │  PVCooperativeMatrix                 │
+│  SDL2 tag: SDL2Vulkan,       │                                      │
+│  PVVulkanDriver,             │                                      │
+│  OSSDL2VulkanBackendWindow   │                                      │
 ├──────────────────────────────┴──────────────────────────────────────┤
 │                     PharoVulkan-Core                                │
-│  VkContext   VkDevice   VkQueue   VkBuffer                          │
+│  VkContext   VkDevice   VkQueue   VkBuffer   VkPipelineLayout       │
 │  VkCommandPool/Buffer   VkShaderModule   VkPhysicalDevice           │
-├──────────────┬──────────────────────────────────────────────────────┤
-│PharoVulkan-  │              PharoVulkan-Bindings                    │
-│SDL2          │  Vk (FFI commands)   VkStructureType  VkFormat       │
-│SDL2Vulkan    │  VkShaderStage  VkImageLayout  VkRenderConfig ...    │
-│OSSDL2Vulkan- │  VkHandle subclasses (_H types)   VkResult  VkError │
-│BackendWindow │  VkLibrary                                           │
-├──────────────┴──────────────────────────────────────────────────────┤
-│              PharoVulkan-SPIRV                                      │
-│  SpvModule  SpvBuilder  SpvFunction  SpvBlock                       │
-│  SpvType hierarchy  SpvConstantPool  SpvSerializer  SpvValidator    │
 ├─────────────────────────────────────────────────────────────────────┤
 │              PharoVulkan-Compiler                                   │
 │  PVKernelCompiler  PVBytecodeDecoder  PVCFGBuilder                  │
 │  PVStackSimulator  PVSSAConstructor  PVTypeInferencer               │
-│  PVStructuredCFGRecognizer  PVSPIRVEmitter                          │
-├─────────────────────────────────────────────────────────────────────┤
-│              PharoVulkan-Generator  (dev-time only)                 │
+│  PVStructuredCFGRecognizer  PVSPIRVEmitter  PVSelectorTable         │
+├──────────────────────────────┬──────────────────────────────────────┤
+│   PharoVulkan-Bindings       │      PharoVulkan-SPIRV              │
+│  Vk (FFI commands)           │  SpvModule  SpvBuilder  SpvFunction  │
+│  VkStructureType  VkFormat   │  SpvBlock  SpvType hierarchy         │
+│  VkShaderStage VkImageLayout │  SpvConstantPool  SpvSerializer      │
+│  VkHandle subclasses (_H)    │  SpvValidator  PVTypeError           │
+│  VkResult  VkError VkLibrary │                                      │
+├──────────────────────────────┴──────────────────────────────────────┤
+│              PharoVulkan-Generator  (dev-time only, outside default)│
 │  VkBindingGenerator (reads vk.xml)                                  │
-│  SpvBuilderGenerator (reads spirv.core.grammar.json)               │
+│  SpvBuilderGenerator (reads spirv.core.grammar.json)                │
 ├─────────────────────────────────────────────────────────────────────┤
 │              System libraries                                       │
 │  libvulkan.so.1          libSDL2.so                                 │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+The compiler sits above the SPIR-V builder and beside the bindings rather than on them: it
+answers bytes and calls no driver, which is what lets the `compiler` group load on a machine with
+no `libvulkan.so.1`. `PharoVulkan-Core` reaches both the bindings it calls through and the SPIR-V
+package, because `VkBuffer` raises `PVTypeError`.
+
+### What enforces this
+
+`PVArchitectureTest class >> allowedDependencies` declares the allowed outgoing edges of every one
+of the fifteen packages, and twenty tests hold the code to that table:
+
+- fifteen read one package's own methods — `package methods`, so an extension method this project
+  adds to `Number` or `SequenceableCollection` is read as well — collect every package of this
+  project their literals name, and fail naming each method whose reference the table does not
+  grant;
+- four hold the table itself to the code: every package has an entry, every edge names a package
+  that exists, every edge is one the package really makes, and every edge is declared in
+  `BaselineOfPharoVulkan` too, since an edge missing from the baseline loads here and fails for
+  whoever loads the project a group at a time;
+- one reads a reference planted inside three nested blocks, because a class named inside a block
+  lives in the block's literals and not the method's — the first scan of this project missed 86
+  edges that way.
+
+`PVArchitectureTest class >> inspectorDependencies:` shows declared and actual edges side by side,
+one row per package.
+
+### Baseline groups
+
+| Group | Packages |
+|---|---|
+| `bindings` | Bindings |
+| `spirv` | SPIRV |
+| `compiler` | SPIRV, Compiler |
+| `core` | Core |
+| `compute` | Compute |
+| `graphics` | Graphics |
+| `default` | Bindings, Core, Compute, Graphics |
+| `generator` | Generator |
+| `examples` | Examples |
+| `tests` | `default`, Examples, Generator and the seven test packages |
 
 ---
 
@@ -77,18 +124,18 @@ PharoVulkan has two independent paths sharing the same binding and core layers:
 | `VkBuffer` | Device buffer + backing VkDeviceMemory; host-mapped |
 | `VkCommandPool` / `VkCommandBuffer` | Command recording |
 | `VkShaderModule` | Loads SPIR-V bytes into the driver |
+| `VkPipelineLayout` | Wraps a descriptor set layout for pipeline creation; both pipeline kinds are built from one, which is why it sits here and not in Compute |
 
 ### PharoVulkan-Compute
 
 | Class | Role |
 |---|---|
 | `VkDescriptorSetLayout` | Declares buffer bindings schema |
-| `VkPipelineLayout` | Wraps DSL for pipeline creation |
 | `VkComputePipeline` | Wraps VkPipeline for compute |
 | `VkDescriptorPool` / `VkDescriptorSet` | Allocate and bind storage buffers to shader slots |
 | `PVComputeKernel` | High-level runner: compile → prepare → dispatch → read-back |
 
-### Pharovulkan-graphics
+### PharoVulkan-Graphics
 
 | Class | Role |
 |---|---|
@@ -111,6 +158,32 @@ PharoVulkan has two independent paths sharing the same binding and core layers:
 | `SpvConstantPool` | Deduplicates type/constant declarations |
 | `SpvSerializer` | Writes the 5-word header + instruction stream to ByteArray |
 | `SpvValidator` | Checks well-formedness before serialization |
+
+### PharoVulkan-Compiler
+
+| Class | Role |
+|---|---|
+| `PVKernelCompiler` | Entry point: a `CompiledMethod` in, SPIR-V bytes out, through the nine stages below |
+| `PVBytecodeDecoder`, `PVStackSimulator` | Bytecode to a register IR |
+| `PVCFGBuilder`, `PVSSAConstructor`, `PVStructuredCFGRecognizer` | Control flow: blocks, SSA, and the shapes the emitter accepts |
+| `PVTypeInferencer`, `PVTypeAnnotation` | Types, seeded from the `<gpu>` and `<param:named:>` pragmas |
+| `PVSPIRVEmitter`, `PVSelectorTable` | Emission, and the table mapping a Pharo selector to a SPIR-V opcode |
+| `PVSpirvValidator` | Wraps the external `spirv-val`, and reports the tool as missing rather than failing when it is absent |
+
+### PharoVulkan-Generator
+
+| Class | Role |
+|---|---|
+| `VkBindingGenerator` | Reads `vk.xml` and emits the binding classes |
+| `SpvBuilderGenerator`, `SpvGrammarParser` | Read `spirv.core.grammar.json` and emit the builder |
+
+### PharoVulkan-Examples
+
+One class per subject — `VkContextExamples`, `VkPipelineExamples`, `PVCompilerExamples`,
+`PVSceneExamples` and so on — each holding as class-side methods the `<sampleInstance>` examples of
+the thing it is named after. An example rebuilds its object on every call, asserts nothing, and
+runs from one click in the browser; the inspector views and the tests read them, which is why most
+test packages depend on this one.
 
 ---
 

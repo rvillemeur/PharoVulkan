@@ -8,32 +8,56 @@ PharoVulkan is a Vulkan binding and DSL for Pharo Smalltalk. It has two goals:
 (AI/ML) and graphics workloads. SDL2 surface creation extends OSWindow via the
 existing `OSSDL2BackendWindow` infrastructure.
 
-## Current phase
+## Current state
 
-**Phase 1** — Generator + Bindings + SPIR-V builder.
-See `prompt.md` §Phase 1 for the full spec.
+Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
+`PACKAGE-PLAN.md` are all done. The suite is 621 tests over ten test classes and passes.
+`prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
+rules it set.
 
 ## Package layout
 
-| Package                       | Purpose                                                     |
-|-------------------------------|-------------------------------------------------------------|
-| `PharoVulkan-Generator`       | Reads `vk.xml` + `spirv.core.grammar.json`, emits classes  |
-| `PharoVulkan-Bindings`        | Generated Vulkan uFFI bindings (structs, enums, commands)   |
-| `PharoVulkan-SPIRV`           | SPIR-V binary builder API (grammar-driven word-stream)      |
-| `PharoVulkan-Core`            | Vulkan resource lifecycle: instance, device, queue, memory  |
-| `PharoVulkan-Compute`         | Compute pipeline: buffers, descriptors, dispatch            |
-| `PharoVulkan-Compiler`        | Pharo bytecode → SPIR-V, 9-stage pipeline                   |
-| `PharoVulkan-Graphics`        | Render pass, swapchain, vertex input, graphics pipeline     |
-| `PharoVulkan-SDL2`            | SDL2 Vulkan surface integration, extends OSWindow           |
-| `PharoVulkan-Bindings-Tests`  | Tests for binding correctness                               |
-| `PharoVulkan-SPIRV-Tests`     | Tests for SPIR-V builder                                    |
-| `PharoVulkan-Core-Tests`      | Tests for Vulkan lifecycle                                  |
-| `PharoVulkan-Compute-Tests`   | Tests for compute pipeline                                  |
-| `PharoVulkan-Compiler-Tests`  | Tests for each compiler stage                               |
-| `PharoVulkan-Graphics-Tests`  | Tests for graphics pipeline                                 |
+Fifteen packages: eight of code, seven of tests. Source layout `src/<PackageName>/` in Tonel
+format. Iceberg manages commits of `src/` — do not use git directly for it.
 
-Source layout: `src/<PackageName>/` using Tonel format.
-Iceberg manages commits — do not use git directly.
+| Package | Classes | Purpose |
+|---|---|---|
+| `PharoVulkan-Bindings` | 144 | Generated Vulkan uFFI bindings: commands, structures, handles, the named constant classes (tag `Constants`), `VkResult` and `VkError` |
+| `PharoVulkan-SPIRV` | 51 | SPIR-V binary builder: module, builder, IR, types, constant pool, serialiser, validator, `PVTypeError` |
+| `PharoVulkan-Compiler` | 31 | Pharo bytecode → SPIR-V in nine stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-Core` | 17 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
+| `PharoVulkan-Compute` | 15 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks |
+| `PharoVulkan-Graphics` | 17 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
+| `PharoVulkan-Generator` | 13 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes. Dev time only, outside `default` |
+| `PharoVulkan-Examples` | 18 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples the inspector views and the tests read |
+
+| Test package | Test classes | Fixtures |
+|---|---|---|
+| `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) | — |
+| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (16), `SpvEmitterTest` (2) | — |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (80), `PVSpirvValidatorTest` (30) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
+| `PharoVulkan-Core-Tests` | `VkCoreTest` (68) | `PVQueueFamilyStub` |
+| `PharoVulkan-Compute-Tests` | `PVComputeTest` (59) | `PVNoSubgroupArithmeticStub` |
+| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (52), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
+| `PharoVulkan-Tests` | `PVArchitectureTest` (20) | `PVNestedBlockReferenceFixture` |
+
+A test package is named for the package it covers and ends in `-Tests`, which is what Pharo's
+tools and Renraku's `ReTestClassNotInPackageWithTestEndingNameRule` expect. Its `Tests` tag holds
+test classes and its `Fixtures` tag holds the stubs those tests build.
+
+### Which package may depend on which
+
+This file does not say. `PVArchitectureTest class >> allowedDependencies` does, with one entry per
+package, and twenty tests hold both the code and the baseline to it: fifteen read each package's
+own methods — `package methods`, so extension methods on base classes are read too — four check
+the table against the organiser, against what the code really references and against
+`BaselineOfPharoVulkan`, and one proves the scan finds a reference planted inside three nested
+blocks. Adding a dependency means stating it in the table and in the baseline, in the commit that
+needs it; adding a package means giving it an entry, or the meta test fails.
+
+The baseline's groups: `bindings`, `spirv`, `compiler` (SPIR-V and compiler, no driver code, so it
+loads on a machine with no `libvulkan.so.1`), `core`, `compute`, `graphics`, `default` (Bindings,
+Core, Compute and Graphics), `generator`, `examples` and `tests`.
 
 ## Working on a phase
 
@@ -76,7 +100,8 @@ These are hard constraints — not suggestions.
 - **No WHAT comments.** Only WHY comments for non-obvious invariants,
   constraints, or workarounds. Well-named identifiers are self-documenting.
 - **All public API covered by tests.** Use SUnit (`TestCase` subclass). One
-  test class per package, named `<Package>Test` (e.g. `VkBindingsTest`).
+  test class per package, in that package's `-Tests` package, named for what it
+  covers (`VkBindingsTest`, `SpvBuilderTest`).
   Example classes (`*Example`) are acceptable additions but not substitutes.
 - **No magic values.** Every numeric or string constant that carries meaning
   must be declared as a named class-side method or a pool constant — never
@@ -160,7 +185,8 @@ vkCreateInstance
 ## SDL2 Vulkan surface (graphics path, Phase 6)
 
 SDL2 >= 2.0.6 exposes `SDL_Vulkan_*` functions. These are NOT in Pharo's
-existing SDL2 bindings and must be added via uFFI in `PharoVulkan-SDL2`.
+existing SDL2 bindings and are declared via uFFI in the `SDL2` tag of
+`PharoVulkan-Graphics`, which is where the one window this project opens is built.
 
 The integration point is `OSSDL2Driver >> createWindowWithAttributes:osWindow:`.
 When `attributes vulkanAttributes` is not nil, add `SDL_WINDOW_VULKAN` to the

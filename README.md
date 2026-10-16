@@ -25,24 +25,77 @@ Linux only at this stage (uFFI library paths are Linux-specific).
 
 ---
 
+## Loading
+
+There is no published repository yet, so load from a clone on disk:
+
+```smalltalk
+Metacello new
+	baseline: 'PharoVulkan';
+	repository: 'tonel:///path/to/PharoVulkan/src';
+	load.
+
+"or one group only:"
+Metacello new
+	baseline: 'PharoVulkan';
+	repository: 'tonel:///path/to/PharoVulkan/src';
+	load: 'compiler'.
+```
+
+`load` with no argument loads the `default` group: bindings, core, compute and graphics — enough
+to open a device, dispatch a kernel and draw. Named groups load less, or more:
+
+| Group | Loads | Needs a driver |
+|---|---|---|
+| `bindings` | `PharoVulkan-Bindings` | yes, to call anything |
+| `spirv` | `PharoVulkan-SPIRV` | no |
+| `compiler` | SPIR-V builder and the Pharo→SPIR-V compiler | no — it answers bytes |
+| `core` | the Vulkan lifecycle, on the bindings | yes |
+| `compute` | the compute path | yes |
+| `graphics` | the graphics path, including SDL2 | yes, and a display server |
+| `default` | bindings, core, compute, graphics | yes |
+| `examples` | the `<Subject>Examples` classes | depends on the example |
+| `generator` | the `vk.xml` and grammar readers | no |
+| `tests` | everything, including all seven test packages | yes for most of the suite |
+
+The `compiler` group is the one that loads on a machine with no `libvulkan.so.1`: nothing in it
+reaches the bindings, which is a rule `PVArchitectureTest` enforces rather than a claim.
+
+---
+
 ## Package layout
 
-Two packages exist on disk, `PharoVulkan` and `PharoVulkan-Tests`. The names
-below are class tags inside them, not separate packages.
+Fifteen packages: eight of code and seven of tests. Inside each, class tags group the classes for
+the browser and carry no meaning beyond that.
 
-| Tag | What it contains |
+| Package | Classes | What it contains |
+|---|---|---|
+| `PharoVulkan-Bindings` | 144 | uFFI Vulkan commands, structures, handle wrappers, every named constant class, `VkResult` and `VkError` |
+| `PharoVulkan-SPIRV` | 51 | SPIR-V IR builder: `SpvModule`, `SpvBuilder`, `SpvFunction`, `SpvBlock`, the type hierarchy, constant pool, serialiser, validator |
+| `PharoVulkan-Compiler` | 31 | Pharo bytecode → SPIR-V: decode, CFG, recogniser, SSA, type inference, emit, the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-Core` | 17 | `VkContext`, `VkDevice`, `VkPhysicalDevice`, `VkQueue`, `VkBuffer`, command pool and buffer, `VkShaderModule`, `VkPipelineLayout`, the device capability survey |
+| `PharoVulkan-Compute` | 15 | Descriptor set layout, descriptor pool and set, compute pipeline, `PVComputeKernel`, the cooperative matrix path, the benchmarks |
+| `PharoVulkan-Graphics` | 17 | `VkSurface`, `VkSwapchain`, `VkRenderPass`, `VkFramebuffer`, `VkGraphicsPipeline`, offscreen targets, the sync wrappers, the scenes, and the SDL2 integration |
+| `PharoVulkan-Generator` | 13 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes |
+| `PharoVulkan-Examples` | 18 | One `<Subject>Examples` class per subject, holding every `<sampleInstance>` example |
+
+| Test package | Test classes (tests) |
 |---|---|
-| `Bindings` | uFFI Vulkan commands, handle wrappers, named constant classes |
-| `Constants` | Generated enumeration and bitmask constant classes |
-| `Core` | VkContext, VkDevice, VkQueue, VkBuffer, VkCommandPool/Buffer, VkShaderModule, device capability survey |
-| `Compute` | Descriptor set layout, pipeline layout, compute pipeline, descriptor pool/set, kernels, benchmarks |
-| `Graphics` | Swapchain, render pass, framebuffer, graphics pipeline, sync wrappers, hello-triangle scene |
-| `SPIRV` | SPIR-V IR builder (SpvModule, SpvBuilder, SpvFunction, SpvBlock, types, constants, serialiser) |
-| `Compiler`, `Compiler-Pipeline` | Pharo bytecode → SPIR-V: decode, CFG, recogniser, SSA, type inference, emit, plus the spirv-val wrapper |
-| `SDL2` | SDL2 Vulkan surface integration, window driver override |
-| `Generator` | Reads vk.xml / spirv.core.grammar.json and emits binding classes |
-| `Example` | `PVKernelExamples`, the 32 annotated kernels and shaders the tests compile |
-| `Exceptions` | `VkError`, `PVTypeError` |
+| `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) |
+| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (16), `SpvEmitterTest` (2) |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (80), `PVSpirvValidatorTest` (30) |
+| `PharoVulkan-Core-Tests` | `VkCoreTest` (68) |
+| `PharoVulkan-Compute-Tests` | `PVComputeTest` (59) |
+| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (52), `VkImageTest` (8) |
+| `PharoVulkan-Tests` | `PVArchitectureTest` (20) |
+
+621 tests in all. Each test package also carries a `Fixtures` tag for the stubs its tests build, so
+the `Tests` tag holds test classes and nothing else.
+
+Which package may depend on which is stated as a test, not as a paragraph:
+`PVArchitectureTest class >> allowedDependencies` declares the allowed outgoing edges of all
+fifteen packages, and its twenty tests fail both on an edge the code makes and the table does not
+grant, and on an edge the table grants that the baseline does not declare.
 
 See `doc/architecture.md` for the full layer diagram and class descriptions.
 
@@ -332,6 +385,8 @@ and what they cannot.
 | `CFG-PLAN.md` | What the CFG recogniser accepts and refuses, and why |
 | `GRAPHICS-GPU-PLAN.md` | How the graphics path got device coverage: offscreen rendering, the pixels asserted, the window tests, and what none of them can prove |
 | `DEFECTS-PLAN.md` | The three incidental defects recorded during Phase 7, each with the verification behind it, and what is deliberately left out of scope |
+| `LAYOUT-PLAN.md` | How every hand-counted Vulkan structure offset was replaced by a declared field, group by group |
+| `PACKAGE-PLAN.md` | The split from one code package into fifteen: the measured dependency figures, the ten decisions, what each of the eleven units did, and the rules the split set |
 
 ---
 

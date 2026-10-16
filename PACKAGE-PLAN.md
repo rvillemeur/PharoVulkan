@@ -350,9 +350,10 @@ Leaf first, so each commit moves classes whose dependents are already where they
     recursively — the scan in this plan read only the method's own literals and so missed 86 edges;
     a test with that blind spot would pass on the driver calls this project writes inside `ensure:`
     blocks. One of its own tests should be that it finds a reference planted inside a nested block.
-11. **Documentation.** Replace the package table in `CLAUDE.md` with the one above, say that each
-    package's allowed dependencies are enforced by `PVArchitectureTest` rather than by the table,
-    and update `doc/architecture.md` and the `README.md` load instructions to name the groups.
+11. **Documentation — done 16 October 2026.** Replace the package table in `CLAUDE.md` with the
+    one above, say that each package's allowed dependencies are enforced by `PVArchitectureTest`
+    rather than by the table, and update `doc/architecture.md` and the `README.md` load
+    instructions to name the groups.
 
 ## What unit 1 did
 
@@ -1010,6 +1011,55 @@ lavapipe, during which the image answers nothing at all.
 Critics are clean on `PharoVulkan-Tests`. `BaselineOfPharoVulkan` reports one
 `ReCyclomaticComplexityRule` critique on `baseline:`, which a fifteen-package declaration written
 as one cascade will always draw, and which splitting the method would hide rather than fix.
+
+## What unit 11 did
+
+Done 16 October 2026. No image change: this unit is three documentation files and this plan, so
+there is no suite run and no Iceberg commit behind it.
+
+`CLAUDE.md` lost its `## Current phase` heading, which still announced Phase 1, and gained a
+`## Current state` saying that every plan is done, that the suite is 621 tests over ten test
+classes, and where the phase specs and this plan live. Its `## Package layout` section, which
+described two packages, now carries two tables: eight code packages with their live class counts
+and what each one holds, and seven test packages with their test classes, each one's test count,
+and the fixtures beside them. A paragraph says why a test package is named for the package it
+covers and what the `Tests` and `Fixtures` tags separate.
+
+The layering is not restated there. A new `### Which package may depend on which` section says that
+the file does not answer the question and that `PVArchitectureTest class >> allowedDependencies`
+does, describes the twenty tests that hold the code and the baseline to it, and states the rule a
+reader needs: a new edge is stated in the table and in the baseline, in the commit that needs it,
+and a new package needs an entry or the meta test fails. Two stale claims went with the rewrite:
+the SDL2 section said the `SDL_Vulkan_*` functions live in a `PharoVulkan-SDL2` package, which was
+never created — they are declared in the `SDL2` tag of `PharoVulkan-Graphics` — and the testing
+convention bullet now asks for one test class per package in that package's `-Tests` package rather
+than one test class per phase.
+
+`README.md` had no load instructions at all. It now opens a `## Loading` section that says there
+is no published repository yet and loads from a clone on disk with
+`Metacello new baseline: 'PharoVulkan'; repository: 'tonel:///path/to/PharoVulkan/src'; load`, a
+table of the ten groups saying what each one loads and whether it needs a driver, and the note
+that the `compiler` group loads with no `libvulkan.so.1` — which is a rule `PVArchitectureTest`
+enforces rather than a claim this file makes. Its `## Package layout` section was replaced by the
+same two tables, and its `## Documentation` table gained the rows for `LAYOUT-PLAN.md` and this
+plan, which were missing.
+
+`doc/architecture.md` had a layer diagram of two packages. It now draws the fifteen, with the
+examples and the test packages above the code they exercise, `Graphics` beside `Compute`, `Core`
+below both, `Compiler` beside `SPIRV` and `Bindings`, and the generator off to one side as a
+development-time package. Two edges are explained rather than drawn: the compiler sits beside the
+bindings and not above them because it never calls Vulkan, and `PharoVulkan-Core` reaches
+`PharoVulkan-SPIRV` because `VkBuffer` raises `PVTypeError`. A new `### What enforces this`
+section names the three kinds of test in `PVArchitectureTest`, says that the scan walks
+`package methods` so that extension methods on base classes are read too, records the 86 edges a
+scan of a method's own literals missed, and points at `inspectorDependencies:` for reading the
+table and the live edges side by side. A new `### Baseline groups` table repeats the groups, the
+`### Pharovulkan-graphics` heading is spelled `### PharoVulkan-Graphics`, `VkPipelineLayout` moved
+out of the compute key-class table into the core one with decision D7 as the reason, and the
+compiler, generator and examples packages have key-class sections of their own for the first time.
+
+The three tutorials were checked and left alone: none of them names a package, so none of them
+could go stale.
 
 ## Rules this plan sets
 
