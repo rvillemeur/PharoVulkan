@@ -63,20 +63,20 @@ manifest.
 
 | Package | Classes | Depends on |
 |---------|---------|------------|
-| `PharoVulkan-Bindings` | 143 | nothing |
+| `PharoVulkan-Bindings` | 144 | nothing |
 | `PharoVulkan-SPIRV` | 50 | nothing |
 | `PharoVulkan-Compiler` | 32 | SPIRV |
-| `PharoVulkan-Core` | 17 | Bindings |
+| `PharoVulkan-Core` | 16 | Bindings |
 | `PharoVulkan-Graphics` | 17 | Bindings, Core, Compiler, SPIRV, Compute |
 | `PharoVulkan-Compute` | 15 | Bindings, Core, Compiler, SPIRV |
 | `PharoVulkan-Generator` | 13 | Bindings, SPIRV |
-| `PharoVulkan-Examples` | 2 + 130 extension methods | everything |
+| `PharoVulkan-Examples` | 18 | everything |
 
 `Bindings` takes the `Constants` tag with it, because the constants classes have no client outside
 the bindings and no life of their own; they stay a tag inside the package.
-`Core` takes `Vk`, `VkContext`, `VkCommandBuffer`, `VkQueue`, `VkFenceWrapper` and
-`VkSemaphoreWrapper` out of the `Graphics` tag, where they do not belong: the compute path uses all
-six.
+`Core` takes `VkContext`, `VkCommandBuffer`, `VkQueue`, `VkFenceWrapper` and `VkSemaphoreWrapper`
+out of the `Graphics` tag, where they do not belong: the compute path uses all five.
+`Vk` leaves the `Graphics` tag too, but for `Bindings` rather than `Core`: see decision D6.
 `Graphics` takes the five `SDL2` classes, rather than keeping a package of five classes whose only
 client is the one window this project opens.
 `Generator` takes `SpvBuilderGenerator`, `SpvGrammarParser`, `SpvInstructionDescriptor` and
@@ -127,8 +127,23 @@ Edges between target packages, by number of referring methods:
 
 Eighty-two of the ninety-odd references that break the intended layering are example methods, and
 they stop breaking it the moment the examples move.
-Four real problems remain, and each is recorded as a decision below rather than fixed on the way
-past.
+Five real problems remain, and each is recorded as a decision below rather than fixed on the way
+past: D1 to D3, D5, and D6, which the block-aware reading below turned up.
+
+**The scan reads one level too few, and the table above is short by that much.** A class named
+inside a block is a literal of the `CompiledBlock`, not of the method that contains the block, so
+`method literals` never sees it. Reading the blocks as well — recursively, since a block may hold a
+block — turns up 86 further edges that this table does not count. Most are downward and intended,
+and most of the rest are the `Core → Graphics` and `Compute → Graphics` pairs that unit 5 settles by
+moving six classes out of the `Graphics` tag. Three are real additions to decision D5, all in the
+same shape as the four it already names: `VkFramebufferCreateInfo >> attachmentHandlesSet`,
+`VkPhysicalDeviceFeatures2 class >> of:chainedWith:do:` and `VkPhysicalDeviceProperties2 class >>
+of:chainedWith:do:` reach from a binding into the `Graphics` tag from inside a block.
+
+Two things follow. The reference counts in the table are a floor rather than a count, which changes
+nothing about the unit order they were used to decide. And `PVArchitectureTest` must read blocks
+recursively, or it will pass while the edge it exists to forbid sits one level down in an
+`ensure:` block — which is where this project puts most of its driver calls.
 
 ## Decisions to take before the moves they affect
 
@@ -164,7 +179,7 @@ example itself. The recommendation is that it goes to `PharoVulkan-Compute` and 
 `PVGlslTriangleScene` goes to `PharoVulkan-Examples`. Its name should then say what it is, but
 renaming it is a separate unit and not part of the split.
 
-**D5 — the policy constants the structures ask for.** Four report methods in the bindings ask a
+**D5 — the policy constants the structures ask for.** Five report methods in the bindings ask a
 resource class for the rule they report against, which is the view rule working as intended — a
 report that restates a rule can disagree with it — but it makes `Bindings` depend on `Core` and on
 `Graphics`:
@@ -174,7 +189,10 @@ report that restates a rule can disagree with it — but it makes `Bindings` dep
 `VkSwapchain imageCountFor:`;
 `VkSurfaceFormatKHR >> formatRows` reads `VkSurface formatRenderedIn`;
 `VkSwapchainCreateInfoKHR >> swapchainRows` reads `VkSwapchain presentModeNameFor:` and
-`VkSwapchain clipObscuredPixels`.
+`VkSwapchain clipObscuredPixels`;
+and `VkFramebufferCreateInfo >> attachmentHandlesSet`, which the first scan missed because the
+reference is inside a block, reads `VkFramebuffer attachmentByteCount` for the stride of a run of
+handles that carries no field specification.
 The recommendation is to move each value down to the layer both sides sit above rather than to
 allow the edge: the policy constants to `VkRenderConfig`, which already holds
 `sharingModeExclusive` for exactly this reason; the present mode names to a constants class of
@@ -183,6 +201,24 @@ their own, since no `VkPresentMode` exists yet and the values currently live on 
 `VkSwapchain` delegates to it. This was found by the scan after unit 1, when the example methods
 stopped hiding it. Take it in unit 8, with `VkSwapchain` and `VkSurface` still answering the same
 values through delegation so that nothing outside the bindings changes.
+
+**D6 — where `Vk` lives.** `Vk` is the uFFI command façade: 91 class-side methods, each one a
+`vkSomething` call and nothing else. It currently sits in the `Graphics` tag, which is why the
+block-aware scan reports `Core → Graphics` from twelve methods, `Compute → Graphics` from six and
+`Bindings → Graphics` from the two `of:chainedWith:do:` chain builders: every layer calls the
+driver, so every layer reaches it.
+
+This plan first put it in `Core` with the other five classes leaving the `Graphics` tag. That is
+wrong, and the two chain builders are the proof: `VkPhysicalDeviceFeatures2` and
+`VkPhysicalDeviceProperties2` are bindings, they call `Vk getPhysicalDeviceFeatures2:into:` to fill
+themselves, and a bindings package may not depend on `Core`. A declared foreign call belongs beside
+the declared structures it passes, so `Vk` goes to `PharoVulkan-Bindings`. `Core` then holds the
+five lifecycle classes and depends on `Bindings` for both the structures and the calls, which is
+what it already does in fact.
+
+Nothing else moves with it: `VkExtensionCommand` already sits in the `Core` tag and is a lookup of
+extension function pointers rather than a declared call, so it stays where it is until unit 5 reads
+it again.
 
 ## What a unit looks like
 
@@ -240,8 +276,11 @@ Leaf first, so each commit moves classes whose dependents are already where they
     `bindings`, `spirv`, `compiler` (SPIR-V plus compiler, no driver code), `compute`, `graphics`,
     `default` (everything but the generator and the examples), `examples`, `tests`. Write
     `PVArchitectureTest`: one test per package asserting that its outgoing references stay inside
-    its allowed set, read from the image the way the scan in this plan read them, with the allowed
-    sets declared on the class side so that adding an edge means stating it.
+    its allowed set, with the allowed sets declared on the class side so that adding an edge means
+    stating it. It must read each method's literals **and** the literals of every block inside it,
+    recursively — the scan in this plan read only the method's own literals and so missed 86 edges;
+    a test with that blind spot would pass on the driver calls this project writes inside `ensure:`
+    blocks. One of its own tests should be that it finds a reference planted inside a nested block.
 11. **Documentation.** Replace the package table in `CLAUDE.md` with the one above, say that each
     package's allowed dependencies are enforced by `PVArchitectureTest` rather than by the table,
     and update `doc/architecture.md` and the `README.md` load instructions to name the groups.
@@ -308,7 +347,9 @@ where the sender rewrite had put the class name, and now sends to `self`.
 
 The scan was re-run with each method attributed to the package that now owns it, which is what
 turned up decision D5: the layering violations fell from roughly ninety references to seven, and the
-seven are D2, D3 and the four report methods of D5. Every `Bindings → Core`, `Bindings → Graphics`,
+seven are D2, D3 and the four report methods of D5. Reading blocks as well — which the scan did not
+do, and which the section above now records as its defect — adds a fifth report method to D5 and
+turns up decision D6, `Vk` sitting in the `Graphics` tag while every layer calls it. Every `Bindings → Core`, `Bindings → Graphics`,
 `Bindings → Compute`, `Bindings → Compiler`, `SPIRV → Core` and `SPIRV → Compute` reference that the
 first scan found was an example, and all of them are now `Examples → …` edges, which the layering
 allows.
@@ -333,7 +374,7 @@ allows.
 - **A shared value gets its own home.** The rule `LAYOUT-PLAN.md` recorded for
   `VkPipelineCreation` is what decisions D1 and D3 apply: when two layers need the same value, it
   belongs below both of them, not in whichever one wrote it first.
-- **No cosmetic change rides along.** The split moves classes. The four decisions are the only code
+- **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
 ## Not in this plan
