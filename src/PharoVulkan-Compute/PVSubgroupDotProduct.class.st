@@ -11,9 +11,9 @@ Class {
 		'laneCounts',
 		'reportedWidth'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Benchmarks',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'Benchmarks'
 }
 
 { #category : 'constants' }

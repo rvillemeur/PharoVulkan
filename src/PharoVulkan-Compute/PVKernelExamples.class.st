@@ -1,5 +1,9 @@
 "
-Example GPU kernels used for integration testing and demonstration. Each method carries <gpu> and <param:> pragmas and exercises a specific compiler feature (arithmetic, control flow, etc.).
+A library of GPU kernel sources. Each method carries <gpu> and <param:> pragmas and exercises one compiler feature — arithmetic, control flow, subgroup reduction, a tiled or cooperative matrix product.
+
+Despite the name, this is not an example class: the benchmarks, the comparisons and the GLSL triangle shaders all compile methods out of it, so it is production code that happens to read as a catalogue. Decision D4 of PACKAGE-PLAN.md records why it sits in PharoVulkan-Compute rather than in PharoVulkan-Examples. Renaming it to say so is separate work.
+
+A method here is never run in the image. It is compiled, which is why its body may use only what the DSL understands.
 "
 Class {
 	#name : 'PVKernelExamples',
@@ -8,9 +12,9 @@ Class {
 		'out0',
 		'out1'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Kernels',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'Kernels'
 }
 
 { #category : 'accessing' }

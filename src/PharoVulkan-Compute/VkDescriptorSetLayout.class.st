@@ -9,9 +9,9 @@ Class {
 		'device',
 		'bindings'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Descriptors',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'Descriptors'
 }
 
 { #category : 'factory' }

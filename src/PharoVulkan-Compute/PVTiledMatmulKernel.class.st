@@ -13,9 +13,9 @@ Class {
 		'bufferVariables',
 		'tileVariables'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Kernels',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'Kernels'
 }
 
 { #category : 'constants' }

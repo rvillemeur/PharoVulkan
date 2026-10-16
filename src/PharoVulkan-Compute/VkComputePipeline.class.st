@@ -13,9 +13,9 @@ Class {
 		'shaderModule',
 		'entryPoint'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Pipeline',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'Pipeline'
 }
 
 { #category : 'request' }

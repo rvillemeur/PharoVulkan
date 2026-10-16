@@ -12,9 +12,9 @@ Class {
 		'order',
 		'elements'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-CooperativeMatrix',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'CooperativeMatrix'
 }
 
 { #category : 'instance creation' }

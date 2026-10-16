@@ -16,9 +16,9 @@ Class {
 		'descriptorSetLayout',
 		'descriptorSet'
 	],
-	#category : 'PharoVulkan-Compute',
-	#package : 'PharoVulkan',
-	#tag : 'Compute'
+	#category : 'PharoVulkan-Compute-Kernels',
+	#package : 'PharoVulkan-Compute',
+	#tag : 'Kernels'
 }
 
 { #category : 'labels' }
