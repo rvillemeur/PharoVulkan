@@ -261,7 +261,8 @@ Leaf first, so each commit moves classes whose dependents are already where they
    D3 taken here.
 5. **Core — done 16 October 2026.** Sixteen classes, including the five taken out of the
    `Graphics` tag. D2 taken here.
-6. **Compute.** Fifteen classes.
+6. **Compute — done 16 October 2026.** Sixteen classes: fifteen, plus the `PVKernelExamples` that
+   unit 1 moved here by D4. No decision was due.
 7. **Graphics.** Seventeen classes, including the `SDL2` tag.
 8. **Bindings.** Whatever is left in `PharoVulkan` is the bindings and the constants, so this unit
    is a package rename rather than a move. Check how Iceberg records a package rename before doing
@@ -569,6 +570,55 @@ method classified as accessing that fills an instance variable instead of answer
 the two hand-counted readers `LAYOUT-PLAN.md` names as group 5, writing `propSize := 24` and
 stepping through the driver's array by that stride, so it is to be rewritten there rather than
 reclassified here.
+
+## What unit 6 did
+
+Done 16 October 2026.
+
+`PharoVulkan-Compute` created with a package comment, holding sixteen classes under five tags:
+`Descriptors` (3: `VkDescriptorPool`, `VkDescriptorSet`, `VkDescriptorSetLayout`), `Pipeline`
+(2: `VkPipelineLayout`, `VkComputePipeline`), `Kernels` (3: `PVComputeKernel`, `PVKernelExamples`,
+`PVTiledMatmulKernel`), `CooperativeMatrix` (3: `PVCooperativeMatrix`,
+`PVCooperativeMatrixKernel`, `PVCooperativeMatrixComparison`) and `Benchmarks` (5: `PVBenchmark`,
+`PVBenchmarkResult`, `PVPrecisionComparison`, `PVTiledMatmulComparison`, `PVSubgroupDotProduct`).
+The plan said fifteen; it is sixteen because unit 1 moved `PVKernelExamples` here by decision D4.
+`PVSubgroupDotProduct` sits under `Benchmarks` rather than in a tag of its own: it runs a kernel on
+a device and reports the result against the host sum, which is the shape of the comparisons beside
+it. `PharoVulkan` is down to 163 classes and the `Compute` tag is gone.
+
+No decision was due in this unit, and the block-aware scan found nothing to take one about. The
+package's outgoing references are exactly the four packages the target table allows: the bindings
+and their constants (`Vk` from 11 methods, fourteen declared structures, `VkDescriptorType`,
+`VkShaderStage`, `VkPipelineCreation`, `VkError`), `PharoVulkan-Core` (`VkBuffer`, `VkShaderModule`,
+`VkContext`, `VkCommandPool`, `VkScope`), `PharoVulkan-Compiler` (`PVSPIRVEmitter` from 12 methods,
+`PVKernelCompiler`, `PVSpirvValidator`, `PVTypeAnnotation`) and `PharoVulkan-SPIRV` (`PVTypeError`
+from 12 methods, the specification constants, the builder and the cooperative matrix types). There
+is no edge to `Graphics` at all.
+
+`PVBenchmarkResult` had no class comment. One was written before the move, saying that the rate is
+derived rather than stored and why `gigaflopsPerSecond` answers nil for a dispatch quicker than the
+host clock. `PVKernelExamples` had a comment calling itself a set of examples, which is what D4
+concluded it is not: it now says it is a library of kernel sources that the benchmarks, the
+comparisons and the GLSL triangle shaders compile out of, and names D4 for the reason it lives here.
+
+The baseline declares `PharoVulkan-Compute` requiring the bindings, `PharoVulkan-Core`,
+`PharoVulkan-Compiler` and `PharoVulkan-SPIRV`, adds a `compute` group, and extends `default` to
+the bindings plus the lifecycle plus compute — a user of this project opens a device and runs
+something on it. `PharoVulkan-Examples` and `PharoVulkan-Tests` now require `PharoVulkan-Compute`
+rather than `PharoVulkan-Core`, which is what they read.
+
+Critics on the package: eight critiques, every one code-level and none caused by the move — three
+excessive-argument methods and two long methods in `PVKernelExamples`, where a kernel takes each
+buffer it touches as a parameter because the DSL has no structures, long `create` on
+`VkPipelineLayout` and `destroy` on `PVComputeKernel`, and excessive variables on `PVComputeKernel`,
+which holds the whole dispatch.
+
+Found on the way past, for unit 7 to settle rather than now: the whole `Graphics → Compute` edge
+the target table allows rests on two references. `VkGraphicsPipeline` reads `VkPipelineLayout`,
+which is a pipeline layout rather than a compute one, and `PVGlslTriangleShaders` compiles two
+methods out of `PVKernelExamples`. Neither is compute-specific, so unit 7 should ask whether the
+edge is wanted or whether `VkPipelineLayout` belongs below both pipeline kinds, the way
+`VkPipelineCreation` already holds the values both of them ask for.
 
 ## Rules this plan sets
 
