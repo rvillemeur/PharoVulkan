@@ -259,7 +259,8 @@ Leaf first, so each commit moves classes whose dependents are already where they
    lands in this package.
 4. **Compiler — done 16 October 2026.** Thirty-one classes, including the `Compiler-Pipeline` tag.
    D3 taken here.
-5. **Core.** Seventeen classes, including the six taken out of the `Graphics` tag. Take D2 here.
+5. **Core — done 16 October 2026.** Sixteen classes, including the five taken out of the
+   `Graphics` tag. D2 taken here.
 6. **Compute.** Fifteen classes.
 7. **Graphics.** Seventeen classes, including the `SDL2` tag.
 8. **Bindings.** Whatever is left in `PharoVulkan` is the bindings and the constants, so this unit
@@ -510,11 +511,77 @@ all, not even in a comment or as a symbol — `PVPhiNode`, `PVSSAVar`, `PVVec2`,
 `PVRegisterOp` instructions and plain associations, and the type tokens are symbols, so the classes
 and their comments describing what builds them are stale.
 
+## What unit 5 did
+
+Done 16 October 2026.
+
+`PharoVulkan-Core` created with a package comment, holding sixteen classes under four tags:
+`Device` (4: `VkContext`, `VkPhysicalDevice`, `VkDevice`, `VkExtensionCommand`), `Commands`
+(5: `VkQueue`, `VkCommandPool`, `VkCommandBuffer`, `VkFenceWrapper`, `VkSemaphoreWrapper`),
+`Resources` (3: `VkBuffer`, `VkShaderModule`, `PVFloat16`) and `CooperativeMatrix`
+(4: `PVCooperativeMatrixSurvey`, `VkCooperativeMatrixConfiguration`, `VkComponentType`, `VkScope`).
+Eleven came from the `Core` tag and five from the `Graphics` tag — `VkContext`, `VkQueue`,
+`VkCommandBuffer`, `VkFenceWrapper` and `VkSemaphoreWrapper`. The plan said seventeen classes and
+six from `Graphics`, counting `Vk` among them; D6 had already concluded that `Vk` belongs with the
+declared structures it passes, so this unit moved it to the `Bindings` tag of `PharoVulkan` instead,
+where unit 8 will rename the package around it. `Bindings` is now 104 classes and the `Graphics` tag
+is down to 12. No class in the new package was missing a class comment.
+
+**D2 is settled by deletion, as recommended.** `find_senders` was asked again rather than trusted
+from the note: `VkDevice >> createDescriptorPool:descriptorCount:` had no senders anywhere, in the
+image or the tests, and `VkDevice` was its only implementor. The failing test came first —
+`VkCoreTest >> testNoCoreMethodBuildsADescriptorPool` reads every method of the package, blocks
+included, and asserts that none of them names `VkDescriptorPool`; it failed on that one method, and
+passes with the method gone. The test is worth more than the deletion it justified: it is the one
+edge from `Core` up into `Compute` that the block-aware scan found, so the test now holds the layer
+boundary open for inspection rather than leaving it to a future scan.
+
+After the deletion the package's outgoing references are to the bindings and the constants — `Vk`
+from 52 methods, `VkError` from 11, and the declared structures — and to `PharoVulkan-SPIRV` for the
+`PVTypeError` that three of `VkBuffer`'s methods raise, which is the edge D1 added deliberately.
+Incoming references come from Bindings, Compute, Graphics, the examples and the tests, all allowed
+by the target table.
+
+**A trap worth naming: `cls package: 'PharoVulkan-Core'` does not mean what it reads as.** Pharo
+parses the string as the package `PharoVulkan` with the tag `Core`, so classes moved that way were
+added to a `Core` tag inside the old package, and `packageTag:` afterwards re-homed the class
+without emptying that tag. `PharoVulkan` reported five classes it no longer defined until every
+class was removed from the stray tag, which then disappeared with its last member. Move a class with
+`cls package: (PackageOrganizer default ensurePackage: '…')`, and check the old package's
+`definedClasses size` after every unit. `PharoVulkan` is down to 179 classes.
+
+The baseline declares `PharoVulkan-Core` requiring `PharoVulkan` and `PharoVulkan-SPIRV`, a `core`
+group, and `default` as `PharoVulkan` plus `PharoVulkan-Core` — a user of this project opens a
+device, so the lifecycle is part of the default load. `PharoVulkan-Examples` and
+`PharoVulkan-Tests` now require `PharoVulkan-Core` rather than `PharoVulkan`, which is what they
+actually read.
+
+Suite 596 with the new test, no failures, no errors. The first run reported one error in
+`PVGraphicsTest >> testSurfaceReportsWhatItAllowsAndWhatItOffersOnThisMachine`, which passed alone
+and passed again in a run with nothing else touching the image: the poll that watched the run had
+asked for `Process allSubInstances` and for package membership while the surface test was running.
+This is the second unit in which a reflective query run beside the suite has failed a test — poll
+only `Smalltalk at: #Run`, and nothing else, while a forked suite is going.
+
+Critics on the package: one critique, and not one the move caused —
+`ReUnaryAccessingMethodWithoutReturnRule` on `VkPhysicalDevice >> fetchQueueFamilyProperties`, a
+method classified as accessing that fills an instance variable instead of answering. It is one of
+the two hand-counted readers `LAYOUT-PLAN.md` names as group 5, writing `propSize := 24` and
+stepping through the driver's array by that stride, so it is to be rewritten there rather than
+reclassified here.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
   ensurePackage: '…')` and `cls packageTag: …`. Editing `src/` or the `#package:` pragma in a Tonel
-  file is not a way to move a class.
+  file is not a way to move a class. Pass the package, never its name: `cls package: 'A-B'` is
+  parsed as the package `A` with the tag `B`, which silently builds a tag in the package the class
+  is leaving. After every unit, check that the old package's `definedClasses size` fell by exactly
+  the number of classes moved, and that no stray tag is left holding them.
+- **While a forked suite runs, poll `Smalltalk at: #Run` and nothing else.** Two units have had a
+  test fail only in a run that was being watched: a reflective query asked beside the suite —
+  `allSendersOf:`, `Process allSubInstances`, package membership — races the tests that read the
+  same system state.
 - **An example lives in an example class.** The examples of a subject are class-side methods of a
   class named after that subject — `VkPipelineExamples`, `PVBenchmarkExamples` — which lives in
   `PharoVulkan-Examples` under a tag mirroring the package the subject came from. One click from
