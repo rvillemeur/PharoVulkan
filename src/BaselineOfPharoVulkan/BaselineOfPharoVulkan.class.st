@@ -25,7 +25,9 @@ BaselineOfPharoVulkan >> baseline: spec [
 	 requires Compute for the kernel sources its shaders are compiled from. All of these are part
 	 of 'default': a user of this project opens a device, runs something on it and draws. The
 	 generator and the examples are left out of 'default' because a user of the bindings needs
-	 neither."
+	 neither. PharoVulkan-Examples requires all six code packages rather than Graphics alone,
+	 because there is an example class for each of them; Graphics would pull the others in anyway,
+	 but then the declaration would stop saying what the package reaches."
 	"There is one test package per code package that has tests, named for the package it covers
 	 and ending in -Tests, which is the convention Pharo's own tools and critics expect. Each
 	 requires the package it covers and whatever else its tests build on, which for most of them
@@ -34,7 +36,8 @@ BaselineOfPharoVulkan >> baseline: spec [
 	 as kernels there, and running two of them on a device is how the compute tests show that
 	 acceptance is real. PharoVulkan-Tests survives as a package of one class, because a rule
 	 about how packages may depend on each other belongs to no single package; it requires the six
-	 so that loading it loads everything the rule is about."
+	 so that loading it loads everything the rule is about, and PharoVulkan-Core besides, because
+	 the fixture that proves the scan reads inside nested blocks names a class from there."
 
 	<baseline>
 	spec for: #common do: [
@@ -60,7 +63,10 @@ BaselineOfPharoVulkan >> baseline: spec [
 			with: [
 				spec requires: #( 'PharoVulkan-SPIRV' 'PharoVulkan-Bindings' ) ];
 			package: 'PharoVulkan-Examples'
-			with: [ spec requires: #( 'PharoVulkan-Graphics' ) ];
+			with: [
+				spec requires:
+					#( 'PharoVulkan-Graphics' 'PharoVulkan-Bindings' 'PharoVulkan-Core'
+					   'PharoVulkan-Compute' 'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Bindings-Tests'
 			with: [
 				spec requires:
@@ -98,7 +104,8 @@ BaselineOfPharoVulkan >> baseline: spec [
 				spec requires:
 					#( 'PharoVulkan-Bindings-Tests' 'PharoVulkan-SPIRV-Tests'
 					   'PharoVulkan-Compiler-Tests' 'PharoVulkan-Core-Tests'
-					   'PharoVulkan-Compute-Tests' 'PharoVulkan-Graphics-Tests' ) ].
+					   'PharoVulkan-Compute-Tests' 'PharoVulkan-Graphics-Tests'
+					   'PharoVulkan-Core' ) ].
 		spec
 			group: 'bindings' with: #( 'PharoVulkan-Bindings' );
 			group: 'spirv' with: #( 'PharoVulkan-SPIRV' );
