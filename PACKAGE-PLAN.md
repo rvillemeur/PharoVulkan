@@ -337,11 +337,11 @@ Leaf first, so each commit moves classes whose dependents are already where they
    package it covers or the subject it is about. Splitting `VkBindingsTest` further is not part of
    this unit: it is one test class for one package, which is what the convention asks for, and the
    excessive-methods critique on it is a separate question.
-10. **Baseline and architecture test.** The baseline is no longer rewritten once at the end: each
-    unit declares the package it creates as part of that unit, so the image on disk is loadable at
-    every commit rather than only at the last one. What is left here is the final shape —
-    `BaselineOfPharoVulkan` holding the eight code packages, the six test packages, real
-    `requires:` edges matching the table above, and groups: `bindings`, `spirv`, `compiler`
+10. **Baseline and architecture test — done 16 October 2026.** The baseline is no longer rewritten
+    once at the end: each unit declares the package it creates as part of that unit, so the image on
+    disk is loadable at every commit rather than only at the last one. What is left here is the
+    final shape — `BaselineOfPharoVulkan` holding the eight code packages, the six test packages,
+    real `requires:` edges matching the table above, and groups: `bindings`, `spirv`, `compiler`
     (SPIR-V plus compiler, no driver code), `compute`, `graphics`, `default` (everything but the
     generator and the examples), `examples`, `tests` — and the architecture test. Write
     `PVArchitectureTest`: one test per package asserting that its outgoing references stay inside
@@ -948,6 +948,59 @@ base class reports the critiques of that base class as well, so `PharoVulkan-Com
 `ReExcessiveMethodsRule` and two `ReRefersToClassRule` critiques against Pharo's own `Number`.
 They are not this project's code and cannot be fixed here.
 
+## What unit 10 did
+
+The baseline reached its final shape and the layering became a test.
+
+`BaselineOfPharoVulkan` already named all fifteen packages, because every unit from 1 onwards
+declared the package it created, so the shape was there and only two `requires:` sets were wrong.
+Both under-declared. `PharoVulkan-Examples` required `PharoVulkan-Graphics` alone, which loads the
+other five transitively and so hid what the package reaches; it now names all six code packages.
+`PharoVulkan-Tests` required the six test packages but not `PharoVulkan-Core`, whose `VkDevice` the
+new fixture names. Metacello reads the baseline back without complaint, and the ten groups are
+unchanged: `bindings`, `spirv`, `compiler` (SPIR-V plus compiler, no driver code), `core`,
+`compute`, `graphics`, `default` (the four Vulkan packages), `generator`, `examples` and `tests`.
+
+`PVArchitectureTest` holds the layering in `PharoVulkan-Tests`, with the allowed edges declared as
+a table on the class side — `allowedDependencies`, one entry per package, fifteen entries — and
+twenty tests reading it. Fifteen of them are one per package: each walks that package's own
+methods, collects the project packages their literals name, and fails naming every method whose
+reference the table does not grant, because a failure that says only which package broke does not
+say where to look. Four more hold the table itself to the code: every package of this project has
+an entry (asked of the organiser, so a package created tomorrow is covered the day it appears),
+every allowed edge names a package that exists, every allowed edge is one the package really
+makes, and every allowed edge is declared in the baseline too. The last of those is the one that
+would otherwise rot silently: an edge the table grants and the baseline leaves out works in this
+image, where every package is loaded already, and fails only for whoever loads the project a group
+at a time.
+
+The twentieth test is about the scan rather than the layering. The dependency figures at the top of
+this plan were measured by reading each method's own literals, which missed 86 edges, because a
+reference inside a block lives in the block's literals and not the method's. `packagesNamedBy:`
+therefore recurses into every `CompiledBlock` literal, and `PVNestedBlockReferenceFixture >>
+reachThroughThreeBlocks` names `VkDevice` from inside three nested blocks and nothing else, so
+`testTheScanReadsAReferencePlantedInsideANestedBlock` fails if the recursion is ever removed. It
+was written against the shallow scan first and reported `Got a Set() instead of a
+Set('PharoVulkan-Core')`; the recursion turned it green. That fixture reference is the reason
+`PharoVulkan-Tests` has an allowed edge at all.
+
+Both halves were shown to bite rather than assumed to. A probe method naming `SpvBuilder` was
+compiled into the fixture and the aggregate test reported
+`PVNestedBlockReferenceFixture >> temporaryStrayEdgeProbe -> PharoVulkan-SPIRV`; the probe was then
+removed and the test went green. The baseline check was run against a copy of the table carrying
+one synthetic edge, which it reported as `PharoVulkan-SPIRV -> PharoVulkan-Generator`, and against
+the real table, which it passed.
+
+`PVArchitectureTest class >> inspectorDependencies:` shows one row per package with its declared
+and its actual edges side by side, read from `dependencyReport`, which computes both from the table
+and from a live scan rather than from anything stored. All fifteen rows agree today. No
+`<sampleInstance>` example was written: no test class in this project has one, and an example of a
+test is the test.
+
+Critics are clean on `PharoVulkan-Tests`. `BaselineOfPharoVulkan` reports one
+`ReCyclomaticComplexityRule` critique on `baseline:`, which a fifteen-package declaration written
+as one cascade will always draw, and which splitting the method would hide rather than fix.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
@@ -1017,6 +1070,21 @@ They are not this project's code and cannot be fixed here.
   part of a protocol such as `*pharovulkan-compiler` case insensitively, so a rename can carry a
   method out of the package it was deliberately put in. Diff the old directory against the new one
   before deleting it, and read the protocols rather than the file names.
+- **A dependency has to be stated in both places, and a test has to compare them.** The allowed
+  table in `PVArchitectureTest` says what a package may reach; the baseline says what loading it
+  pulls in. This image has everything loaded, so an edge in one and not the other works here and
+  fails for whoever loads the project a group at a time.
+  `testEveryAllowedDependencyIsDeclaredInTheBaseline` reads
+  `BaselineOfPharoVulkan project version packages` and compares the two.
+- **Declare the edge you reach, not the edge that happens to load it.** `PharoVulkan-Examples`
+  required Graphics alone and got the other five transitively. The load worked; the declaration had
+  stopped describing the package. Every `requires:` set names what that package's own methods
+  reference.
+- **The image's filesystem is not this session's.** A method source written to a file under `/tmp`
+  from this session does not exist for the image — `f exists` answers false — and a file the image
+  writes cannot be read back here. Pass method source through `compile_method`, whose argument is a
+  JSON string and so needs no Smalltalk quote doubling at all, rather than through a file or
+  through `compile:` on a literal built in the image.
 - **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
