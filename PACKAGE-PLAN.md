@@ -257,6 +257,32 @@ the code package it covers in the browser. `PharoVulkan-Tests` keeps its name, w
 in the suffix. Taken in unit 9, after the six packages existed and before they were committed, so
 no `src/` directory had to be renamed on disk.
 
+**D10 — where the host twins of the DSL selectors live.** Six methods this project adds to classes
+it does not own implement selectors that `PVSelectorTable` maps, so that a kernel method means the
+same thing when it runs in the image as when it runs on the device: `Number >> asF16`, `asF32`,
+`subgroupSum` and `clamp:to:`, and `SequenceableCollection >> coopMatLoad:` and `coopMatStore:`.
+Before the split all six sat in the one package, where the question could not be asked. The unit 8
+rename answered it by default and wrongly: it carried every protocol beginning `*pharovulkan` into
+`PharoVulkan-Bindings`, including the `*pharovulkan-compiler` that `clamp:to:` had been in, so all
+six ended up in the bottom layer.
+
+Putting all six with the mappings, in `PharoVulkan-Compiler`, was the first answer and it is also
+wrong: `asF16` names `PVFloat16`, which is in `Core`, and `coopMatLoad:` names
+`PVCooperativeMatrixKernel` and `PVCooperativeMatrix`, which are in `Compute`, so the compiler
+would reach two packages above it and stop being the package that answers bytes without any Vulkan
+code. The layering decides the home: `asF32`, `subgroupSum` and `clamp:to:` name nothing and go
+with the mappings in `PharoVulkan-Compiler`; `asF16` goes to `PharoVulkan-Core` with the half
+format it reads; and the cooperative matrix pair goes to `PharoVulkan-Compute` with the matrix
+classes it builds, the store following the load because the two are twins. The test states the
+layering rule rather than the placement — no such extension may sit in the bindings, and none may
+name a class outside the package it sits in — so a seventh mapping added tomorrow is held to the
+same rule without the test being edited.
+
+The moved test went with the method it tests:
+`testNumberHalfConversionsAnswerWhatTheDeviceWouldAnswer` is now in `VkCoreTest`, because `asF16`
+and `PVFloat16` are both in `Core`. Taken in unit 9, after unit 9's own commit, because the defect
+was found while verifying that the stale `src/PharoVulkan/` directory could be deleted.
+
 ## What a unit looks like
 
 One package, moved whole:
@@ -888,6 +914,40 @@ about fifteen minutes while the graphics tests held the VM inside a driver call.
 hang to debug — the suite finished and reported 600 run, 0 failed — so the right response is to
 wait and keep polling the one global.
 
+
+### What unit 9 fixed afterwards
+
+Deleting the stale `src/PharoVulkan/` directory that unit 8's rename had left tracked meant
+diffing all 149 files against `src/PharoVulkan-Bindings/` first. Three differed only by the
+package name, six by unit 8's D5 edits, and one line did not fit either: `Number >> clamp:to:`
+had moved from the protocol `*pharovulkan-compiler` to `*PharoVulkan-Bindings-compiler`, because
+the organiser's rename rewrites any extension protocol whose package part matches, case
+insensitively. That is decision D10, and it uncovered two defects of its own.
+
+The first is in the layering test. `VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage`
+walked `bindings definedClasses`, so it could not see the methods the package adds to classes it
+does not define — which is exactly where `Number >> asF16` was naming `PVFloat16` in `Core`. Both
+that test and `VkCoreTest >> testNoCoreMethodBuildsADescriptorPool` now walk `package methods`.
+The fix was shown by putting `asF16` back in the bindings and watching the rewritten test report
+`Number >> asF16 -> PVFloat16`, then moving it to `Core` and watching it pass.
+
+The second is the new test in `PVCompilerTest`,
+`testEveryMappedSelectorThisProjectAddsToABaseClassStaysInsideItsOwnLayer`, which reads the
+selectors out of `PVSelectorTable standard table` and holds every extension this project
+implements for one of them to the layering rule. It was red on the two cross-layer references and
+green once the six methods were placed by D10.
+
+The comments of `coopMatLoad:` and `coopMatStore:` carried doubled quotes — `DSL''s` — from an
+earlier compile through a Smalltalk literal. A scan of every project method found no others.
+
+The suite is 601 tests: 600 plus the new layering test, with one test moved from `VkBindingsTest`
+to `VkCoreTest` and the counts unchanged by the move. All 601 pass.
+
+One thing to expect in unit 10: running the critics on a package that owns extension methods on a
+base class reports the critiques of that base class as well, so `PharoVulkan-Compiler` now lists
+`ReExcessiveMethodsRule` and two `ReRefersToClassRule` critiques against Pharo's own `Number`.
+They are not this project's code and cannot be fixed here.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
@@ -946,6 +1006,17 @@ wait and keep polling the one global.
 - **A silent image is not always a stuck image.** A graphics test holds the VM inside a driver
   call, and while it does, `evaluate_pharo` cannot answer anything at all. Judge a forked run by
   the global it publishes once it answers again, not by the timeouts.
+- **A package owns the methods it adds to classes it does not define, and a layering walk must ask
+  the package for its methods.** `package definedClasses` cannot see an extension method, so a walk
+  built on it is blind to exactly the methods most likely to reach across a layer. Ask
+  `package methods`.
+- **An extension method's home is decided by what it names, not by what it is about.** The host
+  twin of a DSL mapping belongs with the mappings only when it names nothing above them; otherwise
+  it belongs with the classes it reads. See decision D10.
+- **Renaming a package rewrites its extension protocols too.** The organiser matches the package
+  part of a protocol such as `*pharovulkan-compiler` case insensitively, so a rename can carry a
+  method out of the package it was deliberately put in. Diff the old directory against the new one
+  before deleting it, and read the protocols rather than the file names.
 - **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
