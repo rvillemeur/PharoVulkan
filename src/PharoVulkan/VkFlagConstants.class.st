@@ -16,8 +16,11 @@ Class {
 VkFlagConstants class >> nameForFlags: flags [
 	"Joins the names of the bits this class declares; a bit no constant here carries is
 	 shown as its raw hex rather than silently dropped, so a view can never hide a
-	 property the driver reported."
+	 property the driver reported. A word of no bits decodes through nameForNoBits, because
+	 some enumerations name that word and most do not."
+
 	| remainder names |
+	flags = 0 ifTrue: [ ^ self nameForNoBits ].
 	names := OrderedCollection new.
 	remainder := flags.
 	self namedBits do: [ :each |
@@ -27,7 +30,17 @@ VkFlagConstants class >> nameForFlags: flags [
 	remainder ~= 0 ifTrue: [
 		names add: (remainder printPaddedWith: $0 to: 1 base: 16) , 'h' ].
 	^ String streamContents: [ :s |
-		names do: [ :n | s nextPutAll: n ] separatedBy: [ s nextPutAll: '|' ] ]
+		  names do: [ :n | s nextPutAll: n ] separatedBy: [ s nextPutAll: '|' ] ]
+]
+
+{ #category : 'decoding' }
+VkFlagConstants class >> nameForNoBits [
+	"What a flags word of no bits decodes to. Most flag enumerations carry no name for it, so
+	 the answer is nothing at all; one that does name the empty word — a cull mode of none, for
+	 instance — overrides this rather than the decoder, so the rule for a word carrying bits
+	 stays in one place."
+
+	^ ''
 ]
 
 { #category : 'decoding' }

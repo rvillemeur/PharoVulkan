@@ -83,12 +83,11 @@ VkComputePipeline class >> handleForCreateInfo: aCreateInfo on: aDevice [
 
 { #category : 'constants' }
 VkComputePipeline class >> noBasePipelineIndex [
-	"VK_PIPELINE_CREATE_DERIVATIVE is not asked for, so the request derives from no other
-	 pipeline. basePipelineIndex is a signed int32 and the value for no base pipeline is minus
-	 one; written through the declared field, so the sign is the field's business rather than
-	 the caller's."
+	"Delegates so the value has one home: the index that means a pipeline derives from no other
+	 belongs to pipeline creation rather than to compute, and the graphics pipeline asks for the
+	 same value."
 
-	^ -1
+	^ VkPipelineCreation noBasePipelineIndex
 ]
 
 { #category : 'instance creation' }
@@ -105,9 +104,10 @@ VkComputePipeline class >> on: aShaderModule layout: aPipelineLayout device: aDe
 
 { #category : 'constants' }
 VkComputePipeline class >> pipelinesPerCreate [
-	"One request per call, so one pipeline comes back and the out parameter is one handle wide."
+	"Delegates so the value has one home: one request per call is how every pipeline is created
+	 here, whatever kind it is, and the graphics pipeline asks for the same value."
 
-	^ 1
+	^ VkPipelineCreation pipelinesPerCreate
 ]
 
 { #category : 'lifecycle' }

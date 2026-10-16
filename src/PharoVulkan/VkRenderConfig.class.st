@@ -18,7 +18,10 @@ VkRenderConfig class >> clearColorBlackOpaque [
 
 { #category : 'constants' }
 VkRenderConfig class >> colorWriteMaskRGBA [
-	^ 15
+	"Delegates so the value has one home. The channel bits moved to VkColorComponent when the
+	 blend attachment's view had to name which channels are written."
+
+	^ VkColorComponent allChannels
 ]
 
 { #category : 'constants' }
@@ -51,12 +54,20 @@ VkRenderConfig class >> presentModeFifo [
 
 { #category : 'constants' }
 VkRenderConfig class >> primitiveTopologyTriangleList [
-	^ 3
+	"Delegates so the value has one home. The topology moved to VkPrimitiveTopology when the
+	 input assembly state's view had to name it, and this method keeps its senders until each
+	 of them is reached."
+
+	^ VkPrimitiveTopology triangleList
 ]
 
 { #category : 'constants' }
 VkRenderConfig class >> sampleCount1Bit [
-	^ 1
+	"Delegates so the value has one home. The sample count bits moved to VkSampleCount when
+	 the multisample state's view had to name them, and this method keeps its senders — the
+	 image request and the attachment description — until each of their units reaches them."
+
+	^ VkSampleCount count1Bit
 ]
 
 { #category : 'constants' }

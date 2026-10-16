@@ -367,6 +367,171 @@ VkBindingsTest >> testClearValueArrayIsReadByItsNamedStride [
 				equals: (colour at: index) ] ] ensure: [ values free ]
 ]
 
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendAttachmentLayoutMatchesTheCLayout [
+	"What becomes of one colour attachment's fragments: a flag, three colour factors and an
+	 operation, then the same for alpha, then the channel mask. Eight four-byte fields, so
+	 thirty-two bytes and no chain header — an attachment state is not a create info."
+
+	| rows |
+	rows := VkPipelineColorBlendAttachmentState layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #blendEnable #srcColorBlendFactor #dstColorBlendFactor
+		   #colorBlendOp #srcAlphaBlendFactor #dstAlphaBlendFactor
+		   #alphaBlendOp #colorWriteMask ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 4 8 12 16 20 24 28 ).
+	self assert: VkPipelineColorBlendAttachmentState byteSize equals: 32
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendAttachmentRowsNameTheChannelsWritten [
+	"The rows the Blending tab reads: whether blending is on, and which colour channels the
+	 fragment is written to, named through VkColorComponent rather than shown as a mask."
+
+	| state rows |
+	state := VkGraphicsPipeline colorBlendState.
+	rows := [		
+	         (VkPipelineColorBlendAttachmentState fromHandle:
+		          state pAttachments getHandle) blendAttachmentRows ] ensure: [
+		        VkGraphicsPipeline freeColorBlendState: state ].
+	self deny: (rows at: #blending).
+	self
+		assert: (rows at: #colorWriteMaskNames)
+		equals: (VkColorComponent nameForFlags: VkColorComponent allChannels)
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendExamplesAndTabsAgree [
+	"Both examples are what the project blends with, kept in object memory so they read after
+	 the external store has gone, and each tab carries one row per entry its report answers.
+	 The state's example has given its run back, so its report is the three rows it can still
+	 answer and its tab shows those three."
+
+	| attachment state rows table shown |
+	attachment := VkPipelineColorBlendAttachmentState
+		              exampleAttachmentThisProjectWritesEveryChannelOf.
+	rows := attachment blendAttachmentRows.
+	table := attachment inspectorBlendAttachment: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self
+		assert: attachment colorWriteMask
+		equals: VkColorComponent allChannels.
+	state := VkPipelineColorBlendStateCreateInfo
+		         exampleStateOfTheOneAttachmentThisProjectWritesTo.
+	self
+		assert: state attachmentCount
+		equals: VkGraphicsPipeline colorAttachmentsPerPipeline.
+	self deny: (state colorBlendRows at: #attachmentRunGiven).
+	table := state inspectorColorBlend: SpPresenter new.
+	self assert: table items size equals: state colorBlendRows size
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendRowsCountTheAttachmentsAndNestTheirReport [
+	"The rows the Colour blend tab reads: how many attachments the run holds, whether the run
+	 is given, whether a logic operation replaces blending, and the attachment's own report
+	 nested inside — the attachment decodes its own fields rather than this state restating
+	 them."
+
+	| state rows |
+	state := VkGraphicsPipeline colorBlendState.
+	rows := [ state colorBlendRows ] ensure: [
+		        VkGraphicsPipeline freeColorBlendState: state ].
+	self
+		assert: (rows at: #attachmentCount)
+		equals: VkGraphicsPipeline colorAttachmentsPerPipeline.
+	self assert: (rows at: #attachmentRunGiven).
+	self deny: (rows at: #logicOperation).
+	self deny: (rows at: #blending).
+	self
+		assert: (rows at: #colorWriteMaskNames)
+		equals: (VkColorComponent nameForFlags: VkColorComponent allChannels)
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendStateGivesBackTheAttachmentRunItAllocated [
+	"The state owns the run it points at, so giving the run back nulls the field as it goes:
+	 the state is the record of where that run is, and a freed address left in it could be read
+	 or freed twice. The state's own store is freed after the field is read, never before — a
+	 field read over a freed store reads memory that is no longer ours."
+
+	| state |
+	state := VkGraphicsPipeline colorBlendState.
+	[
+	VkGraphicsPipeline freeColorBlendAttachmentsOf: state.
+	self assert: state pAttachments isNull ] ensure: [ state getHandle free ]
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendStateInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is fixed by the type; everything else is a caller's choice. The
+	 attachment state has no field fixed by its type at all, so it declares no initializer."
+
+	| state setters |
+	state := VkPipelineColorBlendStateCreateInfo externalInstance.
+	[	self
+		assert: state sType
+		equals: VkStructureType pipelineColorBlendStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineColorBlendStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineColorBlendStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: ).
+	self deny:
+		(VkPipelineColorBlendAttachmentState includesSelector:
+			 #initializeConstantFields)
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendStateLayoutMatchesTheCLayout [
+	"The state over the attachment run: the logic operation, the run itself, and the four blend
+	 constants. C declares the constants as one array of four floats; uFFI here cannot declare
+	 an array field, so they are declared one component at a time and land at the same four
+	 offsets, which makes the same fifty-six bytes."
+
+	| rows |
+	rows := VkPipelineColorBlendStateCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #logicOpEnable #logicOp
+		   #attachmentCount #pAttachments #blendConstantRed
+		   #blendConstantGreen #blendConstantBlue #blendConstantAlpha ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 28 32 40 44 48 52 ).
+	self assert: VkPipelineColorBlendStateCreateInfo byteSize equals: 56
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColorBlendStateWritesEveryChannelWithoutBlending [
+	"The one way this project writes colour: the fragment replaces what is there, on all four
+	 channels. Blending is off, so the six factors and the two operations stay as the zeroed
+	 block left them, and no logic operation is asked for."
+
+	| state attachment |
+	state := VkGraphicsPipeline colorBlendState.
+	[		
+		self
+			assert: state attachmentCount
+			equals: VkGraphicsPipeline colorAttachmentsPerPipeline.
+		self deny: state pAttachments isNull.
+		self assert: state logicOpEnable equals: 0.
+		attachment := VkPipelineColorBlendAttachmentState fromHandle:
+			              state pAttachments getHandle.
+		self
+			assert: attachment colorWriteMask
+			equals: VkColorComponent allChannels.
+		self assert: attachment blendEnable equals: 0.
+		self assert: attachment srcColorBlendFactor equals: 0.
+		self assert: attachment alphaBlendOp equals: 0 ] ensure: [
+		VkGraphicsPipeline freeColorBlendState: state ]
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testColourPassDescriptionsClearTheAttachmentAndLeaveItWhereItIsAsked [
 	"What the three builders write, with no device in reach. The attachment is cleared on load
@@ -422,6 +587,19 @@ VkBindingsTest >> testColourPassDescriptionsClearTheAttachmentAndLeaveItWhereItI
 			self assert: subpass preserveAttachmentCount equals: 0.
 			self assert: subpass pPreserveAttachments isNull ] ensure: [
 			subpass getHandle free ] ] ensure: [ reference getHandle free ]
+]
+
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testColourWriteMaskHasOneHomeTheRenderConfigDelegatesTo [
+	"The channel bits live in VkColorComponent; VkRenderConfig keeps its senders by
+	 delegating, so the mask is declared in one place only."
+
+	self
+		assert: VkRenderConfig colorWriteMaskRGBA
+		equals: VkColorComponent allChannels.
+	self assert:
+		((VkRenderConfig class >> #colorWriteMaskRGBA) messages includes:
+			 #allChannels)
 ]
 
 { #category : 'tests - structures' }
@@ -991,6 +1169,22 @@ VkBindingsTest >> testCreateDestroyInstance [
     Vk destroyInstance: instance allocator: ExternalAddress null
 ]
 
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testCullModeNamesNoCullingRatherThanAnEmptyString [
+	"Culling nothing is a mode of its own in Vulkan rather than an absence of bits, so the
+	 decoder names it. The inherited decoder joins bit names and would answer nothing at all
+	 for a word of no bits."
+
+	self assert: (VkCullMode nameForFlags: VkCullMode none) equals: 'none'.
+	self
+		assert: (VkCullMode nameForFlags: VkCullMode backBit)
+		equals: 'backBit'.
+	self
+		assert:
+		(VkCullMode nameForFlags: VkCullMode frontBit + VkCullMode backBit)
+		equals: 'frontBit|backBit'
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testDependencyInfoLayoutMatchesTheCLayout [
 	"Three count-and-pointer pairs follow the flags, and each count is one word while each
@@ -1472,6 +1666,113 @@ VkBindingsTest >> testDeviceQueueCreateWritesThroughDeclaredFields [
 		self
 			assertEmpty: (each messages select: [ :message |
 					 pokes includes: message ]) ]
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testDynamicStateAsksForTheViewportAndTheScissor [
+	"The two states this project sets while recording, in the order the builder names them.
+	 The run is read back through the structure, by the stride it declares, rather than by a
+	 counted offset here."
+
+	| state |
+	state := VkGraphicsPipeline dynamicState.
+	[		
+		self
+			assert: state dynamicStateCount
+			equals: VkGraphicsPipeline dynamicStatesSetWhileRecording size.
+		self deny: state pDynamicStates isNull.
+		self
+			assert: state dynamicStateValues
+			equals: {
+					VkDynamicState viewport.
+					VkDynamicState scissor } ] ensure: [
+		VkGraphicsPipeline freeDynamicState: state ]
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testDynamicStateExampleAndTabAgree [
+	"The example is the state the project records with, kept in object memory so it reads after
+	 the external store has gone. The run is given back before the copy is taken, so the report
+	 is the rows the copy can still answer and the tab shows those."
+
+	| state rows table shown |
+	state := VkPipelineDynamicStateCreateInfo
+		         exampleStateOfTheRectanglesThisProjectSetsWhileRecording.
+	rows := state dynamicStateRows.
+	self
+		assert: (rows at: #dynamicStateCount)
+		equals: VkGraphicsPipeline dynamicStatesSetWhileRecording size.
+	self deny: (rows at: #stateRunGiven).
+	table := state inspectorDynamicState: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ]
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testDynamicStateGivesBackTheRunItAllocated [
+	"The state owns the run it points at, so giving the run back nulls the field as it goes:
+	 the state is the record of where that run is, and a freed address left in it could be
+	 read or freed twice. The state's own store is freed after the field is read, never
+	 before."
+
+	| state |
+	state := VkGraphicsPipeline dynamicState.
+	[
+	VkGraphicsPipeline freeDynamicStatesOf: state.
+	self assert: state pDynamicStates isNull.
+	self assert: state dynamicStateValues isEmpty ] ensure: [
+		state getHandle free ]
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testDynamicStateInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is fixed by the type; which states are dynamic is a caller's choice,
+	 so the initializer stamps the type alone."
+
+	| state setters |
+	state := VkPipelineDynamicStateCreateInfo externalInstance.
+	[	self
+		assert: state sType
+		equals: VkStructureType pipelineDynamicStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineDynamicStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineDynamicStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testDynamicStateLayoutMatchesTheCLayout [
+	"Which parts of the pipeline are set while recording rather than when it is built: a count
+	 at twenty and the run of state values at twenty-four, which the pointer pads out to
+	 thirty-two bytes."
+
+	| rows |
+	rows := VkPipelineDynamicStateCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #dynamicStateCount #pDynamicStates ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 ).
+	self assert: VkPipelineDynamicStateCreateInfo byteSize equals: 32
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testDynamicStateRowsNameEveryStateSetWhileRecording [
+	"The rows the Dynamic state tab reads: how many states are dynamic, whether the run is
+	 given, and each state named through VkDynamicState rather than shown as a number."
+
+	| state rows |
+	state := VkGraphicsPipeline dynamicState.
+	rows := [ state dynamicStateRows ] ensure: [
+		        VkGraphicsPipeline freeDynamicState: state ].
+	self
+		assert: (rows at: #dynamicStateCount)
+		equals: VkGraphicsPipeline dynamicStatesSetWhileRecording size.
+	self assert: (rows at: #stateRunGiven).
+	self assert: (rows at: #dynamicStateNames) equals: 'viewport, scissor'
 ]
 
 { #category : 'tests' }
@@ -2015,6 +2316,193 @@ VkBindingsTest >> testGeneratorIsIdempotent [
 	self assert: after - before equals: 0
 ]
 
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testGraphicsRequestGivesBackEveryStateItOwns [
+	"The request owns the six states it built, and giving them back nulls every field as it
+	 goes: the request is the record of where those states are, so a freed address left in one
+	 could be read or freed twice. The states the caller passed in are not touched, and the
+	 request's own store is still readable here — it is freed afterwards."
+
+	| stages vertInput request |
+	stages := VkGraphicsPipeline
+		          shaderStagesForVertexModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null)
+		          fragmentModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null).
+	vertInput := VkGraphicsPipeline
+		             vertexInputStateForBindings:
+		             VkGraphicsPipeline vertexBindingDescriptions
+		             attributes: VkGraphicsPipeline vertexAttributeDescriptions.
+	request := VkGraphicsPipeline
+		           requestForStages: stages
+		           vertexInput: vertInput
+		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null)
+		           renderPass: (VkRenderPass_H fromHandle: ExternalAddress null).
+	[
+	VkGraphicsPipeline freeNestedStatesOf: request.
+	self
+		assert: request statesGiven asArray
+		equals: #( #pVertexInputState ).
+	self deny: request pVertexInputState isNull ] ensure: [
+		request getHandle free.
+		VkGraphicsPipeline freeVertexInputState: vertInput.
+		VkGraphicsPipeline freeShaderStages: stages ]
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testGraphicsRequestInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is the only field fixed by the type. Every state pointer, the layout,
+	 the render pass and the subpass belong to the caller, and a zeroed request reads as a
+	 pipeline with no stages that derives from no other — basePipelineIndex zero is a real index
+	 rather than the sentinel, which is why the builder writes it."
+
+	| request setters |
+	request := VkGraphicsPipelineCreateInfo externalInstance.
+	[
+	self
+		assert: request sType
+		equals: VkStructureType graphicsPipelineCreateInfo.
+	self assert: request pNext isNull.
+	self assert: request flags equals: 0.
+	self assert: request stageCount equals: 0.
+	self assert: request pStages isNull.
+	self assert: request statesGiven isEmpty.
+	self assert: request layout isNull.
+	self assert: request renderPass isNull.
+	self assert: request subpass equals: 0.
+	self assert: request basePipelineHandle isNull.
+	self assert: request basePipelineIndex equals: 0 ] ensure: [
+		request getHandle free ].
+	setters := (VkGraphicsPipelineCreateInfo >> #initializeConstantFields)
+		           messages select: [ :each |
+		           VkGraphicsPipelineCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testGraphicsRequestLayoutMatchesTheCLayout [
+	"Every nested state is pointed at rather than nested by value, so each field is one pointer
+	 wide and eight byte aligned; flags and stageCount are a uint32 pair at sixteen and twenty,
+	 and subpass is a word at one hundred and twenty which uFFI pads to one hundred and
+	 twenty-eight for the handle after it. That makes the request one hundred and forty-four
+	 bytes, which is the size the previous counted write allocated."
+
+	| rows |
+	rows := VkGraphicsPipelineCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals:
+			#( #sType #pNext #flags #stageCount #pStages #pVertexInputState
+			   #pInputAssemblyState #pTessellationState #pViewportState
+			   #pRasterizationState #pMultisampleState #pDepthStencilState
+			   #pColorBlendState #pDynamicState #layout #renderPass #subpass
+			   #basePipelineHandle #basePipelineIndex ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals:
+			#( 0 8 16 20 24 32 40 48 56 64 72 80 88 96 104 112 120 128 136 ).
+	self assert: VkGraphicsPipelineCreateInfo byteSize equals: 144
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testGraphicsRequestPointsAtEveryStateThePipelineNeeds [
+	"The request a graphics pipeline is created from, built with null handles so no device is
+	 needed: the two stages and the vertex input state the caller passed in, and the six states
+	 the request builds itself. Tessellation and depth stencil are not asked for and stay null,
+	 and the request derives from no other pipeline."
+
+	| stages vertInput request |
+	stages := VkGraphicsPipeline
+		          shaderStagesForVertexModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null)
+		          fragmentModule:
+		          (VkShaderModule_H fromHandle: ExternalAddress null).
+	vertInput := VkGraphicsPipeline
+		             vertexInputStateForBindings:
+		             VkGraphicsPipeline vertexBindingDescriptions
+		             attributes: VkGraphicsPipeline vertexAttributeDescriptions.
+	request := VkGraphicsPipeline
+		           requestForStages: stages
+		           vertexInput: vertInput
+		           layout: (VkPipelineLayout_H fromHandle: ExternalAddress null)
+		           renderPass: (VkRenderPass_H fromHandle: ExternalAddress null).
+	[
+	self assert: request stageCount equals: stages size.
+	self
+		assert: request pStages getHandle
+		equals: stages first getHandle.
+	self
+		assert: request pVertexInputState getHandle
+		equals: vertInput getHandle.
+	self
+		assert: request statesGiven asArray
+		equals:
+			#( #pVertexInputState #pInputAssemblyState #pViewportState
+			   #pRasterizationState #pMultisampleState #pColorBlendState
+			   #pDynamicState ).
+	self assert: request pTessellationState isNull.
+	self assert: request pDepthStencilState isNull.
+	self
+		assert: request subpass
+		equals: VkGraphicsPipeline subpassThisPipelineDrawsIn.
+	self assert: request basePipelineHandle isNull.
+	self
+		assert: request basePipelineIndex
+		equals: VkPipelineCreation noBasePipelineIndex ] ensure: [
+		VkGraphicsPipeline freeRequest: request.
+		VkGraphicsPipeline freeVertexInputState: vertInput.
+		VkGraphicsPipeline freeShaderStages: stages ]
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testGraphicsRequestRowsNameWhatItAsksFor [
+	"The rows the Request tab reads, taken from the example: how many stages, which nested
+	 states are given, whether the layout and the render pass are there, the subpass and the
+	 base pipeline. The state names come from the declared layout, so a state added to the
+	 structure is reported without the report being touched. A row never follows a pointer — the
+	 example has already given its states back — so the rows say a state is there rather than
+	 what it holds."
+
+	| request rows |
+	request := VkGraphicsPipelineCreateInfo
+		           exampleRequestOfTheTriangleThisProjectDraws.
+	rows := request graphicsRequestRows.
+	self
+		assert: (rows at: #stageCount)
+		equals: VkGraphicsPipeline shaderStagesPerPipeline.
+	self deny: (rows at: #stagesGiven).
+	self assert: (rows at: #statesGiven) equals: ''.
+	self deny: (rows at: #layoutGiven).
+	self deny: (rows at: #renderPassGiven).
+	self
+		assert: (rows at: #subpass)
+		equals: VkGraphicsPipeline subpassThisPipelineDrawsIn.
+	self deny: (rows at: #derivesFromAPipeline).
+	self
+		assert: (rows at: #basePipelineIndex)
+		equals: VkPipelineCreation noBasePipelineIndex.
+	self
+		assert: (VkGraphicsPipelineCreateInfo stateFieldNames includes:
+				 #pColorBlendState)
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testGraphicsRequestTabShowsEveryRowItsReportAnswers [
+	"The Request tab is the report laid out, so it carries one row per entry the report answers:
+	 a value added to the report cannot then stay invisible. Building a table only reads, which
+	 is why the report is compared with itself afterwards."
+
+	| request rows table shown |
+	request := VkGraphicsPipelineCreateInfo
+		           exampleRequestOfTheTriangleThisProjectDraws.
+	rows := request graphicsRequestRows.
+	table := request inspectorGraphicsRequest: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self assert: request graphicsRequestRows equals: rows
+]
+
 { #category : 'tests - graphics pipeline' }
 VkBindingsTest >> testGraphicsShaderStagesNameAVertexAndAFragmentStage [
 	"The two stages a graphics pipeline is created from live in one external run, so the request
@@ -2389,6 +2877,87 @@ VkBindingsTest >> testImageViewRequestNamesTheColourAspectAndTheIdentitySwizzle 
 			equals: VkImage arrayLayerCount ] ensure: [ info getHandle free ]
 ]
 
+{ #category : 'tests - input assembly' }
+VkBindingsTest >> testInputAssemblyExampleAndTabAgree [
+	"The example is the state the project draws with, kept in object memory so it reads after
+	 the external store has gone, and the tab carries one row per entry the report answers."
+
+	| state rows table shown |
+	state := VkPipelineInputAssemblyStateCreateInfo
+		         exampleStateOfTheTriangleListThisProjectDraws.
+	rows := state inputAssemblyRows.
+	self assert: state topology equals: VkPrimitiveTopology triangleList.
+	table := state inspectorInputAssembly: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self assert: state inputAssemblyRows equals: rows
+]
+
+{ #category : 'tests - input assembly' }
+VkBindingsTest >> testInputAssemblyInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is fixed by the type; the topology and the restart flag are a caller's
+	 choice, so the initializer stamps the type alone."
+
+	| state setters |
+	state := VkPipelineInputAssemblyStateCreateInfo externalInstance.
+	[	self
+		assert: state sType
+		equals: VkStructureType pipelineInputAssemblyStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineInputAssemblyStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineInputAssemblyStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - input assembly' }
+VkBindingsTest >> testInputAssemblyLayoutMatchesTheCLayout [
+	"How the primitives are assembled from the vertex run: a topology and a restart flag after
+	 the chain header. The two uint32 fields after the flags land at twenty and twenty-four and
+	 the structure pads to thirty-two, because a create info is pointer aligned."
+
+	| rows |
+	rows := VkPipelineInputAssemblyStateCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #topology #primitiveRestartEnable ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 ).
+	self assert: VkPipelineInputAssemblyStateCreateInfo byteSize equals: 32
+]
+
+{ #category : 'tests - input assembly' }
+VkBindingsTest >> testInputAssemblyRowsNameTheTopology [
+	"The rows the Input assembly tab reads: the topology named through VkPrimitiveTopology
+	 rather than shown as a number, and whether primitive restart is asked for."
+
+	| state rows |
+	state := VkGraphicsPipeline inputAssemblyState.
+	rows := [ state inputAssemblyRows ] ensure: [ state getHandle free ].
+	self
+		assert: (rows at: #topologyName)
+		equals: (VkPrimitiveTopology nameForValue:
+				 VkPrimitiveTopology triangleList) asString.
+	self deny: (rows at: #primitiveRestart)
+]
+
+{ #category : 'tests - input assembly' }
+VkBindingsTest >> testInputAssemblyStateDrawsATriangleListWithoutPrimitiveRestart [
+	"The one shape this project draws: separate triangles, three vertices each, with no restart
+	 index. Primitive restart applies to indexed draws, and nothing here draws indexed."
+
+	| state |
+	state := VkGraphicsPipeline inputAssemblyState.
+	[		
+		self assert: state topology equals: VkPrimitiveTopology triangleList.
+		self
+			assert: state primitiveRestartEnable
+			equals: VkGraphicsPipeline primitiveRestartDisabled ] ensure: [
+		state getHandle free ]
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testInstanceCreateInfoInitializesOnlyWhatIsConstantForTheType [
 	"Only sType is constant for an instance create info: the counts and the name arrays are
@@ -2536,6 +3105,103 @@ VkBindingsTest >> testMemoryRequirementsWritesNothingOfItsOwn [
 		equals: VkStructure
 ]
 
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testMultisampleRowsNameTheSampleCount [
+	"The rows the Multisample tab reads: the sample count named through VkSampleCount rather
+	 than shown as a bit, whether a mask is given, and one entry per feature that can be
+	 switched on."
+
+	| state rows |
+	state := VkGraphicsPipeline multisampleState.
+	rows := [ state multisampleRows ] ensure: [ state getHandle free ].
+	self
+		assert: (rows at: #sampleCountNames)
+		equals: (VkSampleCount nameForFlags: VkSampleCount count1Bit).
+	self
+		assert: (rows at: #minSampleShading)
+		equals: VkGraphicsPipeline everySampleShaded.
+	self deny: (rows at: #sampleMaskGiven).
+	self deny: (rows at: #sampleShading).
+	self deny: (rows at: #alphaToCoverage).
+	self deny: (rows at: #alphaToOne)
+]
+
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testMultisampleStateExampleAndTabAgree [
+	"The example is the state the project samples with, kept in object memory so it reads
+	 after the external store has gone, and the tab carries one row per entry the report
+	 answers."
+
+	| state rows table shown |
+	state := VkPipelineMultisampleStateCreateInfo
+		         exampleStateOfTheOneSamplePerPixelThisProjectTakes.
+	rows := state multisampleRows.
+	self
+		assert: state rasterizationSamples
+		equals: VkSampleCount count1Bit.
+	table := state inspectorMultisample: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self assert: state multisampleRows equals: rows
+]
+
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testMultisampleStateInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is fixed by the type; the sample count and everything after it are a
+	 caller's choice, so the initializer stamps the type alone."
+
+	| state setters |
+	state := VkPipelineMultisampleStateCreateInfo externalInstance.
+	[	self
+		assert: state sType
+		equals: VkStructureType pipelineMultisampleStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineMultisampleStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineMultisampleStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testMultisampleStateLayoutMatchesTheCLayout [
+	"How many samples a pixel is made of: a sample count, a shading flag and a shading fraction
+	 after the chain header, then the sample mask pointer, which re-aligns to thirty-two, and
+	 the two alpha flags after it. Forty-eight bytes in all."
+
+	| rows |
+	rows := VkPipelineMultisampleStateCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #rasterizationSamples
+		   #sampleShadingEnable #minSampleShading #pSampleMask
+		   #alphaToCoverageEnable #alphaToOneEnable ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 28 32 40 44 ).
+	self assert: VkPipelineMultisampleStateCreateInfo byteSize equals: 48
+]
+
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testMultisampleStateTakesOneSamplePerPixel [
+	"The one way this project samples: one sample per pixel, so there is nothing to average
+	 and no mask to hand over. The alpha flags and sample shading read as zero because nothing
+	 wrote them."
+
+	| state |
+	state := VkGraphicsPipeline multisampleState.
+	[		
+		self assert: state rasterizationSamples equals: VkSampleCount count1Bit.
+		self
+			assert: state minSampleShading
+			equals: VkGraphicsPipeline everySampleShaded.
+		self assert: state pSampleMask isNull.
+		self assert: state sampleShadingEnable equals: 0.
+		self assert: state alphaToCoverageEnable equals: 0.
+		self assert: state alphaToOneEnable equals: 0 ] ensure: [
+		state getHandle free ]
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testNestedCopyStructureLayoutsMatchTheCLayout [
 	"The three structures the copy region nests are plain value structures: no chain header, no
@@ -2579,6 +3245,29 @@ VkBindingsTest >> testNestedPropertiesNameReadsThroughTheOuterStore [
 	self
 		assert: query properties deviceNameString
 		equals: (String new: fieldSize withAll: $A)
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testNoOffsetIsCountedInTheGraphicsPipelineAnyMore [
+	"Every structure the graphics pipeline builds is declared, so no method of it reaches into a
+	 block at a counted offset to write a field. Two reads of a block are left and neither is a
+	 structure field: the run of dynamic state enumerations, which holds plain words rather than
+	 structures and so has a named stride instead of a layout, and the out parameter the driver
+	 answers the new handle through."
+
+	| counting |
+	counting := (VkGraphicsPipeline methods , VkGraphicsPipeline class methods)
+		            select: [ :each |
+		            each messages anySatisfy: [ :message |
+			            #( #unsignedLongAt: #unsignedLongAt:put: #pointerAt:
+			               #pointerAt:put: ) includes: message ] ].
+	self
+		assert:
+		((counting collect: [ :each |
+			  each methodClass name , ' >> ' , each selector ]) asSortedCollection:
+			 [ :a :b | a <= b ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> dynamicState'
+			   'VkGraphicsPipeline class >> handleForRequest:on:' )
 ]
 
 { #category : 'tests' }
@@ -2975,6 +3664,79 @@ VkBindingsTest >> testOnlyOneMethodWritesAGraphicsShaderStageRun [
 		#( 'VkGraphicsPipeline class >> shaderStagesForVertexModule:fragmentModule:' )
 ]
 
+{ #category : 'tests - colour blend' }
+VkBindingsTest >> testOnlyOneMethodWritesTheColourBlendState [
+	"One builder for the state and the attachment it points at, so one place decides how this
+	 project writes colour. The reflected writer lists are what the Writers tabs show, so a
+	 second writer would show there too."
+
+	self
+		assert: (VkPipelineColorBlendStateCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> colorBlendState' ).
+	self
+		assert: (VkPipelineColorBlendAttachmentState writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> colorBlendState' )
+]
+
+{ #category : 'tests - dynamic state' }
+VkBindingsTest >> testOnlyOneMethodWritesTheDynamicState [
+	"One builder, so one place decides which states are set while recording. The reflected
+	 writer list is what the Writers tab shows, so a second writer would show there too."
+
+	self
+		assert: (VkPipelineDynamicStateCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> dynamicState' )
+]
+
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testOnlyOneMethodWritesTheGraphicsRequest [
+	"One builder of the request, so one place owns the states nested under it and one place
+	 gives them back. The reflected writer list is what the Writers tab shows, so a second
+	 writer would show there as well as here."
+
+	self
+		assert: (VkGraphicsPipelineCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals:
+		#( 'VkGraphicsPipeline class >> requestForStages:vertexInput:layout:renderPass:' )
+]
+
+{ #category : 'tests - input assembly' }
+VkBindingsTest >> testOnlyOneMethodWritesTheInputAssemblyState [
+	"One builder, so one place decides how the project assembles primitives. The reflected
+	 writer list is what the Writers tab shows, so a second writer would show there too."
+
+	self
+		assert: (VkPipelineInputAssemblyStateCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> inputAssemblyState' )
+]
+
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testOnlyOneMethodWritesTheMultisampleState [
+	"One builder, so one place decides how many samples a pixel is made of. The reflected
+	 writer list is what the Writers tab shows, so a second writer would show there too."
+
+	self
+		assert: (VkPipelineMultisampleStateCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> multisampleState' )
+]
+
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testOnlyOneMethodWritesTheRasterizationState [
+	"One builder, so one place decides how this project rasterizes. The reflected writer list
+	 is what the Writers tab shows, so a second writer would show there too."
+
+	self
+		assert: (VkPipelineRasterizationStateCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> rasterizationState' )
+]
+
 { #category : 'tests - vertex input' }
 VkBindingsTest >> testOnlyOneMethodWritesTheVertexInputState [
 	"One builder of the vertex input state, so one place owns the two runs it points at and one
@@ -2986,6 +3748,18 @@ VkBindingsTest >> testOnlyOneMethodWritesTheVertexInputState [
 				 :each | each at: #method ]) asArray
 		equals:
 		#( 'VkGraphicsPipeline class >> vertexInputStateForBindings:attributes:' )
+]
+
+{ #category : 'tests - viewport' }
+VkBindingsTest >> testOnlyOneMethodWritesTheViewportState [
+	"One builder, so one place decides how many rectangles the pipeline draws into. The
+	 reflected writer list is what the Writers tab shows, so a second writer would show there
+	 too."
+
+	self
+		assert: (VkPipelineViewportStateCreateInfo writerRows collect: [ :each |
+				 each at: #method ]) asArray
+		equals: #( 'VkGraphicsPipeline class >> viewportState' )
 ]
 
 { #category : 'tests - result codes' }
@@ -3171,6 +3945,23 @@ VkBindingsTest >> testPhysicalDevicePropertiesLayoutTilesItsWholeStore [
 		equals: VkPhysicalDeviceProperties byteSize
 ]
 
+{ #category : 'tests - graphics request' }
+VkBindingsTest >> testPipelineCreationConstantsHaveOneHomeBothKindsOfPipelineAsk [
+	"Two values belong to pipeline creation itself rather than to a kind of pipeline: the number
+	 of requests one create call takes, and the index that means the pipeline derives from no
+	 other. VkPipelineCreation is where they live, and the compute pipeline's own methods
+	 delegate to it, so neither value is written in two places."
+
+	self assert: VkPipelineCreation pipelinesPerCreate equals: 1.
+	self assert: VkPipelineCreation noBasePipelineIndex equals: -1.
+	#( #pipelinesPerCreate #noBasePipelineIndex ) do: [ :each |
+		self
+			assert: (VkComputePipeline perform: each)
+			equals: (VkPipelineCreation perform: each).
+		self assert:
+			((VkComputePipeline class >> each) messages includes: each) ]
+]
+
 { #category : 'tests - layout' }
 VkBindingsTest >> testPresentInfoInitializesOnlyWhatIsConstantForTheType [
 	"The structure type is the only field fixed by the type. Both counts are one for every
@@ -3333,6 +4124,108 @@ VkBindingsTest >> testQueueSubmitWritesNoScalarFieldAtAHandCountedOffset [
 					            banned includes: message ] ] ].
 	self assertEmpty: offenders asArray.
 	self assert: (VkQueue includesSelector: #submitBatch:fence:)
+]
+
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testRasterizationRowsNameThePolygonModeAndTheCulling [
+	"The rows the Rasterization tab reads: each enumeration named by the constants class that
+	 owns it rather than shown as a number, and one row per feature that can be switched on."
+
+	| state rows |
+	state := VkGraphicsPipeline rasterizationState.
+	rows := [ state rasterizationRows ] ensure: [ state getHandle free ].
+	self
+		assert: (rows at: #polygonModeName)
+		equals: (VkPolygonMode nameForValue: VkPolygonMode fill) asString.
+	self
+		assert: (rows at: #cullModeNames)
+		equals: (VkCullMode nameForFlags: VkCullMode none).
+	self
+		assert: (rows at: #frontFaceName)
+		equals:
+		(VkFrontFace nameForValue: VkFrontFace counterClockwise) asString.
+	self
+		assert: (rows at: #lineWidth)
+		equals: VkGraphicsPipeline lineWidthEveryDeviceAccepts.
+	self deny: (rows at: #depthClamp).
+	self deny: (rows at: #rasterizationDiscarded).
+	self deny: (rows at: #depthBias)
+]
+
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testRasterizationStateExampleAndTabAgree [
+	"The example is the state the project rasterizes with, kept in object memory so it reads
+	 after the external store has gone, and the tab carries one row per entry the report
+	 answers."
+
+	| state rows table shown |
+	state := VkPipelineRasterizationStateCreateInfo
+		         exampleStateOfTheFilledTrianglesThisProjectDraws.
+	rows := state rasterizationRows.
+	self assert: state polygonMode equals: VkPolygonMode fill.
+	table := state inspectorRasterization: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self assert: state rasterizationRows equals: rows
+]
+
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testRasterizationStateFillsTrianglesWithoutCullingOrDepthBias [
+	"The one way this project rasterizes: filled triangles, no face discarded, front faces
+	 wound counter clockwise, and a line width every device accepts. The three disabled
+	 features read as zero because nothing wrote them."
+
+	| state |
+	state := VkGraphicsPipeline rasterizationState.
+	[		
+		self assert: state polygonMode equals: VkPolygonMode fill.
+		self assert: state cullMode equals: VkCullMode none.
+		self assert: state frontFace equals: VkFrontFace counterClockwise.
+		self
+			assert: state lineWidth
+			equals: VkGraphicsPipeline lineWidthEveryDeviceAccepts.
+		self assert: state depthClampEnable equals: 0.
+		self assert: state rasterizerDiscardEnable equals: 0.
+		self assert: state depthBiasEnable equals: 0 ] ensure: [
+		state getHandle free ]
+]
+
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testRasterizationStateInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is fixed by the type; every other field is a caller's choice, so the
+	 initializer stamps the type alone."
+
+	| state setters |
+	state := VkPipelineRasterizationStateCreateInfo externalInstance.
+	[	self
+		assert: state sType
+		equals: VkStructureType pipelineRasterizationStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineRasterizationStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineRasterizationStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - rasterization' }
+VkBindingsTest >> testRasterizationStateLayoutMatchesTheCLayout [
+	"How triangles become fragments: three flags, three enumerations and four floats after the
+	 chain header. Every field from twenty on is four bytes wide and tightly packed, so the
+	 structure runs to sixty-four bytes with no padding but the pointer's own."
+
+	| rows |
+	rows := VkPipelineRasterizationStateCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #depthClampEnable
+		   #rasterizerDiscardEnable #polygonMode #cullMode #frontFace
+		   #depthBiasEnable #depthBiasConstantFactor #depthBiasClamp
+		   #depthBiasSlopeFactor #lineWidth ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 28 32 36 40 44 48 52 56 ).
+	self assert: VkPipelineRasterizationStateCreateInfo byteSize equals: 64
 ]
 
 { #category : 'tests - structures' }
@@ -3587,6 +4480,19 @@ VkBindingsTest >> testResultCodesViewMarksTheInspectedCodeAndNothingElse [
 	self assert: marked first name equals: 'VK_SUBOPTIMAL_KHR'.
 	self deny: result isError.
 	self assert: result code equals: VkResult vkSuboptimalKHR
+]
+
+{ #category : 'tests - multisample' }
+VkBindingsTest >> testSampleCountHasOneHomeTheRenderConfigDelegatesTo [
+	"The sample count bits live in VkSampleCount; VkRenderConfig keeps its senders by
+	 delegating, so the value is declared in one place only."
+
+	self
+		assert: VkRenderConfig sampleCount1Bit
+		equals: VkSampleCount count1Bit.
+	self assert:
+		((VkRenderConfig class >> #sampleCount1Bit) messages includes:
+			 #count1Bit)
 ]
 
 { #category : 'tests - layout' }
@@ -4834,6 +5740,96 @@ VkBindingsTest >> testViewportRowsNameTheDepthRangeAndTheExtent [
 	self assert: (rows at: #origin) equals: 0 @ 0.
 	self assert: (rows at: #atTheOrigin).
 	self assert: (rows at: #depthRange) equals: 0.0 -> 1.0
+]
+
+{ #category : 'tests - viewport' }
+VkBindingsTest >> testViewportRowsSayBothRectanglesComeFromTheCommandBuffer [
+	"The rows the Viewport tab reads: a count for each rectangle kind and no run for either,
+	 which is what a dynamic rectangle looks like in the state."
+
+	| state rows |
+	state := VkGraphicsPipeline viewportState.
+	rows := [ state viewportRows ] ensure: [ state getHandle free ].
+	self
+		assert: (rows at: #viewportCount)
+		equals: VkGraphicsPipeline viewportsPerPipeline.
+	self
+		assert: (rows at: #scissorCount)
+		equals: VkGraphicsPipeline scissorsPerPipeline.
+	self deny: (rows at: #viewportRunGiven).
+	self deny: (rows at: #scissorRunGiven)
+]
+
+{ #category : 'tests - viewport' }
+VkBindingsTest >> testViewportStateCountsOneOfEachAndPointsAtNeither [
+	"One viewport and one scissor rectangle, and no run of either: that pair is how a dynamic
+	 rectangle is declared, and the command buffer sets both while it records."
+
+	| state |
+	state := VkGraphicsPipeline viewportState.
+	[		
+		self
+			assert: state viewportCount
+			equals: VkGraphicsPipeline viewportsPerPipeline.
+		self
+			assert: state scissorCount
+			equals: VkGraphicsPipeline scissorsPerPipeline.
+		self assert: state pViewports isNull.
+		self assert: state pScissors isNull ] ensure: [
+		state getHandle free ]
+]
+
+{ #category : 'tests - viewport' }
+VkBindingsTest >> testViewportStateExampleAndTabAgree [
+	"The example is the state the project draws with, kept in object memory so it reads after
+	 the external store has gone, and the tab carries one row per entry the report answers."
+
+	| state rows table shown |
+	state := VkPipelineViewportStateCreateInfo
+		         exampleStateOfTheDynamicViewportThisProjectUses.
+	rows := state viewportRows.
+	self
+		assert: state viewportCount
+		equals: VkGraphicsPipeline viewportsPerPipeline.
+	table := state inspectorViewport: SpPresenter new.
+	self assert: table items size equals: rows size.
+	shown := table items collect: [ :each | each second ].
+	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	self assert: state viewportRows equals: rows
+]
+
+{ #category : 'tests - viewport' }
+VkBindingsTest >> testViewportStateInitializesOnlyWhatIsConstantForTheType [
+	"The structure type is fixed by the type; the counts and the runs are a caller's choice, so
+	 the initializer stamps the type alone."
+
+	| state setters |
+	state := VkPipelineViewportStateCreateInfo externalInstance.
+	[	self
+		assert: state sType
+		equals: VkStructureType pipelineViewportStateCreateInfo ] ensure: [
+		state getHandle free ].
+	setters := (VkPipelineViewportStateCreateInfo
+		            >> #initializeConstantFields) messages select: [ :each |
+		           VkPipelineViewportStateCreateInfo includesSelector: each ].
+	self assert: setters asArray equals: #( #sType: )
+]
+
+{ #category : 'tests - viewport' }
+VkBindingsTest >> testViewportStateLayoutMatchesTheCLayout [
+	"A count and a run pointer per rectangle kind: the counts at twenty and thirty-two, the
+	 pointers at twenty-four and forty, which makes forty-eight bytes."
+
+	| rows |
+	rows := VkPipelineViewportStateCreateInfo layoutRows.
+	self
+		assert: (rows collect: [ :each | each first ]) asArray
+		equals: #( #sType #pNext #flags #viewportCount #pViewports
+		   #scissorCount #pScissors ).
+	self
+		assert: (rows collect: [ :each | each second ]) asArray
+		equals: #( 0 8 16 20 24 32 40 ).
+	self assert: VkPipelineViewportStateCreateInfo byteSize equals: 48
 ]
 
 { #category : 'tests' }

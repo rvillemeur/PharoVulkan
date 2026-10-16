@@ -856,8 +856,10 @@ VkCoreTest >> testFenceAndSemaphoreReportWhatTheyWereCreatedWith [
 VkCoreTest >> testFlagNamesJoinEveryNamedBitAndSurfaceAnUnnamedOne [
 	"A flags word decodes to the names of the bits it carries, and a bit no constant names
 	 is surfaced as raw hex rather than dropped, so a view can never hide a property the
-	 driver reported. Stated over the subclasses, and over the named bits each one declares,
-	 so a bit or a whole class added later is covered without editing this test."
+	 driver reported. A word of no bits decodes to whatever the class answers for it, which is
+	 nothing at all unless the enumeration names the empty word — a cull mode of none does.
+	 Stated over the subclasses, and over the named bits each one declares, so a bit or a whole
+	 class added later is covered without editing this test."
 
 	| classes |
 	classes := VkFlagConstants subclasses.
@@ -865,7 +867,9 @@ VkCoreTest >> testFlagNamesJoinEveryNamedBitAndSurfaceAnUnnamedOne [
 	classes do: [ :flagClass |
 		| allNamed |
 		self deny: flagClass namedBits isEmpty.
-		self assert: (flagClass nameForFlags: 0) equals: ''.
+		self
+			assert: (flagClass nameForFlags: 0)
+			equals: flagClass nameForNoBits.
 		flagClass namedBits do: [ :each |
 			self assert: (flagClass nameForFlags: each key) equals: each value ].
 		allNamed := flagClass namedBits

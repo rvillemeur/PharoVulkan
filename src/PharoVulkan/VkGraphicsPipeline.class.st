@@ -5,7 +5,9 @@ The class side owns the vertex layout this project draws with: vertexBindingDesc
 
 The class side also owns the shader stages: shaderStagesForVertexModule:fragmentModule: answers a run of shaderStagesPerPipeline declared VkPipelineShaderStageCreateInfo, each naming its own module and its own copy of VkShaderModule class >> defaultEntryPoint, and freeShaderStages: gives back every entry point string and then the run.
 
-The rest of the pipeline create info tree — input assembly, viewport, rasterization, multisample, colour blend, dynamic state and the request itself — is still written at counted offsets inside initializeDevice:renderPass:vertexModule:fragmentModule:extent:, one declared structure per remaining unit of LAYOUT-PLAN.md.
+Every other structure in the tree is declared as well, one builder per state: inputAssemblyState, viewportState, rasterizationState, multisampleState, colorBlendState — which owns a run of VkPipelineColorBlendAttachmentState — and dynamicState, which owns a run of the enumerations in dynamicStatesSetWhileRecording. Each builder writes only what carries meaning, because externalInstance hands back a zeroed block. requestForStages:vertexInput:layout:renderPass: builds the VkGraphicsPipelineCreateInfo that names them all: the stage run and the vertex input state are passed in, since a module and a vertex layout are needed to build them, and the six states that need neither are built and owned by the request. freeRequest: gives the nested states back and then the request's own store, and handleForRequest:on: is the only caller of vkCreateGraphicsPipelines — its out parameter is a run of one handle rather than a structure, which is the one block here still read at an offset, along with the run of dynamic state enumerations, whose elements are plain words and so have a named stride instead of a layout.
+
+The viewport and the scissor are dynamic, so the extent passed to createDevice:... is not read when the pipeline is built: PVTriangleScene sets both while recording.
 "
 Class {
 	#name : 'VkGraphicsPipeline',
@@ -19,6 +21,32 @@ Class {
 	#package : 'PharoVulkan',
 	#tag : 'Graphics'
 }
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> colorAttachmentsPerPipeline [
+	"One colour attachment, the one the render pass declares, so the blend state describes one
+	 attachment and the run it points at holds one element."
+
+	^ 1
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> colorBlendState [
+	"How this project writes colour: the fragment replaces what is in the attachment, on all
+	 four channels. Blending is off, so the factors and the operations stay as the zeroed block
+	 left them, and no logic operation is asked for. The state owns the attachment run it
+	 points at, so the caller gives it back through freeColorBlendState:."
+
+	| attachments |
+	attachments := VkPipelineColorBlendAttachmentState externalArrayOf:
+		               self colorAttachmentsPerPipeline.
+	attachments do: [ :each |
+		each colorWriteMask: VkColorComponent allChannels ].
+	^ VkPipelineColorBlendStateCreateInfo externalInstance
+		  attachmentCount: attachments size;
+		  pAttachments: attachments first getHandle;
+		  yourself
+]
 
 { #category : 'vertex layout' }
 VkGraphicsPipeline class >> colourByteCount [
@@ -40,6 +68,112 @@ VkGraphicsPipeline class >> createDevice: aVkDevice renderPass: aRenderPass vert
     obj := self new.
     obj initializeDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint.
     ^ obj
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> dynamicState [
+	"Which states the command buffer sets while it records. The run of state values is
+	 allocated by the stride the structure declares and the state is pointed at it; the state
+	 owns that run, so the caller gives it back through freeDynamicState:."
+
+	| states stride run |
+	states := self dynamicStatesSetWhileRecording.
+	stride := VkPipelineDynamicStateCreateInfo dynamicStateByteCount.
+	run := ExternalAddress allocate: states size * stride.
+	states doWithIndex: [ :each :index |
+		run unsignedLongAt: index - 1 * stride + 1 put: each ].
+	^ VkPipelineDynamicStateCreateInfo externalInstance
+		  dynamicStateCount: states size;
+		  pDynamicStates: run;
+		  yourself
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> dynamicStatesSetWhileRecording [
+	"The viewport and the scissor rectangle, in the order the run holds them. Both are set
+	 while the command buffer is recorded, so one pipeline draws into a target of any extent;
+	 everything else about the pipeline is fixed when it is built."
+
+	^ {
+		  VkDynamicState viewport.
+		  VkDynamicState scissor }
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> everySampleShaded [
+	"The least part of the samples in a pixel that gets its own shading, as a fraction: one is
+	 all of them. The driver reads it only where sample shading is enabled, which nothing here
+	 enables, so it is written to keep the field from reading as a fraction no one chose."
+
+	^ 1.0
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeColorBlendAttachmentsOf: aState [
+	"Give back the attachment run the state points at, and null the field as it goes: the state
+	 is the record of where that run is, so a freed address left in it could be read or freed
+	 twice."
+
+	aState pAttachments isNull ifFalse: [
+		aState pAttachments getHandle free ].
+	aState pAttachments: ExternalAddress null
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeColorBlendState: aState [
+	"Everything the state owns, in the order that keeps each address readable until it is
+	 freed: the attachment run it points at, then the state's own store."
+
+	self freeColorBlendAttachmentsOf: aState.
+	aState getHandle free
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeDynamicState: aState [
+	"Everything the state owns, in the order that keeps each address readable until it is
+	 freed: the run of state values it points at, then the state's own store."
+
+	self freeDynamicStatesOf: aState.
+	aState getHandle free
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeDynamicStatesOf: aState [
+	"Give back the run of state values the state points at, and null the field as it goes: the
+	 state is the record of where that run is, so a freed address left in it could be read or
+	 freed twice."
+
+	aState pDynamicStates isNull ifFalse: [
+		aState pDynamicStates getHandle free ].
+	aState pDynamicStates: ExternalAddress null
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeNestedStatesOf: aRequest [
+	"Give back the six states the request built, and null each field as it goes: the request is
+	 the record of where those states are, so a freed address left in one could be read or freed
+	 twice. The two states owning runs go first through the methods that free the run before the
+	 store. The stage run and the vertex input state are not touched: they belong to the caller
+	 that passed them in."
+
+	self freeColorBlendState: (VkPipelineColorBlendStateCreateInfo fromHandle:
+			 aRequest pColorBlendState getHandle).
+	aRequest pColorBlendState: ExternalAddress null.
+	self freeDynamicState: (VkPipelineDynamicStateCreateInfo fromHandle:
+			 aRequest pDynamicState getHandle).
+	aRequest pDynamicState: ExternalAddress null.
+	self statesTheRequestOwnsOutright do: [ :each |
+		(aRequest perform: each) getHandle free.
+		aRequest perform: (each , ':') asSymbol with: ExternalAddress null ]
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> freeRequest: aRequest [
+	"Everything the request owns, in the order that keeps each address readable until it is
+	 freed: the states nested under it, then its own store."
+
+	self freeNestedStatesOf: aRequest.
+	aRequest getHandle free
 ]
 
 { #category : 'request' }
@@ -87,6 +221,62 @@ VkGraphicsPipeline class >> freeVertexInputState: aVertexInputState [
 	aVertexInputState getHandle free
 ]
 
+{ #category : 'request' }
+VkGraphicsPipeline class >> handleForRequest: aRequest on: aDevice [
+	"The one call that creates a graphics pipeline. The driver answers through an out parameter,
+	 which is a run of one handle rather than a structure, so it stays a plain block read by
+	 pointerAt: and freed whatever the result. The handle is read before the block goes."
+
+	| handleBlock result |
+	handleBlock := ExternalAddress allocate:
+		               VkPipelineCreation pipelinesPerCreate
+		               * VkContext pointerSize.
+	^ [
+	  result := Vk
+		            createGraphicsPipelines: aDevice handle
+		            pipelineCache: ExternalAddress null
+		            createInfoCount: VkPipelineCreation pipelinesPerCreate
+		            pCreateInfos: aRequest getHandle
+		            allocator: ExternalAddress null
+		            pPipelines: handleBlock.
+	  Vk checkResult: result.
+	  VkPipeline_H fromHandle: (handleBlock pointerAt: 1) ] ensure: [
+		  handleBlock free ]
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> inputAssemblyState [
+	"The one shape this project draws: separate triangles, three vertices each, with no restart
+	 index. The state points at nothing, so the caller frees its own store and nothing else."
+
+	^ VkPipelineInputAssemblyStateCreateInfo externalInstance
+		  topology: VkPrimitiveTopology triangleList;
+		  primitiveRestartEnable: self primitiveRestartDisabled;
+		  yourself
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> lineWidthEveryDeviceAccepts [
+	"Vulkan accepts a line width other than one only where the wideLines feature is enabled,
+	 and nothing here enables it. The field applies to line primitives, of which this project
+	 draws none, but the driver reads it whatever the topology."
+
+	^ 1.0
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> multisampleState [
+	"How this project samples: one sample per pixel, so there is nothing to average and no
+	 sample mask to hand over. Sample shading and the two alpha flags stay as the zeroed block
+	 left them, which is what a disabled VkBool32 reads as. The state points at nothing, so
+	 the caller frees its own store and nothing else."
+
+	^ VkPipelineMultisampleStateCreateInfo externalInstance
+		  rasterizationSamples: VkSampleCount count1Bit;
+		  minSampleShading: self everySampleShaded;
+		  yourself
+]
+
 { #category : 'vertex layout' }
 VkGraphicsPipeline class >> positionByteCount [
 	"A position is two 32 bit floats, so it is eight bytes wide. It is also the offset of the
@@ -102,6 +292,56 @@ VkGraphicsPipeline class >> positionLocation [
 	 this project compiles."
 
 	^ 0
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> primitiveRestartDisabled [
+	"Primitive restart applies to indexed draws, where one index value ends a primitive and
+	 starts the next. Nothing here draws indexed, so the flag is off."
+
+	^ 0
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> rasterizationState [
+	"How this project rasterizes: filled triangles, no face discarded, front faces wound
+	 counter clockwise. Depth clamp, rasterizer discard and depth bias stay as the zeroed
+	 block left them, which is what a disabled VkBool32 and an unused bias factor read as.
+	 The state points at nothing, so the caller frees its own store and nothing else."
+
+	^ VkPipelineRasterizationStateCreateInfo externalInstance
+		  polygonMode: VkPolygonMode fill;
+		  cullMode: VkCullMode none;
+		  frontFace: VkFrontFace counterClockwise;
+		  lineWidth: self lineWidthEveryDeviceAccepts;
+		  yourself
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> requestForStages: someStages vertexInput: aVertexInputState layout: aLayoutHandle renderPass: aRenderPassHandle [
+	"The one request every graphics pipeline here is created from, outside object memory because
+	 the driver reads it after this method answers. The stage run and the vertex input state are
+	 passed in: they need a shader module and a vertex layout to build, and the caller that has
+	 those owns them. The six states that need neither are built here and owned by the request,
+	 which freeRequest: gives back. Nothing writes the flags, the tessellation or depth stencil
+	 states, or the base pipeline handle: this project asks for none of them and the zeroed
+	 block already reads as null."
+
+	^ VkGraphicsPipelineCreateInfo externalInstance
+		  stageCount: someStages size;
+		  pStages: someStages first getHandle;
+		  pVertexInputState: aVertexInputState getHandle;
+		  pInputAssemblyState: self inputAssemblyState getHandle;
+		  pViewportState: self viewportState getHandle;
+		  pRasterizationState: self rasterizationState getHandle;
+		  pMultisampleState: self multisampleState getHandle;
+		  pColorBlendState: self colorBlendState getHandle;
+		  pDynamicState: self dynamicState getHandle;
+		  layout: aLayoutHandle;
+		  renderPass: aRenderPassHandle;
+		  subpass: self subpassThisPipelineDrawsIn;
+		  basePipelineIndex: VkPipelineCreation noBasePipelineIndex;
+		  yourself
 ]
 
 { #category : 'request' }
@@ -120,6 +360,14 @@ VkGraphicsPipeline class >> runOf: someDescriptions [
 	someDescriptions doWithIndex: [ :each :index |
 		each copyBytesInto: (elements at: index) ].
 	^ elements first getHandle
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> scissorsPerPipeline [
+	"One scissor rectangle, matching the one viewport. It is dynamic for the same reason: the
+	 target's extent is known when the frame is recorded, not when the pipeline is built."
+
+	^ 1
 ]
 
 { #category : 'request' }
@@ -150,6 +398,25 @@ VkGraphicsPipeline class >> shaderStagesPerPipeline [
 	 build it from."
 
 	^ 2
+]
+
+{ #category : 'request' }
+VkGraphicsPipeline class >> statesTheRequestOwnsOutright [
+	"The nested states a request gives back by freeing their own store alone. The colour blend
+	 and dynamic states are not here: each owns a run of its own, which has to be freed first,
+	 so each goes through the method that knows about that run."
+
+	^ #( #pInputAssemblyState #pViewportState #pRasterizationState
+	     #pMultisampleState )
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> subpassThisPipelineDrawsIn [
+	"The render pass this project builds declares one subpass, so the pipeline draws in the
+	 first one and its index is zero. A second subpass would be a pipeline of its own created
+	 with the next index."
+
+	^ 0
 ]
 
 { #category : 'vertex layout' }
@@ -213,6 +480,26 @@ VkGraphicsPipeline class >> vertexInputStateForBindings: someBindings attributes
 		  yourself
 ]
 
+{ #category : 'request' }
+VkGraphicsPipeline class >> viewportState [
+	"How many rectangles the pipeline draws into. Neither run is given: both rectangles are
+	 dynamic states, so the command buffer sets them while it records. The state points at
+	 nothing, so the caller frees its own store and nothing else."
+
+	^ VkPipelineViewportStateCreateInfo externalInstance
+		  viewportCount: self viewportsPerPipeline;
+		  scissorCount: self scissorsPerPipeline;
+		  yourself
+]
+
+{ #category : 'constants' }
+VkGraphicsPipeline class >> viewportsPerPipeline [
+	"One viewport, the whole target. The pipeline declares the count because the driver needs
+	 it when it compiles, and the command buffer gives the rectangle itself while recording."
+
+	^ 1
+]
+
 { #category : 'lifecycle' }
 VkGraphicsPipeline >> destroy [
 
@@ -235,12 +522,14 @@ VkGraphicsPipeline >> handle [
 
 { #category : 'initialization' }
 VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertexModule: aVertexModule fragmentModule: aFragmentModule extent: aPoint [
-	"The two shader stages and the vertex input state, with the two description runs it points
-	 at, are declared structures built and freed through the class; the rest of the tree is
-	 still written at counted offsets."
+	"Every structure in the tree is declared: the two shader stages and the vertex input state,
+	 with the runs they point at, and the request that names them along with the six states it
+	 builds itself. The stages and the vertex input state are owned here, because a module and a
+	 vertex layout are needed to build them; the request owns the rest and is freed whatever the
+	 creation does. The extent is not read: the viewport and the scissor are dynamic, so they
+	 are set while recording rather than built into the pipeline."
 
-	| emptyLayout stages vertInput inputAssembly viewportState rasterState sampleState blendAttach blendState dynStates dynState createInfo pipeBuf result |
-
+	| emptyLayout stages vertInput request |
 	device := aVkDevice.
 	emptyLayout := VkPipelineLayout new.
 	emptyLayout initializeOn: aVkDevice setLayouts: #().
@@ -252,104 +541,15 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		             vertexInputStateForBindings:
 		             self class vertexBindingDescriptions
 		             attributes: self class vertexAttributeDescriptions.
-	inputAssembly := ExternalAddress allocate: 32.
-	viewportState := ExternalAddress allocate: 48.
-	rasterState := ExternalAddress allocate: 64.
-	sampleState := ExternalAddress allocate: 48.
-	blendAttach := ExternalAddress allocate: 32.
-	blendState := ExternalAddress allocate: 56.
-	dynStates := ExternalAddress allocate: 8.
-	dynState := ExternalAddress allocate: 32.
-	createInfo := ExternalAddress allocate: 144.
-	pipeBuf := ExternalAddress allocate: 8.
-	[	inputAssembly unsignedLongAt: 1  put: VkStructureType pipelineInputAssemblyStateCreateInfo.
-		inputAssembly pointerAt:   9  put: ExternalAddress null.
-		inputAssembly unsignedLongAt: 17 put: 0.
-		inputAssembly unsignedLongAt: 21 put: VkRenderConfig primitiveTopologyTriangleList.
-		inputAssembly unsignedLongAt: 25 put: 0.
-		viewportState unsignedLongAt: 1  put: VkStructureType pipelineViewportStateCreateInfo.
-		viewportState pointerAt:   9  put: ExternalAddress null.
-		viewportState unsignedLongAt: 17 put: 0.
-		viewportState unsignedLongAt: 21 put: 1.
-		viewportState pointerAt:   25 put: ExternalAddress null.
-		viewportState unsignedLongAt: 33 put: 1.
-		viewportState pointerAt:   41 put: ExternalAddress null.
-		rasterState unsignedLongAt: 1  put: VkStructureType pipelineRasterizationStateCreateInfo.
-		rasterState pointerAt:   9  put: ExternalAddress null.
-		rasterState unsignedLongAt: 17 put: 0.
-		rasterState unsignedLongAt: 21 put: 0.
-		rasterState unsignedLongAt: 25 put: 0.
-		rasterState unsignedLongAt: 29 put: 0.
-		rasterState unsignedLongAt: 33 put: 0.
-		rasterState unsignedLongAt: 37 put: 0.
-		rasterState unsignedLongAt: 41 put: 0.
-		rasterState unsignedLongAt: 45 put: 0.
-		rasterState unsignedLongAt: 49 put: 0.
-		rasterState unsignedLongAt: 53 put: 0.
-		rasterState unsignedLongAt: 57 put: 1065353216.
-		sampleState unsignedLongAt: 1  put: VkStructureType pipelineMultisampleStateCreateInfo.
-		sampleState pointerAt:   9  put: ExternalAddress null.
-		sampleState unsignedLongAt: 17 put: 0.
-		sampleState unsignedLongAt: 21 put: VkRenderConfig sampleCount1Bit.
-		sampleState unsignedLongAt: 25 put: 0.
-		sampleState unsignedLongAt: 29 put: 1065353216.
-		sampleState pointerAt:   33 put: ExternalAddress null.
-		sampleState unsignedLongAt: 41 put: 0.
-		sampleState unsignedLongAt: 45 put: 0.
-		blendAttach unsignedLongAt: 1  put: 0.
-		blendAttach unsignedLongAt: 5  put: 0.
-		blendAttach unsignedLongAt: 9  put: 0.
-		blendAttach unsignedLongAt: 13 put: 0.
-		blendAttach unsignedLongAt: 17 put: 0.
-		blendAttach unsignedLongAt: 21 put: 0.
-		blendAttach unsignedLongAt: 25 put: 0.
-		blendAttach unsignedLongAt: 29 put: VkRenderConfig colorWriteMaskRGBA.
-		blendState unsignedLongAt: 1  put: VkStructureType pipelineColorBlendStateCreateInfo.
-		blendState pointerAt:   9  put: ExternalAddress null.
-		blendState unsignedLongAt: 17 put: 0.
-		blendState unsignedLongAt: 21 put: 0.
-		blendState unsignedLongAt: 25 put: 0.
-		blendState unsignedLongAt: 29 put: 1.
-		blendState pointerAt:   33 put: blendAttach.
-		blendState unsignedLongAt: 41 put: 0.
-		blendState unsignedLongAt: 45 put: 0.
-		blendState unsignedLongAt: 49 put: 0.
-		blendState unsignedLongAt: 53 put: 0.
-		dynStates unsignedLongAt: 1 put: 0.
-		dynStates unsignedLongAt: 5 put: 1.
-		dynState unsignedLongAt: 1  put: VkStructureType pipelineDynamicStateCreateInfo.
-		dynState pointerAt:   9  put: ExternalAddress null.
-		dynState unsignedLongAt: 17 put: 0.
-		dynState unsignedLongAt: 21 put: 2.
-		dynState pointerAt:   25 put: dynStates.
-		createInfo unsignedLongAt: 1  put: VkStructureType graphicsPipelineCreateInfo.
-		createInfo pointerAt:   9  put: ExternalAddress null.
-		createInfo unsignedLongAt: 17 put: 0.
-		createInfo unsignedLongAt: 21 put: stages size.
-		createInfo pointerAt:   25 put: stages first getHandle.
-		createInfo pointerAt:   33 put: vertInput getHandle.
-		createInfo pointerAt:   41 put: inputAssembly.
-		createInfo pointerAt:   49 put: ExternalAddress null.
-		createInfo pointerAt:   57 put: viewportState.
-		createInfo pointerAt:   65 put: rasterState.
-		createInfo pointerAt:   73 put: sampleState.
-		createInfo pointerAt:   81 put: ExternalAddress null.
-		createInfo pointerAt:   89 put: blendState.
-		createInfo pointerAt:   97 put: dynState.
-		createInfo pointerAt:  105 put: layout handle getHandle.
-		createInfo pointerAt:  113 put: aRenderPass handle getHandle.
-		createInfo unsignedLongAt: 121 put: 0.
-		createInfo pointerAt:  129 put: ExternalAddress null.
-		createInfo unsignedLongAt: 137 put: 16rFFFFFFFF.
-		result := Vk createGraphicsPipelines: device handle pipelineCache: ExternalAddress null createInfoCount: 1 pCreateInfos: createInfo allocator: ExternalAddress null pPipelines: pipeBuf.
-		Vk checkResult: result.
-		handle := VkPipeline_H fromHandle: (pipeBuf pointerAt: 1)
-	] ensure: [
-		self class freeShaderStages: stages.
-		self class freeVertexInputState: vertInput.
-		inputAssembly free. viewportState free. rasterState free.
-		sampleState free. blendAttach free. blendState free.
-		dynStates free. dynState free. createInfo free. pipeBuf free ]
+	request := self class
+		           requestForStages: stages
+		           vertexInput: vertInput
+		           layout: layout handle
+		           renderPass: aRenderPass handle.
+	handle := [ self class handleForRequest: request on: device ] ensure: [
+		          self class freeRequest: request.
+		          self class freeVertexInputState: vertInput.
+		          self class freeShaderStages: stages ]
 ]
 
 { #category : 'accessing' }
