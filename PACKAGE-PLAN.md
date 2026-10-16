@@ -278,10 +278,9 @@ Leaf first, so each commit moves classes whose dependents are already where they
    unit 1 moved here by D4. No decision was due.
 7. **Graphics — done 16 October 2026.** Seventeen classes, including the `SDL2` tag. D7 taken
    here: `VkPipelineLayout` moves down to `PharoVulkan-Core`, below both pipeline kinds.
-8. **Bindings.** Whatever is left in `PharoVulkan` is the bindings and the constants, so this unit
-   is a package rename rather than a move. Check how Iceberg records a package rename before doing
-   it; if it records it badly, create `PharoVulkan-Bindings` and move the 143 classes like every
-   other unit.
+8. **Bindings — done 16 October 2026.** A package rename rather than a move: the organiser renames
+   `PharoVulkan` to `PharoVulkan-Bindings` with its classes, tags and manifest in one step, and git
+   records the 146 Tonel files as renames. D5 taken here.
 9. **Tests.** Create the six test packages, move each test class with the stubs and fixtures it
    uses, and leave `PharoVulkan-Tests` holding only the architecture test. Rename each test class
    to `<Package>Test` where its name does not already say which package it covers. Splitting
@@ -688,6 +687,113 @@ rather than under the `SDL2` tag they came from, which had disappeared. So the r
 reliably in the tag a class was taken out of: clear it by removing each stray from every tag of the
 old package, and check `definedClasses` for classes whose `package` is no longer that package.
 
+## What unit 8 did
+
+Done 16 October 2026.
+
+`PharoVulkan` renamed to `PharoVulkan-Bindings`, with the 146 classes, the five tags and every
+reference carried over by the organiser: `PackageOrganizer default renamePackage: to:` does the
+whole rename in one step, so there was no move and no tag residue to clear this time. Iceberg sees
+it as the directory `src/PharoVulkan` replaced by `src/PharoVulkan-Bindings`, which git records as
+renames of the 146 Tonel files. The manifest class was renamed with it, to
+`ManifestPharoVulkanBindings`, and the package comment — still the Pharo placeholder text, because
+this package was never created by this plan — was replaced with a real one: what the four tags hold,
+that the package is the bottom of the stack, and the uFFI rules a structure here must obey.
+
+**D5 is settled, as recommended, with one deviation.** Six references reached up out of the
+bindings, all of them from report methods, and each one moved down to the class that owns the value
+with the old holder left delegating, so that nothing outside the bindings changed:
+
+| Value | Now owned by | Delegating |
+|---|---|---|
+| `clearComponentCount`, `clearComponentByteCount` | `VkRenderPassBeginInfo class` | `VkCommandBuffer class` |
+| `subpassContents` | `VkRenderConfig class` | `VkCommandBuffer class` |
+| `unlimitedImageCount` | `VkSurfaceCapabilitiesKHR class` | `VkSwapchain class` |
+| `swapchainImagesBeyondMinimum` | `VkRenderConfig class` | `VkSwapchain class >> imagesBeyondMinimum` |
+| the image-count rule, as `swapchainImageCount` | `VkSurfaceCapabilitiesKHR` | `VkSwapchain class >> imageCountFor:` |
+| `formatRenderedIn` | `VkRenderConfig class` | `VkSurface class` |
+| `clipObscuredPixels`, `presentModeNameFor:` | `VkRenderConfig class` | `VkSwapchain class` |
+| `attachmentByteCount` | `VkFramebufferCreateInfo class` | `VkFramebuffer class` |
+
+Two of these are more than a constant moving house. The image-count rule reads nothing but fields of
+the capabilities structure, so the rule itself moved into `VkSurfaceCapabilitiesKHR >>
+swapchainImageCount` and the swapchain asks; the report row now asks the same rule the creation code
+asks, instead of restating it. The stride of an attachment entry moved to the structure that
+declares the pointer, which is where this project already puts a stride for a run uFFI cannot
+declare.
+
+The deviation is `presentModeNameFor:`. The plan suggested a `VkPresentMode` constants class, like
+the other enumerations. There is one present mode constant in this project, and the lookup already
+worked by reflecting over the selectors of `VkRenderConfig class` that begin `presentMode`, so a new
+class would have held one value and the lookup would have had to find it anyway. The method moved to
+`VkRenderConfig class` beside the constant instead. Moving it there exposed something the old home
+hid: the lookup now matches its own selector by prefix, so it selects on `numArgs isZero` as well,
+which is stated in the comment.
+
+`VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage` was written first and failed on
+all six. It reads every method of both sides of every class of the package the bindings are in,
+blocks included, and asserts that no referenced class lives in another `PharoVulkan` package. It
+asks `VkRenderConfig package` for that package rather than naming it, so the rename did not touch
+it. `VkBindingsTest >> testGeneratorInstallsIntoThePackageTheBindingsAreIn` states the other fact
+unit 4 found: the three generate methods install into the literal `'PharoVulkan-Bindings'`, which
+until this unit was a package that did not exist. The test reads the literal out of the three
+methods and asserts it names a package in the image and is the package the declared structures are
+in.
+
+The baseline now declares `PharoVulkan-Bindings` requiring nothing at all — the examples that used
+to make it depend on SPIRV and the compiler left in unit 1, and D5 removed the last edges — adds a
+`bindings` group, and names it in `default` and in every `requires:` that used to say
+`'PharoVulkan'`. Every other package's edges are unchanged.
+
+**A real bug the rename exposed, which unit 7 had introduced.** `PVGraphicsTest class >>
+projectPackageName` answered `#PharoVulkan`, and `graphicsClasses` was the classes of that package
+whose tag was named `Graphics`. Unit 7 moved all seventeen of them out, so from that commit onwards
+`graphicsClasses` was empty and `testEveryGraphicsClassIsExercisedOnADeviceOrSaysWhyNot` — the test
+whose whole point is that a new graphics class with no device path fails — passed because it
+compared two empty collections. The rename turned the silence into an error, because
+`packageNamed: #PharoVulkan` now raises. The fix makes the test ask packages rather than tags:
+`projectPackageNames` is every package whose name begins `PharoVulkan` except the test package, so
+the walk stays project code across all eight code packages and a ninth is covered the day it is
+created, and `graphicsClasses` is the classes of `PharoVulkan-Graphics`, less the package manifest,
+which carries the package comment and the critic settings and which no test can put on a device. The
+test now checks seventeen classes against 245 reachable ones, and passes.
+
+Critics on the package: 63 critiques, and not one of them is caused by the rename. They are of three
+kinds. The generated structures report excessive variables and excessive methods, which is what a
+declared Vulkan structure with sixty fields is. The package's extension methods on
+`SequenceableCollection` and `Number` make Renraku report those base classes whole, so their own
+critiques — excessive methods, uncategorized class, redundant class name in selector — are counted
+here although nothing in this project can fix them. The rest is the dead `PVTmpArrayStructProbe`,
+which this plan already records as a follow-up, four inconsistent classifications, two shadowed
+`layout` temporaries in generated `Vk class` calls, and `VkHandle >> finalize`, which Renraku says
+is equivalent to its superclass method.
+
+Suite: 599 tests over the nine concrete test classes, all passing. Getting to that number took
+three runs and a correction to how this project diagnoses a window test. The first run reported two
+errors: the coverage test described above, which was the real bug, and
+`testPresentRequestForARealSwapchainCarriesItsHandleAndIndex`, which passed on its own. The second
+reported one, `testRenderFrameCyclesThroughTheSwapchainImages`, which also passed on its own —
+five times in a row, then nine frames acquiring all four swapchain images. The third run was
+instrumented: every case run under `on: Exception do:` that records the exception class, its message
+and fourteen frames of its stack, with the case name written to a global before it runs. It raised
+nothing, 599 for 599.
+
+So the two window errors were intermittent and neither was caused by this unit. The one value this
+unit could have changed is the requested image count, and it is the same rule as before —
+`minImageCount + 1` clamped to `maxImageCount`, with zero read as no maximum — while the count the
+cycle test compares against is not the request at all: `VkSwapchain >> imageCount` answers the
+images the driver gave back. What makes a window test fail under suite load and pass alone is still
+unknown, and it belongs on the follow-up list rather than inside this plan.
+
+Two lessons about diagnosing them, both paid for in wall-clock time. A diagnostic fork must publish
+progress as it goes: a fork that writes its log only when it finishes is indistinguishable from a
+hung image for as long as it runs, because `evaluate_pharo` times out while a window test holds the
+VM. And the handler must be as careful as the code it watches — a handler that called the
+non-existent `Context >> stack:` raised a `MessageNotUnderstood` of its own, which opened a debugger
+that suspended the fork and stranded a live window for twenty minutes of apparent hang. Writing the
+log to a file is no help here either: the image runs on the host filesystem, so a file it writes is
+not a file this session can read.
+
 ## Rules this plan sets
 
 - **The image moves the class, not the file system.** `cls package: (PackageOrganizer default
@@ -723,6 +829,23 @@ old package, and check `definedClasses` for classes whose `package` is no longer
   `Behavior >> compile:` and the rest are how tools read a class; a constant of the same name
   hides them and breaks the tools rather than the code that reads the constant. See what unit 3
   found.
+- **A test that reads one package name goes quiet when the package splits.** Unit 7 moved the
+  graphics classes out of the package `PVGraphicsTest` asked for them by name, and the coverage
+  test went green by comparing two empty collections for a whole commit. A test that states a fact
+  about a population must either assert that the population is not empty or derive it by prefix
+  from the organiser, so that moving a class cannot silence it. Unit 8 found this one only because
+  the rename turned the silence into an error.
+- **A diagnostic fork publishes progress, and its handler is as careful as the code it watches.**
+  `evaluate_pharo` times out while a window test holds the VM, so a fork that writes its result only
+  at the end looks exactly like a hung image. Write the case name to a global before each step. A
+  file is not an alternative: the image runs on the host filesystem, which this session cannot read.
+  An exception handler that itself raises — `Context >> stack:` does not exist — opens a debugger,
+  suspends the fork and strands a live window and `VkInstance`; terminate that process so its
+  `ensure:` blocks release them.
+- **Rename a package with the organiser, not by moving its classes.**
+  `PackageOrganizer default renamePackage: aPackage to: aName` carries the classes, the tags, the
+  manifest and the package comment across in one step, leaves no tag residue, and gives Iceberg a
+  directory rename that git records as renames of the files rather than as deletions and additions.
 - **No cosmetic change rides along.** The split moves classes. The six decisions are the only code
   changes, each with a reason recorded here, and each gets its failing test first.
 
