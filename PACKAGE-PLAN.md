@@ -331,6 +331,14 @@ and `PVHelloTriangleScene class >> renderTriangle`. No extension method of
 `PVGlslTriangleScene` moved to the new package, tag `Graphics` — it is a demonstration scene, and
 nothing in the renderer subclasses it or refers to it. Its own `renderTriangle` stayed on it, for
 the same documentation reason.
+
+The rest of the scene hierarchy stayed in `PharoVulkan`, which is deliberate: `PVTriangleScene` and
+its two concrete scenes are the renderer the tests drive, not demonstrations. Only
+`PVGlslTriangleScene`, whose whole content is two overrides showing how a reader writes their own
+scene, is a demonstration. That does split the GLSL pair `PVGlslTriangleShaders` names — the window
+scene is an example, the offscreen one stays in `Graphics` — and the split stands: the offscreen
+twin is the subject of the pixel comparison in `PVGraphicsTest`, and a test should not have to load
+the examples to reach its subject. Later units must not tidy this into symmetry.
 `PVKernelExamples` moved the other way, from the `Example` tag to `Compute`, which settles decision
 D4: twenty production references compile its kernel sources, so it is a kernel library and not an
 example. The `Example` tag is gone.
