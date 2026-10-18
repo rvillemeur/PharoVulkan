@@ -49,9 +49,12 @@ class and its subclasses define.
 | `AeCairoSurface` | 104 | 24 | 17 | 27 |
 | `AeCairoPattern` | 79 | 17 | 7 | 20 |
 
-One hundred and twenty-one selectors, not three hundred and eighty-nine.
-That is the phase 1 scope, and most of the context's share is path building, which is recording, not
-rasterising.
+The three unions overlap and a few selectors are declared on both the instance side and the class
+side, so the real scope is one hundred and thirteen entries over one hundred and three distinct
+selectors, not three hundred and eighty-nine.
+`VGCairoInventory` holds that list, with the false positives named and explained, and
+`VGCairoInventoryTest` fails if the live image disagrees with it.
+Most of the context's share is path building, which is recording, not rasterising.
 
 `AeCanvas` itself defines ninety-seven selectors, fifteen of them `drawFigure*` variants.
 None of them need reimplementing.
@@ -201,7 +204,9 @@ Phase 1 adds three packages and phase 2 adds two.
 | Package | Phase | Contents |
 |---|---|---|
 | `VectorGraphics-Cairo` | 1 | `VGCairoContext`, `VGCairoImageSurface`, the pattern classes, `VGScaledFont`, the display list, the paint ABI, `VGBackend` and the software backend |
-| `VectorGraphics-Cairo-Tests` | 1 | The conformance harness and the corpus runner |
+| `VectorGraphics-Cairo-Tests` | 1 | The conformance harness, the corpus and the inventory tests |
+| `VectorGraphics-Cairo-Examples` | 1 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples |
+| `VectorGraphics-Cairo-Reference` | 1 | The reference generator, the one place allowed to replay a corpus case through Alexandrie and write its PNG |
 | `VectorGraphics-Bloc` | 1 | `VGCanvas` (the `AeCanvas` subclass) and `VGRenderer` (the `BARenderer` subclass), nothing else |
 | `VectorGraphics-Vulkan` | 2 | The Vulkan backend, the tile binner, the SPIR-V paint and coverage shaders |
 | `VectorGraphics-Vulkan-Tests` | 2 | The GPU-versus-software parity tests |
@@ -209,8 +214,10 @@ Phase 1 adds three packages and phase 2 adds two.
 `VectorGraphics-Cairo` may depend on `VectorGraphics`; the reverse is forbidden.
 `VectorGraphics-Cairo` must not name a single `Ae*` class, so that it stands alone and so that the
 corpus can be run with Alexandrie absent.
-`VectorGraphics-Bloc` is the only package allowed to name `Ae*` classes, and it is deliberately thin
-for that reason.
+`VectorGraphics-Bloc` and `VectorGraphics-Cairo-Reference` are the only packages allowed to name
+`Ae*` classes, and both are deliberately thin for that reason: the first wires Bloc to the engine,
+the second exists only so that the reference renders can be produced in an image that has Cairo,
+and neither is needed to run the corpus.
 `VectorGraphics-Vulkan` may depend on `VectorGraphics-Cairo` and on `PharoVulkan-Core`,
 `PharoVulkan-Compute` and `PharoVulkan-SPIRV`; nothing may depend on it.
 
@@ -259,7 +266,7 @@ Each unit follows the project cycle: failing test, smallest code that passes, re
 ### 1.0 — the context skeleton and the conformance harness
 
 Create `VGCairoContext`, `VGCairoImageSurface` and the pattern classes, with every one of the one
-hundred and twenty-one measured selectors present, each either implemented or raising
+hundred and three measured selectors present, each either implemented or raising
 `VGNotYetImplemented` naming the unit that will implement it.
 
 Create the harness: one corpus case per Cairo primitive, each holding a script that drives the
@@ -270,6 +277,30 @@ That test is the inventory, so the inventory cannot go stale.
 
 Gate: the harness runs, every case fails with a named unimplemented selector rather than an error,
 and the inventory test passes.
+
+**Done.** Ten classes in `VectorGraphics-Cairo`: `VGCairoObject` and its three subclasses
+`VGCairoContext`, `VGCairoImageSurface` and `VGCairoPattern`, the four pattern subclasses,
+`VGCairoStatus` and `VGNotYetImplemented`, plus `VGCairoInventory`, which holds the frozen
+measurement and the unit table.
+One hundred skeleton methods, twelve of them class-side, each naming the unit that owes it; the five
+unit 1.0 selectors — `new`, `newFor:`, `status`, `autoRelease` and `externallyFree` — are real.
+
+The harness is `VGConformanceCase` and `VGConformanceCorpus`: twenty-nine cases over eight group
+methods, filed under units 1.1 to 1.8, each answering, through `blockingFailure`, the first selector
+it stops on.
+`VGConformanceCase >> newTarget` builds its surface reflectively until unit 1.1 implements
+`extent:`, so that a case reports the selector its own drawing asks for.
+Reference PNGs are not written yet: they belong to `VectorGraphics-Cairo-Reference`, and the first
+unit that renders anything is 1.1.
+
+Eighteen tests pass over four test classes: `VGCairoInventoryTest` (six, three of which skip when
+Alexandrie is absent), `VGCairoSkeletonTest` (four), `VGConformanceTest` (five) and
+`VGCairoExamplesTest` (three).
+Three examples classes in `VectorGraphics-Cairo-Examples` hold five `<sampleInstance>` examples, and
+four inspector views read the compiled methods rather than a kept list: `Skeletons` on both sides of
+`VGCairoObject`, `Units` on `VGCairoInventory` and `Cases` on `VGConformanceCorpus`.
+A view and its gate are two methods in Pharo 13, `inspectorX:` carrying the pragma and
+`inspectorXContext:` sending `active:`; one method doing both is never gated.
 
 ### 1.1 — the ARGB32 target
 
@@ -476,7 +507,11 @@ decides on the user's machine.
 
 1. The failing test was written and seen to fail before the code.
 2. The package suite is green.
-3. `run_critics` is clean on every class the unit touched.
+3. `run_critics` is clean on every class the unit touched, with one standing exception:
+   `ReExcessiveArgumentsRule` and `ReExcessiveMethodsRule` fire on selectors the frozen Cairo
+   surface dictates, such as `roundedRectangleLeft:top:right:bottom:tl:tr:br:bl:` and the size of
+   `VGCairoContext` itself. Renraku offers no per-method suppression, and renaming a selector would
+   break the calling API, which is the whole point of the project. Every other critique is a defect.
 4. A class-side `<sampleInstance>` example exists in the `-Examples` package.
 5. A custom `<inspectorPresentationOrder:title:>` view exists, and it asks the real rule rather than
    restating it.
