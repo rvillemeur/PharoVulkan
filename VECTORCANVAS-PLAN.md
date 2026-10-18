@@ -111,6 +111,19 @@ Option 2 is the default, because writing into external memory per pixel from Pha
 per access and the known way to kill this image.
 Option 1 is only worth it if the bulk copy shows up in the profile.
 
+Unit 1.1 measured both, filling a 1024 by 768 ARGB32 surface five times in this image:
+
+| What runs | Total, five frames | Per frame |
+|---|---|---|
+| Per-pixel writes straight into external memory | 130 ms | 26 ms |
+| Per-pixel writes into my own `ByteArray` | 135 ms | 27 ms |
+| The same, plus one `LibC memCopy:to:size:` of the three megabytes | 134 ms | 26.8 ms |
+| That `memCopy:to:size:` alone, twenty times | 7 ms | 0.35 ms |
+
+The handover is not the cost: the bulk copy is 0.35 ms, around one per cent of a frame, while the
+per-pixel loop is 26 ms, or 33 nanoseconds per pixel.
+Option 2 therefore stands, and the profiling unit 1.11 has to attack the loop, not the copy.
+
 ### 2.3 Text
 
 Text is a context-level API in Cairo, and `AeCanvas` uses it through five selectors:
@@ -311,6 +324,46 @@ Measure the two pixel-delivery options from section 2.2 and record the numbers h
 Gate: a corpus case that paints translucent over translucent matches the reference to within one
 unit per channel, and a render into an externally supplied address with a stride larger than the
 width lands in the right bytes.
+
+**Done.** `VGCairoImageSurface` holds a format, an extent, a stride, a buffer, a device offset, a
+device scale, a status and a finished flag, and all twenty-three selectors the unit owes are real;
+`VGCairoInventory progressReport` answers 23 of 23.
+
+Pixels go through one path, because both a `ByteArray` and an `ExternalAddress` answer
+`uint32AtOffset:` and `uint32AtOffset:put:`.
+A surface of my own allocates a `ByteArray`; `unownedNewForData:format:width:height:stride:` keeps
+whatever buffer the caller passed, which is how the host window path of section 2.2 is served, and
+a stride too small for one row sets the status to `VGCairoStatus invalidStride` rather than
+signalling, as Cairo does.
+Every write runs row by row and only width pixels wide, so the padding bytes between rows stay as
+the host left them.
+
+`VGCairoSurfaceFormat` is new, and it owns the pixel arithmetic: `strideForWidth:` (four-byte
+alignment, so an A8 row of seven pixels is eight bytes), `pixelForColor:` and `colorForPixel:`
+(premultiply and divide back out, with `Color transparent` for a zero alpha), and
+`blendPixel:over:` (source-over, dividing by 255 with rounding).
+`normalize:` accepts one of ours, an Alexandrie enum value or a plain integer, so
+`VectorGraphics-Cairo` still names no `Ae*` class while a future `VGCanvas` can pass Alexandrie
+constants straight through.
+
+Gate, first half: `blendPixel:over:` is compared against a live Cairo render of the same two
+translucent colours, painted one over the other, and agrees exactly — `16rBF40007F` — so the
+tolerance of one unit per channel is not even needed.
+The reference is rendered in the test rather than committed as a PNG, because Alexandrie and
+libcairo are both in this image; `VectorGraphics-Cairo-Reference` is still not needed.
+The painting verb that would let a corpus case do this belongs to unit 1.5, so the gate is met at
+the surface, through `fillPixel:` and `blendPixel:`.
+Gate, second half: two tests render into a caller-supplied buffer whose stride is four bytes wider
+than its rows, one checking that every pixel lands at the right offset and one checking that all
+eight padding bytes still hold what the host wrote.
+
+Twenty-two tests in `VGCairoSurfaceTest`, and forty in the package.
+`VGConformanceCase >> newTarget` now builds a real surface through `extent:`, and the corpus cases
+that need a second surface do too.
+`VGCairoImageSurfaceExamples` holds three `<sampleInstance>` examples — the translucent target, a
+host buffer with a padded stride, and an A8 mask — and the surface has two inspector views,
+`Picture` (a fresh `asForm`, so looking cannot mutate) and `Layout` (the stride and the padding read
+back out of the object).
 
 ### 1.2 — the matrix and the state stack
 
