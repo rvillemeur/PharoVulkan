@@ -374,6 +374,52 @@ Transform at record time, not at splat time, so the engine stays untouched.
 Gate: a rotated and sheared rounded rectangle matches the reference; a singular matrix draws nothing
 rather than raising; `restoreStateAfter:` restores source, matrix, fill rule and clip together.
 
+**Done.** Ten selectors, all real: `VGCairoInventory progressReport` answers 10 of 10 for this unit.
+`currentPointInUserSpace` moved to unit 1.3, because a current point comes from a path and there is
+no path until the shape verbs arrive.
+
+`VGCairoMatrix` is new and holds Cairo's six numbers, `sx shy shx sy x y`, in Cairo's own field
+order, so `newFrom:` reads an `AeCairoMatrix` through the same six accessors.
+It follows Cairo's composition order rather than the obvious one: `translateBy:`, `scaleBy:` and
+`rotateByRadians:` pre-multiply, so the new transformation acts first and what the matrix already
+holds acts after it, which is what `cairo_matrix_translate` does.
+`invert` answers a `VGCairoStatus` — `invalidMatrix`, code 5, the same code Cairo answers — and
+`inverted` copies, inverts and sends `ensureIsSuccess`, which is how Alexandrie splits the two.
+A determinant of zero, a NaN or an infinity all mean not invertible.
+
+`VGCairoState` holds the four pieces of graphics state together: the matrix, the source, the fill
+rule and the clip.
+`postCopy` copies the matrix, because a context transforms its matrix in place and a saved state
+must not move with it.
+`VGCairoContext` keeps one current state and a stack of saved ones; `restoreStateAfter:` saves,
+runs the block under `ensure:` and restores, so a painting that raises cannot leave the next frame
+transformed.
+The state the block worked on is not the object that comes back, which a test pins.
+
+A singular matrix does not signal.
+Measured on a live Cairo context: `matrix:` with a singular matrix leaves the context in
+`CAIRO_STATUS_INVALID_MATRIX` and a later `paint` writes no pixel at all.
+`VGCairoContext` matches that: `matrix:` latches the status, `isInError` answers true afterwards,
+and every transformation and the two clearing verbs return without touching anything.
+Two tests prove the second half of the gate, one against our own surface and one against a live
+Cairo surface whose pixels stay zero.
+
+The first half of the gate is met through the matrix rather than through a shape, because the shape
+verbs belong to unit 1.3: the rotated and sheared transformation is built on a `VGCairoMatrix` and
+on an `AeCairoMatrix` by the same calls, and the six fields, the mapped corners of the unit square
+and the inverse all agree with Cairo to within 1.0e-12.
+The three transform cases in `VGConformanceCorpus` moved to unit 1.3 with the shape verbs they need,
+and unit 1.2 joins units 1.0 and 1.9 in `VGConformanceTest >> unitsWithoutAPicture`, because a
+transformation changes nothing visible on its own.
+
+Thirty tests, fifteen in `VGCairoMatrixTest` and fifteen in `VGCairoContextStateTest`, four of them
+comparing against live Alexandrie; seventy-two in the package.
+`VGCairoMatrixExamples` holds the rotated and sheared matrix and the singular one;
+`VGCairoContextExamples` gained a transformed context with a state pushed underneath it.
+Two inspector views: `Mapping` on the matrix, which sends `value:` and `inverted` rather than
+restating the arithmetic, and `State stack` on the context, which reads the stack itself so it shows
+what `restoreState` will really bring back.
+
 ### 1.3 — path construction
 
 The whole path vocabulary `AeCanvas` and Bloc path blocks send: `moveTo:`, `lineTo:`, `lineToX:y:`,
