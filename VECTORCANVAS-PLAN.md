@@ -1,99 +1,148 @@
-# VECTORCANVAS-PLAN — a GPU-capable replacement for Alexandrie Canvas
+# VECTORCANVAS-PLAN — a GPU-capable replacement for the Alexandrie Cairo layer
 
-## 1. Goal
+## 1. Goal and target
 
-Make `VectorGraphics` a drop-in replacement for `AeCanvas`, with the same calling API, matching or
-extending the feature set that Bloc gets today from Cairo through Alexandrie.
+Make `VectorGraphics` a drop-in replacement for the Cairo layer that Alexandrie wraps, so that Bloc
+renders through it with the same calling API and the same pixels, and so that it can serve as a
+failover when `libcairo` is absent or broken.
 
-The work splits in two phases, and the split is the point of the plan.
+The target API is `AeCairoContext`, together with `AeCairoSurface` and `AeCairoPattern`.
+It is not `AeCanvas`.
 
-Phase 1 is pure Pharo, no Vulkan, no external library.
-It delivers one-to-one compatibility with the Alexandrie API and passes a conformance corpus.
-At the end of phase 1 the package can render Bloc on a machine with no GPU driver, no `libcairo`
-and no FFI at all beyond what the base image already uses.
+`AeCanvas` is Bloc's figure drawer.
+It knows about backgrounds, borders, outskirts and the eleven ways those combine, and it exists to
+draw a `BlElement` and nothing else.
+It is a client of the paint API, not the paint API itself.
+Everything it does, it does by sending messages to its `cairoContext`.
 
-Phase 2 adds a Vulkan backend behind the same facade.
+So `AeCanvas` is kept, not replaced.
+A `VGCanvas` subclass overrides the handful of methods that name a Cairo class, and the rest of
+`AeCanvas` runs unchanged on top of our context.
+That keeps the one hundred and thirty-five `Bloc-Alexandrie` extension methods, `BARenderer` and the
+figure logic as they are, and it reduces the project to the thing that actually has to be written:
+a Cairo-equivalent rasteriser.
+
+The work splits in two phases.
+
+Phase 1 is pure Pharo, no Vulkan and no external library.
+It delivers Cairo parity for the selectors Bloc and `AeCanvas` really send, and it passes a
+conformance corpus rendered against real Cairo.
+
+Phase 2 adds a Vulkan backend behind the same object boundary.
 It is an optimisation, never a dependency.
 Every phase 2 unit must leave the phase 1 software path working and selectable.
 
-The ordering is deliberate: Vulkan cannot be the failover, because a Vulkan device is more fragile
-to acquire than a Cairo surface.
-A missing or broken ICD, a Wayland or X11 mismatch, MoltenVK on macOS, a stale `vulkan-1.dll` on
-Windows: each of those is a plausible failure on a user's machine.
-The software path is the failover, and the GPU path is the fast path.
+Vulkan cannot be the failover, because acquiring a working device is more fragile than acquiring a
+Cairo surface: a missing or broken ICD, a Wayland or X11 mismatch, MoltenVK on macOS, a stale
+`vulkan-1.dll` on Windows.
+The software path is the failover; the GPU path is the fast path.
 
-## 2. What exists today
+## 2. The measured calling surface
 
-### 2.1 The `VectorGraphics` package
+All counts below were measured in a live image with Bloc and Alexandrie loaded, by intersecting the
+messages sent in the `Bloc*` code packages and in `Alexandrie-Canvas` with the selectors each Cairo
+class and its subclasses define.
 
-Seventy-two classes and twenty-four test classes, two hundred and fourteen tests, all green.
+| Class and subclasses | Selectors defined | Sent by Bloc | Sent by `AeCanvas` | Union to implement |
+|---|---|---|---|---|
+| `AeCairoContext` | 206 | 44 | 45 | 74 |
+| `AeCairoSurface` | 104 | 24 | 17 | 27 |
+| `AeCairoPattern` | 79 | 17 | 7 | 20 |
 
-| Tag | Classes | Purpose |
-|---|---|---|
-| `Kernel` | 5 | `VectorCanvas`, `VectorEngineAbstract` and its three subclasses (`Pixel`, `SubPixel`, `WholePixel`) |
-| `PathCommands` | 12 | The path command objects the canvas records and the engine walks |
-| `TrueType` | 22 | `TTFontReader`, `TTFontDescription`, the table parsers, the glyph and contour model |
-| `SVG` | 2 | A minimal SVG path-data reader |
-| `Examples` | 2 | `VectorCanvasExample`, `TrueTypeExample` |
-| `Tests` | 24 | — |
+One hundred and twenty-one selectors, not three hundred and eighty-nine.
+That is the phase 1 scope, and most of the context's share is path building, which is recording, not
+rasterising.
 
-The engine runs in three stages.
-The walk stage flattens each path command into a run of hops.
-The splat stage stamps a disc of radius `auxStrokeWidthDilatedHalf` into `alphaMask`, max-combining
-seven-bit alpha, and accumulates signed winding deltas into `edgeCounts`.
-The blend stage scans the dirty rectangle, running-sums `edgeCounts` to get the interior, consults
-`morphIds` for the rectangular clip, writes the destination pixel and zeroes the scratch buffers.
+`AeCanvas` itself defines ninety-seven selectors, fifteen of them `drawFigure*` variants.
+None of them need reimplementing.
 
-Per-pixel blending is message-send bound, which is what a GPU backend is for.
+### 2.1 The creation seams
 
-### 2.2 The Alexandrie calling surface, as audited from source
+Only sixteen methods in `Alexandrie-Canvas` name a Cairo class directly, and `VGCanvas` has to
+override five of them:
 
-`AeCanvas` declares ninety selectors.
-Bloc sends about thirty-five of them.
-`AeCairoContext` declares one hundred and sixty-six selectors; the path-building blocks Bloc passes
-to the canvas use about twenty-five of them.
-`AeCairoSurface` declares nineteen and `AeCairoPattern` eight.
+- `AeCanvas class >> extent:` — `^ self newFor: (AeCairoImageSurface extent: aPoint)`
+- `AeCanvas >> newCairoSurfaceExtent:` — builds the surface and sets its device scale
+- `AeCanvas >> setSourceLinearPatternStops:start:end:`
+- `AeCanvas >> setSourceRadialPatternStops:innerCenter:innerRadius:outerCenter:outerRadius:`
+- `AeCanvas >> newSurfaceWithGaussianShadow:width:canvasDo:` — also names the blur filter
 
-`Bloc-Alexandrie` is seventy-three files, one `BARenderer` plus roughly sixty extension methods on
-Bloc classes.
-Those extension methods are the real calling API: they are what a renderer must satisfy, and they
-are written against Alexandrie class names, not against an abstract canvas protocol.
+The remaining eleven name only enumeration and record classes: `AeCairoStrokeCap`,
+`AeCairoStrokeJoin`, `AeCairoAntialias`, `AeCairoFontOptions`, `AeCairoHintMetrics`,
+`AeCairoHintStyle`, `AeCairoTextExtents`, `AeCairoTextMetrics`.
+Those carry integers and plain fields, so our context accepts them as they are.
+No subclass and no reimplementation is needed for them.
 
-`AeCanvas` has an ordering contract, stated in its own class comment:
+`AeCanvas >> prepareForSurface:` already takes a surface from outside, which is the seam the host
+window path uses.
 
-1. set up the path,
-2. set up the background,
-3. set up the border and the outskirts,
-4. send a variant of `drawFigure*`.
+### 2.2 How the host hands over pixels
 
-The background must be set before the border.
-Eleven private `drawFigureWith*` methods cover the combinations of background present or absent,
-opaque or translucent, border present or absent, and outskirts inside, centered or outside.
-Outskirts-outside is emulated: the border is stroked at doubled width inside a
-`cairoContext paintGroupWith: [ … ]`, then `setOperatorClear` plus a fill removes the inner half.
-That emulation is the single most demanding thing in the API, because it needs groups, a clear
-operator and a preserved path at once.
+This is the requirement that shapes the software backend, and it was not visible from the `AeCanvas`
+API alone:
 
-`AeCanvas >> preparePath` is `pathBlock value: cairoContext`, so a path arrives as a block that
-talks to the Cairo context directly.
-Any replacement must accept such a block and answer something that understands the same
-twenty-five path selectors.
+```
+BARenderer >> renderWith: aBlock pixels: address stride: stride
+              physicalRectangle: physicalRectangle logicalRectangle: logicalRectangle
+	aCairoSurface := AeCairoImageSurface
+		unownedNewForData: address format: AeCairoSurfaceFormat argb32
+		width: physicalRectangle width height: physicalRectangle height stride: stride.
+	aCairoSurface
+		deviceOffset: physicalRectangle origin negated;
+		deviceScaleX: scaleFactor y: scaleFactor.
+	aeCanvas prepareForSurface: aCairoSurface.
+	…
+```
 
-### 2.3 The gap list
+The host window gives a raw pixel address and a stride, and the renderer draws straight into it, in
+premultiplied ARGB32, with a device offset and a device scale applied.
+
+The current engine writes into an opaque thirty-two-bit Pharo `Form`, so one of two things must
+happen, and unit 1.1 decides which by measuring both:
+
+1. the engine writes into external memory directly, through `byteAt:put:` on the address, or
+2. the engine writes into an internal buffer and the frame ends with one bulk copy into the host
+   address.
+
+Option 2 is the default, because writing into external memory per pixel from Pharo is both slower
+per access and the known way to kill this image.
+Option 1 is only worth it if the bulk copy shows up in the profile.
+
+### 2.3 Text
+
+Text is a context-level API in Cairo, and `AeCanvas` uses it through five selectors:
+`scaledFont:`, `appendGlyphsPath:`, `showGlyphs:`, `getGlyphExtentsOf:size:into:` and `fontExtents`.
+
+Those take glyph indices, not characters.
+Shaping — the map from a string to positioned glyph indices — is Harfbuzz's job, and Harfbuzz needs
+no Cairo, so `Alexandrie-Harfbuzz` can stay loaded and unchanged.
+Rasterisation is FreeType's job today, and that is the part we replace: the `TTFontReader` glyph
+model is indexed by glyph id before the UTF-8 map is built, which is exactly what
+`appendGlyphsPath:` needs.
+
+A `VGScaledFont` therefore wraps a `TTFontDescription` plus a size, and answers metrics and glyph
+paths from our own contour data.
+If Harfbuzz is absent too, fall back to the font's own `cmap` and kern pairs, which the reader
+already parses, and accept that complex scripts will not shape.
+
+### 2.4 The gap list
 
 What `VectorCanvas` does not do today, each item a phase 1 unit of work:
 
 - `geometryTransformation:` is a no-op, because the Cuis `AffineTransformation` it wants is absent.
-- The target must be an opaque thirty-two-bit `Form`; there is no alpha target, no group, no mask
-  and no operator other than source-over.
-- Clipping is rectangular only, through `morphIds`; there is no path clip and no clip stack.
-- Winding is nonzero only; there is no even-odd rule.
+- The target must be an opaque thirty-two-bit `Form`: there is no premultiplied ARGB32 target, no
+  external-memory target, no device offset and no device scale.
+- There is no group, no mask and no operator other than source-over, so `paintGroupWith:`,
+  `maskGroupWith:`, `maskSurface:x:y:` and `setOperatorClear` have nothing behind them.
+- Clipping is rectangular only, through `morphIds`; there is no path clip, no clip stack and no
+  `clipPreservingPath`.
+- Winding is nonzero only; `useFillRuleEvenOdd` has nothing behind it.
 - Caps and joins are round only, implicit in the disc splat; there are no butt or square caps, no
-  miter or bevel joins and no dashes.
-- There is no gradient, no pattern, no image paint, and therefore no `AeCairoPattern` equivalent.
-- There is no text shaping; kern pairs are parsed but indexed by glyph and never applied.
-- There is no blur, and Bloc asks for one on shadows.
-- There is no surface lifecycle, no device offset and no `asForm` on a sub-rectangle.
+  miter or bevel joins, no miter limit and no dash pattern.
+- There is no pattern of any kind, so no gradient, no surface pattern and no image paint.
+- There is no blur, and `AeCanvas` asks for one on every shadow.
+- There is no surface lifecycle: no `flush`, no `finish`, no `status`, no `asForm` of a
+  sub-rectangle, no `writePngTo:`.
 - Nothing is wired into a display loop, so nothing renders a real Bloc space yet.
 
 ## 3. The three seam rules
@@ -103,11 +152,11 @@ They exist so that phase 2 can be added, and removed, without touching phase 1 c
 
 ### Rule 1 — a retained display list per frame
 
-The facade never rasterises as it records.
+`VGCairoContext` never rasterises as it records.
 It appends to a display list, and the list is drained once per frame by whichever backend is
 selected.
 
-A display list is required by both phases for different reasons.
+A display list is required by both phases, for different reasons.
 The software backend wants it so that the dirty rectangle is known before the first pixel is
 written.
 The GPU backend wants it because a draw call per figure is the one thing that makes a GPU slower
@@ -116,6 +165,11 @@ than a CPU.
 The list is also what makes failover cheap: when the GPU backend raises, the same list is replayed
 on the software backend and the frame still appears.
 
+Cairo's own API is stateful and immediate, so the context must keep the Cairo state machine —
+source, matrix, fill rule, stroke parameters, clip stack — and record state as part of each entry.
+`fillPreservingPath` and `strokePreservingPath` mean the path outlives the operation, so a path is
+an immutable value in the list, not a mutable buffer the next entry overwrites.
+
 ### Rule 2 — a frozen paint ABI
 
 A paint is a tag, a block of thirty-two-bit floats holding its coefficients, and, for a gradient, an
@@ -123,9 +177,9 @@ optional two-hundred-and-fifty-six-entry stop lookup table.
 
 Nothing above the backend boundary knows whether a paint will be evaluated by a Pharo method or by a
 SPIR-V function.
-Nothing below it knows what a `BlPaint` is.
+Nothing below it knows what a `BlPaint` or an `AeCairoPattern` is.
 
-The ABI is defined once, in phase 1.5, and tested by a unit test that reads the bytes.
+The ABI is defined once, in unit 1.5, and tested by a unit test that reads the bytes.
 A phase 2 shader and a phase 1 Pharo method read the same block.
 
 ### Rule 3 — no Vulkan type above the backend boundary
@@ -133,7 +187,7 @@ A phase 2 shader and a phase 1 Pharo method read the same block.
 The backend answers three messages and no more:
 
 - `fillSegments: aSegmentArray paint: aPaint clip: aClip operator: anOperator`
-- `blitForm: aForm at: aPoint paint: aPaint`
+- `blitSurface: aSurface at: aPoint paint: aPaint`
 - `drainInto: aTarget`
 
 `PharoVulkan` classes appear only in the Vulkan backend's own package.
@@ -142,160 +196,193 @@ replaying the list on the software backend.
 
 ## 4. Package layout
 
-Phase 1 adds two packages and phase 2 adds one.
+Phase 1 adds three packages and phase 2 adds two.
 
 | Package | Phase | Contents |
 |---|---|---|
-| `VectorGraphics-Compat` | 1 | `VGAeCanvas` (the facade), `VGPathRecorder`, the display list, the figure table, the paint ABI, `VGBackend` and the software backend |
-| `VectorGraphics-Compat-Tests` | 1 | The conformance harness and the corpus runner |
+| `VectorGraphics-Cairo` | 1 | `VGCairoContext`, `VGCairoImageSurface`, the pattern classes, `VGScaledFont`, the display list, the paint ABI, `VGBackend` and the software backend |
+| `VectorGraphics-Cairo-Tests` | 1 | The conformance harness and the corpus runner |
+| `VectorGraphics-Bloc` | 1 | `VGCanvas` (the `AeCanvas` subclass) and `VGRenderer` (the `BARenderer` subclass), nothing else |
 | `VectorGraphics-Vulkan` | 2 | The Vulkan backend, the tile binner, the SPIR-V paint and coverage shaders |
 | `VectorGraphics-Vulkan-Tests` | 2 | The GPU-versus-software parity tests |
 
-`VectorGraphics-Compat` may depend on `VectorGraphics`; the reverse is forbidden.
-`VectorGraphics-Vulkan` may depend on `VectorGraphics-Compat` and on `PharoVulkan-Core`,
+`VectorGraphics-Cairo` may depend on `VectorGraphics`; the reverse is forbidden.
+`VectorGraphics-Cairo` must not name a single `Ae*` class, so that it stands alone and so that the
+corpus can be run with Alexandrie absent.
+`VectorGraphics-Bloc` is the only package allowed to name `Ae*` classes, and it is deliberately thin
+for that reason.
+`VectorGraphics-Vulkan` may depend on `VectorGraphics-Cairo` and on `PharoVulkan-Core`,
 `PharoVulkan-Compute` and `PharoVulkan-SPIRV`; nothing may depend on it.
+
 State those edges in a `VGArchitectureTest class >> allowedDependencies` table, the same way
 `PVArchitectureTest` does in `PharoVulkan`, and check the table against both the code and the
 baseline.
 
-## 5. Do Bloc and Alexandrie have to be loaded?
+Subclassing `AeCanvas` and `BARenderer` reaches their instance variables, which are private and can
+be renamed upstream.
+That is the accepted cost of not duplicating the figure logic, and it is paid once: pin the
+Alexandrie and Bloc versions in `BaselineOfVectorGraphics`, and let `VGCanvas` have a test that
+asserts the five overridden selectors still exist in `AeCanvas`.
+That test is what turns an upstream rename into a red test instead of a silent wrong render.
 
-Not in one image, and not in all phases.
-Three images, with different needs:
+## 5. Which images need what
 
-| Image | Bloc | Alexandrie | Used for |
+| Image | Bloc and Alexandrie loaded | `libcairo` present | Used for |
 |---|---|---|---|
-| Engine image | no | no | Phases 1.1 to 1.9, and all of phase 2 |
-| Parity image | yes | yes | Phase 1.0 corpus generation, and phases 1.10 to 1.11 |
-| Failover image | yes | no | Proving the deliverable: Bloc rendering with no Cairo present |
+| Engine image | no | no | Units 1.1 to 1.9, and all of phase 2 |
+| Parity image | yes | yes | Unit 1.0 corpus generation, and units 1.10 to 1.11 |
+| Failover image | yes | no | The acceptance test for the whole project |
 
-The parity image needs both, for one reason only: the reference renders.
+The parity image needs Cairo working, for one reason only: the reference renders.
 A conformance corpus is worth nothing unless each case carries the exact pixels Cairo produces for
-it, and only a loaded Alexandrie can produce those.
-Generate the corpus once, commit the reference `Form`s as PNG files next to the corpus
-descriptions, and the engine phases then run with nothing loaded.
+it.
+Generate the corpus once, commit the reference images as PNG files next to the corpus descriptions,
+and the engine units then run with nothing loaded.
 
-Phases 1.10 and 1.11 wire a real renderer and profile it, so they need Bloc, and they need
-Alexandrie alongside it for the side-by-side comparison.
+The failover image is the interesting one, and it is cheaper than the earlier plan assumed.
+Alexandrie's classes load without `libcairo`, because the library is only touched when an FFI call
+runs.
+So the failover image is a normal Bloc image with the library absent or renamed, using `VGRenderer`
+instead of `BARenderer`.
+Nothing has to be rewritten to be Alexandrie-free; only `VectorGraphics-Cairo` has to be, and rule
+four of the package table says it is.
 
-The failover image is the acceptance test for the whole project.
-It needs a Bloc extension package that talks to `VGAeCanvas` without naming a single Alexandrie
-class.
-Write that package in phase 1.10 and load it instead of `Bloc-Alexandrie`.
-Until it exists, the claim "usable as a failover" is untested.
+Bloc being loaded in the working image is a help, not a problem: the counts in section 2 came from
+it, and every parity test can diff against a live Cairo render instead of against a committed PNG.
 
-## 6. Phase 1 — pure Pharo, one-to-one with Alexandrie
+## 6. Phase 1 — pure Pharo, Cairo parity
 
 Each unit is one commit.
 Each unit follows the project cycle: failing test, smallest code that passes, refactor, class-side
 `<sampleInstance>` example in a `-Examples` package, custom inspector view, clean critics.
 
-### 1.0 — the facade skeleton and the conformance harness
+### 1.0 — the context skeleton and the conformance harness
 
-Create `VGAeCanvas` with all ninety `AeCanvas` selectors, each one either implemented or raising
-`VGNotYetImplemented` with the unit number that will implement it.
-Create `VGPathRecorder` answering the twenty-five Cairo path selectors a Bloc path block sends.
-Create the corpus: one description object per case, holding the drawing script and the reference
-PNG.
+Create `VGCairoContext`, `VGCairoImageSurface` and the pattern classes, with every one of the one
+hundred and twenty-one measured selectors present, each either implemented or raising
+`VGNotYetImplemented` naming the unit that will implement it.
 
-Seed the corpus with the eleven `drawFigureWith*` combinations, each at opaque and translucent
-background, each with the three outskirts, which is thirty-three cases before any geometry varies.
+Create the harness: one corpus case per Cairo primitive, each holding a script that drives the
+context and the reference image Cairo produced for it.
+Add a test that reads `AeCairoContext`, `AeCairoSurface` and `AeCairoPattern` in the live image, and
+fails if they declare a selector Bloc or `AeCanvas` sends that our classes do not answer.
+That test is the inventory, so the inventory cannot go stale.
 
 Gate: the harness runs, every case fails with a named unimplemented selector rather than an error,
-and the failure report names the unit that will fix it.
+and the inventory test passes.
 
-### 1.1 — RGBA targets and the operator set
+### 1.1 — the ARGB32 target
 
-Replace the opaque-`Form` assumption with a premultiplied RGBA target.
-Implement source-over, clear, source, and the subset of Porter-Duff operators Bloc actually sends.
+Premultiplied ARGB32, device offset, device scale, `flush`, `finish`, `status`, `asForm`,
+`colorAt:`, `writePngTo:`, and `unownedNewForData:format:width:height:stride:`.
+Measure the two pixel-delivery options from section 2.2 and record the numbers here.
 
 Gate: a corpus case that paints translucent over translucent matches the reference to within one
-unit per channel.
+unit per channel, and a render into an externally supplied address with a stride larger than the
+width lands in the right bytes.
 
-### 1.2 — affine transforms
+### 1.2 — the matrix and the state stack
 
-Implement the transform stack: `pathTransform:`, `pathTranslate:`, `geometryTransformation:` and the
-matrix the Bloc element tree composes.
-Transform the path at record time, not at splat time, so the engine stays untouched.
+`matrix`, `matrix:`, `setIdentityMatrix`, `translateBy:`, `scaleBy:`, `rotateByRadians:`,
+`rotateByRadians:center:`, `transformWith:`, `restoreStateAfter:`, `currentPointInUserSpace`.
+Transform at record time, not at splat time, so the engine stays untouched.
 
-Gate: a rotated and sheared rounded rectangle matches the reference; the degenerate singular matrix
-draws nothing rather than raising.
+Gate: a rotated and sheared rounded rectangle matches the reference; a singular matrix draws nothing
+rather than raising; `restoreStateAfter:` restores source, matrix, fill rule and clip together.
 
-### 1.3 — the figure table
+### 1.3 — path construction
 
-Implement the eleven `drawFigureWith*` combinations as a table, not as a cascade of conditionals,
-and make the table the thing the test reads.
-This is where the ordering contract is enforced: setting a border before a background is an error,
-not a silent reordering.
+The whole path vocabulary `AeCanvas` and Bloc path blocks send: `moveTo:`, `lineTo:`, `lineToX:y:`,
+`lineFrom:to:`, `curveVia:via:to:`, `curveViaX:y:viaX:y:toX:y:`,
+`quadraticCurveFromCurrentPoint:via:to:`, `closePath`, `rectangle:`, `rectangleTo:`,
+`rectangleX:y:width:height:`, `roundedRectangleLeft:top:right:bottom:tl:tr:br:bl:`,
+`circleCenterX:y:radius:`, `ellipseWidth:height:`, the three `arcCenter*` variants,
+`circleSectorCenter:from:to:radius:` and
+`annulusSectorCenter:from:to:innerRadius:outerRadius:`.
 
-Gate: all thirty-three seeded cases pass, including outskirts-outside, which needs 1.7 and 1.8 and
-is therefore the last to go green in this unit.
+`fill`, `stroke`, `paint`, `fillPreservingPath`, `strokePreservingPath`, `useFillRuleWinding`,
+`useFillRuleEvenOdd`, `clearColor:`, `clearTransparent`.
+
+Gate: every path corpus case matches the reference, including the even-odd rule and a self-crossing
+path.
 
 ### 1.4 — stroke geometry
 
-Butt, square and round caps; miter, bevel and round joins; the miter limit; dash arrays with a dash
-offset.
-The current disc splat gives round caps and joins for free and nothing else, so this unit converts
-stroking into a path and fills it.
+`strokeSize:`, `strokeCap:`, `strokeJoin:`, `strokeJoinMiterLimit:`,
+`strokeDashPattern:offset:`, `tolerance:`, `antialias:`.
+The disc splat gives round caps and joins for free and nothing else, so this unit converts stroking
+into a path and fills it.
 
-Gate: a per-cap and per-join corpus case each match the reference, and a zero-length subpath draws
-the cap pair rather than nothing.
+Gate: a per-cap and per-join corpus case each match the reference; a zero-length subpath draws the
+cap pair rather than nothing; a dash offset larger than the pattern period wraps.
 
-### 1.5 — the paint ABI, and gradients in Pharo
+### 1.5 — the paint ABI and the patterns
 
 Freeze the ABI from rule 2.
-Implement solid, linear gradient, radial gradient and the stop lookup table, all evaluated in Pharo.
-Implement the three extend modes Cairo offers and Bloc uses.
+Implement `sourceColor:`, `sourceColorR:g:b:`, `sourceColorR:g:b:a:`, `sourcePattern:`,
+`sourceSurface:`, `source`, and the pattern classes: colour, linear gradient, radial gradient and
+surface pattern, with `from:to:addStopsFrom:`,
+`innerCenter:innerRadius:outerCenter:outerRadius:addStopsFrom:`, `matrix:`, `filter:` and the extend
+modes.
+Gradients are evaluated in Pharo in this unit.
 
-Gate: a test reads the coefficient block byte by byte and asserts its layout; the gradient corpus
-cases match the reference.
+Gate: a test reads the coefficient block byte by byte and asserts its layout; every gradient corpus
+case matches the reference; the two `VGCanvas` pattern overrides from section 2.1 produce the same
+pixels as the Alexandrie originals.
 
 ### 1.6 — the clip stack
 
-Path clipping, an even-odd and a nonzero rule, a clip mask stack with save and restore, and the
-rectangular fast path kept for the common case.
+`clip`, `clipPreservingPath`, path clipping with both fill rules, a clip mask stack that
+`restoreStateAfter:` unwinds, and the rectangular fast path kept for the common case.
 
-Gate: nested clips, an empty intersection, and `preparePathAndClip` as Bloc sends it.
+Gate: nested clips, an empty intersection, and the clip that
+`BlElement >> aeApplyClippingWithAllParentsOn:` builds.
 
-### 1.7 — groups and masks
+### 1.7 — groups, masks and operators
 
-`paintGroupWith:`, `restoreContextAfterPaintAlpha:with:`, `paintWithAlpha:`, and the preserved-path
-variants `fillPreservingPath` and `strokePreservingPath`.
+`paintGroupWith:`, `paintGroupWith:alpha:`, `paintWithAlpha:`, `maskGroupWith:`,
+`maskSurface:x:y:`, `setOperatorClear` and the operator set behind it.
 
-This unit is what makes outskirts-outside possible, and it is the hardest unit in phase 1.
+This is the hardest unit in phase 1, and it is what makes outskirts-outside possible: `AeCanvas`
+emulates it by stroking at doubled width inside a group, then clearing the inner half.
 
-Gate: the two outskirts-outside figure methods match the reference exactly, since that emulation is
-pixel-sensitive.
+Gate: the two outskirts-outside figure methods produce the same pixels as the Alexandrie originals,
+since that emulation is pixel-sensitive.
 
 ### 1.8 — text
 
-A glyph atlas keyed by font, size and code point, built on the `contourDataForUtf8` work already
-done.
-Apply the kern pairs the reader already parses.
-`drawString:` blits from the atlas instead of re-walking contours.
+`VGScaledFont`, `scaledFont:`, `appendGlyphsPath:`, `showGlyphs:`, `getGlyphExtentsOf:size:into:`,
+`fontExtents`, and a glyph atlas keyed by font, size and glyph id, built on the
+`contourDataForUtf8` work already done.
+Accept `AeCairoTextExtents` and `AeCairoTextMetrics` as the record types, since `AeCanvas` fills
+them.
 
-Gate: a string renders identically through the atlas and through the direct path; the atlas is built
-once for a repeated draw, proved by a counter.
+Gate: a shaped string renders identically through the atlas and through the glyph path; the atlas is
+built once for a repeated draw, proved by a counter; metrics match FreeType's within the tolerance
+the harness states.
 
-### 1.9 — effects and caches
+### 1.9 — blur and export surfaces
 
-Gaussian blur for shadows, image paint from a `Form`, and the surface lifecycle: device offset,
-`asForm`, `asForm` of a sub-rectangle.
+A Gaussian blur equivalent to `AeCairoA8FastGaussianBlurFilter`, plus
+`newSimilarImageFormat:width:height:`, `fromForm:`, `extent:to:`, and whichever export surfaces the
+exporters need.
 
 Gate: the shadow corpus cases match the reference within the tolerance the harness states for blur,
 and the tolerance is justified in a comment.
 
 ### 1.10 — renderer wiring
 
-Write `Bloc-VectorGraphics`: a `BlHostRenderer` subclass and the element-side extension methods,
-written against `VGAeCanvas` and naming no Alexandrie class.
-Load it in the failover image, with `Bloc-Alexandrie` absent.
+`VGCanvas` overriding the five creation methods, `VGRenderer` overriding the canvas class, and the
+guard test that asserts those five selectors still exist upstream.
+Run it in the failover image, with `libcairo` renamed away.
 
-Gate: a real Bloc space opens, draws, and responds to a mouse event, with no Cairo loaded.
+Gate: a real Bloc space opens, draws and responds to a mouse event with no `libcairo` present, and
+the `Bloc-Alexandrie` extension methods are untouched.
 
 ### 1.11 — profiling
 
-Profile a representative Bloc scene and record where the time goes, per stage.
+Profile a representative Bloc scene and record where the time goes, per stage, next to the Cairo
+numbers for the same scene.
 Write the numbers down in this file.
 
 Gate: the profile exists, and it names the stage phase 2 must attack first.
@@ -317,15 +404,15 @@ image survives it.
 
 ### 2.1 — the go or no-go gate
 
-Measure, on this machine, three numbers: buffer upload bandwidth, fill rate for a trivial coverage
+Measure three numbers on this machine: buffer upload bandwidth, fill rate for a trivial coverage
 shader, and readback latency for a full frame.
-Compare the sum against the phase 1.11 profile.
+Compare the sum against the unit 1.11 profile.
 
 Gate: if a GPU round trip costs more than the software path for a typical Bloc frame, stop here and
 record why.
 This gate is not a formality.
-Readback is the known risk, because a Bloc frame ends in a `Form` the host window system wants, and
-the path back from device memory can swallow the whole win.
+Readback is the known risk, because section 2.2 shows the frame ends in host window memory, and the
+path back from device memory can swallow the whole win.
 
 ### 2.2 — tile binning on the CPU
 
@@ -337,8 +424,8 @@ Gate: a binning test over the corpus, and a count of tiles touched per case.
 
 ### 2.3 — the tiled fill rasteriser
 
-Fill only, no stroke, no text: strokes are paths by 1.4 and text is blits by 1.8, so fill is the
-whole of the hot work.
+Fill only, no stroke and no text: strokes are paths after unit 1.4 and text is blits after unit 1.8,
+so fill is the whole of the hot work.
 One dispatch per frame, coverage accumulated per tile.
 
 Gate: every fill corpus case matches the software backend, which is the oracle, not Cairo.
@@ -347,7 +434,7 @@ sufficient.
 
 ### 2.4 — paint evaluation on the GPU
 
-Compile the phase 1.5 paint ABI into SPIR-V, reading the same coefficient block.
+Compile the unit 1.5 paint ABI into SPIR-V, reading the same coefficient block.
 
 Gate: the gradient cases match software; the stop lookup table gives identical bytes on both paths.
 
@@ -361,10 +448,10 @@ Gate: matches software within the stated blur tolerance.
 
 This unit needs `OpTypeImage`, and `SpvImageType` does not exist in `PharoVulkan-SPIRV` today.
 Add it there, in `PharoVulkan`, with its own tests, before this unit starts.
-Note also that `SpvOpcode class` declares no atomic opcode, so any coverage scheme that needs an
-atomic must add those opcodes first; 2.3 is written to avoid them.
+Note also that `SpvOpcode class` declares no atomic opcode, so any coverage scheme needing an atomic
+must add those opcodes first; unit 2.3 is written to avoid them.
 
-Gate: an image-paint case matches software.
+Gate: a surface-pattern case matches software.
 
 ## 8. Backend selection at run time
 
@@ -381,7 +468,7 @@ A user can force either backend, and the forced choice is what the tests use, be
 that silently falls back proves nothing.
 
 `VkLibrary` already declares the three platform names: `libvulkan.so.1` on Unix,
-`libMoltenVK.dylib` on macOS, `vulkan-1.dll` on Windows.
+`libMoltenVK.dylib` on macOS and `vulkan-1.dll` on Windows.
 macOS and Windows are therefore not excluded by declaration, only untested, and the probe is what
 decides on the user's machine.
 
@@ -393,9 +480,10 @@ decides on the user's machine.
 4. A class-side `<sampleInstance>` example exists in the `-Examples` package.
 5. A custom `<inspectorPresentationOrder:title:>` view exists, and it asks the real rule rather than
    restating it.
-6. The software backend still renders the corpus, with the GPU backend forced off.
+6. The software backend still renders the corpus with the GPU backend forced off.
+7. `VectorGraphics-Cairo` still names no `Ae*` class.
 
-Rule six is the one that keeps the failover honest.
+Rules six and seven are the ones that keep the failover honest.
 
 ## 10. Committing this plan without detaching the image
 
