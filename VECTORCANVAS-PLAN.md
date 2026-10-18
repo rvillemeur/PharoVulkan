@@ -510,6 +510,15 @@ The rule for this repository:
   `repo workingCopy adoptCommit: repo headCommit`, which sets the reference commit and recalculates
   the dirty packages without reloading any code.
 
+A `pre-commit` hook in `.git/hooks/pre-commit` enforces the first rule, so that a shell commit fails
+loudly instead of detaching the image silently.
+It refuses every commit unless `ICEBERG_ALLOW_GIT_COMMIT=1` is set, and its message repeats the two
+commit expressions above.
+Iceberg is unaffected by it, because Iceberg commits through libgit2, which runs no hooks; the hook
+sees only commits that come from a shell.
+Hooks are not themselves tracked content, so installing it in a second repository means copying the
+file and marking it executable there.
+
 Note that the documentation and the code live in different repositories here: this file is in the
 `PharoVulkan` repository, and the `VectorGraphics` package is in its own.
 Phase 1 commits therefore go to the `VectorGraphics` repository, and only this plan file goes here.
