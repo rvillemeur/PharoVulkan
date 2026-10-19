@@ -568,12 +568,107 @@ answer, gated on being the root of the hierarchy.
 ### 1.4 — stroke geometry
 
 `strokeSize:`, `strokeCap:`, `strokeJoin:`, `strokeJoinMiterLimit:`,
-`strokeDashPattern:offset:`, `tolerance:`, `antialias:`.
+`strokeDashPattern:offset:`, `strokeDashPattern:size:offset:`, `tolerance:`, `antialias:`, and the
+six `useStrokeCapButt`, `useStrokeCapRound`, `useStrokeCapSquare`, `useStrokeJoinBevel`,
+`useStrokeJoinMiter`, `useStrokeJoinRound` verbs.
 The disc splat gives round caps and joins for free and nothing else, so this unit converts stroking
 into a path and fills it.
 
-Gate: a per-cap and per-join corpus case each match the reference; a zero-length subpath draws the
-cap pair rather than nothing; a dash offset larger than the pattern period wraps.
+Gate: a per-cap and per-join corpus case each match the reference; a dash offset larger than the
+pattern period wraps.
+
+The gate used to read "a zero-length subpath draws the cap pair rather than nothing", which
+measurement disproves: live Cairo paints a zero-length sub-path only under a round cap, and paints
+nothing at all under a butt or a square cap.
+The case that does paint under a square cap is a zero-length *dash* run, which is a different thing
+and is measured below.
+
+**Done.** Fourteen selectors, all real, and no skeleton of unit 1.4 is left in the image.
+
+Every number below was read from a live Cairo context rather than reasoned about, because the
+defaults and the degenerate cases are where a reimplementation drifts.
+A fresh context answers a line width of 2.0, a tolerance of 0.1, an antialias mode of 0, a miter
+limit of 10.0 and no dash pattern.
+`tolerance:` clamps a value of zero or less to 0.00390625, which is `CAIRO_TOLERANCE_MINIMUM`, one
+part in 256, and leaves the status successful; `VGCairoState class >> minimumTolerance` holds it.
+An invalid dash pattern — a negative entry, an all-zero pattern, or a single zero — latches
+`CAIRO_STATUS_INVALID_DASH`, code 19, and every later painting verb returns without touching
+anything.
+An empty pattern is valid and turns dashing off.
+
+Degenerate sub-paths, measured on a line width of 8: `moveTo: p` then `lineTo: p` paints 36 pixels
+under a round cap and nothing at all under a butt or a square cap; a lone `moveTo:` paints nothing
+under any cap; and `moveTo: p` then `closePath` paints the same 36 pixels under a round cap and
+nothing otherwise.
+That last one is why `VGPathBuilder >> closePath` keeps a run of one point rather than dropping it.
+An 8-wide line from 10@32 to 50@32 paints `(10@28) corner: (50@36)` under a butt cap and
+`(6@28) corner: (54@36)` under either of the other two, which is the half-width overhang.
+
+The miter rule is arithmetic, and the arithmetic is confirmed at the pixel: a chevron
+10@50 → 32@10 → 54@50 at width 7 paints its top row at row 2 for miter limits of 10 and 2.1, and at
+row 8 for limits of 2.0 and 1.0, while our own ratio at that corner is 2.075.
+A join is mitered when `(2 / (1 + dot)) sqrt` is within the limit, where `dot` is the dot product of
+the two unit directions; the outer side of a corner is chosen by the sign of the cross product, the
+outer corner is the vertex offset along the perpendicular by the radius, and the tip is the vertex
+offset along the sum of the two perpendiculars by `radius / (1 + dot)`.
+Past the limit the quadrilateral becomes the bevel triangle, and a round join stays a disc.
+
+Dashes follow Cairo's own start search rather than a modulo, because the two differ on a pattern
+whose first entry has no length:
+
+```
+while (offset > 0.0 and: [ offset >= (lengths at: index) ])
+```
+
+stops as soon as the offset reaches zero, so a first entry of no length is never stepped over, and
+the length left of the entry it stopped on is `(lengths at: index) - offset`.
+An odd pattern is the cycle written out twice, so `#(4)` has a period of 8, measured: an offset of 0
+and an offset of 8 draw the same picture and an offset of 4 does not.
+`VGCairoStrokeStyle >> paintsDashEntryAt:` is the one place that knows a painted entry is an odd
+one, and the stroker's walk and the `Dash cycle` inspector view both ask it.
+
+A zero-length dash entry that lands exactly on the end of a run still paints: a pattern of no length
+on and twelve off, along 8@32 → 56@32, paints five dots, at distances 0, 12, 24, 36 and 48, the
+fifth of them on the end point itself.
+A butt cap paints none of them, and a round or a square cap paints all five, which is the measured
+fact the corrected gate sentence above refers to.
+`VGStroker >> dashTailAt:along:walk:into:` is that last dot, and it is the reason the dash walk
+carries its position in a two-element array that each edge leaves where the next must pick it up:
+Cairo's pattern runs along the whole path, not along each edge.
+
+Antialiasing is one setting with one effect: only `#none` changes anything, and it means one sample
+at the centre of the pixel.
+Measured against Cairo on an exact polygon — a five-pointed star — our aliased render differs on
+zero pixels.
+On a flattened curve it does not, and the reason is not the sampling but the flattening: our vertex
+phase differs from Cairo's by a fraction of a pixel, which antialiasing hides inside an edge shade
+and aliasing turns into eight whole symmetric pixels on a radius-20 circle.
+So the aliased corpus case fills a star and the curved cases keep their antialiased tolerance of 24.
+The mode travels to the backend inside the `VGSegments` object, beside the fill rule, because the
+backend boundary of rule 3 is frozen and takes no per-fill argument.
+
+A shared conformance block has to speak the API both contexts answer, and the enums are the trap.
+Alexandrie's `strokeCap:`, `strokeJoin:` and `antialias:` take uFFI enum objects: handed one of our
+symbols, uFFI coerces it silently to zero — the block drew butt and miter with no error and eight
+tests failed for one reason — and handed a plain integer it fails with "primitive #instVarAt: in
+SmallInteger failed".
+So a shared block uses the six `useStroke…` verbs where they exist, and names
+`AeCairoStrokeCap round`, `AeCairoStrokeJoin bevel` or `AeCairoAntialias none` where they do not.
+Our own symbol spelling stays an accepted extra, normalised by
+`VGCairoStrokeStyle class >> nameIn:for:`, which takes one of our symbols, an Alexandrie enum or a
+plain integer, and is covered by three tests of its own.
+Only the `VectorGraphics-Cairo` package may not name an `Ae*` class; the test package already does.
+
+Twenty-six tests in `VGCairoStrokeTest`, 143 in the test package and 214 in `VectorGraphics`, all
+green, and critics clean on everything this unit touched.
+`VGStroker` carries the whole geometry and nothing else: slots `path` and `state`, so the stroke
+style, the matrix and the tolerance are read off the state rather than copied into the stroker.
+The example artefact is the new `VGCairoStrokeStyleExamples`, six styles including the even pattern
+and the odd one to compare periods with, and four more on `VGStrokerExamples` — round caps and
+joins, a bevelled sharp corner and a dashed line.
+The view artefact is `Style` and `Dash cycle` on `VGCairoStrokeStyle`, each gated, and the
+seventeen-row `Outline` view on `VGStroker` now reads the real predicate for the first corner's
+miter rather than restating the inequality.
 
 ### 1.5 — the paint ABI and the patterns
 
