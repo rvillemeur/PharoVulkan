@@ -684,6 +684,110 @@ Gate: a test reads the coefficient block byte by byte and asserts its layout; ev
 case matches the reference; the two `VGCanvas` pattern overrides from section 2.1 produce the same
 pixels as the Alexandrie originals.
 
+**Done.** Six source selectors, six pattern classes and six paint classes, and no skeleton of unit
+1.5 is left in the image.
+
+The ABI of rule 2 is a method and not a paragraph: `VGPaint class >> blockLayout` names the sixteen
+thirty-two-bit floats in order — `matrixSx`, `matrixShy`, `matrixShx`, `matrixSy`, `matrixX`,
+`matrixY`, `extendCode`, `filterCode`, then seven fields read according to the tag
+(`redOrLineX0OrInnerX`, `greenOrLineY0OrInnerY`, `blueOrLineX1OrInnerRadius`,
+`alphaOrLineY1OrOuterX`, `outerY`, `outerRadius`), and `surfaceWidth` and `surfaceHeight` last.
+Every paint has the same sixteen-element shape whatever it is, which is the point: a reader takes
+the first eight fields without asking what the paint is.
+The tag is `cairo_pattern_type_t` itself — solid 0, surface 1, linear 2, radial 3 — and the extend
+and filter codes are Cairo's own numbers, so a phase 2 shader reads the block with no translation
+table.
+`VGGradientPaint class >> stopTableSize` keeps rule 2's two-hundred-and-fifty-six-entry table as a
+number for a shader to use, and phase 1 evaluates the stops instead, because a table that quantises
+the offset drifts from live Cairo.
+The gate's byte-by-byte test reads the block as floats and as thirty-two-bit words against
+`blockLayout`, so a field that moves breaks a test rather than a picture.
+
+Quantisation is the discovery of this unit, and it is measured from raw premultiplied words rather
+than derived: `surface data getHandle unsignedLongAt: index` reads foreign memory, where
+`bytes unsignedLongAt: 1 bigEndian: false` reads the pointer, and `asForm` cannot be used at all
+because it unpremultiplies with truncation.
+Read that way, Cairo has **two** rules, not one.
+A solid colour stores `floor(channel * alpha * 65535) >> 8` a channel, with the alpha byte
+`floor(a * 65535) >> 8`, exact on six measured colours including `16r7F3F1F5F`.
+A gradient, and every other per-pixel paint, stores `round(channel * alpha * 255)`, exact on nine
+pixels of a sixty-four-wide ramp including `16r81420040`.
+So the paint owns the choice: `VGPaint >> quantise:in:` asks the format for
+`pixelForRgba:`, `VGColorPaint` overrides it to ask for `pixelForRgbaThroughShorts:`, and
+`VGCairoSurfaceFormat >> shortByteOf:` is the one place the sixteen-bit rule lives.
+Four source cases — flat colour, colour pattern, surface pattern and surface set directly — are now
+pixel-exact, zero differing and zero outside.
+
+Interpolation happens in unpremultiplied floats and never through a `Color`.
+Live Cairo reads a blue of one hundred and twenty-six half-way along a ramp from transparent blue to
+opaque red, which a premultiplied interpolation cannot produce; and a Pharo `Color` keeps ten bits a
+channel, so rounding an interpolation through one answers one less than Cairo on a ramp of
+two hundred and fifty-five steps.
+`Color` stays an input, where it is identical on both sides.
+
+`VGGradientPaint >> extended:` is the four extend modes, each measured on a live gradient from 16@0
+to 32@0: `none` leaves pixel zero untouched and answers no paint there, `pad` holds the first stop,
+`repeat` wraps the offset into zero to one, and `reflect` folds it into a triangle of period two.
+`VGSurfacePaint >> sample:along:` is the same four modes on a pixel index, and answers nothing for a
+surface of no extent whatever the mode says.
+A radial gradient is the quadratic in `VGRadialGradientPaint >> offsetInPaintSpace:`: Cairo
+interpolates a whole circle between the two, centre `c0 + s * (c1 - c0)` and radius
+`r0 + s * (r1 - r0)`, and the offset at a point is the largest root whose radius is not negative.
+Surface patterns default to `#none` and sample nearest-only; the real filters are unit 1.9's work,
+and `filter:` stores its code in the block today.
+
+`sourcePattern:` captures the transformation at the moment the source is set and keeps a reference
+to the pattern rather than a copy, both measured: a stop added afterwards is painted, a scale
+applied afterwards does not move the pattern.
+`source` answers the pattern itself for the same reason.
+`VGCairoPattern >> paintForDeviceMatrix:` composes the two at paint time — back through the captured
+transformation, then forward through the pattern's own matrix — and answers no paint at all when the
+device matrix cannot be inverted.
+
+The conformance harness needed one new rule, for the same reason unit 1.4 needed the `useStroke…`
+verbs: Alexandrie's context hands whatever it is given straight to a Cairo call, so a shared draw
+block that names one of our pattern classes fails with "Message not understood: VGCairoMatrix >>
+#tfPointerAddress".
+A shared block therefore names no class of either family and asks
+`VGConformanceCorpus class >> classNamed:for:`, which answers the `VGCairo…` or the `AeCairo…` class
+by the family of the context it is drawing on.
+The two gradient cases are the gate's `VGCanvas` clause:
+`AeCanvas >> setSourceLinearPatternStops:start:end:` and
+`setSourceRadialPatternStops:innerCenter:innerRadius:outerCenter:outerRadius:` are exactly a
+constructor plus `sourcePattern:`, which is what those cases now run on both contexts.
+
+The two gradient cases carry a tolerance of 1, in `gradientInterpolationTolerance`, and the reason
+is pixman: it walks the ramp in fixed point where we evaluate in floating point.
+On an axis-aligned ramp the two agree byte for byte on all sixty-four pixels, and they part by one
+only where the offset lands on a step boundary — sixty-four pixels of a diagonal ramp along the line
+where the offset is exactly one half, and thirty-two pixels of a radial ramp on one ring.
+Byte-exactness is proven where it can be, by `VGCairoSurfaceTest` and `VGPaintTest` on the two
+quantisation rules themselves.
+
+One defect found and fixed test-first in the harness: `VGFormComparison class >> premultiplied:`
+multiplied a byte by a *fraction* of an alpha instead of by the alpha byte, which inflated every
+reported channel distance by as much as two hundred and fifty-five.
+`premultipliedByte:byAlpha:` is now `(aByte * anAlphaByte / 255) rounded`, and with it
+`transformationTranslation` became exact and the whole Alexandrie corpus fell to thirty-five or
+less.
+`VGAlexandrieCorpus class >> toleranceTable` therefore has twenty-five entries at last, each with
+its reason: twenty-four at `antialiasedEdgeTolerance`, 36, whose comment names the worst measured
+thirty-five on the rim of the yellow-to-red sphere, where 448 of 460 differing pixels of
+`radialGradientPattern1` lie on the disc rim; and `fillPaint3` at `nearestSampleTolerance`, 96,
+which is our nearest-only sampling of a bitmap scaled to a quarter and is unit 1.9's to fix.
+
+One hundred and seventy-two tests in the test package and 214 in `VectorGraphics`, all green, and
+critics clean on everything this unit touched.
+The example artefact is `VGPaintExamples` with ten `<sampleInstance>` examples over both families —
+a colour, a padded and a repeating linear gradient, a concentric radial gradient, a repeating
+surface paint, a surface paint that paints nothing outside its tile, and the four patterns — plus
+the `tile` fixture the surface ones share.
+The view artefacts are four, each gated: `Block` on `VGPaint`, which tabulates the coefficients
+against `blockLayout` field by field with each one's thirty-two-bit word; `Ramp` on
+`VGGradientPaint`, which reads `extended:` and `rgbaAtOffset:` from minus one half to one and a
+half; `Extend` on `VGSurfacePaint`, which shows which pixel each index outside the tile reads; and
+`Paint` on `VGCairoPattern`, which asks the pattern for its own `paintDescription`.
+
 ### 1.6 — the clip stack
 
 `clip`, `clipPreservingPath`, path clipping with both fill rules, a clip mask stack that
