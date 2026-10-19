@@ -485,6 +485,86 @@ The whole path vocabulary `AeCanvas` and Bloc path blocks send: `moveTo:`, `line
 Gate: every path corpus case matches the reference, including the even-odd rule and a self-crossing
 path.
 
+**Done.** Thirty-six selectors, all real: `VGCairoInventory progressReport` answers 36 of 36 for
+this unit, and no skeleton of unit 1.3 is left in the image.
+
+A path is held in device space, because that is where Cairo holds it: `cairo_move_to` transforms
+its point by the matrix of the moment, so a later `translateBy:` cannot move a path already built.
+`VGCairoContext` keeps a `VGPathBuilder`, maps every incoming point through `state matrix` as the
+verb arrives, and hands the finished `VGPath` to the fill or the stroke.
+`newPath` drops the builder, which is what `fill` does after it paints and `fillPreservingPath`
+does not.
+
+The corners Cairo rounds off are copied rather than guessed, each one measured against a live
+context: `lineTo:` with no current point acts as a move; `relativeLineTo:` with no current point
+latches `CAIRO_STATUS_NO_CURRENT_POINT`, code 4, read from the live enumeration;
+`currentPointInUserSpace` answers `0.0@0.0` and not nil on a fresh context, while `hasCurrentPoint`
+answers false, so the two readers have to be asked together; `cairo_arc` runs in increasing angles
+and raises the end angle by whole turns until it is not below the start, `cairo_arc_negative` lowers
+it instead, and both join the current point with a line, or move when there is none;
+`cairo_rectangle` is a move, three lines and a close, and accepts a negative width or height;
+there is no quadratic primitive at all, so `quadraticCurveFromCurrentPoint:via:to:` raises the
+quadratic to a cubic with both controls two thirds of the way to the control point.
+
+Stroking is a fill of an outline, as section 1.4 says it will be: `VGStroker` turns each run into
+one quadrilateral per segment plus a disc at every interior vertex, all wound the same way, so the
+winding rule sees their union rather than a ring of holes.
+The vertex count of a disc comes from the flattening tolerance measured in device space, which is
+the same rule the curve flattener uses, so a magnified stroke buys vertices instead of showing
+facets.
+Caps, joins and dashes stay in unit 1.4; until then every cap and join is round, which is what a
+disc gives for nothing.
+
+The gate is met against live Cairo rather than against committed PNGs, and the reason is the point
+of the whole project: the replacement answers Alexandrie's own selectors, so one conformance draw
+block renders on either context unchanged.
+`VGConformanceCase` now has `ourForm` and `cairoForm`, which run the same block on a
+`VGCairoImageSurface` and on an `AeCairoImageSurface`, and `VGConformanceTest >>
+testEveryCaseThatDrawsMatchesCairo` compares the two pictures for every case the implemented units
+can draw.
+`VGConformanceCase >> referenceFileName` is gone with no senders, and
+`VectorGraphics-Cairo-Reference` is still not needed.
+
+Pictures are compared premultiplied, by `VGFormComparison`, which is the one trap in the exercise:
+a Pharo `Form` stores a fully transparent pixel as transparent white, so an unpremultiplied diff
+reports a distance of 255 between two pixels whose coverage differs by two parts in 255.
+The comparison answers three numbers — differing pixels, the largest distance in any one channel,
+and the pixels we paint where the reference is untouched — and a case passes only when the third is
+zero and the second is within its tolerance.
+
+The tolerance rule is set from measurement, not from taste.
+We sample coverage on Cairo's own grid, fifteen sub-rows a pixel, so the two pictures can differ
+only in the shade of an antialiased edge.
+Measured over the twelve cases that draw: the axis-aligned ones — the two clears, the translated
+rectangle, the filled rectangle and the painted target — differ by nothing at all, and the curved or
+slanted ones differ on 64 to 154 pixels with a worst channel distance of 4 to 21, the worst being
+the filled circle.
+`antialiasedCase:unit:draw:` files those cases with a tolerance of 24 and every other case keeps 0,
+and the exterior is held exactly in both: no pixel of ours lies outside Cairo's shape in any case,
+and the only pixels Cairo makes fully opaque that we do not are the 2 to 8 on an edge.
+
+One hundred and seventeen tests in the test package, thirteen of them the new
+`VGCairoDrawingTest`, and two of them meta tests that hold the artefacts of this unit honest:
+`VGCairoExamplesTest >> testEveryViewOfAnExampleBuildsAndFillsItsCells` builds every inspector view
+of every example and asks every table for every cell it would show, and `testEveryViewHasAGate`
+fails on a view with no `…Context:` method.
+`VGCairoSkeletonTest >> testNoMethodReferencesAnUndeclaredVariable` was written red and caught what
+it was written for: `VGFillEntry >> setSegments:fillRule:` still assigned a slot that had been
+removed, so the name had become an undeclared global and the write went nowhere.
+It and its unsent constructor are deleted.
+
+Four new example classes — `VGPathExamples`, `VGStrokerExamples`, `VGRasteriserExamples` and
+`VGDisplayListExamples` — plus `VGFormComparisonExamples` and `VGBackendExamples`, bring the
+`<sampleInstance>` examples to twenty-nine objects over twelve holders.
+Twelve new inspector views, each with its gate: `Sub-paths` on `VGPath`, `Points` on `VGSubPath`,
+`Building` on `VGPathBuilder`, `Edges` on `VGSegments` (whose winding column computes the direction
+the rule counts rather than restating it), `Coverage` on `VGRasteriser`, which draws the real
+coverage rows one character a pixel through `coverageRowsDo:`, `Entries` on `VGDisplayList`, `Fill`
+on `VGFillEntry`, `Recorded commands` on `VGSoftwareBackend`, `Outline` on `VGStroker`, `Verdict` on
+`VGFormComparison`, `Path` on `VGCairoContext`, and a class-side `Boundary` on `VGBackend` which
+reads the three frozen messages off its own selectors and asks the subclasses which of them they
+answer, gated on being the root of the hierarchy.
+
 ### 1.4 — stroke geometry
 
 `strokeSize:`, `strokeCap:`, `strokeJoin:`, `strokeJoinMiterLimit:`,
