@@ -796,6 +796,108 @@ half; `Extend` on `VGSurfacePaint`, which shows which pixel each index outside t
 Gate: nested clips, an empty intersection, and the clip that
 `BlElement >> aeApplyClippingWithAllParentsOn:` builds.
 
+**Done.** `clip` and `clipPreservingPath` are the two selectors of the unit, and no skeleton of
+unit 1.6 is left in the image.
+
+The discovery of this unit is measured before any clip code was written: Cairo's clip composes
+**geometrically**, not as a coverage mask.
+A clip of a circle followed by a paint is the same picture, byte for byte, as a fill of that circle,
+and repeating the same clip changes nothing; two clips give the same picture as one clip and a fill
+of the other.
+So an implementation that multiplied a clip coverage by a fill coverage would darken every
+antialiased edge twice, and the right unit of work is the **span**: `VGClip >> spanFrom:to:at:do:`
+trims a span of the fill to its own bounds and then to every shape it holds, on the same sub-row,
+and coverages are never multiplied.
+
+`VGClip` is immutable and holds two things: bounds, and the shapes it cannot express as bounds.
+The rectangular fast path is a question asked of the path rather than of the caller:
+`VGSegments >> asDeviceRectangle` answers the bounding box when the segments are four axis-aligned
+edges whose ends are its corners, and a clip of one of those keeps no shape at all, so a fill
+through it needs no second scan conversion.
+A clip keeps the fill rule **and** the antialiasing mode in force at the clip verb, for life, which
+is why the shape is a `VGSpanScanner` and not a segment array.
+`clipExtentsInDeviceSpace` rounds out to whole pixels — a right edge at 20.5 reports 21.0 — while
+the clip itself keeps the fraction, which is what pays for half a pixel of coverage.
+An empty intersection is normalised to `0@0 corner: 0@0`, because `Rectangle >> #intersect:` answers
+a rectangle whose left is past its right and a clip has to read as plainly empty.
+Immutability is what makes `restoreStateAfter:` work: the saved state shares the clip object, so
+`postCopy` has nothing to do for it.
+
+`VGSpanScanner` is the refactoring the clip forced: the scan conversion now belongs to neither the
+rasteriser nor the clip but to a class both ask, and with it the two coverage loops of unit 1.0
+collapsed into one `fillCoverage:startingAt:atRow:`.
+An aliased shape answers the same whole pixels on every sub-row of a pixel row, so it reaches a
+coverage of exactly one through the same loop that antialiases, and the aliased rule itself is one
+sample at the pixel centre: a span `[from, to)` becomes the pixels
+`[(from - 0.5) ceiling, (to - 0.5) ceiling)`, measured on a live context at 20.25, 20.5 and 20.75.
+The pixel row is the floor of the sub-row, so neither the scanner nor the clip is told it twice.
+The backend seam moved with it: the `clip:` argument of `fillSegments:paint:clip:operator:` is a
+`VGClip` where it was a `Rectangle`.
+
+Three defects were found and each fixed test-first.
+
+Two belong to unit 1.5's quantisation, which was right about the paint and wrong about coverage.
+A solid colour's sixteen-bit shorts **round**, they do not truncate: measured with exact doubles,
+`#(1.0 0.5 0.25 1.0)` stores `16rFFFF8040`, and the six colours measured in unit 1.5 came through a
+ten-bit Pharo `Color` and never landed on a tie, which is why truncation looked right.
+Coverage is not folded into the paint's alpha at all: Cairo quantises the paint once and then
+applies coverage as an **eight-bit mask on the quantised pixel**, scaling every channel including
+the alpha.
+The mask is `(coverage * 256) rounded` capped at 255 — measured on a live context, a rectangle
+`k / 256` of a pixel wide stores an alpha of exactly `k` for every `k` from 0 to 255 — and a channel
+is scaled by `(a * b + 127) // 255`, which is pixman's `MUL_UN8`: a solid `16r7F3F1F5F` at half
+coverage is `16r40201030` where folding into the alpha gives `16r3F1F0F2F`.
+An `rgb24` target has no alpha byte to carry the mask, so it lerps instead: opaque black at half
+coverage over white is `16rFF7F7F7F`.
+One measured difference remains at the very bottom of the range: a mask of one over an opaque grey
+of `16r80` writes a colour byte of zero on a live context where the rule here writes one.
+
+The third defect is the one the two star cases found, and it is about where a path lives rather than
+how it is painted: Cairo stores every path coordinate as a `cairo_fixed_t`, twenty-four bits of
+whole number and eight of fraction, so a device coordinate lands on a two hundred and fifty-sixth of
+a pixel, and the conversion rounds a half to the **even** neighbour.
+Measured: a rectangle one four hundredth of a pixel wide stores an alpha of one, one of three five
+hundred and twelfths stores two, and one of exactly one five hundred and twelfth paints nothing at
+all, because its width collapses to zero on the grid.
+`VGPathBuilder >> fixedOf:` is that grid, and `moveTo:`, `lineTo:`, the control points of
+`curveVia:via:to:` and every point the flattener emits now reach it, which is where Cairo's own
+spline subdivision starts too.
+
+Even snapped, one pixel at the tip of the star stays ours alone: Cairo steps a polygon edge across a
+grid of five hundred and twelfths of a pixel with integer arithmetic where our scan converter is
+exact across the pixel, and a near tangential edge leaves us a coverage of a fraction of one step of
+alpha where Cairo rounds to none.
+The gate therefore learnt to weigh a stray pixel instead of only counting it: `VGFormComparison`
+reports `maximumStrayAlpha` beside `extraneousPixelCount`, and both gates hold it to
+`VGConformanceCorpus class >> strayAlphaAllowance`, which is 1 — the smallest alpha a pixel can
+carry, and invisible, where a shape we got wrong is heavy.
+
+A harness defect of its own came out of the same run: the three test classes that render — the
+conformance gate, the Alexandrie oracle and the example and view sweep — each take minutes, where
+SUnit allows a test ten seconds.
+Every one of them had been ending a package run as a **timeout error** rather than as a verdict, and
+said nothing at all about the pictures; each now overrides `defaultTimeLimit` with the reason in its
+comment.
+
+The conformance corpus gained `clip-circle`, whose rectangle reaches outside the clip of a circle,
+and `clip-preserving-path`, which is pixel-exact.
+In the Alexandrie corpus `clip1` and `clip2` draw for the first time, both at
+`antialiasedEdgeTolerance` with the measured worst at nine of two hundred and fifty-five, so
+`toleranceTable` has twenty-seven entries; the six `maskAndClip` experiments stay blocked on unit
+1.7's `mask:` and `maskSurface:x:y:`.
+
+One hundred and ninety-one tests in the test package and 214 in `VectorGraphics`, all green, and
+critics clean on everything this unit touched.
+
+The example artefacts are `VGClipExamples`, with one clip of each kind the implementation
+distinguishes — the rectangle that keeps no shape, the circle that keeps one, and the empty clip
+two disjoint rectangles leave — and `VGSpanScannerExamples`, with a self-crossing star under the
+even-odd rule and an aliased triangle.
+The view artefacts are two, each gated on having anything to show: `Passed` on `VGClip`, which draws
+what a fill through the clip would keep by handing the clip to the real rasteriser, and `Spans` on
+`VGSpanScanner`, which lists the spans every sub-row answers so the aliased and antialiased modes
+can be compared.
+
 ### 1.7 — groups, masks and operators
 
 `paintGroupWith:`, `paintGroupWith:alpha:`, `paintWithAlpha:`, `maskGroupWith:`,
