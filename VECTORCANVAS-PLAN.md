@@ -420,6 +420,55 @@ Two inspector views: `Mapping` on the matrix, which sends `value:` and `inverted
 restating the arithmetic, and `State stack` on the context, which reads the stack itself so it shows
 what `restoreState` will really bring back.
 
+### The Alexandrie experiment corpus
+
+Imported 19 October 2026, between units 1.2 and 1.3, because the image already held a far larger
+body of Cairo drawings than this plan was ever going to write by hand: `AlexandrieCairoExperiment`
+carries eighty-three class-side `<sampleInstance>` experiments, each a complete script against the
+Cairo API.
+
+Nothing is copied. `VGAlexandrieCorpus` derives one method per experiment by substituting our class
+names for Alexandrie's — `AeCairo*` becomes `VGCairo*`, longest name first — and dropping the
+`<sampleInstance>` pragma, and compiles the result onto `VGAlexandriePortedExperiments class` in a
+protocol named `generated - do not edit`.
+`VGAlexandrieCorpusTest` then compares every compiled copy against what the substitution writes
+today, so an edit to an experiment upstream and a hand edit of a copy both fail the suite; another
+test fails if any copy still names a class we have a counterpart for, which would otherwise measure
+Alexandrie against itself.
+The oracle itself renders the copy and the original and compares the two forms pixel by pixel,
+reporting the number of differing pixels and the largest difference in any one channel, with a
+tolerance table that is empty for now and whose every future entry must carry its reason.
+Every test skips when `AlexandrieCairoExperiment` or `libcairo` is absent, so the failover image
+still runs the suite.
+
+Eighty-two of the eighty-three experiments are cases; `getNumberOfGlyph` is excluded by name,
+because it measures a font rather than drawing a picture.
+Measured on import: no case drifts, and none of them compares yet, because almost every experiment
+sets a source colour before it draws.
+The cases are waiting on five units — forty on 1.5, thirty on 1.7, five on 1.8, five on 1.12 and
+two on 1.4 — and each case answers the unit that unblocks it, which is the latest unit owing a
+class it is missing, since it needs all of them, or the unit owing the selector its own render stops
+on first.
+That is the correction to the earlier estimate in this file: the corpus lights up at unit 1.5, not
+at 1.3.
+
+`VGCairoInventory` grew a second table for this, `extendedSelectorUnitTable`: twenty-three selectors
+the experiments send that the measured Bloc surface never does, filed under the units that owe them,
+with twenty-one new skeletons raising `VGNotYetImplemented`.
+Both tables feed `unitForSelector:` and `progressReport`.
+`VGConformanceTest >> coveredUnits` now reads both corpora, since the mesh patterns are covered only
+by the derived cases, and units 1.10 and 1.11 joined `unitsWithoutAPicture` because neither adds a
+drawing verb.
+Nine tests over `VGAlexandrieCorpusTest`, eighty-one in the test package.
+`VGAlexandrieCorpusExamples` holds three `<sampleInstance>` examples, and the views are `Waiting on`
+on the corpus class side, gated on its position in the hierarchy, and `Classes` and `Blocking` on a
+single case; all three ask the corpus rather than restating what it knows.
+
+One critics exception is accepted here, and only here: `VGAlexandriePortedExperiments class` trips
+`ReExcessiveMethodsRule` and three of its methods trip `ReLongMethodsRule`.
+Those methods are generated transcriptions of Alexandrie's own experiments; shortening them would
+break the comparison the corpus exists to make.
+
 ### 1.3 — path construction
 
 The whole path vocabulary `AeCanvas` and Bloc path blocks send: `moveTo:`, `lineTo:`, `lineToX:y:`,
@@ -517,6 +566,22 @@ Write the numbers down in this file.
 
 Gate: the profile exists, and it names the stage phase 2 must attack first.
 Without this number, phase 2 has no target and cannot be judged.
+
+### 1.12 — mesh and Coons patch patterns
+
+`AeCairoMeshPattern` and the Coons patch vocabulary the Alexandrie experiments use: a pattern built
+from patches, each patch a closed path of up to four sides with a colour at each corner, plus the
+control points that bend its sides.
+Cairo evaluates a patch by bilinear interpolation of the corner colours over the Coons surface, so
+the software path needs the same evaluation, and the paint ABI of rule 2 needs a tag for it.
+
+This unit exists because the corpus asked for it: five derived cases stop on `AeCairoMeshPattern`
+and nothing earlier in the plan owes it.
+It comes last in phase 1 because it is the only paint Bloc itself never asks for — no method in
+`Alexandrie-Canvas` builds a mesh pattern — so a failover image is complete without it.
+
+Gate: the five mesh cases in the Alexandrie corpus match Cairo within a stated tolerance, and the
+tolerance carries its reason.
 
 ## 7. Phase 2 — Vulkan as an optimisation
 
