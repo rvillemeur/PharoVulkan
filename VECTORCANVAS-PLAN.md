@@ -1131,6 +1131,112 @@ exporters need.
 Gate: the shadow corpus cases match the reference within the tolerance the harness states for blur,
 and the tolerance is justified in a comment.
 
+**Done.** `extent:to:` was the one selector the inventory owed 1.9, and
+`newSimilarImageFormat:width:height:` and `fromForm:` came with unit 1.1 and were re-checked here: a
+Form goes into a surface and back out bit for bit, and a similar surface can change both its format
+and its size.
+
+The blur is `VGA8GaussianBlurFilter`, in the `Blur` tag, and it replaces
+`AeCairoA8FastGaussianBlurFilter`, whose superclass `AeCairoA8GaussianBlurFilter` holds all the
+arithmetic — the fast subclass defines no method of its own.
+Three box passes approximate the Gaussian, the sigma of a shadow radius is the radius over
+2.8199568089598754 rounded, and the radii of the three passes come from the `boxesForGauss`
+function both implementations share.
+Every step is integer and float arithmetic with no hardware behind it, so the filter is not held to
+a tolerance at all: `VGBlurTest` seeds a surface deterministically, blurs it through both
+implementations and compares every byte, at a width whose rows need no padding and at one where
+they do.
+
+Alexandrie's `surface:` takes the walk width from the surface stride rather than from its width, so
+the padding bytes at the end of a row take part in the blur and the end of one row bleeds into the
+start of the next.
+Ours does the same, because an a8 shadow mask is padded whenever its width is not a multiple of
+four, and a replacement that blurred only the visible bytes would differ from Cairo on exactly the
+shadows Bloc draws.
+The class comment says so and `testBlurringAWidthWithStridePaddingAgreesWithAlexandrieToo` holds it.
+A radius of zero and a sigma of zero leave every byte alone, which is the degenerate case a shadow
+with no blur takes, and the filter draws what the surface still owes before it reads a byte, since
+our surface records a frame where Cairo's holds pixels.
+
+Two `ReLongMethodsRule` findings on the two box passes are accepted.
+Each pass walks a row, or a column, in three parts — the window growing out of the near edge, the
+window wholly inside, and the window running off the far edge — which is what keeps the cost at one
+addition and one subtraction per pixel whatever the radius is.
+Splitting a part into a helper would pass five temporaries per call inside that loop, and
+Alexandrie's own pass is one method for the same reason.
+
+The gate is four shadow cases in the conformance corpus, built by `shadowCaseNamed:geometry:` and a
+blur radius, which follows the path `BlGaussianShadowEffect` takes through `AeCanvas`: the geometry
+drawn opaque into an a8 surface of the context's own family, blurred, then masked onto the target at
+an offset in the shadow colour.
+`shadowBlurTolerance` is 4 of 255 and the reason is in the comment: the two curved cases measure 2,
+which is the quantisation of a coverage that the unblurred circle of unit 1.3 already differs by 21
+on, nothing lands outside the reference at all, and the sharp case and the one blurred by nothing
+are held exact, because an axis-aligned edge is the same byte on both sides before the blur and
+stays the same byte after.
+The corpus is now 37 cases over ten groups, and `VGConformanceTest` passes its ten tests.
+
+The export surfaces are `VGCairoExportSurface` with `VGCairoPDFSurface` and `VGCairoSVGSurface`, in
+the `Export` tag, and they are raster pages.
+Cairo records the drawing operators sent to one of its export surfaces and emits them as vector
+drawing, so a Cairo page is resolution independent; by the time a drawing reaches us it is a display
+list of flattened polygons and the curves, the text and the gradients it came from are gone, so a
+faithful vector page is not derivable from what we hold.
+Each page therefore rasterises itself and embeds the pixels, which is what a reader of the document
+sees and what the two exporters that need `extent:to:` — `BAPdfExporter >> newCanvas:` and
+`BASvgExporter >> newCanvas:` — hand to a human.
+`BAPngExporter` needs only `writePngTo:`, which unit 1.1 delivered, and `AeCairoRecordingSurface` is
+used by nothing outside Alexandrie's own tests, so no counterpart is owed.
+
+A page is rasterised at one device pixel to the point.
+That is not a quality setting with a better value: the surface protocol answers pixels to `extent`,
+Cairo's export surface answers points to the same selector, and the callers the inventory measured
+send it, so the two readings have to agree.
+`pageExtent` keeps the points, which may be fractional, and the pixels round up.
+
+A PDF page is six indirect objects in a numbering the class states once: the catalogue, the pages,
+the page with its `/MediaBox` in points, a content stream that scales the unit square an image
+occupies to that box, the pixels as an image in `/DeviceRGB`, and their alpha as a second image in
+`/DeviceGray` that the first one names in its `/SMask`, because the format keeps no alpha channel
+inside an image.
+A cross reference table of the twenty-byte entries the format fixes follows, and `/Length` is stated
+last in every stream dictionary, so a reader searching forward from any other key of that dictionary
+reaches it.
+An SVG page states its size in points and its view box in the same units, and carries the pixels as
+one `<image>` holding a Portable Network Graphic in a base64 data URI, with
+`preserveAspectRatio="none"` so that a reader does not letterbox the hair a fractional page gains
+when its pixels round up.
+`finish` writes the document and a second finish writes nothing, which is what Cairo does and what
+Bloc's exporters, cascading flush and finish, rely on.
+A page of no extent carries no image, since neither format admits one of no width, and is still a
+well formed document.
+
+`VGCairoExportSurfaceTest` is fourteen tests and writes every page into a memory file system, so a
+test leaves nothing on disk.
+It reads each written document back and compares what it carries against the pixels of the surface
+itself: the colour stream against the straight-alpha channels, the soft mask against the alphas, the
+embedded graphic decoded from its data URI and compared to the page's own Form bit for bit, and each
+offset of the cross reference table against the real start of that object.
+Both subclasses are also held, reflectively, to the prefix each one declares, so a third container
+format added later is covered without a test of its own.
+The one check that could be made from outside the image was made: `xmllint` reads a written SVG page
+as well formed, and the graphic inside it decodes to a 40 by 30 image.
+
+`VGCairoInventoryTest >> testSurfaceAnswersEverySelectorItsCallersSend` now asks the surface family
+rather than `VGCairoImageSurface` alone, which is what the pattern family already did and for the
+same reason: a constructor belongs to the class it builds.
+The 1.9 skeleton is gone, and `VGCairoContext >> defaultScaledFont` is the only skeleton left in the
+package.
+
+The artefacts of the cycle: `VGA8GaussianBlurFilterExamples` builds the point spread of the filter
+and a blurred rounded rectangle, `VGCairoExportSurfaceExamples` builds a finished page of each
+format in a memory file system, and the views are `Box radii` and `Mask` on the filter and
+`Document` on a page, each with its gate.
+The `Box radii` table asks the real arithmetic for each radius it shows instead of restating it, and
+`Document` builds the document in memory, so looking at a page does not write its file.
+Critics are clean on everything the unit touched, bar the two accepted long methods above, and the
+test package is 264 tests and passes.
+
 ### 1.10 — renderer wiring
 
 `VGCanvas` overriding the five creation methods, `VGRenderer` overriding the canvas class, and the
