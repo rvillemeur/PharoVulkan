@@ -1398,6 +1398,121 @@ Write the numbers down in this file.
 Gate: the profile exists, and it names the stage phase 2 must attack first.
 Without this number, phase 2 has no target and cannot be judged.
 
+**Done.** The profile is `VGFrameProfile`, in the new `Profiling` tag of `VectorGraphics-Bloc`, and
+it answers the question the gate asks with one number: the stage to attack first is `pixelAccess`,
+the surface and its pixel format, which holds between 59 and 66 per cent of a frame.
+
+The scene is twelve cards on a filled background, each a rounded rectangle with a vertical
+gradient, a two pixel stroked border and a text label, laid out in a grid at 800 by 600.
+Between them the four things that cost in a software rasteriser are all present: curved edges, a
+gradient read per pixel, a stroke outline, and glyphs through the atlas.
+Each number is the mean of three frames, and each frame is drawn on a canvas of its own.
+
+A frame of ours is timed in two phases, because a hardware backend would replace them separately.
+Drawing the element tree records a display list into the canvas, which is the build phase, and
+flushing the surface drains that list into pixels, which is the drain phase.
+The same scene is then timed through `AeCanvas`, which draws with Cairo as it is asked rather than
+recording, so it has one phase and not two.
+`AeCanvas` belongs to Alexandrie's canvas package and not to its Cairo package, so naming it leaves
+the rule that no package of this project names a Cairo class intact, and the scanner test of unit
+1.10 still passes.
+
+| Mean of three frames, 800 by 600, twelve cards | First run | Second run |
+|---|---|---|
+| This project, whole frame | 2149.3 ms | 2139.8 ms |
+| of which the build phase | 4.8 ms | 8.7 ms |
+| of which the drain phase | 2144.5 ms | 2131.0 ms |
+| Cairo, whole frame | 2.1 ms | 1.8 ms |
+
+So this project is around a thousand times slower than Cairo on the same scene, and the whole of
+that is in the drain: recording a frame costs between 4 and 9 milliseconds, which is 0.2 to 0.4 per
+cent of it.
+Cairo's own first frame of an image costs 23 ms and its later frames cost under 2 ms, so the number
+above it is the warm one; the cold difference is font and pattern setup inside Cairo, not drawing.
+
+Inside the frame the time is attributed per stage by sampling, with `AndreasSystemProfiler`.
+A node's own samples are its tally less the tallies of the nodes it called, and the stage travels
+down the tree: a node of a class of this project sets the stage for everything it calls, so the
+arithmetic a kernel class does is charged to the code of ours that asked for it, and a node above
+every class of ours is charged to the scene.
+Nothing is left unattributed and the shares sum to one, which `VGFrameProfileTest` holds.
+A stage is read from the package and the tag a class is filed under, through
+`VGFrameProfile class >> stageByPackageAndTag`, so moving a class between tags moves its stage with
+it, and a test holds the keys of that table against the organiser in both directions: every package
+and tag of the project has a stage, and no key names a tag that is gone.
+The sampled frame is a fourth frame rather than one of the timed ones, because the sampler costs
+time of its own.
+
+| Stage | First run | Second run | What is in it |
+|---|---|---|---|
+| `pixelAccess` | 65.6 % | 58.9 % | the surface and the pixel format: pixels read and written, colours and coverages quantised |
+| `paintSource` | 18.5 % | 22.3 % | the colour a paint or a pattern answers at a pixel |
+| `coverage` | 12.5 % | 14.4 % | the rasteriser and its span scanner |
+| `transforms` | 2.5 % | 3.8 % | the matrices, almost all of them inverted per pixel by a gradient |
+| `sceneAndLayout` | 0.3 % | 0.1 % | Bloc walking and laying out the element tree |
+| `displayList` | 0.3 % | 0.3 % | recording a frame and draining it |
+| `pathAndStroke` | 0.2 % | 0.2 % | flattening curves and building stroke outlines |
+| `canvasApi` | 0.1 % | 0.1 % | the drawing verbs and the state they keep |
+| `compositing` | 0.0 % | 0.0 % | the operators |
+| `text` | 0.0 % | 0.0 % | the glyph atlas and the font stack |
+
+The four stages that run per pixel — `pixelAccess`, `paintSource`, `coverage` and `transforms` —
+are between 95 and 99 per cent of the frame together.
+`text` does not appear at all: the atlas rasterises each glyph once and the glyph then arrives as a
+mask, so its cost is counted in `pixelAccess` with every other pixel.
+This agrees with the handover measurement of unit 1.1 recorded in section 2.2 above: the bulk copy
+of a 3 MB frame is 0.35 ms, about one per cent of what the per-pixel loop costs even there, so the
+boundary between object memory and a device is not the problem and never was.
+
+The hottest methods of one sampled frame, by their own samples, say the same thing more precisely.
+
+| Share of the frame | Method |
+|---|---|
+| 36.2 % | `VGCairoSurfaceFormat >> maskByteForCoverage:` |
+| 12.4 % | `VGRasteriser >> addOverlapFrom:to:into:startingAt:` |
+| 8.7 % | `VGCairoSurfaceFormat >> pixelForRgba:` |
+| 8.3 % | `VGCairoSurfaceFormat >> shortOf:` |
+| 5.7 % | `VGPaint class >> extendFor:` |
+| 4.8 % | `VGColorPaint >> quantise:in:` |
+| 3.8 % | `VGLinearGradientPaint >> offsetInPaintSpace:` |
+| 3.5 % | `VGCairoMatrix >> value:` |
+| 2.1 % | `VGCairoSurfaceFormat >> mixPixel:weightedBy:withPixel:weightedBy:` |
+| 1.8 % | `VGPaint class >> nameIn:for:` |
+
+More than half of the frame is four methods of one class, `VGCairoSurfaceFormat`, each of them a
+few lines of integer arithmetic sent once per pixel.
+That is what phase 2 attacks first, and it is also the shape of the work a shader does for nothing:
+the mask byte, the quantisation and the blend are per-fragment arithmetic, and the span loop that
+calls them is a fragment shader over the covered area.
+Two of the ten are lookups rather than arithmetic — `VGPaint class >> extendFor:` and
+`nameIn:for:` resolve a name per pixel, 7.5 per cent of the frame between them — and those are
+cheap to hoist out of the loop inside phase 1, whenever the loop is touched for another reason.
+
+One finding came out of building the scene, and it belongs to the failover rather than to the
+profile.
+Bloc measures a text span during layout through `BlHostRenderer preferableClass`, and the span keeps
+the scaled font that measurement produced.
+A scene laid out while that class is Alexandrie's therefore carries Cairo scaled fonts into
+whatever canvas draws it later, and drawing it on ours fails with `atlas` not understood.
+So `VGFrameProfile` builds a separate scene for each backend, under that backend's renderer class,
+and puts the class back in an `ensure:` block; a test holds that it is put back, because it decides
+how the whole image draws.
+The same rule applies to an application that switches backends at run time: the scenes laid out
+before the switch have to be laid out again.
+
+The artefacts: `VGFrameProfileTest` is fourteen tests, `VGFrameProfileExamples` holds two
+`<sampleInstance>` examples of a frame small enough to measure in a fraction of a second, and
+`VGFrameProfile` carries four gated inspector views — the stages with their shares, samples and
+milliseconds, the two frame times with the ratio divided rather than written down, and both frames
+as images, so a scene that drew on one backend and not on the other is visible as such.
+`VGFrameProfile class >> reference` is the configuration the numbers above were measured with, and
+`report` is the table.
+Critics are clean on everything written here except `ReBlocDoNotSendForceLayoutRule` on
+`VGFrameProfile >> newScene`, which is accepted: the scene is never attached to a space, and
+forcing the layout of a detached element is what `BlElement >> aeAsForm` does as well.
+`VectorGraphics-Cairo-Tests` and `VectorGraphics-Bloc-Tests` together are three hundred and twelve
+tests and pass.
+
 ### 1.12 — mesh and Coons patch patterns
 
 `AeCairoMeshPattern` and the Coons patch vocabulary the Alexandrie experiments use: a pattern built
