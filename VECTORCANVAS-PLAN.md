@@ -909,6 +909,117 @@ emulates it by stroking at doubled width inside a group, then clearing the inner
 Gate: the two outskirts-outside figure methods produce the same pixels as the Alexandrie originals,
 since that emulation is pixel-sensitive.
 
+**Done.** `paintGroupWith:`, `paintGroupWith:alpha:`, `paintWithAlpha:`, `maskGroupWith:`,
+`maskSurface:x:y:` and `setOperatorClear` are the six selectors the unit named, `mask:` and
+`operator:` came with them, and the inventory counts eight for 1.7 with no skeleton of the unit left
+in the image.
+
+A group is an intermediate surface of the target's own format, the size of the target.
+Cairo shrinks its own group to the clip extents and carries a device offset to put it back; a group
+the size of the target needs no offset at all, so the group's pixels sit at the device coordinates
+they were drawn at and nothing has to be moved on the way out.
+`pushGroup` saves the state, which is what Cairo's push_group does, and the intermediate shares the
+target's backend, because a group of a Vulkan target must be drawn by the same device.
+`popGroupAsSurfacePattern` drains the group's own display list first, because what comes back is
+read as pixels; it then restores the state `pushGroup` saved and gives the pattern the restored
+transformation, since the matrix of a pattern maps a user point into the pattern's space and naming
+the transformation in force cancels it again.
+An unbalanced pop latches `CAIRO_STATUS_INVALID_POP_GROUP` and the context refuses work from there,
+as Cairo's does.
+
+`mask:` splits in two.
+A mask of one flat colour is `cairo_paint_with_alpha`, fold route and all, which is measured: a
+clear through a solid mask of four tenths leaves the pixel where a paint through four tenths leaves
+it.
+Every other mask is rendered into an `argb32` intermediate of the target's size under the
+transformation in force, so the backend is handed a mask in device space and one message covers a
+gradient, a transformed surface and a popped group alike.
+That message is the third and last of the backend — `blitSurface:at:paint:clip:operator:`, beside
+`fillSegments:paint:clip:operator:` and `drainInto:` — so Rule 3 holds with three messages still.
+The intermediate carries an alpha channel whatever the target's format is, because the alpha is the
+only thing a mask is read for, and it is rendered without the clip on purpose: the blit applies the
+clip, and nothing else reads that surface.
+`VGCairoSurfaceMask` stands where `VGSegments` stands for a fill and answers the drawing message
+itself, and a pixel outside it is no mask at all, which is Cairo's extend mode of none.
+
+The operator set is twenty-nine instances carrying Cairo's code and the name Alexandrie calls it by,
+and the compositing is split the way pixman splits it: twenty-one composite in eight-bit integers,
+and the eight whose arithmetic divides composite in floating point from a source of four sixteen-bit
+shorts.
+`sourceFromPaint:in:atX:y:` asks the paint for the representation the operator wants, so no caller
+has to know which half an operator belongs to.
+Two questions decide the drawing: `isUnbounded`, true of the four that write where no source covers,
+which is why those run over the whole clip and sweep the pixels the shape missed, and
+`foldsAnAlphaIntoThePaint`, which says whether an alpha on a solid paint belongs in the paint's
+colour or in a mask on the segments.
+
+Two defects came out of the gate, each fixed test-first, and both are about a rim.
+
+The first is a stroke defect older than this unit, which the gate's circle found: Cairo does **not**
+join a run whose last point equals its first.
+A square traced back to its own corner with four `lineTo`s is capped at both ends and the outer
+corner between the caps stays empty, and an open polygon approximating a circle shows the same wedge
+gap — but a full `cairo_arc` shows none, because Cairo strokes the spline itself and the spline
+arrives with the tangent it left with.
+Our stroker flattens an arc into chords, so the first and the last chord each lean half a
+step away from the true tangent and leave a wedge of one chord angle, about nine and a half degrees
+at a radius of twenty.
+The rule is therefore about tangents and not about coincident points: a run carries the path's own
+tangents at its two ends, the chords answer when the path has none, and
+`VGSubPath >> comesBackToItsStartSmoothly` asks whether the ends meet and the two tangents agree,
+within the rounding the grid of two hundred and fifty-sixths allows.
+Such a run gets one more join, in the seam wedge, and **keeps its caps**, because Cairo caps both
+ends of that run as well; a dashed run is cut into runs of its own, so its seam is left to the
+dashes.
+`VGPathBuilder >> noteTangentsFrom:to:firstSegment:` is where a flattener hands over the two
+tangents of the curve it flattened, and `appendArcCenter:radius:from:to:` is its one caller so far.
+
+The second belongs to the mask route and to the clip: a mask carries no spans, so a clip cannot meet
+it span by span the way it meets a fill.
+Cairo multiplies the coverage of the clip into the mask instead, and our mask route was visiting the
+whole pixels the clip allowed, sampled at the pixel centre, so the rim of a clip came out hard where
+Cairo shades it.
+`VGClip >> coverageRowsDo:` now answers the part of each pixel the clip allows, by handing the clip
+to the real rasteriser with a fill of its own extents — the same construction the `Passed` view
+already drew, which now reads it from there — and the mask byte is scaled by it with
+`maskByteForCoverage:` and `scaleByte:by:`, the two quantisations unit 1.5 measured.
+A pixel the clip allows nothing of is left alone under every operator, unbounded ones included.
+That took the six `maskAndClip` experiments from eighty-seven of two hundred and fifty-five down to
+sixteen at worst, all of it on the rim of the clip and none of it outside the reference, so they
+join `clip1` and `clip2` at `antialiasedEdgeTolerance`, and `toleranceTable` has thirty-three
+entries.
+
+The gate is the two figure cases, `figure-outskirts-outside-no-background` and
+`figure-outskirts-outside-translucent-background`, and both match live Cairo.
+`AeCanvas` cannot drive the replacement yet, because `prepareForSurface:` asks a surface for a
+device scale matrix and `setHighQualityOptions` sets font options, which are units 1.9 and 1.8, so
+each case is the body of the matching `AeCanvas` method written out message for message, with
+`clipAfterwards` false.
+The conformance corpus is thirty-three cases over nine groups, five of them groups and masks and two
+the figures; the Alexandrie corpus runs seventy-two of its eighty-two experiments, and the ten that
+stay blocked wait on six font classes and `AeCairoAntialias` and `AeCairoMeshPattern`.
+
+Two hundred and nineteen tests in the test package and 214 in `VectorGraphics`, all green, and
+critics clean on everything this unit touched.
+
+The example artefacts are `VGDisplayListExamples class >> surfaceMaskOfATile` and
+`blitEntryOfAMask`, `VGPathExamples class >> subPathComingBackToItsStartSmoothly`, which answers the
+one run a full circle builds, and
+`VGCairoImageSurfaceExamples class >> surfaceMaskedThroughACircleClip`, whose rim is the shade the
+clip carries.
+The view artefacts are `Mask` on `VGCairoSurfaceMask`, which samples the alpha it really answers at
+four places, `Blit` on `VGBlitEntry`, which asks the operator whether it is unbounded rather than
+restating the list, and `Seam` on `VGSubPath`, which asks the predicate itself and says whether
+Cairo would join that seam or cap it; `Passed` on `VGClip` says in the same breath that a mask
+through the clip is scaled by the coverage it draws.
+
+Three things are left where they are on purpose.
+`pushGroupWithContent:` is not implemented, because its only sender is an Alexandrie test and the
+content of a group is a choice of format the replacement does not offer yet.
+`VGFillEntry >> boundingBox` under-reports under an unbounded operator, where `VGBlitEntry` answers
+the whole clip for that case; nothing reads the fill entry's box yet.
+A dashed run's seam is left to the dashes, as above.
+
 ### 1.8 — text
 
 `VGScaledFont`, `scaledFont:`, `appendGlyphsPath:`, `showGlyphs:`, `getGlyphExtentsOf:size:into:`,
