@@ -1246,6 +1246,149 @@ Run it in the failover image, with `libcairo` renamed away.
 Gate: a real Bloc space opens, draws and responds to a mouse event with no `libcairo` present, and
 the `Bloc-Alexandrie` extension methods are untouched.
 
+**Done.** The seam is eight methods, not five, and the extra three are what made the unit worth
+running as its own unit rather than a line in another one.
+
+Five of the eight build a Cairo object by naming its class, and those were the five the plan
+expected: `AeCanvas class >> extent:`, `newCairoSurfaceExtent:`,
+`setSourceLinearPatternStops:start:end:`,
+`setSourceRadialPatternStops:innerCenter:innerRadius:outerCenter:outerRadius:` and
+`newSurfaceWithGaussianShadow:width:canvasDo:`.
+A sixth, `scaledFontForFace:size:`, reaches Cairo without naming it, through `aFace
+newCairoFontFace`, so a scan for class names does not find it and a canvas that overrode only the
+five would still build a Cairo font for every piece of text.
+The last two are `setHighQualityOptions` and `setLowQualityOptions`, which assign the shared
+`AeCairoFontOptions` that `AeCanvas class >> initializeFontOptions` builds; the four field readers
+of that record — antialias, hint style, hint metrics and subpixel order — are each a `ffiCall:`, so
+reading the options a canvas already holds is a call into the library.
+Our canvas holds a `VGFontOptions` instead and answers it through a reader `AeCanvas` does not have,
+which is why the record itself did not need overriding.
+
+`AeCanvas class >> startUp:` re-runs `initializeFontOptions` on every image start.
+That is Alexandrie's own method and no subclass of ours can reach it, so in an image with no
+`libcairo` Alexandrie calls Cairo before any of our code runs.
+The honest statement is that the failover replaces Bloc's drawing, not Alexandrie's startup: a
+`libcairo`-less image needs `Alexandrie-Canvas` left out of the load, or that one startup action
+removed, and this plan does not pretend otherwise.
+
+Two proofs hold the seam, one static and one dynamic, and the dynamic one found a real bug.
+
+The static proof is `VGCairoReferenceScanner`, which reads a method's `allLiterals` — not its
+`referencedClasses`, because a full block keeps its own literal frame and a class named inside a
+block would be missed — and answers the classes of `Alexandrie-Cairo` that the method names.
+It scans every package of this project whose name does not end in `-Tests`, found by prefix rather
+than listed, so a package added later is scanned without an edit, and the tests are left out because
+the dynamic proof needs a positive control that calls Cairo on purpose.
+It answers no offender.
+The same scanner, pointed at `Bloc-Alexandrie`, names the four methods of the Bloc backend that
+reach Cairo without going through the canvas: `BARenderer >>
+renderWith:pixels:stride:physicalRectangle:logicalRectangle:`, which we override, and
+`BAAxisAlignedCompositionLayer >> createSurfaceToBePaintedOn:`, `BlGradientShadowEffect >>
+setUpShadowSurfaceFor:extent:` and `BASharedCairoMatrix >> default`, which no subclass of the canvas
+can reach.
+`BASharedCairoMatrix >> default` only allocates an FFI structure and calls nothing, so it is
+harmless with the library absent; the other two are a composition layer's surface and a gradient
+shadow's surface, and a scene using either draws through Cairo however the canvas is chosen.
+A test states that list, so one appearing or disappearing upstream is a failing test rather than a
+surprise in a window.
+
+The dynamic proof installs a `MetaLink` on every method of `Alexandrie-Cairo` that sends `ffiCall:`,
+draws a frame through our renderer, and asserts that none of them was entered.
+Two rules make it work: one link per method node, because a shared link fires for the first node
+only, and the methods must be re-resolved live with `each methodClass >> each selector`, because
+`package methods` can answer methods a recompile has already replaced.
+The links are removed in an `ensure:`, and the test ends with a positive control —
+`(AeCairoImageSurface extent: 4@4) newContext rotateByRadians: 0.5` enters three instrumented
+methods — so a proof that never fired cannot pass as a proof.
+Red on the first run: `AeCairoFontOptions >> antialias`, `hintStyle`, `hintMetrics` and
+`subpixelOrder` ran, because the canvas was reading Cairo's record to copy it into ours on every
+text run.
+That is the bug the three extra seam methods close, and the static scan could never have caught it,
+because the method that read them named no Cairo class.
+
+The renderer half is small, as the plan expected.
+`VGRenderer` overrides `initializeForHostSpace:`, which upstream builds its frame canvas and its
+text measurer with, and `renderWith:pixels:stride:physicalRectangle:logicalRectangle:`, which wraps
+the pixels the host window lends in an unowned surface of ours; its class side answers a `label`
+Bloc shows in its own tools, and the three form and PNG entry points.
+`BlHostRenderer preferableClass:` is a single global setting with no per-space override, so a test
+that chooses this renderer has to save and restore it, and a `setUp` that captures it after an
+interactive doIt captures the wrong value — which happened here once and left the whole image
+drawing through this project.
+`newFormFrom:` cannot be inherited: upstream sends `aeAsForm`, which names `AeCanvas` in its own
+source and has no seam, so the parent walk it performs lives in `VGCanvas class >> formOfElement:`
+and a test parses both methods and compares the trees, with the two names substituted back, so a
+change upstream fails a test instead of quietly leaving our form unrotated.
+A fractional extent truncates to whole pixels in our surface exactly as it does in Cairo's, which is
+what the exporters and that walk rely on.
+
+Bloc's headless host could not be used for the gate.
+`BlHeadlessHostSpace >> render:` increments a frame counter and clears the dirty elements without
+ever asking the renderer, so a headless space proves nothing about drawing.
+`VGPixelBufferHost` and `VGPixelBufferHostSpace` are therefore a host with no window whose space
+really draws: the host space lends a `ByteArray` of its own and the stride our ARGB32 format states
+for its width, `render:` asks the renderer before the inherited bookkeeping, and `form` answers an
+unowned surface over the same bytes as a `Form`, which is what the frame view shows.
+One subtlety took a diagnosis: the renderer answered that it was not valid and held no canvas,
+because `initializeRenderer` is sent when a window is created and again by `BlSpace >>
+validateHostSpaceDrawing` only once the host space `hasResized`, and a headless host space does
+neither; our host space sends it from `open`.
+
+The exporter hierarchy of `Bloc-Alexandrie` is backend independent but for `newCanvas:`.
+`VGFormExporter` and `VGPngExporter` override that one method, and a test asks the hierarchy which
+of its exporters name `AeCanvas` and which of those have a subclass here: `BAJpgExporter`,
+`BAPdfExporter` and `BASvgExporter` still have none, which is a stated hole rather than an
+oversight — JPEG needs nothing but the canvas, and PDF and SVG need the export surfaces unit 1.9
+built — and the test fails as soon as one of them is covered, so the list cannot go stale.
+
+Unit 1.8 left one skeleton behind and named this unit for it: `VGCairoContext >> defaultScaledFont`,
+Cairo's toy default face, which a text verb uses when the caller selected no font.
+It is implemented, and the package now holds no skeleton at all.
+Cairo picks that face through fontconfig; this replacement binds no fontconfig, so the face is the
+one Pharo bundles, at Cairo's own default size, matrix and options, with the user to device matrix
+in force.
+The glyphs are therefore a different typeface, which no tolerance on a channel could honestly cover,
+so the three Alexandrie cases that label a drawing with `showText:` and no font — `lineCap`,
+`linejoin` and `linejoin2` — are filed in `VGAlexandrieCorpus class >>
+casesWithCairosToyDefaultFont` and left out of the oracle, and a second test derives that list from
+the ported source of every case that draws, so one that starts or stops selecting a font fails
+there rather than failing the oracle with a wall of differing pixels.
+`VGCanvas class >> bytesForFamilyName:styleName:` is the bridge to Pharo's font manager and falls
+back to the bundled face for a family it cannot find, because a frame in the wrong font beats a
+frame that raises inside the renderer.
+
+The gate asked for a space that opens, draws and responds to a mouse event with no `libcairo`
+present.
+The first two thirds are a test: a space with an element opens on our host, settles, draws pixels
+that are not all zero, and `element eventSimulator click` runs its click handler, all with
+`BlHostRenderer preferableClass: VGRenderer` — the modern API, since `BlSpace class >>
+simulateClickOn:` and `pulseUntilSpaceOpenedAndEmptyTaskQueue:timeout:` are deprecated.
+The last third is not a test and cannot be: the running image has `libcairo` loaded, the metalink
+proof is what stands in for its absence, and the literal run with the library renamed away belongs
+to the parity image this plan's image table already describes, where `Alexandrie-Canvas` has to be
+absent from the load for the reason given above.
+
+The artefacts of the cycle: `VGCanvasExamples`, `VGRendererExamples` and
+`VGCairoReferenceScannerExamples` hold fourteen `<sampleInstance>` examples — a canvas on a small
+surface, a gradient fill, a blurred shadow surface, a scaled font, a renderer prepared for a host
+space, a space drawn into a pixel buffer, the form and the PNG of a drawn element, both exporters,
+an offscreen text measurer, and the scan of this project and of the Bloc backend — and the views are
+`Backend` and the class-side `Seams` on the canvas, `Renderer`, `Measuring`, `Host`, `Frame`,
+`Handover`, `Export` on each exporter, and `Scan` and `Offenders` on the scanner, each with a gate.
+`Seams` asks `VGCanvas class >> seamRows`, which reads the two classes rather than listing the
+seam, so a creation method added upstream appears as a row with nothing overriding it.
+`VGBlocExamplesTest` subclasses the Cairo example gate and overrides the holders alone; that gate's
+view rule now ignores a view this project did not write, because an example answers a `Form` or a
+`ByteArray` as often as one of our objects and Pharo's own views on those are not ours to gate.
+The baseline declares the three new packages and the groups `bloc`, `examples` and `tests`, with
+`default` loading core, Cairo and Bloc.
+`VectorGraphics-Bloc-Tests` is twenty-nine tests over `VGCanvasTest`, `VGRendererTest` and
+`VGBlocExamplesTest`, and the two test packages together are two hundred and ninety-eight and pass.
+Critics are clean on everything the unit touched bar four accepted critiques, all of them forced by
+parity: the argument count of two methods whose selectors are upstream's, and the length of
+`formOfElement:` together with the `forceLayout` it sends, because that method is a copy held
+against upstream source by a test and splitting it would break the comparison.
+
 ### 1.11 — profiling
 
 Profile a representative Bloc scene and record where the time goes, per stage, next to the Cairo
