@@ -1032,6 +1032,96 @@ Gate: a shaped string renders identically through the atlas and through the glyp
 built once for a repeated draw, proved by a counter; metrics match FreeType's within the tolerance
 the harness states.
 
+**Done.** `VGScaledFont`, `scaledFont:`, `appendGlyphsPath:`, `showGlyphs:`,
+`getGlyphExtentsOf:size:into:` and `fontExtents` are the selectors the unit named, `fontSize:` came
+with them, and the inventory counts six for 1.8.
+`showText:`, `textExtentsOf:` and `glyphArrayForString:` are ours rather than Cairo's and are what
+the corpus draws through.
+
+The font stack is pure Pharo and reads the font's own bytes.
+Ten classes carry it, in the `Text` tag: `VGFontFace` for the tables, `VGScaledFont` for a face at a
+size under a matrix with its options, `VGFontOptions`, `VGGlyph` and `VGGlyphOutline` for one glyph
+and its contours, `VGGlyphComponent` for a component of a composite, `VGGlyphAtlas` and
+`VGGlyphMask` for the cached rasterisation, and `VGFontExtents` and `VGTextExtents` for the records
+`AeCanvas` fills.
+Two things are read from the tables directly rather than through Pharo's own TrueType parsers,
+because those parsers drop them.
+`TTGlyfTableParser >> parseCompositeGlyph` keeps the component glyphs of a composite and discards
+the offsets and the transformations that place them, so `VGFontFace` reads the component records
+itself; and `advanceWidthMax` is not among the fields `TTHheaTableParser` answers, so
+`readMaxAdvanceWidthFrom:` reads hhea at offset ten and puts the entry's own offset back, since a
+parser reads from where the entry currently stands.
+Neither external class is touched, as the standing rule says.
+
+The metrics are exact rationals computed from those tables, and the gate measures them against live
+FreeType through Cairo rather than against numbers written down here.
+Unhinted, under the identity user-to-device matrix, our font extents, our run extents and our glyph
+positions agree with `AeCairoScaledFont` to one part in a million million, which is the width of a
+double on these magnitudes and the tolerance the test names.
+Two limits are stated in the code because they cannot be measured away.
+Cairo's hinted *advances* come from a FreeType face it shares with the hinter, and are not
+reproducible from outside it, so the hinted half of the comparison is left out on purpose rather
+than loosened; and our hinted rounding of the ascent, the descent, the height and the maximum
+advance happens in user space, which agrees with Cairo only when the user-to-device matrix is a
+translation or the identity.
+
+A run draws two ways and the two agree byte for byte.
+The path route appends the glyph outlines and fills them; the atlas route blits one cached mask per
+glyph.
+They agree because both rasterise the same snapped coordinates and both quantise once: the fill
+route scales the coverage byte by two hundred and fifty-five, and the blit route scales the mask's
+own byte by the coverage of a fully covered pixel, which is the pair of quantisations unit 1.5
+measured.
+The atlas key is the glyph index, the sub-pixel phase and the matrix with its translation taken off,
+which is why a whole-pixel move reuses a mask: `VGPathBuilder >> fixedOf:` puts a device coordinate
+on Cairo's grid of two hundred and fifty-sixths with ties to even, and that snapping commutes with
+adding an integer.
+A glyph that inks nothing is cached as nil and never rasterised again, and `renderedGlyphCount`
+counts the rasterisations, so the "built once for a repeated draw" half of the gate is a number a
+test reads: the same run drawn twice rasterises each distinct glyph once.
+
+`showText:` draws through `showGlyphs:` rather than beside it, because Cairo's toy API is a layer
+over `cairo_show_glyphs`, and it leaves the current point where the next glyph would start.
+That point is a path coordinate, so it comes back a fraction of a pixel from the exact advance and
+the test allows one step of the grid, which the comment says in as many words.
+A text verb that has selected no font asks Cairo for its toy default face, and naming a family and
+finding a file for it needs the font manager, so `defaultScaledFont` is a skeleton naming unit 1.10
+and the inventory's extended table carries that entry.
+That skeleton is what made the Alexandrie corpus honest: five experiments — `lineCap`, `linejoin`,
+`linejoin2`, `fillPaint1` and `fillPaint2` — label their drawings with `showText:` and no font, and
+were counted as drawing when they were in fact leaning on nothing.
+The corpus now reports sixty-nine of eighty-two drawing, eight waiting on 1.10 — those five and the
+three font-manager cases — and five on 1.12, and the six font classes name 1.10 rather than 1.8,
+because 1.8 builds the face, the scaled font, the metrics and the atlas while picking a font by
+family name and shaping it with HarfBuzz is what 1.10 brings.
+
+The conformance corpus stays at thirty-three cases over nine groups, but its two text cases draw now
+instead of standing empty, and they are the same run drawn both ways.
+`text-glyph-path` sits at the ordinary antialiasing tolerance, because Cairo rasterises an appended
+glyph path with the same scan converter as any other path.
+`text-glyph-run` carries a tolerance of thirty-six and an exterior allowance of sixteen, measured at
+thirty-three and at five pixels of alpha thirteen, because Cairo rasterises `cairo_show_glyphs` with
+FreeType and a FreeType reference does not have the exterior a scan converter has.
+That allowance is now per case: `VGConformanceCase` holds its own `strayAlphaAllowance` and defaults
+it to the corpus constant, so one case's rasteriser cannot loosen the other thirty-two.
+
+Twenty-two tests in `VGCairoTextTest`, 241 in the test package and 214 in `VectorGraphics`, all
+green, and critics clean on everything this unit touched bar `ReExcessiveVariablesRule` on
+`VGFontFace`, which holds thirteen slots of one font's tables and keeps them, as `VGCairoState` and
+`VGCairoImageSurface` already do.
+
+The example artefacts are five in `VGScaledFontExamples`, whose class comment says why its font is a
+system file: this package names no Alexandrie class, so it searches `/usr/share/fonts` for a known
+basename and signals a named error when it finds none.
+They are `fontFaceOfASystemFont`, `scaledFontAtAReadableSize`,
+`contextWithTextDrawnThroughTheAtlas`, `atlasFilledByARunDrawnTwice`, which answers an atlas of four
+cached masks and three rasterisations, and `glyphMaskOfOneLetter`.
+The view artefacts are `Face` and `Alphabet` on `VGFontFace`, the second reading the real
+`glyphIndexForCodePoint:` and `outlineOfGlyphAt:` for a handful of characters rather than restating
+a table; `Metrics` and `Run` on `VGScaledFont`; `Masks` and `Work saved` on `VGGlyphAtlas`, which
+counts the keys, the rasterisations and the glyphs cached with no ink; and `Picture` and `Placement`
+on `VGGlyphMask`.
+
 ### 1.9 — blur and export surfaces
 
 A Gaussian blur equivalent to `AeCairoA8FastGaussianBlurFilter`, plus
