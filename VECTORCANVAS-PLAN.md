@@ -1529,6 +1529,100 @@ It comes last in phase 1 because it is the only paint Bloc itself never asks for
 Gate: the five mesh cases in the Alexandrie corpus match Cairo within a stated tolerance, and the
 tolerance carries its reason.
 
+**Done.** The mesh is four classes: `VGCairoMeshPattern` carries Alexandrie's own vocabulary
+(`beginPatch`, `moveToX:y:`, `lineToX:y:`, `curveViaX:y:viaX:y:toX:y:`, `cornerAt:putColorRGB:`,
+`endPatch`), `VGCoonsPatch` evaluates one patch, `VGMeshPaint` is the paint the backend reads, with
+tag four of `cairo_pattern_type_t`, and `VGMeshRaster` is the picture a mesh is rasterised into
+before anything composites it.
+
+The unit was not a matter of writing the Coons formula down.
+Bilinear colour over the Coons surface is the easy half, and three rules of Cairo's rasteriser had
+to be measured from the live library because no formula gives them.
+
+The first is that a mesh has no antialiasing at all.
+Cairo walks a patch over a grid of its two parameters and writes a whole pixel for every sample, so
+a pixel a patch reaches is opaque and a pixel it does not reach is untouched, whatever fraction of
+the pixel the patch really covers.
+A sample lands in the pixel whose unit square contains it, which is the truncation of its
+coordinates, so the far edge of a patch contributes a row of pixels and the near edge does not: a
+four by four square patch on a seven by seven surface paints a five by five block.
+
+The second is which sample a pixel keeps where a patch covers it once.
+Cairo subdivides a patch until a piece of it is about a pixel across and writes the colour of the
+middle of that piece, so the colour of a pixel is the colour of the surface near the middle of the
+pixel, not at its corner and not at the end of a walk.
+Measured on that square probe: the pixel at the origin is 223, 55, 4, which is the parameter pair
+one eighth, one eighth — the centre of the pixel — and the pixel at the far edge is 0, 224, 31,
+which is the first parameter exactly one.
+
+The third is what happens where a patch folds over itself.
+Two pieces far apart in the parameters then reach the same pixel, and Cairo draws the lower
+parameters first, so the later piece keeps the pixel.
+Measured on a patch whose first and third sides are one loop out and back again and whose colours
+mirror the fold: forty-nine pixels painted, every one of them greener than red, the column at the
+start of the fold 0, 255 and the column at its apex 128, 128.
+
+Our raster implements the second and third together, because they disagree about what to do with
+two samples of one piece.
+Samples within `VGMeshRaster class >> sameBranchSteps` grid steps in both parameters count as one
+piece of Cairo's and are arbitrated by distance to the centre of the pixel; samples further apart
+than that are arbitrated by which comes later.
+Four steps of a walk whose pitch is half a pixel is two pixels, which is wider than any one pixel
+can be reached from.
+The boundary walk of the four sides deliberately keeps the grid's step counts rather than its own
+finer ones, or an edge sample would present itself as a later piece and take a pixel from the
+interior sample that belongs to it.
+
+What is left is the hard edge itself, one pixel wide, and it is a step rather than a shade, so the
+two rasterisers disagree about the whole colour of the ring of pixels the edge of a patch grazes
+while agreeing closely everywhere else.
+A single worst-channel tolerance cannot express that, so the gate of a mesh case is a colour
+tolerance of eight with a count of the pixels allowed past it.
+`VGFormComparison` therefore keeps the whole distribution of channel distances, a tally of two
+hundred and fifty-six slots, and answers `pixelsFartherThan:`; the old maximum test is the same
+question with a count of zero, so no verdict held before this unit changed.
+
+Gate, both corpora.
+The five mesh cases derived from the Alexandrie experiments —
+`CanonicalGradientAllQuadrantPattern`, `CanonicalGradientFirstQuadrantPattern`,
+`CoonsPatchMeshPattern`, `GouraudShadingTriangleMesh` and `meshPattern` — all answer
+`matchesCairo`, at a tolerance of eight with boundary counts of 1230, 50, 25, none and 18 against
+measured 1118, 45, 22, none and 16.
+The largest case is classified rather than waved through: of its 1118 pixels, 995 are on the arc the
+patches share with the stroked circle beneath them, 48 on the axes the four patches share with each
+other, and 10 beside the degenerate corner where all four collapse, the worst of them 19.
+Four cases of our own corpus cover the four shapes a patch can take — straight sides, three sides,
+curved sides, and sides that fold the patch over itself — and measure 0, 6, 10 and 0 pixels past
+eight, allowed 0, 7, 11 and 0, with worst channels of 4 and 2 on the two cases that need no
+allowance at all.
+
+The artefacts: `VGMeshTest` is nine tests, `VGMeshExamples` holds five `<sampleInstance>` examples,
+and four gated inspector views say what the measurements above say — the patches of a pattern with
+their corner and middle colours, the surface of one patch read at a grid of both parameters, what a
+compositor reads along the diagonal of a paint, and the raster as a map of the pixels it painted and
+those it left alone, which is where the hard edge is visible as such.
+`VGFormComparison` gained a fifth view for the distance tally.
+The two test packages together are three hundred and twenty-six tests and pass; a count taken from
+`testSelectors` alone reports five fewer, because `VGBlocExamplesTest` defines no test of its own
+and inherits the five of `VGCairoExamplesTest`.
+Critics are clean on everything written here except `ReExcessiveArgumentsRule` on
+`cornerAt:putR:g:b:a:` and `curveViaX:y:viaX:y:toX:y:`, which is the same accepted case as every
+other parity selector of this shape in `VGCairoContext`: the name is Alexandrie's and a failover
+layer may not rename it.
+
+A mesh is slow: the largest Alexandrie case takes seventeen seconds and an ordinary one about four,
+against milliseconds for Cairo, because every patch is sampled on a walk of half a pixel in device
+space and the samples are written one at a time.
+That is a correctness-first implementation and phase 2 is where it is answered; nothing in phase 1
+depends on it being fast, because Bloc never asks for a mesh.
+The cost is visible in the suite rather than in a drawing, because `VGAlexandrieCase >> ourForm`
+renders on every send and is not memoised, so each test that walks the Alexandrie corpus —
+`VGCairoExamplesTest >> exampleSubjects` and `VGConformanceTest >> coveredUnits` both rebuild
+`VGAlexandrieCorpusExamples class >> casesWaitingOnAUnit` — renders every case again, and those
+suites now take minutes per test.
+Memoising the form is a design change with its own invalidation question, so it is reported here and
+left to a decision rather than slipped into this unit.
+
 ## 7. Phase 2 — Vulkan as an optimisation
 
 ### 2.0 — probe and recovery
