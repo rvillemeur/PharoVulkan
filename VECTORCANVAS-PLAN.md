@@ -1623,6 +1623,169 @@ suites now take minutes per test.
 Memoising the form is a design change with its own invalidation question, so it is reported here and
 left to a decision rather than slipped into this unit.
 
+### 1.13 — the Alexandrie font facade
+
+Unit 1.8 built the font stack and unit 1.10 wired it into the canvas, so the replacement rasterises
+text today: `VGFontFace` reads the font's own tables, `VGScaledFont` answers metrics, glyph outlines
+and an atlas of masks, `VGFontOptions` carries Cairo's four rendering options, and `VGCairoContext`
+draws a run through `scaledFont:`, `showGlyphs:`, `showText:` and `appendGlyphsPath:`.
+Five experiments of the Alexandrie corpus nevertheless do not run — `fillPaint1`, `fillPaint2`,
+`textAllGlyphsInFontFace`, `textWithoutHarfbuzzWithFontManager` and
+`texWithHarfbuzzWithFontManager` — and what blocks them is naming, not capability.
+Each builds its font the way Alexandrie's own API is spelled, and that spelling has no counterpart
+here: `AeCairoFontOptions new`, `AeCairoFreetypeFontFace newForFace:` over the face the font manager
+answers, `AeCairoScaledFont fontFace:fontMatrix:userToDeviceMatrix:options:` or the
+`newScaledFontWithFontMatrix:userToDeviceMatrix:options:` form of the same thing, and the four
+enumeration classes `AeCairoAntialias`, `AeCairoHintMetrics`, `AeCairoHintStyle` and
+`AeCairoSubpixelOrder`.
+`VGAlexandrieCorpus class >> ourNameFor:` maps a class name mechanically, `AeCairoX` to `VGCairoX`,
+and the font classes of this package are named for what they are rather than for Cairo, so the map
+answers nothing for them and the five cases stay filed as blocked against a unit that is done.
+
+The unit closes that gap and nothing else.
+
+- Four enumeration classes — `VGCairoAntialias`, `VGCairoHintMetrics`, `VGCairoHintStyle` and
+  `VGCairoSubpixelOrder` — each answering Cairo's own value names, which is how `VGCairoOperator`,
+  `VGCairoStatus` and `VGCairoSurfaceFormat` already name an enumeration of Cairo's. Each reads its
+  names from the array `VGFontOptions` already holds, so a name cannot drift between the two, and
+  each answers the symbol `VGFontOptions class >> nameFor:in:` accepts; that method already takes a
+  symbol of ours, Cairo's integer code or Alexandrie's own value, so no setter changes.
+- `VGFontFace class >> newForFace:`, which takes the `AeFTFace` the font manager answers and gives
+  back the face for its bytes. The resolution exists already, as `VGCanvas class >>
+  faceForFreeTypeFace:` and `bytesForFamilyName:styleName:`: it moves down to `VGFontFace`, where a
+  caller holding no canvas can reach it, and the canvas keeps its cache and delegates.
+- `VGFontFace >> newScaledFontWithFontMatrix:userToDeviceMatrix:options:`, the form `fillPaint1`
+  uses. `VGScaledFont class >> fontFace:fontMatrix:userToDeviceMatrix:options:` is already spelled
+  the way Alexandrie spells it, so the class-side form needs nothing.
+- An exception table behind `ourNameFor:`, naming `VGFontOptions`, `VGFontFace` and `VGScaledFont`
+  for the three Alexandrie classes whose counterpart does not follow the prefix rule.
+- `missingClassUnitTable` then has nothing left to say, and the two stale entries go with it: the
+  font classes were filed against unit 1.10, which is done, and `AeCairoAntialias` against 1.4.
+  `testEveryFiledMissingClassIsReallyMissing` is what forces that, since a filed class whose
+  counterpart now exists is a gap the corpus would keep reporting after it closed.
+
+HarfBuzz stays Alexandrie's, as section 2.3 says: shaping needs no Cairo, and `showGlyphs:` already
+reads a shaped run through `asExternalStructure` rather than through a class name of Alexandrie's.
+The unit adds no drawing verb, so it owes no case of the plan's own corpus and joins 1.0, 1.2, 1.9,
+1.10 and 1.11 in `unitsWithoutAPicture`; what it changes is measured by the five experiments that
+now draw.
+
+Gate: every one of the eighty-two experiments is portable, the five derived copies compile and run,
+and `missingClassUnitTable` is empty.
+Each facade method is held against the behaviour it stands for rather than against its existence:
+the face built from an `AeFTFace` reads the same bytes as the face built from the manager's entry,
+an options object built through the four enumeration classes equals one built from our own symbols,
+and the scaled font the face answers equals the one the class-side constructor answers.
+Whether a text experiment then matches Cairo pixel for pixel is measured, not assumed.
+Cairo rasterises a glyph through FreeType and hints it there, unit 1.8 recorded that its hinted
+advances are not reproducible from outside its own face, and `textAllGlyphsInFontFace` asks for
+`hintStyle slight` explicitly, so each of the five is measured and then either carries a stated
+tolerance, as the antialiased cases do, or is filed with its reason, as the three cases drawn in
+Cairo's toy default font are.
+
+**Done.** The facade is four enumeration classes, two methods that resolve a face and one that
+builds a scaled font, and an exception table in the corpus; it added no drawing verb and changed no
+rasteriser, and it found two defects by running code that had never run.
+
+`VGCairoAntialias`, `VGCairoHintMetrics`, `VGCairoHintStyle` and `VGCairoSubpixelOrder` sit in the
+`Text` tag of `VectorGraphics-Cairo` and answer one value per name, each name read from the array
+`VGFontOptions` already holds, so `names` cannot drift from the option it describes and a test asks
+each class for a value under every name its option knows and allows it no value beyond them.
+`VGFontFace class >> newForFace:` and `VGFontFace class >> bytesForFamilyName:styleName:` are
+extension methods in `*VectorGraphics-Bloc`, not methods of `VectorGraphics-Cairo`, because they
+name `AeFontManager` and `AeMemoryFaceEntry` and the Bloc package is the only one of ours allowed to
+name Alexandrie.
+`VGCanvas class >> faceForFreeTypeFace:` keeps its cache and delegates, and
+`VGCanvas class >> bytesForFamilyName:styleName:` is gone, so there is one resolution and not two.
+`VGFontFace >> newScaledFontWithFontMatrix:userToDeviceMatrix:options:` is the instance-side form
+`fillPaint1` uses, and it is held against the class-side constructor rather than against its own
+existence: the two answer equal scaled fonts.
+`VGAlexandrieCorpus class >> ourNameExceptions` names `VGFontOptions`, `VGFontFace` and
+`VGScaledFont` for the three Alexandrie classes whose counterpart does not follow the prefix rule,
+and with that `missingClassUnitTable` is empty: every one of the eighty-two experiments is portable
+and every derived copy compiles and runs.
+A derived copy goes stale when the map changes, and the symptom is not a missing class but a call
+into Alexandrie that dies inside it, so `regenerate` belongs to any change of `ourNameFor:`;
+`driftingCases` is what reports it.
+`progressDescription` now reads `draws already: 82` and nothing else, where unit 1.10 left it at
+sixty-nine of eighty-two with eight waiting on 1.10 and five on 1.12.
+
+The first defect was in `VGCairoContext >> strokeDashPattern:size:offset:`.
+A drawing that hands the dash pattern over as an external array rather than as a Pharo collection
+read one element and used it for all of them, which no case of either corpus had ever done.
+The failing test came first and names the shape of the call rather than the case that found it.
+
+The second was the cost of a mask, and it is the reason `textAllGlyphsInFontFace` could not be
+measured at all before this unit.
+`VGSoftwareBackend >> maskWith:paint:clip:operator:into:` walked the whole clip for every recorded
+mask, reading the mask's alpha at every pixel of it, because a clip carries spans and a mask does
+not, so the coverage of the clip has to be multiplied into the mask pixel by pixel.
+Under a bounded operator a mask byte of zero leaves the destination exactly as it was, so every one
+of those reads outside the rectangle the mask covers buys nothing; under an unbounded operator the
+whole clip must still be walked, because such an operator writes where the mask covers nothing.
+`VGClip >> narrowedTo:` answers the clip inside a rectangle — the same shapes, the same coverage,
+and no pixel outside it — and the walk is narrowed to the rectangle of the mask whenever the
+operator is bounded.
+The difference the picture cannot show, because a pixel left as it was is indistinguishable from a
+pixel never read, so the test counts the reads through `VGCountingMaskStub`: a mask of four by four
+on a surface of two hundred by two hundred is read at exactly sixteen pixels under `over` and at
+every pixel of the clip under `in`.
+Measured on the corpus: `textAllGlyphsInFontFace`, nineteen hundred glyphs on ten thousand by
+eighty-eight, had drained two hundred of its three thousand two hundred and forty-one display-list
+entries after forty minutes and now renders in 7.8 seconds; the two paragraph cases fell from 2.35
+seconds to 0.49.
+
+The glyph verdict is a tolerance with a count, as a mesh is.
+Cairo rasterises a glyph through FreeType, which grid-fits the outline to the pixel grid before
+filling it, and this package fills the outline the font carries, so every stem stands a fraction of
+a pixel from Cairo's and is a whole shade different down its length — a disagreement about where the
+stem is, not about how much of a pixel it covers.
+Unit 1.8 already recorded that it cannot be closed from outside Cairo's own face.
+The five cases therefore carry `hintedGlyphRunTolerance`, which is the thirty-six the atlas cases of
+our own corpus already carry, and a count in `hintedGlyphRunPixelTable`: 522, 205, 1382, 1063 and
+38404 against measured 474, 186, 1256, 966 and 34912, each a tenth above its measurement as the mesh
+counts are.
+That the bound has to be a count and not a distance is visible in the distribution: 94, 26 and 4477
+of those pixels are more than a hundred and twenty-eight apart, which is most of a channel.
+The stray alpha is nought in all five, so the corpus's own allowance of one step of coverage holds
+and only the mesh cases still need their own.
+`boundaryPixelAllowanceFor:` reads both tables, which name disjoint experiments because a mesh
+carries no text.
+Two tests hold the rule rather than the list: one selects the cases whose ported source both selects
+a font and sends a text verb and requires exactly those to carry the glyph tolerance and a count,
+and the one unit 1.8 left requires every case that draws text without selecting a font to be filed
+against Cairo's toy default face instead.
+
+Two examples and two views say what the unit changed.
+`VGScaledFontExamples class >> scaledFontBuiltTheWayCairoSpellsIt` builds the scaled font of
+`scaledFontAtAReadableSize` the way a drawing written against Alexandrie builds one — the options
+named through the four enumeration classes and the font asked of the face — so the facade is one
+click away from the browser, and `VGFontOptions >> inspectorNames:` puts each of the four options
+beside the class that names its values and the value that class answers for the name the options
+hold, asking the real enumeration so that a name this package stops knowing reads as `answers no
+such name` rather than as a row that still looks right.
+`VGClipExamples class >> maskSizedNarrowingOfACircularClip` narrows the clip of `clipOfACircle` the
+way the backend narrows it for a mask the size of a glyph, and `VGClip >> inspectorMaskWalk:`
+counts what one mask costs through a clip by walking the real clips rather than by reading their
+bounds, so it cannot drift from the backend: the circular clip passes 1600 pixels and the same clip
+narrowed to sixteen square passes 256.
+The view is gated off for a clip of no area, which passes nothing anywhere and so has no walk to
+measure.
+
+The two test packages together are three hundred and thirty-nine tests and pass, thirteen of them
+new here; a count taken from `testSelectors` alone still reports five fewer, because
+`VGBlocExamplesTest` defines no test of its own and inherits the five of `VGCairoExamplesTest`.
+`VGCountingMaskStub` is filed in a new `Fixtures` tag of `VectorGraphics-Cairo-Tests`, which is
+where a stub a test builds belongs and what `ReClassNotCategorizedRule` asks for.
+Critics are clean on everything written here except `ReExcessiveArgumentsRule`, `ReLongMethodsRule`
+and `ReCyclomaticComplexityRule` on `maskWith:paint:clip:operator:into:`, which are the same three
+its sibling `rasterise:paint:clip:operator:into:` already carries: the two are the backend's two
+composite loops and the arguments are the display list's own entry.
+`VGFontFace` carries `ReExcessiveVariablesRule` for the thirteen instance variables unit 1.8 gave
+it, one per table it reads; this unit added none of them.
+
+Gate met on both counts.
+
 ## 7. Phase 2 — Vulkan as an optimisation
 
 ### 2.0 — probe and recovery
