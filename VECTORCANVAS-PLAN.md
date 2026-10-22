@@ -2141,6 +2141,146 @@ Gate: every fill corpus case matches the software backend, which is the oracle, 
 The software backend already matched Cairo in phase 1, so matching software is both necessary and
 sufficient.
 
+**What the corpus asks for, measured before any code.**
+Twenty-two of the forty-one conformance cases are fills of a solid colour under a rectangular clip,
+which is the subset this unit draws on the device; the other nineteen carry a gradient, a surface or
+a mesh paint, a blit, or a clip cut by a shape, and they belong to units 2.4 to 2.6.
+Those twenty-two use three operators — `over`, `source` and `clear` — both fill rules, both
+antialiasing modes, one to three entries a frame, at most 216 edges in an entry, and every one of
+their clips is a whole-pixel rectangle.
+Anything outside that subset raises `VGBackendFailure` and the frame is finished by the software
+backend, which is the recovery unit 2.0 built and tested.
+
+**The five steps, in order.**
+
+The kernel is hand-built SPIR-V and not a `<gpu>` method, for the reason `PVTiledMatmulKernel`
+already records: the structured control flow recogniser handles one loop per kernel, and a
+rasteriser nests four — the entries of a tile, the fifteen sub-rows of a pixel row, the crossings
+inside a pixel, and the edges scanned to find the next crossing.
+Section 4 names `PharoVulkan-SPIRV` an allowed dependency of this package and calls its contents
+the coverage and paint shaders, so this is where such a shader belongs.
+
+1. The algorithm on the CPU, in plain Pharo, over `Float64`: one class walks a tile's pixels, finds
+   coverage without sorting and without a scratch array, quantises it as the format does and
+   composites with the operator the entry carries. Gate: byte-identical to the software backend on
+   all twenty-two cases. This is the step that proves the algorithm rather than the device, and it
+   needs no GPU.
+2. The frame encoding: the flat buffers the kernel reads — the tile table, one header an entry with
+   its source pixel, operator, fill rule, antialiasing mode, alpha byte and clip rectangle, and the
+   edges. Gate: the step 1 rasteriser driven from the encoded buffers alone draws the same pixels,
+   which is what proves the encoding carries everything.
+3. The kernel: the step 1 walk translated instruction by instruction into a hand-built module, one
+   workgroup a tile and one invocation a pixel, no atomic anywhere. `SpvOpcode` is missing the
+   conversion, shift and bitwise opcodes a rasteriser needs, and `GlslStd450` is missing the minimum
+   and maximum; those belong to `PharoVulkan`, with their own tests there, as the note under unit
+   2.6 already requires for `OpTypeImage`.
+4. The backend: `VGVulkanBackend` records a frame, drains it through the encoding and the dispatch,
+   and writes the pixels back; an entry outside the subset fails the frame rather than drawing it
+   wrongly, and the software backend finishes it.
+5. The gate: every one of the twenty-two cases compared with the software backend on the same frame.
+   The device computes in `f32` where the rasteriser computes in `Float64`, so the two agree exactly
+   wherever coverage is nothing or everything and may differ in the last place on an antialiased
+   edge; the tolerance and the count of pixels allowed past it are measured and stated, as units
+   1.12 and 1.13 state theirs.
+
+**Done.** The device draws the subset, and it draws twenty-one of the twenty-two cases byte for
+byte as the software backend draws them, the twenty-second differing on one pixel by one in one
+channel.
+Five classes carry the unit in the `Tiles` tag of `VectorGraphics-Vulkan`: `VGTileCoverage` and
+`VGTiledFillRasteriser` are the algorithm, `VGTiledFillEncoding` is the frame written out flat,
+`VGSpirvVocabulary` and `VGTiledFillKernel` are the module, and `VGTiledFillDispatch` is one frame
+on the device.
+`VGTiledFillTest` holds all five steps in thirty-five tests, of which two need a device and the rest
+run on any machine.
+
+**Step 1, the algorithm.** `VGTileCoverage` answers the part of one pixel a recorded fill covers
+with no sorted array of crossings and no scratch buffer: one scan of the edges for the winding at
+the left of the pixel, and one scan more for each run after it.
+Its gate is not a picture but a float: it sums the same terms in the same order over the same
+fifteen sub-rows `VGRasteriser` samples, so the two answer the same `Float64` and not merely the
+same colour, and a test compares them pixel by pixel over the corpus.
+`VGTiledFillRasteriser` is the frame around it — bin with `VGTileBinning`, draw each tile on its
+own, quantise and composite with the format's and the operator's own methods — so what the step had
+to prove was the tiling and the coverage and nothing else.
+`supportsEntry:` is the subset in one place: a `VGFillEntry`, a solid paint, a rectangular clip and
+an operator of `supportedOperators`, which are `over`, `source` and `clear`.
+
+**Step 2, the encoding.** `VGTiledFillEncoding` writes the frame as five flat buffers — `tileTable`,
+`entryRefs` and `headers` of unsigned words, `clips` and `edges` of single floats — and the words
+and the floats are kept apart so that no kernel bitcasts one into the other.
+The layout is class-side and nowhere else, one method a stride and one method a field, so the writer
+here and the kernel of the next step read the same names rather than the same numbers.
+It also decodes itself: `entriesOfTileAt:` rebuilds the entries of a tile out of the buffers alone,
+and the gate is that `VGTiledFillRasteriser` driven from the buffers draws what it draws from the
+display list, which is what proves the encoding carries everything.
+Coordinates narrow to single floats here, because that is what the device computes in, and the
+frame is encoded for one surface format, which `targetFormat` names.
+
+**Step 3, the kernel.** `VGTiledFillKernel` is the step 1 walk translated instruction by instruction
+into one hand-built SPIR-V module of 16 568 bytes, built in a few milliseconds, with one workgroup a
+tile, one invocation a pixel, and a flag variable wherever the Pharo answers early.
+`VGSpirvVocabulary` is the arithmetic it emits, one selector an instruction, so the emission reads
+as the algorithm and not as a list of opcode numbers; a test requires that the vocabulary name
+nothing of this rasteriser, so it stays the general layer it claims to be.
+Seven tests hold the module without a device: it is valid SPIR-V by `spirv-val`, it names every
+buffer and built-in in its interface, it binds one buffer for every buffer it reads, its workgroup
+is one tile of the grid, it takes the tile from the workgroup and the pixel from the invocation, it
+shares nothing and synchronises nothing, and it refuses an operator with no arithmetic of its own.
+`GlslStd450 class >> floor`, `ceil` and `uMin` were missing in `PharoVulkan` and were added there,
+with their own example and validator test, as the plan requires of an opcode a unit needs.
+
+**Step 4, the backend.** `VGVulkanBackend` records the frame it is given and draws it when it is
+drained. `fillSegments:paint:clip:operator:` builds the entry and keeps it, and an entry the subset
+refuses fails the frame there and then, while the surface can still replay the whole of it on the
+software backend; a surface blit and a target of another format than the frame is encoded for are
+refused the same way, which is three tests and the recovery of unit 2.0 doing the rest.
+`VGTiledFillDispatch` is the frame on the device: a storage buffer for every binding the kernel
+declares, the bytes of each uploaded, one workgroup for every tile the frame touches, and the target
+read back into the bytes it came from.
+It reads the words and the floats of an encoding through `basicAt:`, which answers the stored word
+of a `WordArray` and the bit pattern of a `Float32Array`, so one method narrows both and neither is
+bitcast through a `Float`.
+It takes a context and never makes one, and it destroys the kernel before the buffers, because a
+buffer freed under a live pipeline takes the image with it.
+The pixels are packed row after row for the device and written into the target last of all, so a
+driver that faults leaves the target as it was, and a frame that touches no tile is dispatched on no
+device at all.
+
+**Step 5, the gate.** Over the twenty-two subset cases, drawn on the device and by the software
+backend on the same frame, twenty-one hold byte for byte and `path-filled-rounded-rectangle` differs
+on exactly one pixel by one in one channel.
+So the stated gate is a channel tolerance of one with no pixel past it, and at most one pixel
+differing at all in a case — the two numbers are class-side constants with the measurement named in
+their comments, as units 1.12 and 1.13 state theirs.
+That the difference is as small as that is the `f32` of the device against the `Float64` of
+`VGTileCoverage` on one antialiased edge, which is what the plan predicted this step would find.
+
+The regression run over the whole project found one defect, and it was in a test rather than in the
+code.
+`VGRendererTest >> testAFrameDrawnThroughOurRendererEntersNoCairoFunction` installs a metalink on
+every method of `VectorGraphics-Cairo` that sends `ffiCall:` and requires that a frame drawn through
+our renderer fire none of them.
+It began to fail about one run in six, and the failure named the two `externallyFree:` methods of
+`AeCairoContext class` and `AeCairoSurface class`: the finalisation process was freeing the Cairo
+objects of earlier tests while the frame was drawn, and a link fires in whichever process calls.
+`TestSuite >> run` shuffles its tests, which is why the batch order could not be blamed and why the
+failure came and went.
+The link now counts a call only when the process making it is the process drawing the frame, which
+is a truthful reading of the proof: our frame is drawn in this process from end to end, so nothing
+of it is lost, while a free of another test's surface was never part of it.
+
+The example and the view are `VGTiledFillExamples class >> dispatchOfThreeShapesOnThisMachine`,
+which encodes three shapes, dispatches them where a device computes and encodes alone where none
+does, and the `Buffers` tab of a dispatch, which lists every binding with its word count and its
+first words, gated on a frame having been encoded.
+The whole project is green: 645 tests over 51 classes, run in five batches with the Vulkan backend
+offered the first frame of every batch.
+Critics are clean on the three Vulkan packages and on `VGRendererTest`, but for the accepted
+`ReExcessiveArgumentsRule` on `VGVulkanBackend >> blitSurface:at:paint:clip:operator:`, which is the
+frozen boundary selector.
+
+Gate met. Unit 2.4 proceeds.
+
 ### 2.4 — paint evaluation on the GPU
 
 Compile the unit 1.5 paint ABI into SPIR-V, reading the same coefficient block.
