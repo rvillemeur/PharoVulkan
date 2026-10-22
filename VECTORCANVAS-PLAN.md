@@ -1941,6 +1941,96 @@ This gate is not a formality.
 Readback is the known risk, because section 2.2 shows the frame ends in host window memory, and the
 path back from device memory can swallow the whole win.
 
+
+**Done. Go.** One frame through the device costs 0.93 ms on this machine against 2098 ms for the
+same frame on the software path and 1.38 ms for Cairo, so the round trip is not only cheaper than
+the path it replaces, it is cheaper than the C library both paths are measured against.
+
+The measurement is a class rather than a script, because a number nobody can re-run is not
+evidence.
+`VGVulkanRoundTrip` sits in a new `Budget` tag of `VectorGraphics-Vulkan` and holds the three
+numbers, the software frame they are compared with, the device they were measured on and the reason
+there is none where there is none.
+Its extent is asked of `VGFrameProfile referenceExtent` and never written down again, so the two
+sides of the comparison are the same 800 by 600 picture by construction, and `reference` builds the
+measurement without running it: `run` measures the device, `measureSoftwareFrame` measures the
+software frame, and `runGate` does both.
+`recordUpload:fill:readback:` is the only way the numbers get in, which is why no test needs a
+setter and why a partial measurement cannot exist: `roundTripMilliseconds` answers nil until all
+three are known, and `verdict` answers `#unknown` until the software side is known as well.
+The three rates — megabytes a second out, megapixels a second filled, megabytes a second back — are
+the frame over the time, so they cannot be read the wrong way round, and a test halves the
+milliseconds and requires each rate to double.
+
+Each number is the mean of ten passes with one warm-up pass thrown away, read from the microsecond
+clock and not from `Time millisecondsToRun:`, because a copy of one frame finishes inside a
+millisecond and a step measured as zero would read as infinitely fast.
+`VGVulkanCoverageKernel >> coverageOf:out:` is the fill: a `<gpu>` method that writes full coverage
+at one work item per pixel, which is the cheapest kernel that still touches every pixel, so the
+number is the rate of the write and not of any arithmetic.
+The dispatch is sized from the kernel's own `localSize` through `PVTypeAnnotation`, never from a 64
+written here, and `PVComputeKernel >> dispatch:y:z:` waits on the queue, so the host clock around it
+measures the whole dispatch, including the command buffer it allocates and the submit.
+The kernel is destroyed before the buffer, since a buffer freed under a live pipeline takes the
+image with it.
+
+The measured numbers, on an Intel Iris Plus Graphics (ICL GT2) with the frame of unit 1.11:
+
+| Step | Time | Rate |
+|---|---|---|
+| upload, 1.83 MB | 0.242 ms | 7563 MB/s |
+| fill, 480 000 pixels | 0.565 ms | 850 Mpixel/s |
+| readback, 1.83 MB | 0.122 ms | 14 984 MB/s |
+| round trip | 0.929 ms | — |
+| software frame | 2403 ms | — |
+
+Three further runs gave 1.014, 0.927 and 1.012 ms, so the total is stable to about a tenth of a
+millisecond, and the software frame measured 2098 ms in a second session with Cairo at 1.38 ms.
+Readback was the known risk of this unit and it is the cheapest of the three steps here, because the
+device is integrated and its memory is host visible: the frame never leaves the memory the window
+will read it from.
+That is a result about this machine and not about Vulkan.
+On a discrete card the readback crosses the bus and section 2.2 would have to be read again with a
+staging buffer and an explicit transfer in hand; the gate is therefore recorded with the device
+named, and a machine that answers `#noGo` stops at this unit rather than arguing with it.
+
+The copy is made with `LibC memCopy:to:size:` against the mapped block, not with VkBuffer's own
+`copyFromByteArray:`.
+That method writes the bytes one at a time from Smalltalk and costs 31 ms for this frame against
+under a millisecond for the memcpy, so measuring through it would have measured the interpreter
+rather than the bus.
+Thirty-one milliseconds is still two orders of magnitude under the software frame, so the verdict
+holds either way, but a path that pays it every frame would give back a third of the win of unit
+2.3 before any pixel is composited: the binding's own copy stays as it is, and the Vulkan backend
+uses the memcpy.
+
+Twelve tests are new in `VGVulkanRoundTripTest`, and three of them are the degenerate states: an
+unmeasured round trip has no total and no verdict, a round trip with no software frame beside it has
+no verdict either, and `VGNoDeviceRoundTripStub` — which overrides `newContext` alone and records
+its own reason — proves that a machine with no device answers why and measures nothing.
+`testTheRoundTripOnThisMachineIsThreePositiveNumbers` measures this machine for real and passes on a
+machine with no driver by requiring the reason instead, because the gate is about the machine and
+not about the code.
+Every driver fault is caught where the context is opened or where the frame is measured, and the
+reason recorded is the error's own text or, where it carries none, its class name.
+
+`VGVulkanRoundTripExamples` gives one click for each: `roundTripOnThisMachine` runs both sides of
+the gate and `coverageKernel` answers the kernel class.
+The `Budget` tab of a round trip lists every row of the report the verdict is computed from, so it
+cannot say go while the numbers say otherwise, and the `Kernel` tab of the kernel class reads the
+local size and the parameters from the annotation and the module size from a fresh compilation,
+which is why neither tab can drift from the code.
+Neither opens a device.
+`VGFrameProfile class >> stageByPackageAndTag` gains the `VectorGraphics-Vulkan/Budget` key as
+`notInTheFrame`, because the measurement weighs a frame and never appears inside one.
+
+The project is green afterwards at 591 tests over forty-nine test classes, twenty-one of them in
+`VectorGraphics-Vulkan-Tests`, and critics are clean on the three Vulkan packages except
+`ReExcessiveArgumentsRule` on the frozen boundary selector `blitSurface:at:paint:clip:operator:`,
+which is accepted on `VGBackend` and `VGSoftwareBackend` for the same reason.
+
+Gate met. Unit 2.2 proceeds.
+
 ### 2.2 — tile binning on the CPU
 
 Bin the display list into tiles in Pharo first.
