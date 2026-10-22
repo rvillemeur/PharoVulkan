@@ -281,6 +281,18 @@ PVSpirvValidatorTest >> testSharedBroadcastKernelValidates [
 ]
 
 { #category : 'tests' }
+PVSpirvValidatorTest >> testStructuredControlFlowModuleValidates [
+	"SpvBuilder's own loop and selection, with no compiler between: the block order, the two
+	 merge instructions and the function variables of the first block are what spirv-val
+	 reads here. The module is the example's, so the tab a reader opens and the module the
+	 gate validates are one module."
+
+	self
+		validateSpirv: SpvBuilderExamples structuredControlFlowBuilder module serialize
+		description: 'structured control flow'
+]
+
+{ #category : 'tests' }
 PVSpirvValidatorTest >> testSubgroupDotKernelValidates [
 	"spirv-val refuses OpGroupNonUniformFAdd unless the module declares GroupNonUniform and
 	 GroupNonUniformArithmetic and gives the instruction a Subgroup scope, so the verdict is

@@ -11,6 +11,27 @@ Class {
 	#tag : 'Constants'
 }
 
+{ #category : 'reflection' }
+SpvOpcode class >> instructionSelectorPrefix [
+	"What every constant of this class is named after its instruction with. The name does not
+	 itself begin with it, so the reverse lookup never answers its own selector."
+
+	^ 'op'
+]
+
+{ #category : 'reflection' }
+SpvOpcode class >> nameOfOpcode: anInteger [
+	"The selector of the constant answering this number, or nil where no constant answers it.
+	 Read by reflection over this class's own methods, so a tool naming an instruction cannot
+	 hold a second copy of the table."
+
+	^ self class selectors
+		  detect: [ :each |
+			  (each beginsWith: self instructionSelectorPrefix) and: [
+				  (self perform: each) = anInteger ] ]
+		  ifNone: [ nil ]
+]
+
 { #category : 'memory' }
 SpvOpcode class >> opAccessChain [         ^ 65
 ]

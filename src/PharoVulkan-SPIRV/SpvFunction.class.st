@@ -43,6 +43,22 @@ SpvFunction >> addBlock [
 ]
 
 { #category : 'building' }
+SpvFunction >> addBlockWithId: anId [
+	"Append a block whose label id was reserved earlier. A structured builder names the
+	 merge and continue targets in the header before it emits the body, and the blocks the
+	 body adds have to precede them, so those two blocks are added last with ids taken first."
+
+	| block |
+	block := SpvBlock new
+		         id: anId;
+		         function: self;
+		         initialize;
+		         yourself.
+	blocks add: block.
+	^ block
+]
+
+{ #category : 'building' }
 SpvFunction >> addParameter: aType [
     "Append a function parameter of aType. Returns the parameter result id."
     | pid |

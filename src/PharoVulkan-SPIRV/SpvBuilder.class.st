@@ -60,6 +60,22 @@ SpvBuilder >> addMemberDecoration: sid member: idx decoration: dec literals: lit
     module addMemberDecoration: sid member: idx decoration: dec literals: lits
 ]
 
+{ #category : 'inspecting' }
+SpvBuilder >> blockRows [
+	"One row a block of the current function, in the order the module serialises them. Every
+	 column is read from the blocks themselves, so a block added in another order or a merge
+	 that stopped being emitted shows up here."
+
+	currentBlock ifNil: [ ^ #(  ) ].
+	^ currentBlock function blocks withIndexCollect: [ :each :index |
+		  Dictionary newFrom: {
+				  (#position -> index).
+				  (#label -> each id).
+				  (#instructions -> each instructions size).
+				  (#merge -> (self mergeDescriptionOf: each)).
+				  (#terminator -> (self terminatorNameOf: each)) } ]
+]
+
 { #category : 'accessing' }
 SpvBuilder >> constants [       ^ module constantPool
 ]
@@ -217,6 +233,35 @@ SpvBuilder >> emitExtInst: aSetId op: anInstructionNumber operands: anArray type
 	^ id
 ]
 
+{ #category : 'emitting' }
+SpvBuilder >> emitIf: aConditionId then: aBlock [
+	"A structured selection: the body runs where the condition holds and the merge block is
+	 current afterwards. The merge block is added after the body, because the blocks the body
+	 adds have to precede the block they all branch to."
+
+	| function thenBlock mergeId mergeBlock |
+	function := currentBlock function.
+	mergeId := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opSelectionMerge
+			 operands: {
+					 mergeId.
+					 SpvSelectionControl none }).
+	thenBlock := function addBlock.
+	currentBlock terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranchConditional
+			 operands: {
+					 aConditionId.
+					 thenBlock id.
+					 mergeId }).
+	self currentBlock: thenBlock.
+	aBlock value.
+	currentBlock isTerminated ifFalse: [ self emitBranch: mergeId ].
+	mergeBlock := function addBlockWithId: mergeId.
+	self currentBlock: mergeBlock.
+	^ mergeBlock
+]
+
 { #category : 'instructions' }
 SpvBuilder >> emitLoad: ptrId type: aType [
     "Emit OpLoad. Returns result id."
@@ -283,6 +328,64 @@ SpvBuilder >> emitUnaryOp: anOpcode operand: anId type: aType [
 	^ id
 ]
 
+{ #category : 'emitting' }
+SpvBuilder >> emitVariableOfType: aType [
+	"A function-scope variable, answered as its pointer id. SPIR-V asks that every OpVariable
+	 of a function stand in that function's first block, so the declaration is prepended
+	 there whatever block is current, and nothing is stored into it here."
+
+	| function pointerType id |
+	function := currentBlock function.
+	pointerType := self types
+		               pointerType: SpvStorageClass function
+		               type: aType.
+	id := module newId.
+	function blocks first prependInstruction: (SpvInstruction
+			 opcode: SpvOpcode opVariable
+			 resultType: pointerType id
+			 resultId: id
+			 operands: { SpvStorageClass function }).
+	^ id
+]
+
+{ #category : 'emitting' }
+SpvBuilder >> emitWhile: aConditionBlock do: aBodyBlock [
+	"A structured loop: the condition block is emitted in the loop header and answers the id
+	 the header branches on, the body runs while it holds, and the merge block is current
+	 afterwards. The continue target and the merge block are added once the body is emitted,
+	 because every block the body adds has to precede them."
+
+	| function header body mergeId continueId condition mergeBlock |
+	function := currentBlock function.
+	header := function addBlock.
+	self emitBranch: header id.
+	self currentBlock: header.
+	mergeId := module newId.
+	continueId := module newId.
+	condition := aConditionBlock value.
+	header addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opLoopMerge
+			 operands: {
+					 mergeId.
+					 continueId.
+					 SpvLoopControl none }).
+	body := function addBlock.
+	header terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranchConditional
+			 operands: {
+					 condition.
+					 body id.
+					 mergeId }).
+	self currentBlock: body.
+	aBodyBlock value.
+	currentBlock isTerminated ifFalse: [ self emitBranch: continueId ].
+	self currentBlock: (function addBlockWithId: continueId).
+	self emitBranch: header id.
+	mergeBlock := function addBlockWithId: mergeId.
+	self currentBlock: mergeBlock.
+	^ mergeBlock
+]
+
 { #category : 'module' }
 SpvBuilder >> importGLSL [
     "Import GLSL.std.450 extended instruction set. Returns its result id."
@@ -294,6 +397,48 @@ SpvBuilder >> initialize [
 
 	super initialize.
 	module := SpvModule new
+]
+
+{ #category : 'inspecting' }
+SpvBuilder >> inspectorBlocks: aBuilder [
+	"The block order of the function being built, which is the one thing a structured
+	 emitter can get wrong without any instruction being wrong."
+
+	<inspectorPresentationOrder: 10 title: 'Blocks'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn title: 'At' evaluated: [ :each |
+					   (each at: #position) printString ]);
+		  addColumn: (SpStringTableColumn title: 'Label' evaluated: [ :each |
+					   (each at: #label) printString ]);
+		  addColumn: (SpStringTableColumn title: 'Instructions' evaluated: [ :each |
+					   (each at: #instructions) printString ]);
+		  addColumn: (SpStringTableColumn title: 'Merge' evaluated: [ :each |
+					   each at: #merge ]);
+		  addColumn: (SpStringTableColumn title: 'Terminator' evaluated: [ :each |
+					   each at: #terminator ]);
+		  items: self blockRows;
+		  yourself
+]
+
+{ #category : 'inspecting' }
+SpvBuilder >> mergeDescriptionOf: aBlock [
+	"The merge instruction a block carries, named after the constant that answers its opcode
+	 and followed by the blocks it names. The last operand is the control mask, which is a
+	 hint and not a target, so it is left out."
+
+	| merge |
+	merge := aBlock instructions
+		         detect: [ :each |
+			         each opcode = SpvOpcode opSelectionMerge or: [
+				         each opcode = SpvOpcode opLoopMerge ] ]
+		         ifNone: [ nil ].
+	merge ifNil: [ ^ '' ].
+	^ String streamContents: [ :stream |
+		  stream nextPutAll: (SpvOpcode nameOfOpcode: merge opcode).
+		  merge operands allButLast do: [ :each |
+			  stream
+				  nextPut: Character space;
+				  print: each ] ]
 ]
 
 { #category : 'accessing' }
@@ -318,6 +463,14 @@ SpvBuilder >> setMemoryModel: addrModel memoryModel: memModel [
 { #category : 'initialization' }
 SpvBuilder >> setModule: aSpvModule [
 	module := aSpvModule
+]
+
+{ #category : 'inspecting' }
+SpvBuilder >> terminatorNameOf: aBlock [
+	^ aBlock terminator
+		  ifNil: [ 'none' ]
+		  ifNotNil: [ :terminator |
+			  (SpvOpcode nameOfOpcode: terminator opcode) asString ]
 ]
 
 { #category : 'accessing' }

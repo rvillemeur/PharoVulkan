@@ -170,10 +170,9 @@ PVOpcodeProbeKernel class >> matrixColumns [
 
 { #category : 'constants' }
 PVOpcodeProbeKernel class >> opcodeSelectorPrefix [
-	"Every constant of SpvOpcode is named for its instruction, so the prefix is what tells
-	 an opcode constant from anything else the class may answer later."
+	"Asked of SpvOpcode, which is where the naming rule lives, so the two cannot drift."
 
-	^ 'op'
+	^ SpvOpcode instructionSelectorPrefix
 ]
 
 { #category : 'constants' }

@@ -19,7 +19,7 @@ Class {
 	#tag : 'Tests'
 }
 
-{ #category : 'declaring' }
+{ #category : 'constants' }
 PVArchitectureTest class >> allowedDependencies [
 	"The outgoing package references each package of this project may make, keyed by package
 	 name. This table is the agreement: a package missing from it is one nobody has placed in
@@ -42,8 +42,8 @@ PVArchitectureTest class >> allowedDependencies [
 		  'PharoVulkan-Bindings-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compute'
 			   'PharoVulkan-Core' 'PharoVulkan-Examples' 'PharoVulkan-Generator'
 			   'PharoVulkan-Graphics' ).
-		  'PharoVulkan-SPIRV-Tests'
-		  -> #( 'PharoVulkan-Compute' 'PharoVulkan-Core' 'PharoVulkan-SPIRV' ).
+		  'PharoVulkan-SPIRV-Tests' -> #( 'PharoVulkan-Compute' 'PharoVulkan-Core'
+			   'PharoVulkan-Examples' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Compiler-Tests' -> #( 'PharoVulkan-Compiler' 'PharoVulkan-Compute'
 			   'PharoVulkan-Examples' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Core-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compute'

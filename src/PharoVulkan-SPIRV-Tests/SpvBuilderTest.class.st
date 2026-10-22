@@ -85,6 +85,18 @@ SpvBuilderTest >> buildVectorAddModule [
     ^ b module
 ]
 
+{ #category : 'fixtures' }
+SpvBuilderTest >> builderOnAVoidFunction [
+	"A builder whose current block is the first block of a void function with no entry point:
+	 what the control flow tests need and nothing else."
+
+	| builder function |
+	builder := SpvBuilder new.
+	function := builder newFunction: builder types voidType.
+	builder currentBlock: function addBlock.
+	^ builder
+]
+
 { #category : 'helpers' }
 SpvBuilderTest >> definitionOrderIn: bytes [
 	"Maps every result id in the module to the position of the instruction that defines it, so
@@ -108,6 +120,16 @@ SpvBuilderTest >> definitionOrderIn: bytes [
 			order at: id ifAbsentPut: [ position ] ].
 		index := index + wordCount ].
 	^ order
+]
+
+{ #category : 'fixtures' }
+SpvBuilderTest >> emitASumIn: aBuilder [
+	"An instruction with a result, so a block the tests build is not empty."
+
+	| one u32 |
+	u32 := aBuilder types intType: 32 signed: false.
+	one := aBuilder constants constantUInt32: 1.
+	^ aBuilder emitBinaryOp: SpvOpcode opIAdd left: one right: one type: u32
 ]
 
 { #category : 'helpers' }
@@ -193,6 +215,48 @@ SpvBuilderTest >> testArrayTypeOfTheSameShapeIsDeduplicated [
 		equals: (types arrayType: f32 length: 32) id
 ]
 
+{ #category : 'tests' }
+SpvBuilderTest >> testBlockTabNamesTheMergeAndTerminatorOfEveryBlock [
+	"The tab is read from the blocks, so it has one row a block and every cell of the loop
+	 header names an instruction that block really holds."
+
+	| builder view header |
+	builder := SpvBuilderExamples structuredControlFlowBuilder.
+	view := builder inspectorBlocks: SpPresenter new.
+	self
+		assert: view items size
+		equals: builder currentBlock function blocks size.
+	header := view items
+		          detect: [ :each | (each at: #merge) beginsWith: #opLoopMerge ].
+	self assert: (header at: #terminator) equals: #opBranchConditional asString.
+	self
+		assert: (header at: #label)
+		equals: (builder currentBlock function blocks second) id.
+	self assert: ((view items last) at: #terminator) equals: #opReturn asString
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testBlocksOfASelectionNestedInALoopPrecedeTheLoopsOwnTail [
+	"SPIR-V serialises a function's blocks in the order they are added and asks that a block
+	 precede every block it dominates, so the blocks a nested selection adds have to sit
+	 between the loop body and the loop's continue target rather than after the merge."
+
+	| builder blocks loopMerge |
+	builder := self builderOnAVoidFunction.
+	builder emitWhile: [ builder constants constantBool: true ] do: [
+		builder
+			emitIf: (builder constants constantBool: false)
+			then: [ self emitASumIn: builder ] ].
+	blocks := builder currentBlock function blocks.
+	self assert: blocks size equals: 7.
+	loopMerge := blocks second instructions last.
+	self assert: loopMerge opcode equals: SpvOpcode opLoopMerge.
+	self assert: blocks third instructions last opcode equals: SpvOpcode opSelectionMerge.
+	self assert: (loopMerge operands first: 2) equals: {
+			blocks seventh id.
+			blocks sixth id }
+]
+
 { #category : 'tests - cooperative matrix' }
 SpvBuilderTest >> testBuilderCanBeOpenedOnAModuleSomeoneElseOwns [
 	"PVSPIRVEmitter owns its module and still has to build the cooperative matrix
@@ -264,6 +328,27 @@ SpvBuilderTest >> testEveryClassOfTheSpirvPackageAnswersItsOwnBinding [
 ]
 
 { #category : 'tests' }
+SpvBuilderTest >> testFunctionVariableIsDeclaredInTheFirstBlockWhateverBlockAsksForIt [
+	"SPIR-V asks that every OpVariable of a function stand in its first block, and a
+	 rasteriser declares one while it is deep in a loop."
+
+	| builder u32 variable blocks |
+	builder := self builderOnAVoidFunction.
+	u32 := builder types intType: 32 signed: false.
+	variable := nil.
+	builder
+		emitWhile: [ builder constants constantBool: true ]
+		do: [ variable := builder emitVariableOfType: u32 ].
+	blocks := builder currentBlock function blocks.
+	self assert: blocks first instructions size equals: 1.
+	self assert: blocks first instructions first opcode equals: SpvOpcode opVariable.
+	self assert: blocks first instructions first resultId equals: variable.
+	self assert: (blocks allButFirst noneSatisfy: [ :each |
+			 each instructions anySatisfy: [ :instruction |
+				 instruction opcode = SpvOpcode opVariable ] ])
+]
+
+{ #category : 'tests' }
 SpvBuilderTest >> testMemorySemanticsAreSingleBitsOfOneMask [
 	"Memory semantics is a bitmask, so the named values have to be distinct single bits that
 	 can be combined. A value that is not a power of two would silently set two meanings."
@@ -318,6 +403,21 @@ SpvBuilderTest >> testNullConstantOfACooperativeMatrixTypeIsDeclaredOnce [
 ]
 
 { #category : 'tests' }
+SpvBuilderTest >> testOpcodeNamesComeFromTheConstantsThemselves [
+	"The reverse lookup the block tab reads: a number no constant answers has no name, and
+	 the name of one that does is the selector that answers it, so a constant renamed or
+	 corrected renames itself here."
+
+	self
+		assert: (SpvOpcode nameOfOpcode: SpvOpcode opLoopMerge)
+		equals: #opLoopMerge.
+	self
+		assert: (SpvOpcode nameOfOpcode: SpvOpcode opBranchConditional)
+		equals: #opBranchConditional.
+	self assert: (SpvOpcode nameOfOpcode: -1) isNil
+]
+
+{ #category : 'tests' }
 SpvBuilderTest >> testSerializeHeader [
     "Serialized SPIR-V must start with the magic bytes 0x07230203 in little-endian."
     | bytes |
@@ -326,6 +426,60 @@ SpvBuilderTest >> testSerializeHeader [
     self assert: (bytes at: 2) equals: 16r02.
     self assert: (bytes at: 3) equals: 16r23.
     self assert: (bytes at: 4) equals: 16r07
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testStructuredLoopOrdersHeaderBodyContinueAndMerge [
+	| builder blocks header body continue merge |
+	builder := self builderOnAVoidFunction.
+	builder
+		emitWhile: [ builder constants constantBool: true ]
+		do: [ self emitASumIn: builder ].
+	blocks := builder currentBlock function blocks.
+	self assert: blocks size equals: 5.
+	header := blocks second.
+	body := blocks third.
+	continue := blocks fourth.
+	merge := blocks fifth.
+	self assert: blocks first terminator opcode equals: SpvOpcode opBranch.
+	self assert: blocks first terminator operands first equals: header id.
+	self assert: header instructions last opcode equals: SpvOpcode opLoopMerge.
+	self assert: (header instructions last operands first: 2) equals: {
+			merge id.
+			continue id }.
+	self assert: header terminator opcode equals: SpvOpcode opBranchConditional.
+	self assert: (header terminator operands last: 2) equals: {
+			body id.
+			merge id }.
+	self assert: body terminator operands first equals: continue id.
+	self assert: continue terminator operands first equals: header id.
+	self assert: builder currentBlock equals: merge
+]
+
+{ #category : 'tests' }
+SpvBuilderTest >> testStructuredSelectionBranchesOverItsBodyToAMergeBlock [
+	| builder blocks condition |
+	builder := self builderOnAVoidFunction.
+	condition := builder constants constantBool: true.
+	builder emitIf: condition then: [ self emitASumIn: builder ].
+	blocks := builder currentBlock function blocks.
+	self assert: blocks size equals: 3.
+	self
+		assert: blocks first instructions last opcode
+		equals: SpvOpcode opSelectionMerge.
+	self
+		assert: blocks first instructions last operands first
+		equals: blocks third id.
+	self
+		assert: blocks first terminator opcode
+		equals: SpvOpcode opBranchConditional.
+	self assert: blocks first terminator operands equals: {
+			condition.
+			blocks second id.
+			blocks third id }.
+	self assert: blocks second terminator opcode equals: SpvOpcode opBranch.
+	self assert: blocks second terminator operands first equals: blocks third id.
+	self assert: builder currentBlock equals: blocks third
 ]
 
 { #category : 'tests' }
