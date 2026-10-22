@@ -2039,6 +2039,98 @@ or thousands.
 
 Gate: a binning test over the corpus, and a count of tiles touched per case.
 
+**Done.** Binning is three classes in a new `Tiles` tag of `VectorGraphics-Vulkan` — `VGTileGrid`,
+`VGTileBinning` and `VGTileBinningCensus` with its row — and it reads a recorded frame without
+drawing one, so the whole unit runs on a machine with no driver.
+
+A grid is row-major and one based, the last column and the last row are short wherever the extent
+does not divide by the tile, and its tiles cover every pixel of the extent exactly once: a pixel in
+two tiles would be composited twice and a pixel in none would never be written, so a test walks a
+grid of 37 by 23 pixels tile by tile and requires each pixel once.
+`indexesIntersecting:` widens a box to whole pixels before it reads it, because a box in device
+space carries fractions from a transform and a pixel covered in part is a pixel written; nothing,
+a box of no width and a box off the frame touch no tile at all, since a tile touched for one of
+those is a dispatch over pixels no entry writes.
+
+A binning asks each entry for its own bounding box and adds the entry to every tile that box
+reaches, in the order the entries were drawn, because compositing is not commutative.
+It copies the entries out of the display list, because draining a frame resets its list and the
+census reads its counts after the frame is drawn — the first version held the list and reported
+zero entries for every case.
+An entry that spans a boundary is in every tile it spans, so `binnedEntryCount` is larger than the
+number of entries drawn; that growth is what the tile size trades against the number of dispatches.
+
+The gate does not read a bounding box at all.
+For each frame the census draws the frame on the software path, compares every pixel against a
+surface nothing has drawn on, and counts the pixels that changed and lie in no tile the binning
+touched; a box that is too small cannot hide from that.
+A new ARGB32 surface is not all zero — its pixels read as transparent white — so the comparison is
+against a blank form and not against zero: the first version compared against zero and reported
+2560 stray pixels for a case whose frame had written nothing outside its rectangle.
+Over the 41 conformance cases the count is zero.
+It is not zero for want of anything to find: binning the same frames into an empty binning makes the
+same scan report 75 234 stray pixels over 40 of the 41 cases, the one exception being
+`target-cleared-to-transparent`, which writes nothing visible.
+The second half of the gate is the count of tiles touched per case, which is the `Cases` tab of the
+census and a test over every row.
+
+The corpus does not decide the tile size, and saying so is the point of `overTheReferenceFrame`.
+A conformance case is 64 pixels square and touches 92 % of its own tiles at any size.
+The frame unit 1.11 profiles is 800 by 600, drawn through the Bloc renderer with gradients, strokes,
+glyphs and blits in it, and it is the frame a tile size is for:
+
+| Tile | Tiles | Entries drawn | Entries binned | Per touched tile | Busiest tile |
+|---|---|---|---|---|---|
+| 8 by 8 | 7500 | 88 | 14 436 | 1.92 | 5 |
+| 16 by 16 | 1900 | 88 | 3 803 | 2.00 | 6 |
+| 32 by 32 | 475 | 88 | 1 167 | 2.46 | 8 |
+
+Every tile of that frame is touched at every size, because the scene fills its background.
+So the choice is between dispatches and repeated work: eight costs 924k entry-pixels and 7500
+dispatches, sixteen costs 973k and 1900, thirty-two costs 1.195M and 475.
+`defaultTileExtent` is 16 by 16 — a twentieth more repeated work than eight for a quarter of the
+dispatches, and 256 work items, which is a whole multiple of the 64 a workgroup of the coverage
+kernel holds. A test holds that last fact against `VGVulkanRoundTrip class >> workItemsPerGroup`,
+so a tile can never be chosen that leaves part of a workgroup idle.
+
+One defect was fixed first, with its own failing test in `VGCairoOperatorTest`.
+`VGFillEntry >> boundingBox` answered the box of its own edges under every operator, but `in`,
+`out`, `destIn` and `destAtop` take the destination away where the shape covers nothing.
+A 10 by 10 fill under `in` cleared the pixel at 35 @ 25 of a 40 by 30 frame while the entry claimed
+`(5 @ 5) corner: (15 @ 15)`.
+Binning reads that box, so those tiles would have gone unwritten.
+It now answers the whole clip under an unbounded operator, which is the rule `VGBlitEntry` already
+kept, and `VGCairoOperator >> isUnbounded` is asked rather than a list restated.
+
+Two declarations were owed.
+`VGFrameProfile class >> stageByPackageAndTag` gains `VectorGraphics-Vulkan/Tiles` as display-list
+work, because a test of unit 1.11 requires every package and tag of this project to name a stage.
+`BaselineOfVectorGraphics` now has `VectorGraphics-Vulkan` require `VectorGraphics-Bloc` rather than
+`VectorGraphics-Cairo`: the dependency has existed since unit 2.1, where the budget reads
+`VGFrameProfile referenceExtent`, and the census draws the reference frame through `VGRenderer` and
+`VGCanvas`. No package of `VectorGraphics-Bloc` names a Vulkan class, which unit 2.0's architecture
+test holds, so the edge is one way.
+
+Thirteen tests are new: twelve in `VGTileBinningTest` and the one in `VGCairoOperatorTest` that
+reproduced the bounding box defect.
+`VGTileBinningExamples` holds three `<sampleInstance>` examples — the grid of the reference frame,
+two distant shapes binned, and the census of the reference frame — and the corpus census stays in
+the test, because the corpus is a test package and an examples package may not name one.
+Five tabs: `Tiles` on a grid, `Binning` and `Busiest tiles` on a binning, `Cases` and `Census` on a
+census, each gated and each reading the live object rather than a stored report.
+Critics are clean on the three packages but for the accepted `ReExcessiveArgumentsRule` on
+`VGVulkanBackend >> blitSurface:at:paint:clip:operator:`.
+The suite is 604 tests over 50 concrete test classes and every one passes: 313 in
+`VectorGraphics-Cairo-Tests`, 214 in `VectorGraphics`, 44 in `VectorGraphics-Bloc-Tests` and 33 in
+`VectorGraphics-Vulkan-Tests`.
+One example was wrong and this unit found it: `VGDisplayListExamples class >> fillEntryOfAStar`
+built its entry with the symbol `#over` where the recorded frame carries the operator object, so the
+entry's own `Fill` tab raised when the bounding box asked the operator whether it is unbounded.
+The example now names `VGCairoOperator over`, and it was the only place in the project passing a
+symbol there.
+
+Gate met. Unit 2.3 proceeds.
+
 ### 2.3 — the tiled fill rasteriser
 
 Fill only, no stroke and no text: strokes are paths after unit 1.4 and text is blits after unit 1.8,
