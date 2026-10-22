@@ -212,7 +212,7 @@ replaying the list on the software backend.
 
 ## 4. Package layout
 
-Phase 1 adds three packages and phase 2 adds two.
+Phase 1 adds three packages and phase 2 adds three.
 
 | Package | Phase | Contents |
 |---|---|---|
@@ -223,6 +223,7 @@ Phase 1 adds three packages and phase 2 adds two.
 | `VectorGraphics-Bloc` | 1 | `VGCanvas` (the `AeCanvas` subclass) and `VGRenderer` (the `BARenderer` subclass), nothing else |
 | `VectorGraphics-Vulkan` | 2 | The Vulkan backend, the tile binner, the SPIR-V paint and coverage shaders |
 | `VectorGraphics-Vulkan-Tests` | 2 | The GPU-versus-software parity tests |
+| `VectorGraphics-Vulkan-Examples` | 2 | The `<sampleInstance>` examples of the Vulkan backend, one click each |
 
 `VectorGraphics-Cairo` may depend on `VectorGraphics`; the reverse is forbidden.
 `VectorGraphics-Cairo` must not name a single `Ae*` class, so that it stands alone and so that the
@@ -1800,6 +1801,134 @@ and replay the display list on software.
 Gate: a deliberately broken backend stub produces a correct frame through the fallback, and the
 image survives it.
 
+**Done.** Selection and recovery are the seventeen class-side methods of `VGBackend`'s own
+`selection` protocol, one exception class, a handler in `VGCairoImageSurface >> flush` and a backend
+whose probe really computes; no drawing verb changed and no rasteriser was touched.
+
+`VGBackendFailure` sits in the `Backend` tag of `VectorGraphics-Cairo` and carries the backend that
+raised it, because the recovery rejects a backend by class and has to know which one failed.
+A backend may raise it while a frame is recorded or while it is drained, never between its first
+pixel and its last: a frame half drawn cannot be mended by replaying it elsewhere, and the software
+backend already keeps that rule by recording into `commands` during replay and writing pixels only
+in `drainInto:`.
+
+Selection is class-side state of `VGBackend` and reflection over its own subclasses, so
+`VectorGraphics-Cairo` still names no Vulkan class.
+What selection decides is a class, and not an instance.
+`candidateClasses` answers the subclasses that declare `isCandidate`, minus the rejected ones,
+ordered by the `preferenceRank` each declares — `hardwareRank` is 100 and `softwareRank` is 1000,
+which is the highest of the scale, so nothing is probed after the failover.
+`preferredClass` answers the first candidate whose `probe` answers an instance and remembers that
+class, and a probe below the first that answers is never run, because a probe costs a device and a
+dispatch: the Vulkan one measures 72 ms on an idle machine and 8.275 s on a loaded one, which is
+reason enough to remember the verdict for the rest of the session.
+`preferred` answers `self preferredClass new`, a fresh instance on every send, and the surface that
+asked keeps it, because a backend records in itself the frame it is draining and two surfaces may
+not share that.
+A mask surface and a group surface still take the backend instance of the target they belong to,
+which is sharing of another kind: it happens while the target records and never while it drains.
+`prefer:`, `clearPreference`, `preferredClassOrNil` and `restorePreference:rejections:` are what a
+test and a caller who knows the machine use, and `rejectedClasses` answers a copy: the first version
+answered the set itself, a test saved that very set in `setUp`, the rejection it caused was in it
+again at `tearDown`, and the Vulkan backend stayed out of selection for the rest of the session.
+
+A failed frame is replayed on `VGBackend failover`, which is the software backend and not whichever
+candidate ranks next, because a recovery may not fail in its turn.
+Section 8 above sketched the cache being cleared so that the next frame goes to software; with more
+than one accelerated candidate that is what it has to mean, and the surface keeps the failover
+afterwards, so a frame of its own is never attempted twice on a backend that has already given up.
+The display list is reset after the drawing and not before it, which is what lets the same frame be
+replayed, and `drawRecordedFrameOn:` is the one place that replays and drains.
+
+The whole-project run found the defect this unit introduced, and it was in the instance.
+The first version of `preferred` answered one backend to every surface that asked for one.
+Replay and drain look like one uninterrupted go until a paint reads a pixel: reading a pixel of a
+surface flushes that surface, so draining one frame starts the drain of another, and two drains
+through one instance replayed each other's commands to a stack depth of 9999.
+Every frame that reads a surface as a paint source hung — masks, surface patterns, the profiling
+scenes and four conformance cases — and `VGRendererTest` sat for eighty-five minutes before the
+stacks of the live processes named the recursion.
+Two tests came first and were seen red: one requires two surfaces with no backend of their own to
+hold different instances of one class, and one draws a surface pattern of one surface onto another
+and requires the frame to end, with the pixel it copied in place.
+
+The probe is a real dispatch.
+`VGVulkanBackend class >> probe` compiles the compute path's own example kernel through
+`PVComputeKernel fromMethod: PVComputeKernel exampleKernelMethod`, allocates its three storage
+buffers, hands the same vector of small whole floats to both inputs, dispatches one workgroup and
+compares the readback with the sums for equality rather than for closeness, because those values
+are exact in a 32-bit float both as terms and as sums.
+It answers an instance where that works and nil where it does not, catches every class of fault a
+driver can arrive as, and destroys the kernel before the buffers, since a buffer freed under a live
+pipeline takes the image with it.
+On this machine it answers in 72 ms and the device computes, so the first frame of the session
+really is handed to the Vulkan backend, really fails, and really comes back correct on software:
+the gate is met by the backend and not only by the stub.
+Its three boundary messages raise through `cannotDrawYet` until unit 2.3 gives it pixels to write.
+It names classes of `PharoVulkan-Core` and `PharoVulkan-Compute` only, and reaches the compiler and
+the SPIR-V builder through them, which is within the edges section 4 states for this package.
+
+`VGCairoReferenceScanner` grew the general form of the scan it already did: `classesNamedBy:
+inPackagesNamed:` walks `allLiterals` for variable bindings whose class belongs to any of a set of
+packages, `offendersIn:naming:` answers the offending methods of one package, and
+`cairoClassesNamedBy:` and `offendersIn:` are those two with the Cairo package named.
+`vulkanPackageNames` reads the organiser for every package beginning with `VectorGraphics-Vulkan`
+or with `PharoVulkan`, so a package added later is covered without the method being edited.
+Two architecture tests hold the rule rather than a list: no package of this project but the Vulkan
+family names one of those classes, and every package of this project is named in the baseline.
+
+Three packages are new.
+`BaselineOfVectorGraphics` gives them a `vulkan` group and leaves that group out of `default`, so
+the engine loads and runs on a machine with no driver, which is rule seven of section 9 read from
+the other side.
+The baseline does not declare `PharoVulkan` itself: that project is loaded from a local checkout,
+and a path in a committed baseline would be wrong everywhere but here, so the `vulkan` group is
+loaded after `PharoVulkan` is.
+`VGVulkanBackend` is filed in a `Backend` tag of its package and
+`VGFrameProfile class >> stageByPackageAndTag` gains the two keys the new packages bring —
+`VectorGraphics-Vulkan/Backend` is display-list work and `VectorGraphics-Vulkan-Examples/Examples`
+is not in the frame — because a test of unit 1.11 requires every package and tag of this project to
+name a stage, and no key beyond them.
+
+The fixtures are three.
+`VGBackendFrameFixture`, in the `Fixtures` tag of `VectorGraphics-Cairo-Tests`, holds the one frame
+the backend tests draw and answers it as a `Form`, because the selection tests of the engine and the
+backend tests of the Vulkan package compare the same picture and it has to be the same picture.
+`VGBrokenBackendStub` fails while the frame is recorded and `VGFailingDrainBackendStub` records the
+whole frame and fails when it is drained; they are the two halves of the gate, and the second
+declares `isCandidate` false, because it inherits from the software backend and selection must never
+choose a fixture.
+
+The example and the view both ask the real rule.
+`VGBackendExamples class >> selectionOnThisMachine` forgets the preference, probes again and answers
+`VGBackend`, whose class-side `Selection` tab lists every backend of the hierarchy with the rank it
+declares, whether it stands for selection, whether a failure rejected it and whether it is the one
+drawing — all read from the live state, and nothing probed, so opening the tab opens no device.
+`VGVulkanBackendExamples` holds the other two: `probedOnThisMachine`, which probes for real, and
+`frameRecoveredFromTheVulkanBackend`, which draws a frame through the backend and lets the failover
+finish it, putting the selection state back afterwards because the recovery rejects what failed.
+`VGVulkanExamplesTest` subclasses `VGCairoExamplesTest` and names only the holders of its own
+package, so the five example rules — a comment on the holder, an example that rebuilds its object,
+an example that runs and answers something, a gate on every view and a view that builds and fills
+its cells — hold here too without being written twice.
+
+Twenty-two tests are new: thirteen on selection and recovery in `VGBackendSelectionTest`, four on
+the Vulkan backend in `VGVulkanBackendTest` and the five the example rules give
+`VGVulkanExamplesTest` for free.
+The gate is met twice over, by the fixtures and by the hardware: with the preference cleared, the
+twenty-seven drawing tests of `VGCairoDrawingTest` probed the Vulkan device, took its failure on the
+first frame, rejected the class and drew every one of the twenty-seven frames on software, and
+`rejectedClasses` holds `VGVulkanBackend` afterwards.
+The whole project is green afterwards at 579 tests over forty-eight test classes: 312 in
+`VectorGraphics-Cairo-Tests`, 214 in `VectorGraphics`, 44 in `VectorGraphics-Bloc-Tests` and 9 in
+`VectorGraphics-Vulkan-Tests`.
+Critics are clean on all three new packages, on `VGBackendFailure` and on the tests and the fixture,
+except `ReExcessiveArgumentsRule` on `VGVulkanBackend >> blitSurface:at:paint:clip:operator:`, which
+is the frozen boundary selector and is accepted on `VGBackend` and `VGSoftwareBackend` for the same
+reason.
+
+Gate met.
+
 ### 2.1 — the go or no-go gate
 
 Measure three numbers on this machine: buffer upload bandwidth, fill rate for a trivial coverage
@@ -1911,6 +2040,13 @@ The rule for this repository:
 - If a command-line commit happens anyway, re-attach with
   `repo workingCopy adoptCommit: repo headCommit`, which sets the reference commit and recalculates
   the dirty packages without reloading any code.
+- Delete or move every scratch file out of the checkout before committing from the image.
+  An image commit writes a tree from the whole working tree and not only from what was staged, so
+  the plan commit of unit 1.13 swept in five scratch files and one untracked document beside the
+  one file it meant to carry.
+  `git reset --soft` is not a commit, so the hook permits it: that is the way to undo such a commit,
+  followed by `git rm --cached` on the swept paths, `adoptCommit: repo headCommit` to re-attach, and
+  a second commit from the image.
 
 A `pre-commit` hook in `.git/hooks/pre-commit` enforces the first rule, so that a shell commit fails
 loudly instead of detaching the image silently.
@@ -1924,3 +2060,69 @@ file and marking it executable there.
 Note that the documentation and the code live in different repositories here: this file is in the
 `PharoVulkan` repository, and the `VectorGraphics` package is in its own.
 Phase 1 commits therefore go to the `VectorGraphics` repository, and only this plan file goes here.
+
+## 11. The font lifetime defect
+
+Four segmentation faults killed the image while unit 2.0 was being written: on 21 October 2026 at
+20:18:53, at 21:23:39 and at 21:50:10, and on 22 October 2026 at 00:06:05.
+All four have one stack.
+`FT_Done_Face` is reached from `hb_blob_destroy` through `hb_face_destroy` and `hb_font_destroy`,
+called through libffi from `FFIExternalResourceExecutor >> finalize`, inside
+`FinalizationProcess class >> finalizationProcess`.
+No drawing was in progress in any of them, which is why the crash looked unrelated to the work: a
+run had finished minutes earlier and the collector was only now getting to the objects it left.
+
+The cause is three parties disagreeing about who owns a FreeType face.
+`hb_ft_font_create_referenced`, which `AeHbFont class >> newForFTFaceReferenced:` wraps, keeps a C
+reference to the `FT_Face` and releases it with `FT_Done_Face`.
+`cairo_ft_font_face_create_for_ft_face`, behind `VGFontFace newForFace:`, does the same.
+`FT_Done_Library` destroys every face its library owns, whatever still points at them.
+Nothing ties any of that to the Smalltalk lifetimes, so a library collected before a harfbuzz font
+that outlived it leaves `FT_Done_Face` reading freed memory, in the finalisation process, long
+after the picture it drew was forgotten.
+
+Two patterns in this project produced exactly that state.
+`AeFTLibrary newInitialized` was sent per call in four places, so each call made a library and each
+library became garbage as soon as the form was answered.
+`AeFontManager resetGlobalInstance` was sent by three of the ported experiments, and a manager holds
+the library and the face cache in its own slots, so replacing the global manager made the previous
+library and all of its faces garbage while the harfbuzz fonts built from them were still alive.
+
+The fix keeps the objects instead of the handles.
+`VGAlexandrieFontLifetime`, in the `Fixtures` tag of `VectorGraphics-Cairo-Tests`, answers one
+FreeType library for the whole session from `freeTypeLibrary`, and `retain:` adds any object to the
+set it holds and answers it, so an expression can be wrapped where it stands.
+It is class-side state on purpose: the lifetime being bought is the session's, not an instance's.
+
+The rule is read off the code rather than listed, so a case written later cannot forget it.
+`VGCairoTextTest` gained four tests in a `tests - font lifetime` protocol.
+One requires `freeTypeLibrary` to answer the same object twice and to be in the retained set.
+One requires that no method of any `VectorGraphics` package sends `newInitialized` except
+`VGAlexandrieFontLifetime class >> freeTypeLibrary` itself.
+One requires every method of this project that sends `cairoGlyphArrayForFace:size:` to send
+`retain:`.
+One draws a reference picture through `VGAlexandrieCase >> cairoForm` and requires the font manager
+left behind to be retained afterwards, because the reference is drawn by Alexandrie's own
+experiments, which this project may not edit.
+
+Five of the ported experiment copies needed the rewrite, and they are generated, not written.
+Hand-editing them put them out of step with their own derivation at once, and
+`VGAlexandrieCorpusTest >> testEveryDerivedCopyIsWhatTheSubstitutionWritesNow` said so.
+So the derivation performs the rewrite: `VGAlexandrieCorpus class >> fontLifetimeSubstitutions`
+answers two source substitutions, `VGAlexandrieCase >> portedSource` applies them after the class
+name map, and `compilePortedCopy` writes the result back.
+`AeFTLibrary newInitialized` becomes `VGAlexandrieFontLifetime freeTypeLibrary`.
+`AeFontManager globalInstance` becomes a `retain:` of itself, parenthesised so that the replacement
+stands wherever the original expression stood.
+The substitution found a fifth case, `textWithoutHarfbuzzWithFontManager`, that the hand edits had
+missed, and it covers every copy added from now on for nothing.
+
+`VGAlexandrieFontLifetimeExamples class >> fontObjectsKeptForThisSession` asks for the library and
+draws one reference case, and the class-side `Kept` tab lists what is held with the role each
+object plays, asked of the object rather than recorded alongside it.
+
+Gate: `VGCairoTextTest` is 32 tests and `VGAlexandrieCorpusTest` is 14, both green, no drift, the
+whole project green at 579 tests, and critics clean on the keeper class, the corpus, the case, the
+test class and the example holder.
+The generated ported class keeps `ReExcessiveMethodsRule` and three `ReLongMethodsRule` critiques,
+which are Alexandrie's own methods copied as they stand.
