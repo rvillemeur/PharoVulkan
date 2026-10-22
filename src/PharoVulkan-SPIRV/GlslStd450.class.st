@@ -14,6 +14,22 @@ GlslStd450 class >> fClamp [ ^ 43
 ]
 
 { #category : 'constants' }
+GlslStd450 class >> fMax [
+	"The larger of two floats. The clamp beside it is the pair applied at once, and a
+	 rasteriser that trims a span to a clip needs the two separately."
+
+	^ 40
+]
+
+{ #category : 'constants' }
+GlslStd450 class >> fMin [
+	"The smaller of two floats, which the GLSL set carries because SPIR-V has no core
+	 instruction for it."
+
+	^ 37
+]
+
+{ #category : 'constants' }
 GlslStd450 class >> fMix [ ^ 46
 ]
 

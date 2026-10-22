@@ -15,6 +15,20 @@ Class {
 SpvOpcode class >> opAccessChain [         ^ 65
 ]
 
+{ #category : 'bits' }
+SpvOpcode class >> opBitwiseAnd [
+	"Bitwise and, which is how a channel is taken out of a packed pixel word."
+
+	^ 199
+]
+
+{ #category : 'bits' }
+SpvOpcode class >> opBitwiseOr [
+	"Bitwise or, which is how a pixel word is packed from its channels."
+
+	^ 197
+]
+
 { #category : 'control-flow' }
 SpvOpcode class >> opBranch [              ^ 249
 ]
@@ -58,6 +72,21 @@ SpvOpcode class >> opControlBarrier [
 	 semantics so the shared memory written before it is visible after it."
 
 	^ 224
+]
+
+{ #category : 'converting' }
+SpvOpcode class >> opConvertFToS [
+	"A float truncated towards zero into a signed integer."
+
+	^ 110
+]
+
+{ #category : 'converting' }
+SpvOpcode class >> opConvertFToU [
+	"A float truncated towards zero into an unsigned integer. The float must not be negative:
+	 the result is undefined where it is."
+
+	^ 109
 ]
 
 { #category : 'converting' }
@@ -144,7 +173,13 @@ SpvOpcode class >> opFOrdLessThan [        ^ 184
 ]
 
 { #category : 'comparison' }
-SpvOpcode class >> opFOrdLessThanEqual [   ^ 186
+SpvOpcode class >> opFOrdLessThanEqual [
+	"Was 186, which is OpFOrdGreaterThan: the two comparisons take the same operands, so
+	 spirv-val accepted the module and every f32 <= of a compiled kernel ran the other way
+	 round. The numbers of this class are checked by assembling the instruction by name with
+	 spirv-as and reading the opcode word back."
+
+	^ 188
 ]
 
 { #category : 'arithmetic' }
@@ -199,6 +234,27 @@ SpvOpcode class >> opLabel [               ^ 248
 SpvOpcode class >> opLoad [                ^ 61
 ]
 
+{ #category : 'logic' }
+SpvOpcode class >> opLogicalAnd [
+	"And of two booleans. The bitwise instructions do not apply to a bool."
+
+	^ 167
+]
+
+{ #category : 'logic' }
+SpvOpcode class >> opLogicalNot [
+	"Negation of a boolean."
+
+	^ 168
+]
+
+{ #category : 'logic' }
+SpvOpcode class >> opLogicalOr [
+	"Or of two booleans."
+
+	^ 166
+]
+
 { #category : 'control-flow' }
 SpvOpcode class >> opLoopMerge [           ^ 246
 ]
@@ -208,7 +264,12 @@ SpvOpcode class >> opMatrixTimesMatrix [ ^ 146
 ]
 
 { #category : 'generated' }
-SpvOpcode class >> opMatrixTimesVector [ ^ 144
+SpvOpcode class >> opMatrixTimesVector [
+	"Was 144, which is OpVectorTimesMatrix: the two instructions take their operands in
+	 opposite orders, so the one matrix multiply the selector table maps emitted a module the
+	 validator rejected. Checked by assembling the instruction by name with spirv-as."
+
+	^ 145
 ]
 
 { #category : 'annotations' }
@@ -248,8 +309,30 @@ SpvOpcode class >> opSLessThanEqual [      ^ 179
 SpvOpcode class >> opSMod [                ^ 139
 ]
 
+{ #category : 'logic' }
+SpvOpcode class >> opSelect [
+	"One of two values by a boolean, with no branch and so no merge block, which is what an
+	 invocation that may not diverge from its neighbours needs."
+
+	^ 169
+]
+
 { #category : 'control-flow' }
 SpvOpcode class >> opSelectionMerge [      ^ 247
+]
+
+{ #category : 'bits' }
+SpvOpcode class >> opShiftLeftLogical [
+	"Shift towards the high bits, filling with zeroes."
+
+	^ 196
+]
+
+{ #category : 'bits' }
+SpvOpcode class >> opShiftRightLogical [
+	"Shift towards the low bits, filling with zeroes, which is the shift an unsigned channel needs."
+
+	^ 194
 ]
 
 { #category : 'memory' }
@@ -308,12 +391,26 @@ SpvOpcode class >> opTypeVector [          ^ 23
 SpvOpcode class >> opTypeVoid [            ^ 19
 ]
 
+{ #category : 'arithmetic' }
+SpvOpcode class >> opUDiv [
+	"Unsigned division, which is what an index derived from an invocation identifier needs."
+
+	^ 134
+]
+
 { #category : 'constants' }
 SpvOpcode class >> opULessThan [
 	"The unsigned neighbour of OpSLessThan 177. Loop counters built from a built-in
 	 invocation id are unsigned, so an unsigned comparison is the one that cannot wrap."
 
 	^ 176
+]
+
+{ #category : 'arithmetic' }
+SpvOpcode class >> opUMod [
+	"Unsigned remainder, the companion of opUDiv."
+
+	^ 137
 ]
 
 { #category : 'constants' }
@@ -325,5 +422,9 @@ SpvOpcode class >> opVariable [            ^ 59
 ]
 
 { #category : 'generated' }
-SpvOpcode class >> opVectorTimesMatrix [ ^ 142
+SpvOpcode class >> opVectorTimesMatrix [
+	"Was 142, which is OpVectorTimesScalar. Checked by assembling the instruction by name with
+	 spirv-as."
+
+	^ 144
 ]

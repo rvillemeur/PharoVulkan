@@ -107,6 +107,21 @@ SpvBuilder >> emitBranch: targetBlockId [
 ]
 
 { #category : 'instructions' }
+SpvBuilder >> emitCompositeConstruct: anArray type: aType [
+	"A vector or a matrix built from its components in order, which is how a matrix reaches a
+	 multiply without a constant composite in the pool."
+
+	| id |
+	id := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opCompositeConstruct
+			 resultType: aType id
+			 resultId: id
+			 operands: anArray).
+	^ id
+]
+
+{ #category : 'instructions' }
 SpvBuilder >> emitCompositeExtract: compositeId type: aType indices: anArray [
     "Emit OpCompositeExtract. Returns result id."
     | id ops |
@@ -188,6 +203,21 @@ SpvBuilder >> emitCooperativeMatrixStore: aMatrixId at: aPointerId layout: aLayo
 ]
 
 { #category : 'instructions' }
+SpvBuilder >> emitExtInst: aSetId op: anInstructionNumber operands: anArray type: aType [
+	"An instruction of an imported extended set, GLSL.std.450 in this project. The set id is
+	 what importGLSL answers and the number is a constant of GlslStd450."
+
+	| id |
+	id := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opExtInst
+			 resultType: aType id
+			 resultId: id
+			 operands: { aSetId. anInstructionNumber } , anArray).
+	^ id
+]
+
+{ #category : 'instructions' }
 SpvBuilder >> emitLoad: ptrId type: aType [
     "Emit OpLoad. Returns result id."
     | id |
@@ -212,11 +242,45 @@ SpvBuilder >> emitReturnValue: valueId [
 ]
 
 { #category : 'instructions' }
+SpvBuilder >> emitSelect: aConditionId ifTrue: aTrueId ifFalse: aFalseId type: aType [
+	"OpSelect: both values are computed and one is kept, so the block does not divide and no
+	 merge is declared. A kernel whose invocations must stay together uses this where Pharo
+	 would send ifTrue:ifFalse:."
+
+	| id |
+	id := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opSelect
+			 resultType: aType id
+			 resultId: id
+			 operands: {
+					 aConditionId.
+					 aTrueId.
+					 aFalseId }).
+	^ id
+]
+
+{ #category : 'instructions' }
 SpvBuilder >> emitStore: valueId at: ptrId [
     "Emit OpStore. No result id."
     currentBlock addInstruction: (SpvInstruction
         opcode: SpvOpcode opStore
         operands: { ptrId. valueId })
+]
+
+{ #category : 'instructions' }
+SpvBuilder >> emitUnaryOp: anOpcode operand: anId type: aType [
+	"A conversion or a negation: one operand, one result. emitConvertUToF:fromType:toType:
+	 beside this is the one conversion the emitter asked for before this existed."
+
+	| id |
+	id := module newId.
+	currentBlock addInstruction: (SpvInstruction
+			 opcode: anOpcode
+			 resultType: aType id
+			 resultId: id
+			 operands: { anId }).
+	^ id
 ]
 
 { #category : 'module' }

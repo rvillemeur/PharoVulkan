@@ -212,6 +212,23 @@ PVSpirvValidatorTest >> testLocalSizeFromWordsReadsTheDeclaredWorkgroup [
 ]
 
 { #category : 'tests' }
+PVSpirvValidatorTest >> testMat4MulNamesTheMatrixTimesVectorInstruction [
+	"The one matrix multiply the selector table maps. mat4Mul:vec: takes scalars and a matrix
+	 and no WorkItem, so spirv-val refuses the module for the missing entry point as the test
+	 above documents — but it refused it for the multiply as well, because
+	 SpvOpcode class >> opMatrixTimesVector answered OpVectorTimesMatrix and the operands of
+	 that instruction are a vector and then a matrix. The entry point is the only complaint
+	 left."
+
+	| validator |
+	validator := self validatorFor:
+		             (PVKernelCompiler compile: PVKernelExamples >> #mat4Mul:vec:).
+	self deny: validator isValid.
+	self assert: (validator validationOutput includesSubstring: 'No OpEntryPoint').
+	self deny: (validator validationOutput includesSubstring: 'VectorTimesMatrix')
+]
+
+{ #category : 'tests' }
 PVSpirvValidatorTest >> testMatmulF16 [
 	"The half matmul mixes both float widths in one module, so spirv-val is what says the
 	 OpFConvert operands and the two OpTypeFloat declarations line up."

@@ -172,6 +172,24 @@ PVKernelExamples >> clampNegatives: wi data: data out: output [
 ]
 
 { #category : 'kernels' }
+PVKernelExamples >> clampNonPositives: aWorkItem data: aBuffer out: anOutput [
+	"A compute kernel whose one comparison is f32 <=, so a value of zero is clamped where
+	 clampNegatives:data:out: leaves it standing. The selector table maps <= on f32 and on f16
+	 to the same instruction, and nothing dispatched that mapping before."
+
+	<gpu>
+	<param: #workItem named: #aWorkItem>
+	<param: #bufferOf_f32 named: #aBuffer>
+	<param: #bufferOf_f32 named: #anOutput>
+	| v r |
+	v := aBuffer at: aWorkItem x.
+	r := v <= 0.0
+		     ifTrue: [ 0.0 ]
+		     ifFalse: [ v ].
+	anOutput at: aWorkItem x put: r
+]
+
+{ #category : 'kernels' }
 PVKernelExamples >> coopMatrixProductOf: a by: b into: output [
 	"The 8 by 8 cooperative matrix product PVCooperativeMatrixKernel builds by hand,
 	 written through the DSL instead. Each parameter type names the operand role its

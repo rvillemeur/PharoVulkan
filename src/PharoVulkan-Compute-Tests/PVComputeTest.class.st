@@ -570,6 +570,40 @@ PVComputeTest >> testCompiledTiledMatmulMatchesTheReferenceAtOrder64 [
 					, ' is ' , (result at: r * n + c + 1) printString ] ]
 ]
 
+{ #category : 'tests' }
+PVComputeTest >> testComputeAtMostZeroOnDeviceClampsZeroItself [
+	"The f32 <= mapping of the selector table, dispatched: a value at or below zero answers
+	 zero and a value above it stands. Written because SpvOpcode class >> opFOrdLessThanEqual
+	 answered 186, which is OpFOrdGreaterThan, so the comparison ran the other way round and
+	 spirv-val had nothing to object to."
+
+	| n bufIn bufOut kernel input result |
+	n := 64.
+	bufIn := VkBuffer storageBuffer: n on: ctx device.
+	bufOut := VkBuffer storageBuffer: n on: ctx device.
+	[
+	input := (0 to: n - 1) asArray collect: [ :i | i - 32 ].
+	bufIn putF32s: (input collect: [ :each | each asFloat ]).
+	bufOut putF32s: (Array new: n withAll: -1.0).
+	kernel := PVComputeKernel
+		          fromMethod: PVKernelExamples >> #clampNonPositives:data:out:
+		          on: ctx.
+	kernel bindBuffer: bufIn.
+	kernel bindBuffer: bufOut.
+	kernel prepare.
+	kernel dispatch: 1 y: 1 z: 1.
+	result := bufOut getF32s.
+	1 to: n do: [ :i |
+		| expected |
+		expected := (input at: i) <= 0
+			            ifTrue: [ 0.0 ]
+			            ifFalse: [ (input at: i) asFloat ].
+		self assert: (result at: i) closeTo: expected ].
+	kernel destroy ] ensure: [
+		bufIn destroy.
+		bufOut destroy ]
+]
+
 { #category : 'tests - kernel' }
 PVComputeTest >> testComputeKernelDeclaresNoSlotNothingReads [
 	"A slot that is written and never read is not merely unused, it is misleading: workgroupX,
@@ -1028,6 +1062,54 @@ PVComputeTest >> testNestedLoopsOnDevice [
 	kernel destroy ] ensure: [
 		bufIn destroy.
 		bufOut destroy ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testOpcodeProbeEmitsEveryInstructionItChecks [
+	"The probe is only worth dispatching if its bytes really hold each instruction it was
+	 written for: the twelve opcodes this unit added, the comparison whose constant was
+	 wrong, and the multiply whose constant was wrong. The counts are read from the emitted
+	 module, so an emitting method that stopped being called fails here."
+
+	| rows |
+	rows := PVOpcodeProbeKernel new instructionRows.
+	#( #opConvertFToU #opConvertFToS #opUDiv #opUMod #opBitwiseAnd #opBitwiseOr
+	   #opShiftLeftLogical #opShiftRightLogical #opLogicalAnd #opLogicalOr
+	   #opLogicalNot #opSelect #opFOrdLessThanEqual #opVectorTimesMatrix )
+		do: [ :each |
+			self
+				assert: (rows anySatisfy: [ :row | (row at: #name) = each ])
+				description: each , ' is not in the module' ]
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testOpcodeProbeModuleIsValidSpirv [
+	"The probe is hand-built, so the validator is what checks that each instruction takes the
+	 operands its opcode expects: a constant holding another instruction's number is a type
+	 error here even where the device would answer a number."
+
+	| validator |
+	PVSpirvValidator isAvailable ifFalse: [ ^ self skip ].
+	validator := PVSpirvValidator on: PVOpcodeProbeKernel new spirv.
+	self assert: validator isValid description: validator validationOutput
+]
+
+{ #category : 'tests' }
+PVComputeTest >> testOpcodeProbeOnDeviceMatchesTheFormula [
+	"Every opcode constant the probe sends, dispatched on the device and compared with the
+	 formula the kernel states in Pharo. The constants of SpvOpcode are numbers nothing but
+	 the device and the validator can check: three of them named another instruction than
+	 their selector said, which is why the probe exists."
+
+	| kernel inputs results |
+	kernel := PVOpcodeProbeKernel new.
+	inputs := PVOpcodeProbeKernel sampleInputs.
+	results := kernel runOn: ctx.
+	self assert: results size equals: inputs size.
+	1 to: inputs size do: [ :each |
+		self
+			assert: (results at: each)
+			closeTo: (PVOpcodeProbeKernel valueOf: (inputs at: each) at: each - 1) ]
 ]
 
 { #category : 'tests - benchmark' }

@@ -21,6 +21,23 @@ PVComputeExamples class >> halfOfOneThird [
 ]
 
 { #category : 'examples' }
+PVComputeExamples class >> opcodeProbeOnThisMachine [
+	"One click: every opcode the tiled fill rasteriser needs, dispatched on this machine. The
+	 Instructions tab names what the module really holds, and the comparison tab puts each
+	 invocation of the device next to the formula the kernel states in Pharo. It asks the
+	 device for a context exactly as the other compute examples do, so a machine with no
+	 driver refuses here as it refuses there."
+
+	<sampleInstance>
+	| kernel context |
+	kernel := PVOpcodeProbeKernel new.
+	context := VkContext computeContext.
+	^ [
+	  kernel runOn: context.
+	  kernel ] ensure: [ context destroy ]
+]
+
+{ #category : 'examples' }
 PVComputeExamples class >> subgroupDotOf1024Elements [
 	"One click: a dot product over 1024 elements reduced in hardware. The Reduction tab holds
 	 the two subgroup widths and the two totals. On a device that reports no subgroup
