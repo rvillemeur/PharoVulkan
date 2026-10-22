@@ -169,6 +169,24 @@ SpvOpcode class >> opFOrdEqual [           ^ 180
 ]
 
 { #category : 'comparison' }
+SpvOpcode class >> opFOrdGreaterThan [
+	"This is the number opFOrdLessThanEqual held, which is why a module whose comparisons ran
+	 the other way round was accepted by the validator: the two take the same operands.
+	 Checked by assembling the instruction by name with spirv-as."
+
+	^ 186
+]
+
+{ #category : 'comparison' }
+SpvOpcode class >> opFOrdGreaterThanEqual [
+	"The ordered comparison an edge is tested against a sub-row with: an edge is taken from
+	 its upper end inclusive, so the bound belongs to the test. Checked by assembling the
+	 instruction by name with spirv-as."
+
+	^ 190
+]
+
+{ #category : 'comparison' }
 SpvOpcode class >> opFOrdLessThan [        ^ 184
 ]
 
@@ -220,6 +238,15 @@ SpvOpcode class >> opIEqual [              ^ 170
 
 { #category : 'arithmetic' }
 SpvOpcode class >> opIMul [                ^ 132
+]
+
+{ #category : 'comparison' }
+SpvOpcode class >> opINotEqual [
+	"Integer inequality, the test a winding number of the winding rule is read by: a winding
+	 of zero is outside and anything else is inside. Checked by assembling the instruction by
+	 name with spirv-as."
+
+	^ 171
 ]
 
 { #category : 'arithmetic' }
@@ -396,6 +423,14 @@ SpvOpcode class >> opUDiv [
 	"Unsigned division, which is what an index derived from an invocation identifier needs."
 
 	^ 134
+]
+
+{ #category : 'comparison' }
+SpvOpcode class >> opUGreaterThanEqual [
+	"Unsigned comparison the other way round from opULessThan, which a loop that counts down
+	 to a bound needs. Checked by assembling the instruction by name with spirv-as."
+
+	^ 174
 ]
 
 { #category : 'constants' }

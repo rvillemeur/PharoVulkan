@@ -1067,19 +1067,20 @@ PVComputeTest >> testNestedLoopsOnDevice [
 { #category : 'tests' }
 PVComputeTest >> testOpcodeProbeEmitsEveryInstructionItChecks [
 	"The probe is only worth dispatching if its bytes really hold each instruction it was
-	 written for: the twelve opcodes this unit added, the comparison whose constant was
-	 wrong, and the multiply whose constant was wrong. The counts are read from the emitted
-	 module, so an emitting method that stopped being called fails here."
+	 written for: the opcodes this unit added, the comparison whose constant was wrong, and
+	 the multiply whose constant was wrong. The counts are read from the emitted module, so an
+	 emitting method that stopped being called fails here."
 
 	| rows |
 	rows := PVOpcodeProbeKernel new instructionRows.
 	#( #opConvertFToU #opConvertFToS #opUDiv #opUMod #opBitwiseAnd #opBitwiseOr
 	   #opShiftLeftLogical #opShiftRightLogical #opLogicalAnd #opLogicalOr
-	   #opLogicalNot #opSelect #opFOrdLessThanEqual #opVectorTimesMatrix )
-		do: [ :each |
-			self
-				assert: (rows anySatisfy: [ :row | (row at: #name) = each ])
-				description: each , ' is not in the module' ]
+	   #opLogicalNot #opSelect #opFOrdLessThanEqual #opVectorTimesMatrix
+	   #opINotEqual #opFOrdGreaterThan #opFOrdGreaterThanEqual
+	   #opUGreaterThanEqual ) do: [ :each |
+		self
+			assert: (rows anySatisfy: [ :row | (row at: #name) = each ])
+			description: each , ' is not in the module' ]
 ]
 
 { #category : 'tests' }

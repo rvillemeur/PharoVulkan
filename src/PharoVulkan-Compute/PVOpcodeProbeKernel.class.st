@@ -88,12 +88,39 @@ PVOpcodeProbeKernel class >> entryPointName [
 	^ 'main'
 ]
 
+{ #category : 'formula' }
+PVOpcodeProbeKernel class >> flagsOf: aValue at: anIndex [
+	"The predicate nibble of valueOf:at:, computed here in Pharo in the order
+	 predicateSelectors emits it, so a device that disagrees disagrees by one bit."
+
+	| lane signed predicates |
+	lane := anIndex \\ self groupWidth.
+	signed := aValue truncated.
+	predicates := {
+		              lane >= self laneSplit.
+		              aValue > 0.0.
+		              aValue >= self halfThreshold.
+		              signed ~= 0 }.
+	^ (predicates with: self predicateFlagWeights collect: [ :holds :weight |
+		   holds
+			   ifTrue: [ weight ]
+			   ifFalse: [ 0 ] ]) sum
+]
+
 { #category : 'constants' }
 PVOpcodeProbeKernel class >> groupWidth [
 	"The divisor of the unsigned division and of the unsigned remainder: the index of an
 	 invocation divided by this is its group and the remainder is its lane."
 
 	^ 8
+]
+
+{ #category : 'constants' }
+PVOpcodeProbeKernel class >> halfThreshold [
+	"One input is exactly this value, which is what tells a greater-than from a
+	 greater-than-or-equal: the two answer different flags on that one element and nowhere else."
+
+	^ 0.5
 ]
 
 { #category : 'constants' }
@@ -155,6 +182,21 @@ PVOpcodeProbeKernel class >> outputBinding [
 ]
 
 { #category : 'constants' }
+PVOpcodeProbeKernel class >> predicateFlagWeights [
+	"One bit a predicate, in the order emitPredicateFlags sends them, so a constant that
+	 names another comparison than its selector claims changes the number by that bit alone."
+
+	^ #( 1 2 4 8 )
+]
+
+{ #category : 'constants' }
+PVOpcodeProbeKernel class >> predicateSelectors [
+	"The predicates emitPredicateFlags folds, in the order predicateFlagWeights weights them."
+
+	^ #( #emitIsHigh #emitIsPositive #emitAtLeastHalf #emitSignedDiffers )
+]
+
+{ #category : 'constants' }
 PVOpcodeProbeKernel class >> sampleInputs [
 	"The inputs the probe is dispatched on, which the tests and the example share. Half of
 	 them are negative, so the comparison the kernel sends is straddled, and every one of
@@ -189,18 +231,15 @@ PVOpcodeProbeKernel class >> unwrittenMarker [
 	^ -1.0
 ]
 
-{ #category : 'oracle' }
+{ #category : 'formula' }
 PVOpcodeProbeKernel class >> valueOf: aValue at: anIndex [
-	"The formula the module emits, in Pharo, for the input value of the invocation whose
-	 global index is anIndex, counted from zero. Every step names the instruction the module
-	 emits for it, so a constant that holds another opcode's number answers another number
-	 here than on the device."
+	"What the kernel computes for one element, written as the plain Pharo the module is a
+	 translation of: the test compares the two and a wrong opcode constant shows up here."
 
 	| byte signed packed high group lane isLow nonPositive chosen bonus |
 	byte := ((aValue max: 0.0) min: self clampCeiling) truncated.
 	signed := aValue truncated.
-	packed := (byte bitShift: self channelShift)
-	          bitOr: (anIndex bitAnd: self channelMask).
+	packed := (byte bitShift: self channelShift) bitOr: (anIndex bitAnd: self channelMask).
 	high := packed bitShift: self channelShift negated.
 	group := anIndex // self groupWidth.
 	lane := anIndex \\ self groupWidth.
@@ -213,6 +252,7 @@ PVOpcodeProbeKernel class >> valueOf: aValue at: anIndex [
 	^ (chosen
 		   ifTrue: [ high ]
 		   ifFalse: [ group ]) + signed + bonus + (self columnOf: aValue)
+	  + (self flagsOf: aValue at: anIndex)
 ]
 
 { #category : 'constants' }
@@ -285,6 +325,11 @@ PVOpcodeProbeKernel >> comparisonRows [
 { #category : 'emitting' }
 PVOpcodeProbeKernel >> constantFloat: aNumber [
 	^ builder constants constantFloat32: aNumber
+]
+
+{ #category : 'emitting' }
+PVOpcodeProbeKernel >> constantInt: anInteger [
+	^ builder constants constantInt32: anInteger
 ]
 
 { #category : 'emitting' }
@@ -369,6 +414,18 @@ PVOpcodeProbeKernel >> declareTypes [
 ]
 
 { #category : 'emitting' }
+PVOpcodeProbeKernel >> emitAtLeastHalf [
+	"Compared against halfThreshold and not against zero: one input is that value exactly, so
+	 this flag differs from emitIsPositive on that element if either constant is the other one."
+
+	^ self
+		  binary: SpvOpcode opFOrdGreaterThanEqual
+		  left: (self idAt: #value)
+		  right: (self constantFloat: self class halfThreshold)
+		  type: (self typeAt: #bool)
+]
+
+{ #category : 'emitting' }
 PVOpcodeProbeKernel >> emitBonus [
 	"The negation of the disjunction, which is the only place the three logical instructions
 	 can be told apart: a conjunction here would answer the same number as the negation of
@@ -446,13 +503,15 @@ PVOpcodeProbeKernel >> emitColumn [
 
 { #category : 'emitting' }
 PVOpcodeProbeKernel >> emitFormula [
-	"The four values every later step reads are emitted once and kept by name, so no
-	 emitting method takes them as arguments. The order matters: a pointer and a load have to
-	 precede the value they feed."
+	"The values every later step reads are emitted once and kept by name, so no emitting
+	 method takes them as arguments. The order matters: a pointer and a load have to precede
+	 the value they feed, and the lane and the signed value are read by two steps each."
 
 	ids
 		at: #index put: self emitIndex;
 		at: #value put: self emitLoadedValue;
+		at: #lane put: self emitLane;
+		at: #signed put: self emitSignedValue;
 		at: #isLow put: self emitIsLow;
 		at: #nonPositive put: self emitNonPositive.
 	builder emitStore: self emitTotal at: (self pointerInto: #output)
@@ -491,11 +550,32 @@ PVOpcodeProbeKernel >> emitIndex [
 ]
 
 { #category : 'emitting' }
+PVOpcodeProbeKernel >> emitIsHigh [
+	"The other half of the lane split, read with the unsigned ordering rather than with a
+	 negation of emitIsLow, so the constant it names is the one under test."
+
+	^ self
+		  binary: SpvOpcode opUGreaterThanEqual
+		  left: (self idAt: #lane)
+		  right: (self constantUInt: self class laneSplit)
+		  type: (self typeAt: #bool)
+]
+
+{ #category : 'emitting' }
 PVOpcodeProbeKernel >> emitIsLow [
 	^ self
 		  binary: SpvOpcode opULessThan
-		  left: self emitLane
+		  left: (self idAt: #lane)
 		  right: (self constantUInt: self class laneSplit)
+		  type: (self typeAt: #bool)
+]
+
+{ #category : 'emitting' }
+PVOpcodeProbeKernel >> emitIsPositive [
+	^ self
+		  binary: SpvOpcode opFOrdGreaterThan
+		  left: (self idAt: #value)
+		  right: (self constantFloat: 0.0)
 		  type: (self typeAt: #bool)
 ]
 
@@ -580,6 +660,44 @@ PVOpcodeProbeKernel >> emitPacked [
 ]
 
 { #category : 'emitting' }
+PVOpcodeProbeKernel >> emitPredicateFlags [
+	"One bit a predicate, folded with the bitwise or, so a comparison that answers the wrong
+	 way changes the total by its own weight alone and names itself."
+
+	| flags |
+	flags := nil.
+	self class predicateSelectors
+		with: self class predicateFlagWeights
+		do: [ :selector :weight |
+			| bit |
+			bit := builder
+				       emitSelect: (self perform: selector)
+				       ifTrue: (self constantUInt: weight)
+				       ifFalse: (self constantUInt: 0)
+				       type: (self typeAt: #u32).
+			flags := flags
+				         ifNil: [ bit ]
+				         ifNotNil: [ self
+						         binary: SpvOpcode opBitwiseOr
+						         left: flags
+						         right: bit
+						         type: (self typeAt: #u32) ] ].
+	^ flags
+]
+
+{ #category : 'emitting' }
+PVOpcodeProbeKernel >> emitSignedDiffers [
+	"The integer inequality the winding rule reads, on the one signed value the body already
+	 holds: the two inputs that truncate to zero are the elements where this flag is clear."
+
+	^ self
+		  binary: SpvOpcode opINotEqual
+		  left: (self idAt: #signed)
+		  right: (self constantInt: 0)
+		  type: (self typeAt: #bool)
+]
+
+{ #category : 'emitting' }
 PVOpcodeProbeKernel >> emitSignedValue [
 	"The signed conversion keeps the sign the clamp of emitByte throws away, so a negative
 	 input still reaches the sum."
@@ -593,8 +711,8 @@ PVOpcodeProbeKernel >> emitSignedValue [
 { #category : 'emitting' }
 PVOpcodeProbeKernel >> emitTotal [
 	"One float carrying every step, because a buffer of one element per invocation is what
-	 the host reads back: the choice and the signed value converted back to floats, plus the
-	 bonus and the column."
+	 the host reads back: the choice, the signed value and the predicate flags converted back
+	 to floats, plus the bonus and the column."
 
 	^ self
 		  add: (self
@@ -604,9 +722,14 @@ PVOpcodeProbeKernel >> emitTotal [
 						    type: (self typeAt: #f32))
 				   to: (self
 						    unary: SpvOpcode opConvertSToF
-						    operand: self emitSignedValue
+						    operand: (self idAt: #signed)
 						    type: (self typeAt: #f32)))
-		  to: (self add: self emitBonus to: self emitColumn)
+		  to: (self
+				   add: (self add: self emitBonus to: self emitColumn)
+				   to: (self
+						    unary: SpvOpcode opConvertUToF
+						    operand: self emitPredicateFlags
+						    type: (self typeAt: #f32)))
 ]
 
 { #category : 'emitting' }
@@ -638,9 +761,9 @@ PVOpcodeProbeKernel >> idAt: aName [
 
 { #category : 'inspecting' }
 PVOpcodeProbeKernel >> inspectorComparison: aBuilder [
-	"The device against the formula, invocation by invocation. The tab is gated on a run,
-	 because a kernel that was only built has nothing to compare, and it computes the
-	 difference rather than restating what the dispatch should have produced."
+	"The device against the formula, invocation by invocation. The difference is computed
+	 here rather than stated, so a wrong opcode constant shows as a number in the last
+	 column."
 
 	<inspectorPresentationOrder: 20 title: 'Device against the formula'>
 	^ aBuilder newTable
@@ -654,8 +777,15 @@ PVOpcodeProbeKernel >> inspectorComparison: aBuilder [
 					   (each at: #expected) printString ]);
 		  addColumn: (SpStringTableColumn title: 'Difference' evaluated: [ :each |
 					   (each at: #difference) printString ]);
-		  items: (results ifNil: [ #(  ) ] ifNotNil: [ self comparisonRows ]);
+		  items: self comparisonRows;
 		  yourself
+]
+
+{ #category : 'inspecting' }
+PVOpcodeProbeKernel >> inspectorComparisonContext: aContext [
+	"A kernel that was only built has nothing to compare, so the tab appears once it has run."
+
+	aContext active: results notNil
 ]
 
 { #category : 'inspecting' }
