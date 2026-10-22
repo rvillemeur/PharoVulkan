@@ -156,6 +156,18 @@ PVSpirvValidatorTest >> testExecutableInSearchesEveryPathEntry [
 		self assert: found fullName equals: written fullName ]
 ]
 
+{ #category : 'tests' }
+PVSpirvValidatorTest >> testExtendedArithmeticModuleValidates [
+	"The three GLSL.std.450 instructions a translated rasteriser reads and this project's set
+	 did not carry: a floor, a ceiling and an unsigned minimum. spirv-val knows the signature
+	 of every instruction of the set, so a constant that names another instruction than its
+	 selector claims is a type error here and not a wrong answer on a device."
+
+	self
+		validateSpirv: SpvBuilderExamples extendedArithmeticBuilder module serialize
+		description: 'extended arithmetic'
+]
+
 { #category : 'tests - validating' }
 PVSpirvValidatorTest >> testGarbageBytesAreReportedInvalid [
 	"The validator must fail a module, not only run. Four bytes that are not even a

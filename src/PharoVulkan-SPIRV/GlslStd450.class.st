@@ -10,6 +10,14 @@ Class {
 }
 
 { #category : 'constants' }
+GlslStd450 class >> ceil [
+	"The smallest whole float at or above one float, the other half of the pair floor belongs
+	 to: a clip whose bottom edge falls inside a pixel row still allows that row."
+
+	^ 9
+]
+
+{ #category : 'constants' }
 GlslStd450 class >> fClamp [ ^ 43
 ]
 
@@ -34,6 +42,14 @@ GlslStd450 class >> fMix [ ^ 46
 ]
 
 { #category : 'constants' }
+GlslStd450 class >> floor [
+	"The largest whole float at or below one float, which SPIR-V has no core instruction for.
+	 A rasteriser reads it to find the first whole pixel row a fractional clip edge allows."
+
+	^ 8
+]
+
+{ #category : 'constants' }
 GlslStd450 class >> instSetName [ ^ 'GLSL.std.450'
 ]
 
@@ -47,4 +63,12 @@ GlslStd450 class >> normalize [ ^ 69
 
 { #category : 'constants' }
 GlslStd450 class >> sqrt [ ^ 31
+]
+
+{ #category : 'constants' }
+GlslStd450 class >> uMin [
+	"The smaller of two unsigned integers. The core instruction set has none, and every byte
+	 a compositor sums has to be capped at the largest byte."
+
+	^ 38
 ]
