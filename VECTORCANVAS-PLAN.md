@@ -2287,6 +2287,191 @@ Compile the unit 1.5 paint ABI into SPIR-V, reading the same coefficient block.
 
 Gate: the gradient cases match software; the stop lookup table gives identical bytes on both paths.
 
+**What the corpus asks for, measured before any code.**
+Two of the forty-one conformance cases are gradient fills: `source-linear-gradient`, two stops under
+`pad` through a translated pattern matrix, and `source-radial-gradient`, two stops under `pad`
+between concentric circles.
+They take the subset from twenty-two cases to twenty-four, and the remaining seventeen carry a
+surface or a mesh paint, a blit or a clip cut by a shape.
+Two cases are thin cover for an evaluator, so the gate of this unit adds synthetic frames for what
+the corpus never draws: all four extend modes, more than two stops, two stops at one offset, a
+gradient with no stops at all, a line of no length, a radial gradient whose circles leave a pixel
+with no acceptable root, and a pattern matrix that is not the identity.
+
+The paint ABI needs no change and no new instruction is owed to `PharoVulkan`.
+The sixteen-float block of rule 2 already carries the matrix, the extend code and every geometric
+field of both gradients, and `Float32Array` is what a paint keeps it in, so the block uploads as it
+stands; only the stops are not in it.
+`GlslStd450` already answers `sqrt`, `fClamp`, `fMin`, `fMax` and the `floor` unit 2.3 added, and
+`repeat` and `reflect` are built from `floor`, so this unit emits arithmetic it already has.
+
+One measurement decides how the device reads the stops.
+`VGGradientPaint >> stopTable` is a lookup table of two hundred and fifty-six entries, and its own
+comment says phase 1 never reads it because quantising the offset drifts from live Cairo.
+Measured on the two corpus cases, sampling that table instead of evaluating the stops moves 2498 of
+the 16 384 channel samples of the linear case and 1548 of the radial case, every one of them by one.
+So the device evaluates the stops exactly as `rgbaAtOffset:` does, the gate sentence above is read
+as the stops and not as the table, and a test records the drift so that the table cannot be put back
+in the path by accident.
+
+**The five steps, in order.**
+
+1. The paint on the CPU: the subset widens to a gradient paint, and the rasteriser of unit 2.3
+   evaluates the paint at every pixel instead of once an entry. Gate: byte-identical to the software
+   backend on the two corpus cases and on every synthetic frame.
+2. The encoding: two buffers more — the paint blocks, sixteen floats an entry copied as the paint
+   holds them, and the stops, five floats a stop, an offset and four unpremultiplied channels. The
+   header gains the paint tag, the offset of its block, the offset of its stops and their count, and
+   a solid fill keeps the source pixel field unit 2.3 gave it. Gate: the rasteriser driven from the
+   buffers alone draws the same pixels.
+3. The kernel: the evaluation emitted as SPIR-V. The matrix maps the centre of the pixel into paint
+   space, a linear gradient projects it on its line, a radial gradient takes the largest root of the
+   quadratic whose circle has a radius of its own, the extend mode folds the offset, a loop over the
+   stops finds the pair that brackets it, the interpolation is unpremultiplied, and the quantisation
+   is the rounded product of the channel, the alpha and two hundred and fifty-five, which is what
+   `pixelForRgba:` writes. A paint that lays nothing down leaves the pixel alone, which is a flag
+   and not a jump out of the loop.
+4. The backend: `supportsEntry:` widens to a gradient paint whose stops a dispatch can carry, and a
+   paint it cannot evaluate still fails the frame for the software backend to finish.
+5. The gate: the twenty-four cases and the synthetic frames compared with the software backend on
+   the same frame. The device computes in `f32` where the evaluator computes in `Float64`, and a
+   gradient rounds a product of three floats per channel, so the tolerance and the count of pixels
+   allowed past it are measured and stated, as units 1.12, 1.13 and 2.3 state theirs.
+
+**Done.** The device evaluates both gradients, and the twenty-four cases of the widened subset and
+the fifteen gradient frames of the fixture hold against the software backend.
+No class is new in the code packages but one, `VGTiledFillPixelEmitter`, which is the per-pixel half
+of the module pulled out of `VGTiledFillKernel`; the rest of the unit widened what unit 2.3 built.
+
+**Step 1, the paint on the CPU.** `VGTiledFillRasteriser class >> supportsPaint:` is the subset in
+one place, and it now answers true for a solid colour and for any `VGGradientPaint`, while a mesh
+paint and a surface paint still wait for units 2.5 and 2.6: neither is a coefficient block and a
+stop list, which is the only shape this unit can read.
+The rasteriser asks the paint for the pixel at the pixel it is drawing rather than once an entry, so
+the gradient is evaluated by the same `rgbaAtOffset:` the software backend evaluates, and a solid
+paint answers the same pixel as before.
+The gate of the step is the one the plan asked for: byte-identical to the software backend on the
+two corpus cases and on every frame of the fixture.
+
+`VGGradientFrameFixture`, in the `Fixtures` tag of `VectorGraphics-Vulkan-Tests`, holds the fifteen
+frames the corpus never draws — the four extend modes, three stops, two stops at one offset, no
+stops at all, a line of no length, concentric and off-centre circles, a radial gradient that leaves
+pixels with no acceptable root, a pattern matrix that is not the identity, a gradient under the
+source operator, one through a constant alpha and one inside a fractional clip.
+Two of them are degenerate and lay down nothing — `linearWithNoStops` and `linearOfNoLength` — and
+`degenerateGradientFrameNames` names them, because a test that requires pixels of every frame would
+otherwise be satisfied by a blank one.
+
+**Step 2, the encoding.** `VGTiledFillEncoding` writes two buffers more: `paints`, sixteen single
+floats an entry copied as `VGPaint` holds them, and `stops`, five floats a stop — an offset and four
+unpremultiplied channels.
+The header grew to sixteen words, which is the paint tag, the offset of the paint block, the offset
+of the first stop and the number of stops added to what unit 2.3 wrote; a solid fill keeps the
+source pixel field, so the kernel reads a pixel where the tag says pixel and evaluates where it says
+gradient.
+The coefficient block is copied and not rebuilt, which is rule 2 doing its work: the block the
+device reads is the block the paint already keeps, field for field and in the same order.
+The gate is unchanged in form — the rasteriser driven from the buffers alone draws what it draws
+from the display list — and it now covers the gradient frames as well as the corpus.
+
+**Step 3, the kernel.** The module is 23 696 bytes, up from the 16 568 of unit 2.3, and the
+arithmetic the unit added is the evaluation of a paint at a pixel: fields one to six of the block
+map the centre of the pixel into paint space, which is where live Cairo samples and what
+`VGPaint >> pixelIn:atX:y:` does on the other path, a linear gradient projects that point on its
+line, a radial gradient takes the larger root of its quadratic, the extend mode folds the offset —
+`repeat` and `reflect` out of `floor`, `pad` out of a minimum and a maximum, all four emitted and
+field seven selecting one — a loop over the stops finds the bracketing pair, the interpolation is
+unpremultiplied and the quantisation is the rounded product of the channel, the alpha and two
+hundred and fifty-five, which is what `pixelForRgba:` writes.
+A pixel a paint does not accept — outside `none`, or a radial point with no root — is left alone
+through a flag, not through a jump out of the loop, which is the same discipline unit 2.3 set.
+No instruction was owed to `PharoVulkan`: the GLSL instructions the vocabulary sends are `sqrt`,
+`floor`, `ceil`, `fMin`, `fMax` and `uMin`, all of them already there, and nothing of `SpvOpcode`
+was missing.
+
+The stops are searched and the table of rule 2 is not read, and that is a measurement and not a
+preference.
+Sampling `VGGradientPaint >> stopTable` instead of evaluating the stops moves 2498 of the 16 384
+channel samples of `source-linear-gradient` and 1548 of `source-radial-gradient`, every one of them
+by one, because an offset between two of the two hundred and fifty-six entries has to be quantised
+to one of them.
+`VGPaintTest >> testSamplingTheStopTableIsNotTheBytesTheStopsThemselvesGive` records the same drift
+over a sweep of a three-stop ramp — 898 of 4096 channel samples, the farthest by two — so the table
+cannot be put back in the path without a test saying so.
+
+**Step 4, the backend.** No code changed here, which the plan did not predict: `supportsEntry:`
+reads `supportsPaint:`, so widening the paint in step 1 widened the backend in the same breath.
+Two tests hold the two halves of that.
+One records a three-stop gradient frame through `VGVulkanBackend` on a `VGCairoImageSurface`, with
+the preference and the rejections cleared first, and requires that the backend not be rejected and
+that the surface hold pixels a blank surface does not — a gradient is drawn, not refused.
+The other fills with a `VGSurfacePaint` inside a rectangular clip under `over` and requires
+`VGBackendFailure` naming the backend, so a paint the kernel cannot evaluate still fails the frame
+for the software backend to finish.
+
+**Step 5, the gate.** Over the twenty-four cases of the subset and the fifteen gradient frames,
+drawn on the device and by the software backend on the same frame, thirty-three are byte for byte
+identical and six differ.
+One is the single antialiased pixel of `path-filled-rounded-rectangle` that unit 2.3 already
+measured. The other five are runs inside a ramp — 128 pixels of `linearUnderRepeat` and of
+`linearUnderReflect`, 64 of `source-linear-gradient`, 48 of `linearUnderNone` and of
+`linearUnderPad` — and every differing channel of every one of them is one byte out.
+So the stated gate is a channel tolerance of one with no pixel past it, and at most 128 pixels
+differing at all in a case, both class-side constants of the test with the measurement written into
+their comments.
+
+The measurement said something sharper than the gate, and the test asserts that too.
+Against a software frame whose stops are narrowed to single floats exactly as the encoding narrows
+them, the device agrees byte for byte on every one of the fifteen gradient frames.
+The five ramp runs are therefore the quantisation of the narrowed stop and not the arithmetic of the
+device: a channel of a stop that is a `Float64` in the software path and an `f32` on the device can
+put the midpoint of a ramp on the other side of a rounding boundary, and a whole run of pixels
+crosses it at once.
+`testEveryGradientFrameOfTheFixtureDrawsOnTheDeviceWhatTheSoftwareBackendDraws` holds both: the
+tolerance and the count against the ordinary software frame, and equality of all the bytes against
+the single-float one.
+
+**One refactor, proved not to move a byte.** `ReExcessiveMethodsRule` fired on
+`VGTiledFillKernel` at seventy-five instance methods, and the natural line through it is the one the
+module already has: what the kernel emits once a dispatch, and what it emits per pixel.
+`VGTiledFillPixelEmitter` is a `VGSpirvVocabulary` holding its kernel, and it emits into the
+kernel's own module through `VGSpirvVocabulary >> shareStateWith:`, which hands it the same builder,
+the same GLSL set and the same value table — held and not copied, because a value one of them names
+is a value the other reads, the two of them emitting one function.
+`scalarBitWidth` moved up to `VGSpirvVocabulary class`, since every vocabulary emitting into one
+module must answer the same width.
+The kernel is now fifty instance methods and twenty-five class methods, the emitter thirty-one and
+three, and the proof that nothing moved is the module itself: the bytes were captured before the
+split and compared after it, and the 23 696 are identical.
+Three tests hold the split rather than the class list — the emitter shares the builder, the GLSL set
+and the value table of its kernel, every composition selector it names is a method of its own, and
+an operator with no arithmetic is refused by the emitter.
+
+The same rule then fired on `VGTiledFillTest` at sixty-one methods, and the line through the tests
+is the line through the unit: `VGTiledFillKernelTest` holds the ten tests that read the module and
+the two classes and draw nothing at all, with the three helpers they use, so it runs on a machine
+with no driver and no Cairo frame; `VGTiledFillTest` keeps the thirty-two that compare pixels.
+
+The examples and the views are three and three.
+`VGTiledFillExamples class >> encodingOfAGradientAndASolidFill` encodes a three-stop gradient over
+the whole frame and a solid rectangle on top of it, and `pixelEmitterOfTheDefaultKernel` answers an
+emitter on a kernel that has already built its module.
+`VGTiledFillEncoding` gains a `Paints` tab, one row an entry with the decoded paint class, the tag,
+the extend mode read through `VGPaint extendFor:`, the stop count, the matrix and the geometric
+fields, and a `Stops` tab, one row a stop with its offset, its four channels and the pixel
+`targetFormat` makes of it; both gated on the frame having been encoded.
+`VGTiledFillPixelEmitter` gains a `Composition` tab, one row an operator of the subset with its
+encoded code, the selector that holds its arithmetic and whether that selector is a method of the
+emitter, read from `supportedOperators` and from the emitter's own selectors rather than restated.
+
+The whole project is green: 656 tests over 52 classes, run in five batches so that no batch wedges
+the image, with the Vulkan backend offered a frame in the batch that holds its own tests.
+Critics are clean on the three Vulkan packages and on `VGPaintTest`, but for the accepted
+`ReExcessiveArgumentsRule` on `VGVulkanBackend >> blitSurface:at:paint:clip:operator:`, which is the
+frozen boundary selector.
+
+Gate met. Unit 2.5 proceeds.
+
 ### 2.5 — blur on the GPU
 
 A separable two-pass Gaussian.
