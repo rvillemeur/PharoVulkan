@@ -2144,7 +2144,7 @@ sufficient.
 **What the corpus asks for, measured before any code.**
 Twenty-two of the forty-one conformance cases are fills of a solid colour under a rectangular clip,
 which is the subset this unit draws on the device; the other nineteen carry a gradient, a surface or
-a mesh paint, a blit, or a clip cut by a shape, and they belong to units 2.4 to 2.6.
+a mesh paint, a blit, or a clip cut by a shape, and they belong to the units after this one.
 Those twenty-two use three operators — `over`, `source` and `clear` — both fill rules, both
 antialiasing modes, one to three entries a frame, at most 216 edges in an entry, and every one of
 their clips is a whole-pixel rectangle.
@@ -2173,7 +2173,7 @@ the coverage and paint shaders, so this is where such a shader belongs.
    workgroup a tile and one invocation a pixel, no atomic anywhere. `SpvOpcode` is missing the
    conversion, shift and bitwise opcodes a rasteriser needs, and `GlslStd450` is missing the minimum
    and maximum; those belong to `PharoVulkan`, with their own tests there, as the note under unit
-   2.6 already requires for `OpTypeImage`.
+   image paint already requires for `OpTypeImage`.
 4. The backend: `VGVulkanBackend` records a frame, drains it through the encoding and the dispatch,
    and writes the pixels back; an entry outside the subset fails the frame rather than drawing it
    wrongly, and the software backend finishes it.
@@ -2345,8 +2345,8 @@ of the module pulled out of `VGTiledFillKernel`; the rest of the unit widened wh
 
 **Step 1, the paint on the CPU.** `VGTiledFillRasteriser class >> supportsPaint:` is the subset in
 one place, and it now answers true for a solid colour and for any `VGGradientPaint`, while a mesh
-paint and a surface paint still wait for units 2.5 and 2.6: neither is a coefficient block and a
-stop list, which is the only shape this unit can read.
+paint and a surface paint still wait for the blit and the image-paint units: neither is a
+coefficient block and a stop list, which is the only shape this unit can read.
 The rasteriser asks the paint for the pixel at the pixel it is drawing rather than once an entry, so
 the gradient is evaluated by the same `rgbaAtOffset:` the software backend evaluates, and a solid
 paint answers the same pixel as before.
@@ -2584,7 +2584,7 @@ Failover is a whole frame at a time, so one refused entry sends every entry of t
 software: the profiled frame does not reach the device at all today, and no measurement of it
 through the Vulkan backend exists for that reason.
 
-#### What this says about units 2.5 and 2.6
+#### What this says about blur and image paint
 
 Neither of them makes a real frame drawable.
 A blur appears in a shadow and an image paint in an icon, and both sit behind the two capabilities
@@ -2669,13 +2669,69 @@ at different numbers.
 The whole project is green: 681 tests over 54 test classes, sixteen of them new, and critics are
 clean on the two new classes, the new examples holder, the edited holder list and the baseline.
 
-### 2.5 — blur on the GPU
+The units below are in the order section 2.4a measured, which is not the order they were first
+written in.
+Blur and image paint were units 2.5 and 2.6 of the original plan; neither makes a real frame
+drawable, so both now come last.
+What a frame waits on is the per-pixel work of the kernel, then the two capabilities the profiled
+frame refuses on: a clip that is not a rectangle and a blit of a glyph or a surface.
+
+### 2.5 — the two cheap kernel wins
+
+No new capability and no new gate: the subset stays the one unit 2.4 left and the forty-one
+conformance cases still decide correctness.
+Two costs measured in 2.4a come out.
+
+The SPIR-V module is rebuilt for every frame, one to five milliseconds, although it depends on the
+tile extent alone.
+Memoise it per tile extent, and prove the module is byte-identical to the one built from scratch
+rather than proving only that a second build is faster.
+
+The coverage walk samples fifteen sub-rows for every pixel whether the pixel lies on an edge or
+deep inside the shape, and nothing in the encoding tells it which.
+The binning can tell: a tile whose rectangle lies wholly inside one entry's own shape and clip is
+fully covered by that entry, and a kernel that knows it can take coverage as one and skip the walk.
+The predicate has to be sound rather than clever — a rectangular path containing the tile is the
+case worth having, since that is the background of every frame and the card fills of the reference
+one — and a tile wrongly marked full writes the wrong pixels, so the test is the conformance gate
+plus a binning test over every case.
+
+Gate: the forty-one cases still hold at the tolerance unit 2.4 set, the module is byte-identical,
+and `VGFrameDeviceBenchmark` reports both frames faster than 2.4a measured them.
+The numbers to beat: background 15 ms, cards 40 to 47 ms, with a floor of 0.565 ms for a trivial
+fill of the same frame from unit 2.1.
+
+### 2.6 — glyph and surface blit on the GPU
+
+Sixty three of the eighty eight entries of the profiled frame are glyph blits, 6251 pixels between
+them, so this unit is worth nothing in pixels and everything in refusals: whole-frame failover means
+one refused entry sends the frame to software.
+It is the simpler of the two unlocks — a copy under an operator, no coverage arithmetic — and the
+atlas bytes already exist from units 1.8 and 1.13.
+
+Gate: the glyph-run and surface-pattern cases of the corpus hold at the tolerances phase 1 set for
+them, and the census of the profiled frame refuses no entry for being a blit.
+
+### 2.7 — the shaped clip on the GPU
+
+Twenty four entries of the profiled frame and 44 % of the pixels its entries reach.
+The design question is the one phase 1 settled on the CPU: a clip is a geometric intersection of
+spans and coverages are never multiplied, so the kernel needs span intersection and not a coverage
+product, and `VGTileCoverage` is the rule to reproduce.
+
+Gate: the cases of the corpus that clip to a shape hold at the unit 2.4 tolerance, and the census of
+the profiled frame refuses no entry for a non-rectangular clip, which makes that frame drawable on
+the device for the first time.
+
+### 2.8 — blur on the GPU
 
 A separable two-pass Gaussian.
+It must reproduce `VGA8GaussianBlurFilter` exactly, including the walk over the surface stride
+rather than its width, or the four shadow cases break.
 
 Gate: matches software within the stated blur tolerance.
 
-### 2.6 — image paint on the GPU
+### 2.9 — image paint on the GPU
 
 This unit needs `OpTypeImage`, and `SpvImageType` does not exist in `PharoVulkan-SPIRV` today.
 Add it there, in `PharoVulkan`, with its own tests, before this unit starts.
@@ -2683,6 +2739,15 @@ Note also that `SpvOpcode class` declares no atomic opcode, so any coverage sche
 must add those opcodes first; unit 2.3 is written to avoid them.
 
 Gate: a surface-pattern case matches software.
+
+### Not scheduled: tile-level failover
+
+Failover is a whole frame at a time, which is why one refused entry costs the frame.
+The binning of unit 2.2 already partitions the pixels exactly, so a tile whose entries are all in
+the subset could be drawn on the device and the rest on software with no seam.
+It is written down here because it is the one way to accelerate a real frame without a new kernel,
+and left unscheduled because the background of the profiled frame covers every tile of it, so the
+win there is small against the work in `VGCairoImageSurface >> flush`.
 
 ## 8. Backend selection at run time
 
