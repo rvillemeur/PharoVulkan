@@ -2831,6 +2831,151 @@ atlas bytes already exist from units 1.8 and 1.13.
 Gate: the glyph-run and surface-pattern cases of the corpus hold at the tolerances phase 1 set for
 them, and the census of the profiled frame refuses no entry for being a blit.
 
+**Done.** A blit is drawn on the device as a fill, and that is the whole of the unit: no second
+kernel, no second code path in the rasteriser, and one extra `scaleByte:` of arithmetic anywhere.
+
+**Why a blit is a fill.**
+`VGBlitEntry` is Cairo's `cairo_mask_surface`: the alpha of a mask surface, laid down at an offset,
+through a paint, a clip and an operator.
+`VGSoftwareBackend` draws one by walking the coverage of its own clip, narrowed to the rectangle of
+the mask under a bounded operator, and scaling that coverage by the alpha of the mask pixel by
+pixel.
+That walk is already a fill: `VGClip >> coverageRasteriser` answers the coverage of a clip by
+filling `VGSegments rectangle: self extents` through the clip itself.
+So a blit is a fill of the whole-pixel extents of its narrowed clip, inside that clip, carrying one
+alpha byte a pixel — which is `VGMaskedFillEntry`, a subclass of `VGFillEntry` with a rectangle and
+a `ByteArray` beside it.
+`VGDisplayListEntry >> asTiledFill` answers the entry itself and `VGBlitEntry >> asTiledFill`
+answers that masked fill, both as extension methods of `VectorGraphics-Vulkan`, so the rewriting is
+the Vulkan path's own and no entry class of the engine learned about tiles.
+
+The byte identity is arithmetic and not measurement.
+`VGCairoSurfaceFormat >> scaleByte: a by: b` is `(a * b + 127) // 255`, which is symmetric and
+leaves a byte alone when the other is 255.
+A rectangle of `VGSegments` has alpha 1.0.
+So scaling the coverage byte by the alpha of the fill and then by the byte of the mask is what the
+software backend computes for a blit, in the same order, and for a fill the second scaling is the
+identity.
+`VGTiledFillRasteriser >> draw:atX:y:on:` therefore scales twice for every entry and branches on
+nothing.
+
+**No kind field.**
+An entry that carries no mask is written with an empty rectangle, `0 @ 0 corner: 0 @ 0`, and every
+pixel falls outside it; outside its rectangle a masked fill answers full alpha rather than nothing.
+That is sound and not a convenience: the clip of a masked fill is narrowed to the rectangle of its
+mask, so its coverage is zero at every pixel outside that rectangle and a byte answered there is
+scaled into nothing either way.
+The narrowing happens only under a bounded operator, which mirrors `VGSoftwareBackend` exactly; all
+three operators of the subset — `over`, `source` and `clear` — are bounded, so the narrowing always
+happens in practice and the unbounded arm is there for the day the subset widens.
+
+**Flattened once a frame.**
+A blit reaches as many tiles as its rectangle spans, and a mask read once a tile would read the same
+byte once a tile.
+`VGMaskedFillEntry class >> fill:sampling:over:` samples the mask surface once, when the entry is
+built, and `VGTiledFillRasteriser >> fillOf:` memoises the rewriting in an `IdentityDictionary` for
+the life of the frame.
+The same bytes are what the encoding writes and what `decodeEntryAt:` reads back, so the display
+list path and the buffer path cannot drift.
+`replayOn:` is `shouldNotImplement`: replaying a masked fill would draw its clip rectangle and lose
+the mask, so the blit it was made from is what a backend replays.
+
+**How a mask reaches the device.**
+Two bindings, which makes eleven: `maskRects`, four floats an entry, and `maskBytes`, the alpha
+bytes four to a word.
+The rectangle rides as floats and not as header words because a mask may hang off the top left of
+the frame and a side is then negative; `maskedFrameOffTheCorner` is the test that bites.
+A mask rectangle is laid out exactly as a clip rectangle, so the clip field constants name its
+sides and no new ones were added — `VGTiledFillEncoding class` had reached 62 selectors against
+`ReExcessiveMethodsRule methodsCount`, which is 60, and reusing the constants brought it back under.
+The twelfth header field is `maskOffset`, the offset of the first byte of the entry's mask, and the
+bytes of every entry lie end to end in the order the entries are written.
+
+In the kernel, `rememberMaskRectAt:` reads the four sides and `emitMaskByte` answers the byte: a
+float bounds test of the pixel against the rectangle, then the column, the row and the width of the
+rectangle as words, a position, a division by four for the word and a shift for the byte inside it.
+The shift is computed on the device, which the vocabulary could not emit — `word:shiftedRightBy:`
+takes a literal `Integer` — so `word:shiftedRightByWord:` is new, an `OpShiftRightLogical` with an
+id operand.
+The load sits inside an `emitIf` and not in a select, because `OpSelect` evaluates both of its arms
+and the index outside the rectangle is not one the buffer holds: the mask offset of the last entry
+of a frame equals the total byte count, so a select would read one word past the end.
+
+`VGTiledFillDispatch >> bytesOf:target:` no longer lists the buffers it uploads.
+It takes `VGTiledFillKernel bindingNames` and rejects `bindingsNotOfAnEncoding` — the target and the
+frame record — so a binding added to the contract reaches the device without this method being
+edited, which is what the two name lists it used to carry would have hidden.
+A frame with no blit in it ships an empty mask buffer, which the device still owes a real buffer:
+`wordCountOf:` floors every binding at `emptyBufferWordCount`.
+
+**The backend records a blit.**
+`VGVulkanBackend >> blitSurface:at:paint:clip:operator:` builds a `VGBlitEntry` and records it,
+refusing only what `VGTiledFillRasteriser supportsEntry:` refuses, which for a blit is a surface or
+mesh paint, a shaped clip or an unbounded operator.
+What is recorded is the blit and not the fill it is drawn as, because the surface may still replay
+the recorded frame on the software backend and that backend draws a blit from its mask.
+
+**The gate.**
+Thirty one of the forty one conformance cases are now in the subset: twenty four fill cases and
+seven that record a blit — `group-masked-by-surface`, `group-masked-with-a-block`,
+`text-glyph-run`, `shadow-rounded-rectangle`, `shadow-circle`, `shadow-sharp-rectangle` and
+`shadow-blurred-by-nothing`.
+A glyph run is among them, which is the half of the stated gate the corpus can answer; the
+surface-pattern cases are refused for their paint, not for being a blit, and wait on unit 2.9.
+On the device every one of those seven cases and every one of the five frames is byte identical to
+the frame the software backend draws: no pixel differs at all, which is sharper than the gate unit
+2.4 set for a device frame, a channel tolerance of one with at most 128 pixels past it in a case.
+Five frames of `VGTiledBlitTest`'s own cover the degenerate masks: a mask at an offset, a mask
+hanging off the top left corner of the frame, a clip whose sides fall between pixels, a mask that
+does not meet its clip at all, and a fill followed by blits under `source` and `clear`.
+All five and all seven cases hold on the display-list path, on the buffers-only path and on the
+device.
+
+The census of the profiled frame refuses no entry for being a blit.
+Before this unit it refused 63 of the 88 entries as `notAFillOrABlit` and 24 for a shaped clip;
+now all 87 refusals are `clipNotRectangular`, 395 051 pixels of them, against the one supported
+entry's 480 000.
+The frame is still not drawable, and unit 2.7 is the unlock — which 2.4a predicted and this unit
+confirms from the other side: the glyph blits of that frame are all inside a shaped clip.
+
+**The buffers are their own class now.**
+The two mask buffers took `VGTiledFillEncoding` to eleven instance variables against
+`ReExcessiveVariablesRule variablesCount`, which is ten, so the nine buffers moved into
+`VGTiledFillBuffers`: a class that knows how large each of them is for a count of entries, edges,
+stops and mask bytes, and nothing of what a record inside one holds.
+The encoding keeps `grid`, `buffers` and `decoded`, answers each buffer by delegating to that class,
+and sizes them by the two messages `allocateForEntries:edges:stops:masks:` and
+`allocateForTiles:references:`.
+Holding the buffers in a dictionary instead would have cost the same rule in selectors, and
+extracting the mask pair alone leaves ten variables, which still fires.
+
+Three examples and three views.
+`VGTiledFillExamples class >> blitRewrittenAsAFill` answers the masked fill a recorded blit becomes,
+whose `Mask` tab lists the alpha of every pixel of its rectangle row by row, with the byte it
+answers just outside each end of the row beside it, every byte asked of `tiledMaskByteAtX:y:` rather
+than read out of the bytes, so the view shows the full alpha outside the rectangle that the kernel
+depends on.
+`encodingOfABlitAndASolidFill` answers the buffers of a frame with one of each, and
+`VGTiledFillEncoding`'s `Masks` tab reads each entry's rectangle and alphas back out of the mask
+buffers — the blit with its rectangle and 1024 bytes, the solid fill with an empty rectangle and
+none at all.
+`VGTiledFillBuffers` has a test of its own for the sizes, a test that every binding of the kernel
+an encoding writes is a buffer the set answers and a variable it declares, a
+`buffersOfAFrameOfTwoEntries` example and a `Buffers` tab that lists each buffer with the elements
+and the bytes it holds, the names read off `VGTiledFillKernel bindingNames` rather than written
+down.
+The whole project is 715 tests over 55 classes and passes.
+Critics are clean on the three Vulkan packages but for the accepted `ReExcessiveArgumentsRule` on
+`VGBlitEntry class >> surface:at:paint:clip:operator:` and on
+`VGVulkanBackend >> blitSurface:at:paint:clip:operator:`, which carry the five arguments Cairo's own
+mask verb carries.
+
+Both sides of `VGTiledFillEncoding` now stand at 58 selectors, two below the critic threshold, so
+the layout constants and the field readers want a class of their own before unit 2.7 adds a span
+buffer to them.
+
+Gate met. Unit 2.7 proceeds.
+
 ### 2.7 — the shaped clip on the GPU
 
 Twenty four entries of the profiled frame and 44 % of the pixels its entries reach.
