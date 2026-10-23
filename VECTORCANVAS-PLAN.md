@@ -2603,6 +2603,72 @@ clean on the four classes this unit touched.
 
 Gate met.
 
+### 2.4b — the layering written down
+
+**Done.** The layering of this project was described in prose and nowhere else, so nothing failed
+when a package reached past the layer below it.
+`VGArchitectureTest`, in the `Tests` tag of `VectorGraphics-Cairo-Tests`, now holds it the way
+`PVArchitectureTest` holds PharoVulkan's: one table, `allowedDependencies`, with an entry for every
+package of this project, and sixteen tests that fail on either side of it.
+
+The ten entries, as the code really stands:
+
+| Package | May name |
+|---|---|
+| `VectorGraphics` | nothing |
+| `VectorGraphics-Cairo` | `VectorGraphics` |
+| `VectorGraphics-Cairo-Examples` | `VectorGraphics-Cairo`, `VectorGraphics-Cairo-Tests` |
+| `VectorGraphics-Cairo-Tests` | `VectorGraphics-Cairo`, `VectorGraphics-Cairo-Examples` |
+| `VectorGraphics-Bloc` | `VectorGraphics-Cairo` |
+| `VectorGraphics-Bloc-Examples` | `VectorGraphics-Bloc`, `VectorGraphics-Cairo` |
+| `VectorGraphics-Bloc-Tests` | `VectorGraphics-Bloc`, `-Bloc-Examples`, `-Cairo` |
+| `VectorGraphics-Vulkan` | `VectorGraphics-Bloc`, `VectorGraphics-Cairo` |
+| `VectorGraphics-Vulkan-Examples` | `VectorGraphics-Bloc`, `-Cairo`, `-Vulkan` |
+| `VectorGraphics-Vulkan-Tests` | `-Bloc`, `-Cairo`, `-Cairo-Tests`, `-Vulkan`, `-Vulkan-Examples` |
+
+The engine names nothing above it, and the three layers go one way: Cairo on the engine, Bloc on
+Cairo, Vulkan on both.
+Two edges are worth stating rather than glossing.
+`VectorGraphics-Cairo-Examples` names the test package because the subjects of four of its examples
+holders — the two corpora, the form comparison and the font lifetime — are fixtures of the
+conformance gate and live there.
+`VectorGraphics-Vulkan-Tests` names `VectorGraphics-Cairo-Tests` because `VGVulkanExamplesTest`
+subclasses `VGCairoExamplesTest` and the backend tests draw the frame fixture the engine tests draw;
+it is the one edge this project allows between two test packages.
+
+Ten tests are one per package and six hold the table itself: every package of the organiser has an
+entry, every edge names a package that exists, every edge is one the code really makes, every edge
+is declared in `BaselineOfVectorGraphics`, every exemption from that last rule is one half of a
+cycle, and the scan reads a reference planted three blocks deep.
+That last one is not decoration.
+Most of this project draws inside a block — a display list entry is replayed from one, a
+conformance case is a draw block — so a scan of a method's own literals would pass exactly the code
+it is meant to watch; `VGNestedBlockReferenceFixture` names `VGCairoMatrix` three blocks deep and
+nowhere else, and the test asks for that package back.
+
+The baseline was wrong in seven places and is now right.
+`VectorGraphics-Bloc-Examples`, `-Bloc-Tests`, `-Vulkan`, `-Vulkan-Examples` and `-Vulkan-Tests`
+each named the nearest package they needed and let the rest arrive transitively, which loads in this
+image, where everything is present already, and is a wrong declaration for whoever loads one group
+at a time.
+One edge cannot be declared at all: `VectorGraphics-Cairo-Tests` requires
+`VectorGraphics-Cairo-Examples`, so the reverse would be a cycle and Metacello has no load order for
+a cycle.
+`edgesTheBaselineCannotDeclare` names that pair, and
+`testEveryEdgeTheBaselineCannotDeclareIsOneHalfOfACycle` reads the reverse edge out of the baseline
+rather than taking the comment on trust, so the exemption cannot become a place to hide an edge
+somebody forgot.
+
+Two project-wide rules stay where they were written, and the class comment says so: that only the
+Vulkan family names a `PharoVulkan` class, and that every package of this project appears in the
+baseline, are both `VGBackendSelectionTest`'s.
+The example is `VGArchitectureExamples class >> dependenciesOfThisProject` and the view is the
+class-side `Dependencies` tab, which puts the granted, the real and the declared edges of every
+package side by side, computed when the tab opens so that a reader and the tests cannot be looking
+at different numbers.
+The whole project is green: 681 tests over 54 test classes, sixteen of them new, and critics are
+clean on the two new classes, the new examples holder, the edited holder list and the baseline.
+
 ### 2.5 — blur on the GPU
 
 A separable two-pass Gaussian.
