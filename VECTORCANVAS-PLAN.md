@@ -2701,6 +2701,125 @@ and `VGFrameDeviceBenchmark` reports both frames faster than 2.4a measured them.
 The numbers to beat: background 15 ms, cards 40 to 47 ms, with a floor of 0.565 ms for a trivial
 fill of the same frame from unit 2.1.
 
+**Done.** Two costs unit 2.4a measured are out, and nothing the device draws changed: the subset is
+still the one unit 2.4 left and the forty-one conformance cases still decide correctness.
+
+**Win one, the module cache.**
+`VGTiledFillKernel class` keeps `spirvByTileExtent`, and `spirvOnTileExtent:` answers the bytes of
+the kernel of that tile size, built once a session.
+`clearSpirvCache` and `cachedTileExtents` are what a test and the tab read.
+`VGTiledFillDispatch >> draw:into:` asks the cache and builds no module of its own, which is the one
+line of the dispatch this win touched.
+A module depends on the tile extent and on nothing a frame carries, so a frame that built one paid
+that build twice over the session; 2.4a measured it at one to four milliseconds of every frame and
+this machine measures the build of the default tile at 2.16 ms.
+Four tests in `VGTiledFillKernelTest`: the second ask of one extent answers the identical object,
+the cache holds one module for every extent asked for, clearing it and building again answers bytes
+equal to the first build — so the cache is proved to answer the same module and not merely a faster
+one — and the fourth reads `draw:into:` itself and requires it to send `spirvOnTileExtent:` and not
+`onTileExtent:`, because a dispatch that quietly built its own module again would pass every other
+test in the class.
+
+**Win two, the interior tiles.**
+A tile whose rectangle lies wholly inside one entry's shape and clip is fully covered by that entry,
+and the kernel can take its coverage as one instead of sampling fifteen sub-rows for every pixel.
+The mark is made where the knowledge is, in the binning, carried in the reference word, and read in
+the kernel.
+
+`VGDisplayListEntry >> coversEveryPixelOf:` answers false: a blit paints the alpha a mask carries
+pixel by pixel, and only a fill knows a shape to answer from.
+`VGFillEntry` answers it for a rectangular clip whose bounds contain the tile closed, and hands the
+shape question to `VGSegments >> enclosesWholly:`, which requires the exact bounding box to contain
+the tile, no edge to meet it, and the centre to be inside under the entry's own fill rule — asked of
+`VGSpanScanner >> isInside:` and not restated, so an even-odd hole is excluded for the right reason.
+The edge test is exact: a segment misses an axis-aligned rectangle when the rectangle's two axes or
+the edge's own line separates them, which is the whole of the separating-axis theorem for a segment
+against a box.
+Touching counts as meeting and a zero-length edge counts as meeting, both of which cost marks and
+never give a wrong one.
+
+`VGTileBinning` keeps `interiors` beside `bins` and marks as it bins, so a pair is tested once.
+`interiorEntriesOfTileAt:`, `isEntry:interiorToTileAt:` — by identity, because one entry may be
+binned into many tiles and the same shape may be drawn twice — and `interiorReferenceCount` are what
+the encoding, the tests and the tab read.
+`VGTiledFillEncoding` writes the mark in the top bit of the reference word, `16r80000000`, and the
+identifier in the remaining `16r7FFFFFFF`; `referenceFor:interior:`, `identifierOfReference:` and
+`isInteriorReference:` on its class side are the one place either side reads that layout.
+`entriesOfTileAt:` strips the flag, which is what keeps `VGTiledFillRasteriser` — the CPU mirror
+that reads four messages from either a binning or an encoding — reading the same entries it did.
+
+In the kernel, `emitEntry` masks the identifier out of the reference and
+`emitCoverageGivenInterior:` sets coverage to zero, then to one where the flag is set, and walks the
+sub-rows under the row gate where it is not.
+Coverage of one is byte-identical to what the walk would answer: `VGTileCoverage >> atX:row:` sums
+fifteen sub-rows and caps at 1.0, and a pixel wholly inside shape and clip contributes a full span
+on every sub-row in both the antialiased and the aliased mode.
+
+The marks are gated against the software rasteriser and not against the rule that made them.
+`testEveryPairMarkedInteriorHasCoverageOneAtEveryPixelOfItsTile` requires `VGTileCoverage` to answer
+1.0 at every pixel of every marked tile, and requires something to have been marked, so the test
+cannot pass by marking nothing.
+`testTheFrameTheDeviceGateDrawsReallyCarriesMarkedReferences` requires the frame the device gate
+draws to carry marks, so the fast path cannot go untested while the gate reports green.
+Two tests on the shape rule cover the degenerate cases: a square encloses no rectangle its own edge
+touches, and the hole of a nested square is enclosed under winding and not under even-odd.
+
+**What it cost and what it bought.**
+The first measurement of win two had the device times down and the encode times nearly cancelling
+them: 6.609 ms and 27.556 ms on the device against 10.99 ms and 17.78 ms to encode.
+`VGSegments >> exactBoundingBox` recomputed the box for every pair, and `isInsideAt:` allocated a
+span scanner and a sorted collection of crossings for every pair, which is 5.8 microseconds a pair
+on work that is the same for every tile of one entry.
+The box and the scanner are memoised on the segments, `isInsideAt:` is an allocation-free winding
+loop over the coordinates, and the edge test extracts the rectangle's four sides once and compares
+scalars, allocating neither a `Point` nor an `Array`.
+The whole predicate then costs 1 ms for the 1900 pairs of the background frame and 5 ms for the 3628
+of the cards frame, cold.
+
+Measured on the same machine, the same three passes a frame, 800 by 600 and the default tile:
+
+| Frame | Encode, 2.4a | Encode, now | Build, 2.4a | Build, now | Device, 2.4a | Device, now |
+|---|---|---|---|---|---|---|
+| `background` | 2 ms | 6 to 7 ms | 1 to 4 ms a frame | once a session | 15 ms | 7.2 to 7.3 ms |
+| `cards` | 3 to 6 ms | 11 ms | 1 to 2 ms a frame | once a session | 40 to 47 ms | 26 to 30 ms |
+
+Off the device and on it together, a background frame falls from 18 to 21 ms down to 13 to 14 ms,
+and a cards frame from 44 to 55 ms down to 37 to 41 ms, with the device half of it halved.
+The marks are 1728 of the background frame's 1900 pairs and 2208 of the cards frame's 3628, which is
+why the background frame gains the larger share.
+The floor is still unit 2.1's 0.565 ms for a trivial fill of the same frame, so the kernel's
+per-pixel work remains the cost even with the walk gone from three quarters of the pairs.
+
+What is left of the encode growth is the predicate's shape: it is O(coordinates) for every pair,
+where an entry's edges could be walked once over the grid instead, marking the tiles any edge
+reaches in O(edges).
+That would be worth two or three milliseconds of a forty millisecond frame and is not taken here;
+the device wait is still the thing to attack.
+
+`VGFrameDeviceBenchmark` keeps measuring the module build on purpose and says so in its label —
+`build SPIR-V, once a session` — because the number worth reporting is what the cache saves, and a
+reader adding the rows up would otherwise count that build against every frame.
+
+Two examples and two views.
+`VGTileBinningExamples class >> binningWithInteriorTilesMarked` bins one large fill over sixty-four
+tiles, where the edge tiles are the only ones not marked, and `VGTileBinning`'s `Binning` tab gains
+a `pairs interior` row, read from the bins like every other row.
+`VGTiledFillExamples class >> kernelModuleCacheOfTwoTileExtents` primes the cache for two tile
+extents and answers the kernel class, whose class-side `Module cache` tab lists every extent the
+session holds with the byte and word count of its module, gated on the cache not being empty and
+building nothing of its own, so inspecting the class opens no device.
+
+The whole project is green: 698 tests over 54 classes, measured per class and in four batches with
+the slow classes forked, so that no batch wedges the image — 484 of them in the engine's own test
+packages and 214 in the `VectorGraphics` package the font stack lives in.
+Critics are clean on the three Vulkan packages and on every class this unit touched, but for the
+accepted `ReExcessiveArgumentsRule` on `VGVulkanBackend >> blitSurface:at:paint:clip:operator:`,
+which is the frozen boundary selector, and the same rule on
+`VGSegments >> drawOn:paint:clip:operator:into:`, which is the seam the rasteriser was given in
+unit 1.3.
+
+Gate met. Unit 2.6 proceeds.
+
 ### 2.6 — glyph and surface blit on the GPU
 
 Sixty three of the eighty eight entries of the profiled frame are glyph blits, 6251 pixels between
