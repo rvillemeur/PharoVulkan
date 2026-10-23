@@ -2472,6 +2472,137 @@ frozen boundary selector.
 
 Gate met. Unit 2.5 proceeds.
 
+### 2.4a — what a whole frame costs, measured
+
+**Done.** This is a measurement and not a capability: no drawing verb changed, no kernel was
+rebuilt, and the subset is the one unit 2.4 left.
+What it answers is the question the gates of units 2.3 and 2.4 cannot.
+Both of those are decided on conformance cases of sixty four pixels square, and a frame of a real
+window is two hundred times that area and nineteen hundred separate workgroups.
+
+Two classes hold it, so that every number here can be measured again on another machine.
+`VGFrameDeviceBenchmark`, in the `Budget` tag of `VectorGraphics-Vulkan` beside
+`VGVulkanRoundTrip`, measures one named frame: the encoding of its display list, the SPIR-V the
+kernel builds for the tile extent, the whole of `VGTiledFillDispatch >> draw:into:`, and —
+separately, because it costs a second or two — the same frame on the failover backend.
+It holds two frames of its own, both inside the subset: `background`, one solid fill over the whole
+extent, and `cards`, the twelve cards of `VGFrameProfile` read from that class's own constants, each
+clipped to itself, filled with a vertical gradient and bordered in grey.
+They are frames of its own because the frame unit 1.11 profiles cannot be drawn on the device at
+all, which is the second half of this measurement.
+`VGTiledFillSupportCensus`, in the `Tiles` tag, counts what the rasteriser can and cannot draw of
+that profiled frame, entry by entry, naming for each refusal the clause of
+`VGTiledFillRasteriser class >> supportsEntry:` the entry fails first.
+
+A surface takes its backend before the frame is drawn and never after it.
+`VGCairoImageSurface >> backend:` flushes the surface first, so naming a backend once a frame is
+recorded drains that frame on the backend being replaced and leaves the benchmark an empty display
+list — measured as a software frame of 0.002 ms, which is how the defect was found.
+`newSurfaceOnBackend:` exists for that reason and its comment says so.
+
+Three facts of the measurement are asserted and the times are not, because a time is not a fact
+about the code and a machine with no device still has to pass.
+Nine tests: every frame the benchmark measures is drawn entirely by the subset, a name no frame
+answers is an error rather than an empty frame, the counts of an encoded frame are the counts of
+its entries, both frames draw on the device what the software backend draws on them, the census
+agrees with the rasteriser about every entry of the profiled frame, every entry of it is counted
+under one reason only, every reason named covers pixels, and the profiled frame is not drawable
+today.
+That last one fails on the day a shaped clip or a glyph blit arrives, which is the point of writing
+it down.
+
+#### What a frame costs on this machine
+
+Measured on the Intel Iris Plus (ICL GT2) of unit 2.1, three passes a frame and four runs of the
+pair, at the reference extent of 800 by 600 and the default tile of 16 by 16, so 1900 tiles:
+
+| Frame | Entries | Binned | Uploaded | Encode | Build SPIR-V | Dispatch | Software | Factor |
+|---|---|---|---|---|---|---|---|---|
+| `background` | 1 | 1900 | 1 965 816 B | 2 ms | 1 to 4 ms | 15 ms | 1071 ms | 68 |
+| `cards` | 25 | 3628 | 1 983 576 B | 3 to 6 ms | 1 to 2 ms | 40 to 47 ms | 2233 ms | 50 |
+
+Both frames come back byte for byte identical to the software frame, which is the first thing worth
+having: the tiled path is correct at nineteen hundred tiles and not only at sixteen.
+Cairo draws the same cards frame through Alexandrie in 289 to 324 microseconds warm, measured ten
+draws to a pass on one surface.
+So the device is fifty to sixty eight times our software rasteriser and still about a hundred and
+thirty times slower than the library it replaces.
+
+Where the device time goes, measured step by step inside `draw:into:`, cards frame, three passes:
+
+| Step | Milliseconds |
+|---|---|
+| pack the bytes of every binding | 0 to 1 |
+| build the SPIR-V | 2 to 5 |
+| create the shader module and the pipeline | 0 |
+| allocate nine buffers | 0 to 1 |
+| bind them and prepare the descriptor set | 1 to 2 |
+| upload 1 983 576 bytes | 1 to 2 |
+| dispatch 1900 workgroups and wait | 31 to 44 |
+| read the target back | 0 |
+| destroy the kernel and the buffers | 0 |
+
+Nothing but the wait is worth optimising, and the wait is the kernel and not the scheduler.
+The same frame scaled by extent, one solid fill, which is the least per-pixel work the kernel can
+be given:
+
+| Extent | Tiles | Dispatch |
+|---|---|---|
+| 200 by 150 | 130 | 6 to 8 ms |
+| 400 by 300 | 475 | 10 to 11 ms |
+| 800 by 600 | 1900 | 14 to 16 ms |
+| 1600 by 1200 | 7500 | 45 to 48 ms |
+
+That is about 4.6 ms of fixed cost and 5.5 microseconds a tile, which is 21 nanoseconds a pixel
+where every pixel is fully covered by one solid entry.
+Unit 2.1 measured a trivial fill of the same frame at 0.565 ms, 850 megapixels a second, on this
+device; the tiled rasteriser spends twenty six times that on one entry.
+So the per-pixel work of the kernel is the whole of the cost, and the dispatch-per-tile shape is not
+what has to change.
+Two cheap things are inside the kernel rather than around it.
+The coverage walk samples fifteen sub-rows for every pixel whether the pixel lies on an edge or
+deep inside the shape, and nothing in the encoding tells it which, so a tile the binning could mark
+as fully covered by one opaque entry is walked like any other.
+And the SPIR-V is rebuilt for every frame at a cost of one to five milliseconds although it depends
+on the tile extent alone.
+
+#### What the device cannot draw of a real frame
+
+The census of the frame unit 1.11 profiles, eighty eight entries:
+
+| Reason | Entries | Pixels their boxes reach |
+|---|---|---|
+| supported | 1 | 480 000 |
+| not a fill | 63 | 6 251 |
+| clip not rectangular | 24 | 388 800 |
+
+The one supported entry is the background.
+The sixty three refused as not fills are the glyph blits of the card labels.
+The twenty four with a shaped clip are the gradient fill and the border of each card, clipped by
+its own rounded rectangle.
+Failover is a whole frame at a time, so one refused entry sends every entry of the frame to
+software: the profiled frame does not reach the device at all today, and no measurement of it
+through the Vulkan backend exists for that reason.
+
+#### What this says about units 2.5 and 2.6
+
+Neither of them makes a real frame drawable.
+A blur appears in a shadow and an image paint in an icon, and both sit behind the two capabilities
+a window frame needs first: a clip that is not a rectangle, and a blit of a glyph or a surface.
+Twenty four of the eighty eight entries of the profiled frame, and 44 % of the pixels its entries
+reach, wait on a shaped clip alone.
+So the order this measurement recommends is: the two cheap things inside the kernel, which are
+worth about a fifth of the frame between them and cost no new capability; then the shaped clip,
+which the corpus already has cases for and which a card, a button and a scroll panel all need;
+then glyph and surface blits, where the text work of units 1.8 and 1.13 meets the device; and only
+then blur and image paint.
+That is a recommendation of the measurement and not a decision of it.
+
+The whole project is green: 665 tests over 53 test classes, nine of them new, and critics are
+clean on the four classes this unit touched.
+
+Gate met.
+
 ### 2.5 — blur on the GPU
 
 A separable two-pass Gaussian.
