@@ -2987,6 +2987,137 @@ Gate: the cases of the corpus that clip to a shape hold at the unit 2.4 toleranc
 the profiled frame refuses no entry for a non-rectangular clip, which makes that frame drawable on
 the device for the first time.
 
+**Done.** A clip cut out by shapes is drawn on the device by walking its shapes exactly as the fill
+is walked: one kind of record describes both, the fill is the first shape of every entry, and the
+kernel sweeps the antialiased shapes together instead of multiplying coverages.
+
+**Why a shape and not a coverage.**
+Phase 1 settled this on the processor and unit 2.7 only had to carry it over.
+A clip is a geometric intersection of spans, so the parts of a pixel a fill covers inside a clip are
+the parts every shape calls inside, and the coverage of the pixel is the length of those parts.
+Multiplying the coverage of the fill by the coverage of the clip is a different number wherever the
+two shapes meet in the same pixel, which is every pixel of every edge of a clip.
+`VGTileCoverage` is the rule, and it treats the fill as one walk and each shape of the clip as
+another: `setEntry:` builds `VGShapeWalk of: (VGSpanScanner of: anEntry segments)` and then one walk
+a clip shape, and keeps the antialiased ones apart as the shapes a sweep runs over.
+The device now holds the same three facts a walk holds and nothing else.
+
+**One kind of record.**
+The shapes of an entry ride in a new buffer, `shapes`, which makes twelve bindings; a record is four
+words — where the edges of that shape start, how many it has, the code of its fill rule and whether
+it is aliased — and `VGTiledFillEncoding >> shapesOf:` answers the fill first and then the shapes of
+the clip, so the kernel reads a shape without asking where it came from.
+The edges themselves stay in the `edges` buffer, laid out in that same order, which is why an
+entry's edge offset is also its fill's: nothing in the edge buffer had to move.
+The header lost the four words that described the fill alone — the fill rule, the aliased flag, the
+edge offset and the edge count — and gained two that find the shape run, so ten of its sixteen words
+now carry meaning and six are spare.
+The ten were renumbered rather than left with holes, because
+`VGTiledFillLayout class >> recordFields` names every field of every record, and a hole in the
+middle of a header is a hole the `Records` tab shows and nothing explains.
+
+**The kernel walks a shape at a time.**
+The state of the shape being walked is four function variables and not four SSA values, because the
+shape changes at every turn of the loop: `rememberShapeAt:` loads a record into
+`shapeEdgeOffset`, `shapeEdgeCount`, `shapeFillRule` and `shapeAliased`, and `emitShapesDo:` runs a
+block once per shape of the entry.
+Every emitter that used to read the entry's own edge fields now reads those variables, so the code
+that scans the edges of a fill is the code that scans the edges of a clip shape.
+
+A pixel is decided in two steps, which is `spansAtX:onSubRow:do:` word for word.
+An aliased shape answers whole pixels, so each one is asked whether the centre of this pixel is
+inside it, and one answer of no leaves the pixel alone: `emitAliasedShapesAllowPixelOnSubRow:`
+answers that verdict for all of them together.
+The antialiased shapes are then swept across the pixel together: `emitSweepFrom:to:onSubRow:` keeps
+a cursor, the start of the piece it is in and whether it is inside, asks the nearest crossing of any
+swept shape right of the cursor, and re-asks the verdict there.
+Where no shape is antialiased the whole window is added at once, which is the branch
+`VGTileCoverage` takes when `swept` is empty.
+
+The sweep needs no winding step at a crossing, and that is what let four methods go.
+`windingUpTo:onSubRow:` is inclusive — it counts an edge whose crossing is at or left of the point
+asked about — so the verdict asked for at a crossing already holds the edge that made it, and two
+shapes crossing at the same coordinate are both counted.
+A crossing that leaves the verdict unchanged therefore does not cut a piece in two, so the sweep
+coalesces pieces and the floats it adds up are the floats the software rasteriser adds up, in the
+same order.
+`emitRunsFrom:to:onSubRow:`, `emitRunFrom:to:onSubRow:`, `emitEndOfRunFrom:to:onSubRow:`,
+`emitAliasedSpanFrom:to:onSubRow:`, `emitWindingStepAt:onSubRow:` and `searchingFlagFor:` are gone,
+and ten of the kernel's word variables with them.
+The module is 24 396 bytes and `spirv-val` passes.
+
+One trap is worth naming: `builder emitIf:` demands a bool and a verdict held in a word variable is
+not one, so an emitter that answers a flag out of a variable compares it before answering it.
+The validator says so plainly — `Condition operand for OpBranchConditional must be of boolean type`
+— and it says it at the line of the branch and not of the load.
+
+**The subset widened by deleting a clause.**
+`VGTiledFillRasteriser class >> supportsEntry:` no longer asks whether the clip is rectangular, and
+`VGTiledFillSupportCensus` no longer has `clipNotRectangular` among its reasons: three remain, a
+kind, a paint and an operator.
+Three tests had their premise inverted by the unit and were rewritten rather than deleted, because
+each of them still holds a fact.
+`VGTiledFillTest >> testTheSubsetHoldsAFillOfASolidColourOrAGradientAndNothingElse` now asserts that
+the shaped frame is supported, which holds that a shape in the clip refuses nothing on its own.
+`VGTiledBlitTest >> testABlitInAShapedClipIsDrawnAndNotRefused` keeps the frame and reverses the
+assertion.
+`VGVulkanBackendTest >> unsupportedFrame` had to find another way to be refused — it paints with a
+surface pattern now — because the refusal it was built on no longer exists, and two tests of
+`VGFrameDeviceBenchmarkTest` that recorded the profiled frame as undrawable were replaced by two
+that record it as drawn.
+
+**The gate.**
+The corpus answers the first half of the gate with one case.
+`clip-circle` is the only case of the forty one that clips to a shape and is otherwise in the
+subset, and it holds on the device at the unit 2.4 tolerance, a channel distance of one with at
+most 128 pixels differing in a case.
+`figure-outskirts-outside-translucent-background` clips to a shape too, but a second entry of it
+paints with a surface pattern, so it waits on unit 2.9; its census reads
+`{1 -> #clipNotRectangular. 1 -> #paintNotSupported}` before this unit and one refusal after it.
+The fill cases of the corpus are twenty five now rather than twenty four, and all of them hold on
+the display-list path, on the buffers-only path and on the device.
+`VGTiledClipTest` carries six frames of its own, named by `clipFrameNames` so that a frame added to
+it is gated without a test being edited: a fill clipped by one circle, by two overlapping circles,
+by a shape read under the even-odd rule, by an aliased shape, by a shape that misses the fill
+altogether, and a clipped fill followed by clipped entries under `source` and `clear`.
+Every one of the six is byte identical through the tiles and holds on the device.
+
+The second half of the gate is the one the unit was for.
+The census of the profiled 800 by 600 frame refuses nothing: `countByReason` is
+`{#supported -> 88}`, and before this unit 87 of the 88 entries were refused for their clip alone.
+That frame therefore draws on the device for the first time, and it draws the same bytes.
+The dispatch costs 176.687 ms against 2068.291 ms on the software path, which is the 11.7 times the
+benchmark reports, with 21.219 ms of encoding on the processor before it and 3.221 ms of SPIR-V
+built once a session; the frame touches 1900 tiles, bins 3803 entries, uploads 2 083 680 bytes and
+reads back the same pixels the software path wrote, on an
+'Intel(R) Iris(R) Plus Graphics (ICL GT2)'.
+`VGFrameDeviceBenchmark class >> onTheReferenceFrame` is new and is how that number is taken.
+
+**What it does not buy.**
+Cairo draws the same frame in 0.29 to 0.32 ms, so the tiled path is still two orders off the library
+it replaces, and unit 2.7 moved the frame from undrawable to slow rather than from slow to fast.
+The reason is visible in the census and in unit 2.5: a tile wholly inside an entry's shape and
+rectangular clip is marked during binning and its pixels skip the fifteen sub-row walk, and
+`coversEveryPixelOf:` answers false for every shaped clip, so the mark never fires on this frame.
+Marking a tile wholly inside a shaped clip means asking the shape and not the rectangle, which is
+the next cheap win and is a unit of its own rather than a part of this one.
+
+Examples and views.
+`VGTiledFillExamples class >> coverageOfAFillCutOutByTwoCircles` answers the coverage of a fill
+inside two overlapping circles, and `VGTileCoverage`'s new `Shapes` tab lists the three walks it
+built with what each one answers in the middle of the clip — every cell asked of the walk itself, so
+a shape whose verdict changes shows a changed row.
+`decoderOfAFillInTwoClipShapes` answers the buffers of that frame read back, and the decoder's
+`Shapes` tab lists the fill and both clip shapes as the one kind of record they are written as.
+`VGFrameDeviceBenchmarkExamples class >> referenceFrameOnThisMachine` opens the frame this unit
+unlocked, measured on the device of the machine it runs on.
+Critics are clean on the three Vulkan packages but for the accepted `ReExcessiveArgumentsRule` on
+`VGBlitEntry class >> surface:at:paint:clip:operator:` and on
+`VGVulkanBackend >> blitSurface:at:paint:clip:operator:`.
+The whole project is 728 tests over 56 classes and passes.
+
+Gate met. Unit 2.8 proceeds.
+
 ### 2.8 — blur on the GPU
 
 A separable two-pass Gaussian.
