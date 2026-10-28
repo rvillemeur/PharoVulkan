@@ -3236,6 +3236,176 @@ Gate met, and one clause of it met narrowly: the dispatch does fall, by five and
 which is what there was to win on a frame of ring strokes.
 Unit 2.8 proceeds.
 
+### 2.7b — the edges of a tile, not of a shape
+
+The kernel walks every edge of every shape of an entry for every pixel of every tile the entry
+reaches.
+Unit 2.7a measured what that costs: with the interior mark forced on for every pair the dispatch of
+the profiled frame is 10-12 ms and with it forced off 171-182 ms, so the walk is about 95 per cent
+of the dispatch, and the twelve card borders — rings of 224 edges whose inside is a few pixels wide
+— carry 217 000 of the frame's 235 604 edge-tile pairs.
+A ring cannot be marked interior, so the only way to make it cheap is to stop reading its far edges.
+
+An edge that does not reach the rows of a tile cannot cross any sub-row of that tile, so dropping it
+changes no winding and no crossing: the walk counts crossings along a sub-row, and an edge whose own
+rows lie above or below the band has no crossing on any sub-row in it.
+That is exact and needs no winding carried in from the left, which a binning by columns would need.
+So the edges a tile is given are the edges of the shape whose rows meet the rows of that tile, and
+tiles of one grid row share one such run.
+
+Three changes carry it.
+`VGEdgeIndex` learns bands of a given height from a given top — the tile height and the top of the
+frame — so one implementation of "which edges reach these rows" serves the predicate of 2.7a and the
+encoding of this unit, and the Cairo side still names no tile.
+`VGTiledFillEncoding` writes one block of shape records per band an entry spans rather than one per
+entry, each record naming the run of that shape's edges inside that band, and the edge buffer holds
+an edge once per band it reaches.
+A thirteenth binding, `refShapes`, holds one word per reference: the offset of the shape block that
+reference's tile must read.
+The kernel then takes `shapeOffset` from `refShapes` at the reference it is on instead of from the
+entry header, which loses the `shapeOffsetField` of the header, and nothing else in it changes: the
+shape loop, the sweep and the interior mark read the same records they read now.
+
+The cost is the edge buffer, which grows by one copy of an edge per band it reaches, and the encode,
+which must classify every edge of every shape once per band.
+Both are bounded by the frame's height in tiles — 38 bands at 800 by 600 — and an edge of a
+flattened curve is short, so the growth is small in practice and the unit must measure it rather
+than assume it.
+
+Gate: every conformance case and every frame still holds byte for byte through the tiles and on the
+device, the dispatch of the profiled frame falls by much more than the five and a half per cent of
+2.7a, and the write-up states the edge buffer and the encode either side; `run_critics` clean and
+the whole suite green.
+
+**Done.** A tile reads the edges that reach its own rows and no others, and the dispatch of the
+profiled frame falls from 175-187 ms to 44-60 ms on the same pixels.
+
+**Why a row band is exact and a column band is not.**
+The rasteriser accumulates winding along a sub-row from the left, with nothing carried in from the
+tile to its left, and it samples fifteen sub-rows inside a tile.
+An edge whose own rows lie above or below the rows of that tile crosses none of those fifteen
+sub-rows, so it contributes no crossing and no winding to any pixel of the tile: dropping it is not
+an approximation.
+A binning by columns would be one, because the winding of a pixel depends on every edge to its left
+along the same sub-row.
+So the unit of sharing is the row of tiles: every tile of one grid row is given the same run of
+edges, and a shape whose box misses that row is given none at all, which answers winding nought —
+outside under both fill rules, and the right answer for a row the shape does not reach.
+
+**The band blocks.**
+`VGEdgeIndex class >> coordinates:bounds:bandHeight:` is new, so the index bands a shape's edges at
+multiples of a given height rather than at a height it chooses; the encoding asks for the tile
+height, and the band of a row of tiles is then that row and never straddles two.
+`edgeIndexesMeetingRowsFrom:to:` answers the edges of the band a pair of rows falls in, and nothing
+at all for rows the box of the shape does not reach — `bandOf:` clamps a row outside the box to the
+nearest band, whose edges cannot cross such a row, so answering them would cost a caller the reading
+and tell it nothing.
+`VGTileGrid >> rowsIntersecting:` and `columnsIntersecting:` are new and `indexesIntersecting:` is
+written in terms of them, so a caller that holds rows and a caller that holds tiles read the same
+box and cannot disagree about which rows an entry reaches.
+
+`VGTiledFillBands` holds the band layout: the rows of tiles each entry reaches, an index of every
+shape of it at the tile height, the running block offsets, and `blocksDo:` which walks the blocks in
+buffer order.
+It is a class of its own and not nine more selectors on the encoding because
+`ReExcessiveMethodsRule methodsCount` is 60 and the encoding stands at 59.
+`VGTiledFillEncoding >> writeBandBlocksAt:` writes one block of shape records per row of tiles an
+entry spans, each record naming the run of that shape's edges inside that row, those edges copied
+after the whole shapes in the edge buffer.
+A whole shape and a shape narrowed to one row are written by the same method,
+`writeShapeRecordAt:for:edgeOffset:count:`, because the kernel reads one kind of record and the
+count is the only thing that differs.
+
+The thirteenth binding is `refShapes`, one word per reference, holding the absolute block that
+reference's tile must read for that entry.
+It is written beside `entryRefs` in `writeTilesOf:` and read in `emitEntry` at the same index, so
+the kernel needs no grid arithmetic: the index is computed once and indexes both buffers.
+`shapeCount` stays in the header, because a block holds one record per shape whichever row it is
+for.
+`VGTiledFillBuffers` holds its buffers in one dictionary keyed by binding name, so the new binding
+cost it no instance variable.
+
+**The whole-shape run stayed, against the spec.**
+The spec said the kernel's change would lose `shapeOffsetField` from the header.
+It does not read it any more, but the field and the whole-shape blocks are still written, because
+`VGTiledFillDecoder >> shapesOfEntryAt:` reads it to rebuild a complete entry for the buffers-only
+software path and for `replayOn:`, and the band blocks cannot serve: an edge that spans two bands is
+written once in each, and a duplicated edge flips an `evenOdd` winding.
+Both kinds of block live in the same `shapes` buffer, one run after the other.
+
+**The buffers either side,** on the profiled 800 by 600 frame: 1900 tiles, 3803 references,
+88 entries.
+
+| | Before | After |
+|---|---|---|
+| Edges | 5428 | 10 793 |
+| Shape records | 175 | 733 |
+| `refShapes` words | — | 3803 |
+| Uploaded bytes | 2 083 680 | 2 193 660 |
+
+An edge of a flattened curve is short, so the copies do not quite double the edge buffer even though
+the frame is 38 bands high, and the whole upload grows by about 110 KB.
+
+**The encode either side.**
+The full encode of that frame is 35.376 ms, of which the band blocks are 6.03 ms of writing and
+1.42 ms of building the indexes: the same encode without the band write is 29.344 ms, binning alone
+is 9.495 ms and binning with the band indexes built is 10.911 ms.
+So about 7.5 ms is added to a 28 ms encode, and it buys 130 ms of dispatch.
+
+**The walk either side.**
+Pairs of an edge and a tile, counted over every shape of every reference of the profiled frame:
+258 576 before, 53 926 after — a fifth of the walk, and the dispatch follows it.
+The twelve card borders are what moves: each is a ring of 224 edges over 72 tiles in six rows of
+them, and a tile of one of the four middle rows now reads 4 of those edges and a tile of the top or
+the bottom row 114, where every tile read all 224 before.
+
+**The dispatch either side.**
+Measured as three alternating passes over the same buffers, the only difference being whether the
+kernel reads the header's whole-shape block or `refShapes`: old 175.778, 186.717 and 187.323 ms,
+new 60.070, 47.803 and 44.106 ms.
+Every new pass is faster than every old pass, and against the 157 ms unit 2.7a recorded the fall is
+about 65 per cent — against the five and a half per cent that unit won, which is what the gate
+asked.
+
+**The gate.**
+Every case of the subset and every frame is byte identical to the frame the software backend draws,
+on the display-list path, on the buffers-only path and on the device: the twenty-five fill cases,
+the seven blit cases and `clip-circle`, the five degenerate mask frames of `VGTiledBlitTest` and the
+shaped-clip frames of `VGTiledClipTest`, with no pixel differing at all rather than within the
+tolerance unit 2.4 set.
+The profiled 800 by 600 frame still draws whole on the device — 88 of its 88 entries supported — and
+its pixels are those of the software frame.
+
+Five tests are new.
+`VGRasteriserTest` holds two: an index of bands of a given height aligns them to that height over
+four boxes, including a box of one row and rows a thousand outside it, and an index answers no edge
+for rows its shape does not reach.
+`VGTileBinningTest` holds one: the rows a box intersects are the rows of the tiles it intersects,
+over nil, a degenerate box, a fractional box, a box off the frame and a box of negative sides.
+`VGTiledFillTest` holds two that read the buffers back: every edge that strictly crosses the rows of
+a band is in the block of that band and no edge that cannot reach them is, and the block a reference
+names holds that entry's shapes narrowed to that row of tiles, each record read back through the
+decoder and compared segment by segment with the fill rule and the aliasing.
+`testTheBuffersAreSizedByTheFrameAndByNothingElse` now expects the band totals and one `refShapes`
+word per reference.
+
+`VGTiledFillExamples class >> bandsOfACircleInACircularClipOverFourRowsOfTiles` is the example: a
+circle of radius 24 inside a circular clip of radius 29 on a 64 by 64 surface, which is eight blocks
+and 98 edges.
+`VGTiledFillBands`'s `Blocks` tab lists each block with the entry, the row of tiles, the pixel rows
+that row covers, the shape, the edges the band holds and the edges the whole shape holds, so the
+narrowing is visible as a column: the example reads 10 to 15 edges a band against 41 and 45 in the
+shapes.
+
+Critics are clean on `VectorGraphics-Cairo`, `VectorGraphics-Vulkan` and their examples and tests
+but for the critiques earlier units accepted.
+The whole project is 737 tests over 56 concrete test classes and passes: 342 in
+`VectorGraphics-Cairo-Tests`, 214 in the `VectorGraphics` package, 44 in `VectorGraphics-Bloc-Tests`
+and 137 in `VectorGraphics-Vulkan-Tests`, counted one suite per concrete class so that the abstract
+`VGTiledFrameTestCase` is not counted through its three subclasses.
+
+Gate met. Unit 2.8 proceeds.
+
 ### 2.8 — blur on the GPU
 
 A separable two-pass Gaussian.
