@@ -3620,6 +3620,139 @@ must add those opcodes first; unit 2.3 is written to avoid them.
 
 Gate: a surface-pattern case matches software.
 
+**Done.** A surface pattern is sampled on the device, byte for byte what the software backend
+samples, and the pixels of the pattern ride in a storage buffer rather than in an image.
+
+**No `OpTypeImage`, against the spec.**
+The spec asked for `SpvImageType` in `PharoVulkan-SPIRV` before this unit started, and it was not
+built.
+`VGSurfacePaint` samples nearest, always, whatever filter the pattern names, and it extends the
+source itself: `rgbaInPaintSpace:` floors the paint-space point and asks `sample:along:` for each
+axis, which answers nil outside the source under `#none`, clamps under `#pad`, takes the floored
+remainder under `#repeat` and folds on twice the extent under `#reflect`.
+A sampler reproduces none of that for free — `#reflect` has no `VkSamplerAddressMode` that folds the
+way Pharo's `\\` folds on a negative coordinate — so the extend arithmetic has to be written in the
+kernel either way.
+What an image type would add is a `VkImage`, its memory, a layout transition before the dispatch, a
+descriptor of another kind, and hardware filtering to be argued out of the way of byte identity.
+What it would buy is the sampling this unit does not need.
+So the pixels are a fourteenth storage buffer, `sourcePixels`, and `SpvImageType` is left for the
+first unit that wants real filtering or a sampled render target.
+`SpvOpcode class` still declares no atomic opcode, and this unit, like 2.3, needs none: an
+invocation writes its own pixel and reads a pattern nothing writes.
+
+**The source format is the subset's price.**
+A pattern is in the subset only when its surface format equals `VGTiledFillEncoding targetFormat`,
+which is argb32, because a pixel travels to the device as the word the surface holds and the kernel
+answers that word to the target.
+`VGTiledFillRasteriser class >> supportsPaint:` says so, and
+`testASurfaceOfAnotherFormatIsRefusedForItsPaintAndNamedSo` holds it with an rgb24 source.
+A mesh paint is now the only paint the device refuses at all.
+
+**Why the sampled word may be answered whole.**
+The software backend unpremultiplies the sampled pixel into four channels through
+`VGCairoSurfaceFormat >> rgbaForPixel:`, carries them as the colour of the fill, and premultiplies
+them back when it composes.
+For an argb32 source over an argb32 target that round trip reproduces the source word exactly: the
+unpremultiply divides each colour byte by the alpha and the premultiply multiplies it back with the
+same rounding, and `rgbaForPixel:` is the inverse of `pixelForRgba:` on every word whose alpha
+is not
+nought.
+At alpha nought it is not: software answers the channels `#(0 0 0 0)` and composes a pixel of nought
+whatever colour bytes the source word carries there.
+So the kernel answers the sampled word under a select on the alpha byte — `channelShifts last`,
+which is 24 — and that select is the whole of the difference between a word and a colour.
+
+**The extend arithmetic, in floats.**
+`VGTiledFillPixelEmitter >> emitSampleOf:along:` builds all four modes and selects between them on
+`VGPaint extendFieldIndex`, which the header already carried for a gradient.
+`emitRemainderOf:by:` is Pharo's floored `\\` as a float — `index - (extent * floor(index /
+extent))` — and `#reflect` folds that remainder on twice the extent, which is what
+`VGSurfacePaint >> sample:along:` computes.
+The arithmetic stays in f32 and becomes a word only inside the guarded load, which is exact for the
+whole-number floats a floored paint-space coordinate gives.
+The one place f32 could differ from the `Float64` of the software path is the floor itself, under a
+paint matrix awkward enough to put a coordinate within an f32 ulp of a pixel boundary; every case of
+the corpus and every frame of the test is a pattern at a whole-number offset, so none of them is
+near that edge, and a scaled pattern was already out of the subset.
+`painted` is a separate boolean — the extent is positive, and either the mode is not `#none` or the
+index is inside the source — because a pixel outside a `#none` pattern is not painted at all, which
+is not the same as being painted transparent.
+
+**A guarded load, never a select.**
+The load sits inside `builder emitIf: painted then: [ … ]`, writing the `#sampledPixel` word
+variable, exactly as unit 2.6 loads a mask byte.
+`OpSelect` evaluates both arms, and the pixel offset of an entry with no source is the offset of the
+run after it — one past the end of the buffer for the last entry — so a select would read outside
+the
+buffer on every solid fill of every frame.
+
+**One pass writes the runs.**
+The eleventh header field is `pixelOffset`, the first pixel of that entry's source, and the pixels
+of
+every entry lie end to end in the order the entries are written, as the mask bytes do.
+`VGTiledFillSources` is a new class that holds the entries and the running offsets, answers
+`pixelCount`, and writes every run into the buffer in one pass, row by row from the source's top
+left
+packed to the source's own width.
+It is a class of its own rather than three more selectors on the encoding because
+`ReExcessiveMethodsRule methodsCount` is 60 and the encoding stood at 62 with them; extracting it
+and deleting `shapesOf:`, a pure pass-through to `VGTiledFillBands`, brings the instance side to 59.
+The extent of the source rides in the paint block, fields 15 and 16, where `VGPaint class >>
+surfaceWidthFieldIndex` and `surfaceHeightFieldIndex` already named it.
+
+**The gate.**
+Thirty-seven of the forty-one conformance cases are now in the subset: thirty fills, which is the
+five surface-pattern cases added to the twenty-five, and the seven blits.
+`figure-outskirts-outside-translucent-background` joined the shaped-clip pair, so `clipCaseCount` is
+2.
+Every one of the five surface cases and every one of the eight frames of `VGTiledSurfacePaintTest` —
+a pattern at the origin, at an offset, unpainted outside its source, repeating, reflecting, padding,
+inside a shaped clip, and under `source` then `clear` — draws the same bytes on the display-list
+path, on the buffers-only path and on the device, with no pixel differing at all rather than within
+the tolerance unit 2.4 set.
+The four mesh cases are what is left, and they are the only refusals.
+
+**What the widened kernel costs.**
+The module grows from 24 428 to 26 596 bytes, and the three profiled frames pay nothing measurable
+for the arm none of them uses:
+
+| Frame | Encode | Dispatch | Software | Faster by |
+|---|---|---|---|---|
+| background | 15.127 ms | 6.616 ms | 915.022 ms | 138.3 times |
+| cards | 15.729 ms | 11.100 ms | 1809.487 ms | 163.0 times |
+| reference | 34.489 ms | 42.829 ms | 2068.107 ms | 48.3 times |
+
+All three come back with the pixels of the software frame.
+The reference dispatch sits at the fast end of the 44 to 60 ms unit 2.7b measured, and
+`VGTiledFillSupportCensus onTheReferenceFrame` still supports 88 of its 88 entries and refuses
+nothing: that frame draws no surface pattern, so this unit does not move it.
+
+**Example and view.**
+`VGTiledFillExamples class >> sourcesOfASurfacePaintAndASolidFill` answers the
+`VGTiledFillSources` of a frame that fills twice through one 8 by 6 pattern with a solid fill
+between, and its `Runs` tab lists each entry with its source, its offset, its pixel count and its
+first pixel, every number read off the object rather than restated.
+`meshPatternOutsideTheSubset` is the second example: one triangular `VGCairoMeshPattern`, the single
+place the project writes down what the device cannot draw, read by `VGTiledFillTest` and by
+`VGVulkanBackendTest` so that three refusal tests cannot drift from each other.
+Both are in `VectorGraphics-Vulkan-Examples`, since `VGArchitectureTest class >>
+allowedDependencies` does not let `VectorGraphics-Vulkan-Tests` name
+`VectorGraphics-Cairo-Examples`.
+
+Eleven tests are new, all in `VGTiledSurfacePaintTest`, and two existing premises inverted onto the
+mesh paint.
+Critics are clean on the three Vulkan packages but for the two accepted `ReExcessiveArgumentsRule`
+critiques on the five-argument blit verbs; two inconsistent classifications were fixed on the way,
+`bindingNames` and `wordVariableNames` classified away from the protocol `VGSpirvKernel class` files
+them under.
+The whole project is 773 tests over 59 concrete test classes and passes: 343 in
+`VectorGraphics-Cairo-Tests`, 214 in the `VectorGraphics` package, 44 in `VectorGraphics-Bloc-Tests`
+and 172 in `VectorGraphics-Vulkan-Tests`, counted one suite per concrete class so that the abstract
+`VGTiledFrameTestCase` is not counted through its subclasses.
+
+Gate met.
+
 ### Not scheduled: tile-level failover
 
 Failover is a whole frame at a time, which is why one refused entry costs the frame.
