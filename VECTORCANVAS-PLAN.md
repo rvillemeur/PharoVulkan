@@ -3761,6 +3761,7 @@ the subset could be drawn on the device and the rest on software with no seam.
 It is written down here because it is the one way to accelerate a real frame without a new kernel,
 and left unscheduled because the background of the profiled frame covers every tile of it, so the
 win there is small against the work in `VGCairoImageSurface >> flush`.
+Phase 3, in §12, takes up the real frame instead.
 
 ## 8. Backend selection at run time
 
@@ -3908,3 +3909,207 @@ whole project green at 579 tests, and critics clean on the keeper class, the cor
 test class and the example holder.
 The generated ported class keeps `ReExcessiveMethodsRule` and three `ReLongMethodsRule` critiques,
 which are Alexandrie's own methods copied as they stand.
+
+## 12. Phase 3 — closing the Cairo gap on a real frame
+
+Phase 2 ended with the profiled 800 by 600 frame drawn whole on the device, byte for byte what the
+software backend draws, in 42.8 ms of dispatch against 2068 ms of our own software rasteriser.
+Cairo draws the same frame in 0.29 to 0.32 ms.
+So the device path is about forty-eight times faster than the rasteriser it replaces and about two
+hundred times slower than the library the project exists to replace, and a Bloc window driven by it
+would run at thirteen frames a second where Alexandrie runs at three thousand.
+This phase is about that number and nothing else.
+
+### What the frame actually costs, measured
+
+`VGTiledFillDispatch >> draw:into:` was timed stage by stage on the reference frame, three passes
+after a warm-up, with the context already open.
+The third pass, in milliseconds:
+
+| Stage | Cost |
+|---|---|
+| Pack the encoding into byte arrays | 1.809 |
+| Create the kernel object | 0.078 |
+| Create fourteen `VkBuffer`s | 0.314 |
+| Bind them | 0.003 |
+| `prepare` — shader module, descriptors, pipeline, command buffer | 1.753 |
+| Upload 2 193 660 bytes | 1.808 |
+| Dispatch and wait | 37.871 |
+| Read the target back | 0.394 |
+| Destroy the kernel and the buffers | 0.196 |
+
+Building the encoding from the display list costs another 34.489 ms before any of this, of which
+unit 2.7b measured 9.5 ms of binning, 1.4 ms of building the band indexes and 6.0 ms of writing the
+band blocks.
+
+Three facts follow.
+The host pays about 6.4 ms a frame on work that does not depend on the frame's content: a pipeline
+built, fourteen buffers created and destroyed, and every byte copied twice.
+The device pays 37.9 ms, which is 79 ns a pixel on a part that retires something like five hundred
+floating-point operations in that time, so the kernel is not bandwidth-bound and not occupancy-bound
+but doing far too much arithmetic.
+And the encoding, at 34.5 ms, is on its own a hundred times Cairo's whole frame, so even a free
+dispatch would leave the project two orders of magnitude behind.
+
+### Why the kernel does too much arithmetic
+
+An invocation owns one pixel, and `emitCoverageOfSubRows` walks the fifteen sub-rows of that pixel's
+own row, sweeping the edges of every shape of every entry that reaches the tile on each of them.
+The sixteen pixels of one tile row therefore sweep the same fifteen sub-rows sixteen times over, and
+each sweep asks `emitIsInsideAllAt:onSubRow:` and `emitNearestCrossingAfter:to:onSubRow:` for a
+verdict that scans the shape's edges again from the left.
+On the reference frame there are 53 926 edge-and-tile pairs, so an edge of a shape that reaches a
+tile is read at least 16 rows times 16 columns times 15 sub-rows, which is 3840 times, where the 240
+sub-rows of the tile would need it 240 times.
+A scanline rasteriser on the host reads it once per sub-row it crosses, which is why Cairo wins by
+the factor it does: the device is running a worse algorithm faster.
+The background frame, one solid fill with every tile interior-marked and no edge swept at all, still
+costs 6.6 ms of dispatch, so there is also a fixed per-invocation cost — the tile record, the
+reference, the eleven header fields, the clip, the paint block and the shape records are all read
+once per invocation rather than once per workgroup, 256 times over.
+
+### The order of the work
+
+The cheap host wins come first, because they are small and they unblock the blur as well.
+Then the two kernel changes, the fixed cost before the sweep, because the fixed cost is the whole of
+the background frame and the sweep is the whole of the cards.
+Then the memory path, then the encoding, then a decision.
+Every unit keeps the standing gate of phase 2: the device frame is byte identical to the software
+frame on every case of the subset and every frame of the Vulkan test classes, and the five generic
+gates of §9 apply to each one.
+
+### 3.0 — the stage harness and the visit census
+
+`VGFrameDeviceBenchmark` measures a frame as one number and the breakdown above was taken by hand,
+which is not a thing a gate can read.
+Build `VGFrameStageBenchmark`, which times each stage of `draw:into:` separately over the three
+named frames and reports them as rows, and extend it with Cairo on the same frame so that the
+comparison is measured in the session and never quoted from an earlier unit.
+Build `VGKernelVisitCensus` beside it, which counts on the host what the kernel does on the device:
+edge-and-tile pairs, sub-row sweeps, edge reads per sweep, and the per-invocation record reads, by
+mirroring the kernel's loop structure rather than by guessing at it.
+The census is what makes the later gates readable, because a dispatch time mixes the algorithm with
+the driver and the counts do not.
+
+Gate: the stage table and the visit counts for all three frames, reproducible in one call, and the
+Cairo figure measured here.
+
+### 3.1 — one context, one pipeline, one set of buffers for the session
+
+A frame creates a `VkContext` or is handed one, then builds a `PVComputeKernel`, fourteen buffers, a
+descriptor set and a pipeline, and destroys all of it when the frame ends.
+`prepare` alone is 1.753 ms, buffer creation and destruction another 0.5 ms, and
+`VkContext computeContext` is 37 to 52 ms, which unit 2.8 measured and which a blur pays once a
+blur because a filter is handed a surface and not a device.
+Hold one context, one kernel and one pipeline for the session, keyed by tile extent as the module
+cache already is, and hold the buffers too, growing one only when a frame needs it larger than the
+last and never shrinking it.
+The lifetime has to be explicit and testable: a session-lived object that answers the context, that
+can be released, and that re-probes when it was released, since unit 2.0's rule stands — selection
+decides a backend class and never shares an instance.
+The blur then takes its context from the same place, which is what makes a small shadow faster on
+the device than on the host for the first time.
+
+Gate: the host stages of the stage table under 1 ms in total on the reference frame, the blur of a
+small shadow faster end to end than `VGA8GaussianBlurFilter`, and the same pixels everywhere.
+
+### 3.2 — read the tile's own records once a workgroup
+
+Every invocation of a workgroup reads the same tile record, the same reference words, the same
+headers, clips, paint blocks and shape records out of global memory.
+Read them once into workgroup storage instead: `SpvStorageClass workgroup` and
+`SpvBuilder >> workgroupBarrier` already exist, and `SpvArrayType` and
+`addGlobalVariable:storageClass:` are what declare the block, so this needs no new SPIR-V
+primitive.
+The shape is one cooperative load — the 256 invocations divide the words of the entry's records
+between them, a barrier, then the sweep reads workgroup memory — and the entry loop keeps its
+order, because the operators are not commutative.
+The background frame is the measure of this unit, since it sweeps no edge at all and its 6.6 ms is
+almost all this fixed cost.
+
+Gate: the background frame's dispatch under 3 ms, the cards frame no slower, the visit census
+showing one record read a workgroup where there were 256, and every frame byte identical.
+
+### 3.3 — the crossings of a sub-row, computed once
+
+This is the unit the phase exists for.
+A tile is 16 by 16 pixels and 15 sub-rows a row, which is 240 sub-rows, and a workgroup has 256
+invocations: so one invocation can own one sub-row of the tile.
+Each of them sweeps its own sub-row once — the crossings of every edge of every shape, in order,
+with the winding accumulated from the left as `windingUpTo:onSubRow:` does — and writes the spans it
+finds into workgroup memory.
+A barrier, and then each invocation sums, for its own pixel, the fifteen sub-rows of its row,
+clipped to its own column, which is arithmetic over a short list and reads no edge at all.
+The sweep work falls by the sixteen columns that repeat it today, and the winding rescans inside
+`emitIsInsideAllAt:onSubRow:` fall with it, since a sub-row is swept left to right exactly once.
+The sums must stay the ones `VGTileCoverage` adds, in the order it adds them, or byte identity goes:
+a span list per sub-row is the same decomposition the software rasteriser walks, so the terms are
+available in the right order, and that is the argument the unit has to hold to.
+The size of the workgroup block is the risk — a sub-row may hold as many spans as the shapes have
+edges — so the block is sized for a stated maximum and a sub-row that overflows it falls back to the
+sweep the kernel does today, which keeps the answer right and makes the overflow a measurement
+rather than a defect.
+
+Gate: the reference frame's dispatch under 10 ms, byte identical, with the census showing one sweep
+a sub-row; and if it lands above 20 ms the unit stops the phase rather than tuning, because then the
+one-invocation-per-pixel shape is wrong and §12.7 is the answer.
+
+### 3.4 — one copy, not three
+
+A word of the encoding is written into a `WordArray`, copied into a `ByteArray` by `encode:target:`,
+and copied again into mapped device memory by `uploadBytes:`, and the target makes the same journey
+back.
+Unit 2.1 measured `LibC memCopy:to:size:` against mapped memory at 7563 MB/s and the readback at
+14 984 MB/s, which is why these copies are 2.2 ms and not 20, but they are still the second largest
+host cost after the encoding itself.
+Map the buffers once, for the session, and have the encoding write its words straight into the
+mapped block; the target of a frame the host will not read — a Bloc frame goes to the window, not to
+a `Form` — needs no readback at all, so the readback becomes a request and not a step.
+The device is integrated here, which is what makes a mapped block cheap, and the measurement must be
+recorded with the device named, as unit 2.1's verdict was: on a discrete part this unit is a loss
+and the plan has to say so.
+
+Gate: the pack and upload stages under 1 ms on the reference frame, a frame that is never read back
+costing no readback, and the same pixels when it is.
+
+### 3.5 — the encoding, which is now the larger half
+
+With 3.1 to 3.4 done the dispatch is single-digit milliseconds and the 34.5 ms encoding is the
+frame.
+Three things are known about it: binning is 9.5 ms, the band blocks are 7.4 ms, and the rest is the
+per-entry writes.
+The levers, in the order the census should be asked to rank them: bin and write in one pass, since
+binning already visits every entry and tile pair that the writing visits again; memoise an entry's
+records on the entry, because a Bloc window redraws a scene whose entries are mostly the ones it
+drew last frame and `VGTiledFillSources`, the shapes and the bands are all functions of the entry
+alone; and narrow the band work to the entries that actually span several rows of tiles, which unit
+2.7b showed is twelve ring strokes carrying 92 per cent of the edge work.
+A cache keyed on the entry needs a rule for when it is stale, and the rule has to be the entry's own
+identity and not a version number the caller maintains, or it will drift.
+
+Gate: the encoding of the reference frame under 10 ms, byte identical buffers to the ones built from
+scratch, and a test that an entry drawn twice in one frame is encoded once.
+
+### 3.6 — the verdict, with the device named
+
+Re-run the stage harness on the three frames and on a real Bloc frame drained through
+`VGVulkanBackend`, and write the numbers down beside Cairo's on the same machine in the same
+session.
+Then say plainly which backend a user should get by default, which is the question the whole project
+turns on, and if the answer is still Cairo say what remains and what it would cost.
+A frame that is slower than Cairo but close to it is a different thing from one that is two hundred
+times slower: the first makes `VGBackend class >> preferred` a real choice on a machine with a
+driver, and the second leaves the Vulkan path a correctness-preserving curiosity.
+
+Gate: the verdict recorded with the device named, and `VGBackend class >> preferred` changed, or
+explicitly left alone, by that number.
+
+### 12.7 — not scheduled: a different shape, if 3.3 fails
+
+Written down so that the stop rule has somewhere to point.
+If one invocation a pixel cannot be made cheap enough, the shapes worth trying are a two-kernel
+frame, where a first dispatch writes the span lists of every sub-row of every tile into a global
+buffer and a second one shades the pixels from them; a smaller tile, since 8 by 8 was measured at
+unit 2.2 and rejected on binning cost alone, which a cheaper binning changes; and one invocation per
+word of four pixels, which quarters the invocation count and the fixed cost with it.
+None of them is cheap, and none should be started before 3.3 has been measured.
