@@ -3414,6 +3414,203 @@ rather than its width, or the four shadow cases break.
 
 Gate: matches software within the stated blur tolerance.
 
+**Done.** The alpha of a shadow is blurred on the device, byte for byte what the host filter writes,
+and a frame-sized field blurs in 11 ms against 150 ms on the host.
+
+**A clamped window, not a running sum.**
+`VGA8GaussianBlurFilter` walks a row with a running sum, adding the tap that enters the window and
+subtracting the one that leaves it, which is the cheapest order on one processor and the only order
+a serial walk can use.
+The kernel computes each pixel's window from nothing instead: the diameter taps around it, each
+clamped to the ends of the axis, summed and divided.
+The two answer the same integers, because a running sum over a clamped window is that sum
+accumulated in a different order and nothing in it is approximate, and the per-pixel form is
+embarrassingly parallel where the serial one is not.
+
+**The rounding is copied, not approximated.**
+The filter writes `(sum * (1.0 / diameter)) floor`, which is not the whole quotient of the sum by
+the
+diameter: for twenty diameters of the first four hundred and one — 49, 98, 103, 107, 161, 187, 196,
+197, 206, 214, 237, 239, 249, 253, 322, 347, 374, 389, 392 and 394 — the `Float64` reciprocal is
+rounded down far enough that the product of an exact multiple falls just under the integer and the
+floor loses a unit.
+The deviation happens only at exact multiples of the diameter and is always exactly one down.
+A SPIR-V kernel has no `Float64`, so `VGBlurRounding` carries the quotients that need the
+subtraction as one bit each, in eight words of thirty-two bits: a window sum is at most 255 times
+the
+diameter, so its quotient never passes 255 and the table is complete.
+The table is built by asking `VGA8GaussianBlurFilter class >> averageOfSum:overDiameter:` for every
+multiple rather than by naming the twenty diameters, so a change to the filter's arithmetic reaches
+the device without that class being named twice; a diameter of 49 corrects 158 of its 256 quotients
+and a diameter of 50 corrects none.
+The kernel divides in integers, takes the remainder, and subtracts one where the remainder is nought
+and the bit of that quotient is set.
+
+**One module, both axes.**
+A pass carries eight words — the diameter and the radius of the box, the stride and the row count of
+the field, and then `step`, `axisLimit`, `columnWeight` and `rowWeight`.
+The invocation's own coordinate along the axis is
+`column * columnWeight + row * rowWeight`, the base of the axis is its byte index less that
+coordinate times the step, and a tap is `base + clampedTap * step`.
+A pass along the rows is then step 1 with the limit at the stride and the weights 1 and 0, and a
+pass
+down the columns is step the stride with the limit at the row count and the weights 0 and 1.
+The clamp is a `select` and not a subtraction, because an index is unsigned: a wanted tap below the
+radius would wrap to four thousand million before any `max:` could see it.
+The limit is the **stride** and not the width, which is what makes the four shadow cases hold — the
+host filter blurs the padding bytes of a row into the next row, as Cairo does on every a8 mask whose
+width is not a multiple of four, and a kernel that walked the width would differ exactly there.
+
+**A whole word an invocation.**
+One invocation owns one 32-bit word of one row, which is four adjacent alpha bytes, so no two
+invocations write the same word and the kernel needs no atomic and no read-modify-write.
+The stride of an a8 surface is always a whole number of words, so every row starts word-aligned and
+the words of a row divide exactly.
+The four bytes are unrolled at emission, because the shift that packs a byte into the word must be a
+literal for `word:shiftedLeftBy:`, while the taps are a real loop — `builder emitWhile:do:` over the
+diameter — so the module is the same 6188 bytes whatever the radius.
+`spirv-val` passes on it.
+The workgroup is 16 by 16 by 1 and the invocations past the end of the field refuse themselves.
+
+**The direction of a pass is which kernel it is.**
+`VGBlurDispatch` keeps two field buffers of the size of the field and two small ones, builds two
+`VGBlurBoxKernel` instances over the same module bytes — one binding the first field as source and
+the second as target, the other the reverse — and a pass chooses its direction by choosing its
+kernel.
+The field goes out once and comes back once however many passes there are, and the answer is in the
+first buffer whatever their count, exactly as the host filter's two buffers alternate.
+The words of the pass and the rounding table of its diameter are written again before each dispatch,
+which is safe because a dispatch waits for the device before it answers.
+
+| Binding | Buffer | What it holds |
+|---|---|---|
+| 0 | `source` | the field as the pass finds it, one word per four bytes |
+| 1 | `target` | the field as the pass writes it |
+| 2 | `params` | the eight words of `VGBlurBoxKernel class >> paramNames` |
+| 3 | `corrections` | eight words, one bit per quotient the rounding corrects |
+
+**The filter decides, and the caller never asks.**
+`VGVulkanBlurFilter` is a subclass of the host filter that overrides `applyBoxRadii:` alone.
+It refuses a field whose stride is not a whole number of words and a box whose diameter is wider
+than the axis it walks — the host walk overruns its own buffer on such a field, so the refusal is
+not a device limitation — and it recovers from any error the device raises by calling its
+superclass,
+keeping the failure for the inspector.
+Which filter a shadow is blurred with is `VGBackend class >> blurFilterClass`, answering the host
+filter, overridden on `VGVulkanBackend class`: a blur is a pass over the alpha of a surface and not
+a
+drawing verb, so it cannot ride in a display list, and `allowedDependencies` forbids
+`VectorGraphics-Cairo` and `VectorGraphics-Bloc` from naming a Vulkan class.
+`VGCanvas >> newSurfaceWithGaussianShadow:width:canvasDo:` and
+`VGConformanceCorpus class >> blurFilterFor:` ask the backend and get the right filter without
+knowing a device exists.
+
+**The kernel plumbing is a class now.**
+`VGTiledFillKernel` held the bindings, the built-ins, the word variables, the module and the two
+inspector tabs, none of which is about tiles, so all of it moved up into `VGSpirvKernel` — a
+`VGSpirvVocabulary` subclass of 30 instance and 15 class selectors, with `bindingNames`,
+`builtInNumbers` and `wordVariableNames` as `subclassResponsibility`.
+Two hooks were needed for the views: `freshKernel`, because `moduleRows` builds a module and may not
+leave the inspected object holding one it did not hold, and `isReadyToBuild`, because a kernel whose
+shape arrives after it is created — a tile extent — has no module until it does.
+The tiled module is byte for byte the 24428 it was, which is the proof the move changed nothing.
+`VkBuffer >> uploadBytes:` and `readbackInto:` are new extension methods, each a map, a
+`LibC memCopy:` and an unmap: the round trip of unit 2.1, the tiled fill and now the blur each
+carried their own private copy of those six lines, and `VkBuffer >> copyFromByteArray:` is the 31 ms
+a frame that unit 2.1 measured and rejected.
+
+**The measurement**, a box radius of 10 — which is the three box passes 3, 3 and 4, so six
+dispatches — on a circle in an alpha surface, best of three.
+
+| Field | Host | Device, whole call | Device, dispatch only |
+|---|---|---|---|
+| 64 by 64 | 2 ms | 37 ms | 2 ms |
+| 256 by 256 | 20 ms | 36 ms | — |
+| 800 by 600 | 150 ms | 55 ms | 11 ms |
+
+The device is thirteen times faster than the host on a frame-sized field and no faster at all on a
+small one, and the gap between the last two columns is one `VkContext computeContext`, which costs
+37
+to 52 ms to create and nothing to destroy.
+The filter opens a context a blur, because a filter is handed a surface and not a device, so a lone
+shadow of the size the corpus draws costs more end to end than the host walk even though its
+dispatches are as quick.
+Holding one context for the session is the lever, and it is the same lever the tiled fill wants; it
+is not this unit's.
+
+**The gate.**
+The four shadow masks of the conformance corpus — `shadow-rounded-rectangle`, `shadow-circle`,
+`shadow-sharp-rectangle` and `shadow-blurred-by-nothing` — are blurred twice, once by each filter,
+and compared byte for byte rather than within the blur tolerance the corpus allows against
+Alexandrie: that tolerance covers the rasterisation of the geometry underneath, which is the same
+picture on both sides of this comparison, so the blur itself owes exactness.
+No byte differs on any of the four.
+The whole of `VGBlurTest` runs again against the device filter, which is what
+`VGVulkanBlurTest` is — the two byte-for-byte comparisons with Alexandrie's own
+`cairo_image_surface_blur` included, and the one with stride padding in it among them.
+`shouldInheritSelectors` had to be overridden to `^ true`: SUnit gives a concrete subclass its
+superclass's tests only where the subclass declares none of its own, and these seven are an addition
+and not a replacement, which is the difference between 7 tests and 17.
+
+Seven tests are new in `VGVulkanBlurTest`: the gate above, that a blur really ran on the device
+where
+there is one, that a box wider than the field is refused by the predicate and overruns the host walk
+so the refusal is not arbitrary, that the stride of an alpha surface is always a whole number of
+words, that the selected backend names the filter, that the module is valid SPIR-V, and that the
+kernel binds one buffer for every buffer it reads and names them all in its entry-point interface.
+`VGBlurRoundingTest` holds seven more, among them that the corrected quotients are exactly the ones
+the host filter loses a unit on, over a diameter that deviates and one that does not, and that no
+window sum has a quotient past the table the kernel carries.
+`VGBlurTest` gained one: what a box pass writes is the clamped window average of every byte,
+computed one pixel at a time by a naive oracle, which holds `averageOfSum:overDiameter:` to the
+bytes
+the filter really writes — the device reproduces that named arithmetic and must not be reading a
+rule
+nothing checks.
+
+Four examples in `VGVulkanBlurExamples` and four views.
+`roundingOfACorrectedDiameter` answers the rounding of diameter 49, whose `Corrections` tab lists
+each corrected quotient with the sum it is the quotient of and the average the host and the device
+answer for that sum, both asked of the arithmetic, so the two columns differ by one wherever the bit
+is set and a diameter with an empty table shows an empty tab.
+`boxKernel` answers a kernel, whose `Bindings` and `Module` tabs come from `VGSpirvKernel` and whose
+new `Params` tab names each of the eight words with what a pass along the rows and a pass down the
+columns put there, asked of `VGBlurDispatch` itself.
+`passesOfAShadowBlur` plans the six passes of a shadow of sigma 8 over a field of 256 by 128 and
+never dispatches them, which is why the plan is kept on the dispatch rather than computed inside it;
+its `Passes` tab builds a column per name in `VGBlurBoxKernel class >> paramNames` and adds the
+workgroup counts.
+`shadowMaskBlurred` blurs a circle in a 96 by 96 alpha surface and its `Device` tab says which path
+ran, what the recovery was if the device failed, and which shadow radii of this field the predicate
+would take, sampled rather than restated.
+All four run with no driver, the last by falling back to the host path.
+
+**Two defects the suite found, both this unit's own.**
+`VGFrameProfile class >> stageByPackageAndTag` needed the two new tags, `Blur` and `Kernels` of
+`VectorGraphics-Vulkan`; a profile credits a sample to the stage of the deepest class of the project
+on the stack, so a tag with no stage is a sample with no home, and `VGFrameProfileTest` says so.
+`VGConformanceCorpus class >> shadowCases` had been moved into a `cases - shadow` protocol along
+with
+the geometries and radii this unit needs to read, and `VGConformanceTest` holds every case group to
+the `cases` protocol, because a group method nobody lists would never run.
+
+Critics are clean on `VectorGraphics-Vulkan`, `VectorGraphics-Cairo`, `VectorGraphics-Bloc` and
+their
+examples and tests but for the critiques earlier units accepted.
+Four were fixed on the way: a cache clearer classified as accessing without a return, a
+`floatBindingNames` classified away from its superclass's protocol, a long `blur:columns:rows:`
+split
+into the buffers, the kernels and the run, and a five-argument naive box oracle narrowed to four by
+taking the shape of the field as a point.
+`clearSpirvCache` is declared `subclassResponsibility` on `VGSpirvKernel class`, since both kernels
+cache and only the key differs.
+The whole project is 762 tests over 58 concrete test classes and passes: 343 in
+`VectorGraphics-Cairo-Tests`, 214 in the `VectorGraphics` package, 44 in `VectorGraphics-Bloc-Tests`
+and 161 in `VectorGraphics-Vulkan-Tests`, counted one suite per concrete class so that the abstract
+`VGTiledFrameTestCase` is not counted through its subclasses.
+
+Gate met. Unit 2.9 proceeds.
+
 ### 2.9 — image paint on the GPU
 
 This unit needs `OpTypeImage`, and `SpvImageType` does not exist in `PharoVulkan-SPIRV` today.
