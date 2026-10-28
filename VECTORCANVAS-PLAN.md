@@ -3994,6 +3994,195 @@ the driver and the counts do not.
 Gate: the stage table and the visit counts for all three frames, reproducible in one call, and the
 Cairo figure measured here.
 
+**Done.** One call now answers the stage table, the Cairo figure and the visit counts for all three
+frames, and nothing of phase 3 is quoted from a hand measurement any more.
+
+**The stages are read inside the frame a tool really draws.**
+`VGTiledFillDispatch` gained a third slot, `stages`, and a stage is timed by
+`timeStage: aSymbol during: aBlock`, which evaluates the block and reads no clock at all until a
+dispatch is sent `recordStages`.
+So the stages are measured in the same `draw:into:` a `VGVulkanBackend` frame runs, and not in a
+copy of it that could drift.
+`draw:into:` sends one method of the dispatch per step — `kernelOf:`, `newBuffers`, `prepare:on:`,
+`upload:`, `dispatch:over:`, `readback:into:` and `release:and:` — each wrapping its own stage, with
+`#writeBuffers` timed in `draw:into:` itself.
+`VGTiledFillDispatch class >> stageNames` names the eight in the order a frame pays them, and the
+test reads them back out of the source: every `timeStage:during:` of `draw:into:`, and of the one
+method the step sends, in that order, equals the table.
+
+The first stage is called `#writeBuffers` and not `#encode`, because inside the dispatch it
+serialises an encoding that already exists — 0.242 ms on the background frame — where the
+benchmark's `encode` phase builds that encoding, which is 15.103 ms.
+Two rows of one report called `encode` would have been read as one number measured twice.
+
+**The stages are read against the pass they were measured in.**
+`measureStagesOn:` draws a warm-up frame, calls `recordStages` again to throw it away, then draws
+`repeats` frames and times the whole pass as `#stagedFrame`.
+That keeps the clock readings out of the headline `dispatch` figure, which is measured by the
+inherited `measureOn:` with no stage recording at all, and it gives the stages a frame of their own
+to add up to.
+They have to: one dispatch of a frame is not the next to a decimal place on this device — the same
+background frame came back 6.636 ms clean and 6.141 ms staged, and a pass measured earlier in the
+session varied from 6.9 to 9.0 ms — so a test that held the stage sum to the clean figure failed on
+the device and not on the code.
+
+**The Cairo figure is measured in the session.**
+`VGFrameDrawingKit` holds four classes — a surface, a gradient pattern, a canvas and a renderer —
+and answers the verbs a frame needs of them: `surfaceOfExtent:`,
+`linearGradientFrom:to:addStopsFrom:`, `canvasOn:` and `rendererClass`.
+`ours` names `VGCairoImageSurface`, `VGCairoLinearGradientPattern`, `VGCanvas` and `VGRenderer`;
+`alexandrie` names `AeCairoImageSurface`, `AeCairoLinearGradientPattern`, `AeCanvas` and
+`BARenderer`.
+The three draw methods of `VGFrameDeviceBenchmark` take a kit, so one method draws each frame on
+either side and the Cairo frame cannot quietly be a different picture.
+Nothing written down holds the two kits together: the test asks `VGAlexandrieCorpus classNameMap`
+for a Cairo class this project reimplements and the hierarchy for a canvas or a renderer that
+subclasses Alexandrie's, and a kit answers which side it is on by the package its surface comes
+from, which is the rule the `Classes` tab shows.
+
+Cairo and this project draw the same picture on the background frame and on the cards frame, to the
+byte.
+On the reference frame 3950 pixels of 480 000 differ by more than one in a channel, 3238 by more
+than eight and 2130 by more than thirty-two, and all of them are in the glyphs: each backend
+rasterises glyphs through its own atlas.
+That is measured here rather than assumed, and it is why the Cairo figure of the reference frame is
+a figure for the same scene and not for the same bytes.
+
+**What one call answers.**
+`VGFrameStageBenchmark report` runs the three frames and, for each, the benchmark rows, the stage
+rows and the census rows.
+On this machine, an Intel Iris Plus Graphics (ICL GT2), in milliseconds:
+
+| | background | cards | reference |
+|---|---|---|---|
+| encode | 15.103 | 16.873 | 36.663 |
+| dispatch | 6.636 | 11.127 | 42.795 |
+| stage `writeBuffers` | 0.242 | 0.376 | 1.791 |
+| stage `module` | 0.009 | 0.003 | 0.007 |
+| stage `allocate` | 0.167 | 0.165 | 0.301 |
+| stage `prepare` | 0.841 | 0.764 | 1.342 |
+| stage `upload` | 0.809 | 1.012 | 1.314 |
+| stage `dispatch` | 3.809 | 7.988 | 39.661 |
+| stage `readback` | 0.193 | 0.290 | 0.302 |
+| stage `release` | 0.048 | 0.074 | 0.094 |
+| Cairo frame | 0.102 | 0.745 | 2.276 |
+| software frame | 1028.344 | 2216.601 | 2499.043 |
+
+The hand measurement of §12 stands: the host pays about 2 ms a frame on work that does not depend on
+the frame's content, the device pays the rest, and the encoding is on its own a hundred times
+Cairo's whole frame.
+The one number that moved is Cairo's: 2.276 ms on the reference frame here, against the 0.29 to 0.32
+ms §12 quotes from unit 1.11, because 1.11 measured Cairo drawing its own display list and this
+measures Cairo drawing the same scene through `BARenderer` with the glyphs rasterised in the
+session.
+So the gap on the reference frame is nineteen times on the dispatch alone and about thirty-five
+times end to end, not two hundred.
+The two cheaper frames are the harder targets: 65 times Cairo on the background frame and 15 on the
+cards.
+
+**What the kernel reads, counted.**
+`VGKernelVisitCensus` walks the tile table of an encoding the way a workgroup does — the references
+of each tile, the block each reference names, the records of that block and the edge run of each
+record — and counts visits beside the visits the work needs.
+Every ratio is derived from the kernel itself, from `localSize` and `subRowCount`, so no constant of
+the kernel is restated here.
+On the three frames:
+
+| | background | cards | reference |
+|---|---|---|---|
+| tiles | 1900 | 1900 | 1900 |
+| references | 1900 | 3628 | 3803 |
+| interior references | 1728 | 2208 | 2208 |
+| edge and tile pairs | 444 | 8844 | 48 550 |
+| sub-row sweeps | 660 480 | 5 452 800 | 6 124 800 |
+| sub-row sweeps needed | 41 280 | 340 800 | 382 800 |
+| edge reads | 1 704 960 | 33 960 960 | 186 432 000 |
+| edge reads needed | 106 560 | 2 122 560 | 11 652 000 |
+| record reads | 972 800 | 1 857 536 | 2 434 304 |
+| record reads needed | 3800 | 7256 | 9509 |
+
+Both ratios come out as properties of the kernel and not of the frame: a sub-row is swept sixteen
+times where once would do, which is the width of a tile in pixels, and the records of a tile are
+read 256 times, which is the invocations of a tile.
+So unit 3.2 has 256 to take out of the fixed cost and unit 3.3 has 16 to take out of the sweep, and
+the background frame says which matters where: it sweeps 444 edge-and-tile pairs and still reads
+972 800 records.
+An interior reference is visited and read and never swept, which is why the background frame — 1728
+of its 1900 references interior — pays 3.8 ms of device time with almost no edge work in it.
+
+**The cycle.**
+Twenty-one tests are new, fifteen in `VGFrameStageBenchmarkTest` and six in
+`VGKernelVisitCensusTest`.
+They hold the stage table to the dispatch's own source, the stage sum to the pass it was measured
+in, the two kits to the corpus and the hierarchy, each kit's class labels to the slots they are held
+in, every frame of the budget to being drawn by either kit and to carrying a Cairo figure measured
+here, the two backends to the same picture, and the census to the buffers: the references it visits
+are the references the encoding wrote, the edges it counts are the edges of the bands that wrote
+those blocks, a sub-row is swept once a column where once a tile would do, every invocation of a
+tile reads that tile's records again, an interior reference is never swept, and a frame that touches
+no tile is visited not at all.
+A benchmark that has not run carries no stage at all, and a machine with no device holds nothing.
+
+Three examples and four views.
+`VGFrameStageBenchmarkExamples class >> stagesOfTheBackgroundFrame` is the cheapest frame measured
+stage by stage, with a `Cairo frame` tab beside the inherited `Device frame` tab and a `Visits` tab
+of its census.
+`VGKernelVisitCensusExamples` has the reference frame's census and a 64 by 64 frame of one fill that
+reaches past every side, which is sixteen tiles all interior: no edge read at all beside 8192 record
+reads, the repetition of unit 3.2 with none of unit 3.3's to hide it.
+`VGFrameDrawingKitExamples` has this project's kit, whose `Classes` tab names each class with the
+class of the other side it answers to and what holds the pair.
+
+`VGTiledFillEncoding >> bands` was added for the census test and then removed: it took the class to
+sixty selectors, which is `ReExcessiveMethodsRule methodsCount`, and the test needs the band layout
+of a frame rather than of an encoding.
+`VGKernelVisitCensusTest` builds one `VGTileBinning` and asks it for both the encoding and the
+bands, which is a tighter fixture than the accessor was.
+
+**Three things the regression run found.**
+The first is the one that matters: `VGFrameDrawingKit class >> alexandrie` named
+`AeCairoImageSurface` and `AeCairoLinearGradientPattern` from `VectorGraphics-Vulkan`, and
+`VGCairoReferenceScanner` is the test that says no package the failover loads may name a Cairo
+class — a named class is looked up and
+its library loaded as soon as the method runs, which is the whole of the failover claim.
+`pairingOf:with:` named `VGAlexandrieCorpus` from the same package, which the architecture table
+refuses as an edge to a test package.
+So the budget moved: `VGFrameDeviceBenchmark`, `VGFrameStageBenchmark` and `VGFrameDrawingKit` are
+now the `Budget` tag of `VectorGraphics-Vulkan-Tests`, which is where the Alexandrie corpus and the
+conformance fixtures already live, and nothing of production references them — a benchmark is a
+measuring tool and no frame is drawn through one.
+`VGKernelVisitCensus` stayed in `VectorGraphics-Vulkan`: it reads an encoding and names nothing of
+Cairo's.
+`VGArchitectureTest class >> allowedDependencies` gains the edge from
+`VectorGraphics-Vulkan-Examples` to `VectorGraphics-Vulkan-Tests`, and
+`edgesTheBaselineCannotDeclare` gains that pair, because the
+reverse edge is stated in the baseline and a cycle has no load order — which is the arrangement the
+Cairo examples and the Cairo tests have had since unit 1.13.
+
+The second: the stage wrapping took `VGTiledFillDispatch >> draw:into:` over both
+`ReLongMethodsRule` and `ReCyclomaticComplexityRule`, so each step of a frame is a method of its own
+now and `draw:into:` reads as the seven of them in order.
+`VGTiledFillKernelTest` asked `draw:into:` alone whether the dispatch asks the module cache; it asks
+the whole class now, because the fact is about the dispatch and not about one method.
+
+The third is a trap worth writing down: a concrete `TestCase` that defines one test of its own
+stops inheriting its superclass's, so adding a sixth test to `VGVulkanExamplesTest` silenced the
+five rules it inherits from `VGCairoExamplesTest` — 5 tests became 1.
+The test that the budget's views are checked therefore lives in `VGFrameStageBenchmarkTest`, and
+`VGVulkanExamplesTest` carries only the `projectDefines:` override that lets those five rules reach
+a class defined in a test package of this project.
+
+Critics are clean on `VectorGraphics-Vulkan`, `VectorGraphics-Vulkan-Tests` and
+`VectorGraphics-Vulkan-Examples` but for the two `ReExcessiveArgumentsRule` critiques earlier units
+accepted, and on `VectorGraphics-Cairo-Tests` but for the ones accepted on
+`VGAlexandriePortedExperiments` and `VGBrokenBackendStub`.
+The whole project is 794 tests over 61 concrete test classes and passes: 214 in the
+`VectorGraphics` package, 343 in `VectorGraphics-Cairo-Tests`, 44 in `VectorGraphics-Bloc-Tests` and
+193 in `VectorGraphics-Vulkan-Tests`, counted one suite per concrete class so that the abstract
+`VGTiledFrameTestCase` is not counted through its subclasses.
+
+Gate met. Unit 3.1 proceeds.
+
 ### 3.1 — one context, one pipeline, one set of buffers for the session
 
 A frame creates a `VkContext` or is handed one, then builds a `PVComputeKernel`, fourteen buffers, a
