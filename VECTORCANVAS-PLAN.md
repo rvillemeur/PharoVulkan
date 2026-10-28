@@ -3118,6 +3118,124 @@ The whole project is 728 tests over 56 classes and passes.
 
 Gate met. Unit 2.8 proceeds.
 
+### 2.7a — the interior mark under a shaped clip
+
+Unit 2.5 marks a tile wholly inside an entry's shape and clip while it is binned, and the kernel
+then takes the coverage of every pixel of that tile as one instead of walking fifteen sub-rows.
+`VGFillEntry >> coversEveryPixelOf:` refuses outright when the clip is not rectangular, so the mark
+never fires on the frame unit 2.7 unlocked: 1728 of its 3803 binned pairs are interior, and all of
+them belong to the one unclipped background fill.
+Every card, every border and every glyph of that frame is inside a rounded rectangle, which is why
+the dispatch costs 176.687 ms there and 7.2 ms on a frame of one solid fill.
+
+A clip cut out by shapes can answer the question, and with the predicate it already has.
+`VGSegments >> enclosesWholly:` answers whether every point of a rectangle, its boundary included,
+is inside a shape under its own fill rule, and it is exact and allocates nothing: the exact bounding
+box must contain the rectangle, no edge may so much as touch it, and the centre must be inside.
+A clip holds its shapes as `VGSpanScanner`s, which carry the coordinates, the fill rule and the
+antialiasing mode — everything those predicates read — so the predicate moves to the scanner and
+`VGSegments` delegates to the scanner it already memoises.
+`coversEveryPixelOf:` then asks the clip bounds for the rectangle as before and every shape of the
+clip for `enclosesWholly:`, and a fill whose own edges enclose the tile inside a clip whose shapes
+all enclose it is interior however the clip was cut out.
+
+The mark is a promise of full coverage, so it must stay exact for an aliased shape too: a shape that
+wholly encloses the tile has every pixel centre inside it, which is what the aliased gate of the
+kernel asks, so the two agree.
+No kernel change is needed at all — the mark rides in the top bit of the reference word from unit
+2.5 and the kernel already reads it.
+
+The predicate is asked once per entry-tile pair, which unit 2.5 measured as the thing that cancels
+the win, so the scanner must memoise its exact bounding box as `VGSegments` does and allocate
+nothing per tile.
+
+Gate: every frame and every case that holds byte for byte through the tiles and on the device still
+does, the count of interior pairs of the profiled frame rises, and the dispatch of that frame falls
+measurably; `run_critics` clean and the whole suite green.
+
+**Done.** The predicate asks the shapes of the clip, and the clip answers for the first time on a
+frame whose every entry is clipped by a rounded rectangle.
+
+`VGFillEntry >> coversEveryPixelOf:` is three questions and no refusal: the bounds of the clip must
+hold the rectangle, my own edges must enclose it wholly, and so must every shape the clip was cut
+out by.
+The own edges are asked before the shapes because a fill that encloses no tile at all is the common
+case on this frame — the twelve card borders are rings — and failing on it leaves the shapes of its
+clip unasked.
+`clip isRectangular` is not consulted at all any more, so a clip cut out by shapes marks a tile
+exactly where the shapes hold it.
+
+The predicate moved to where its data lives.
+`VGSpanScanner` carries the coordinates, the fill rule and the antialiasing mode, which is
+everything `enclosesWholly:` reads, so `exactBoundingBox` and `enclosesWholly:` are the scanner's
+now and `VGSegments` delegates to the scanner it already memoises.
+A clip holds its shapes as scanners, so asking a shape costs the same as asking a fill.
+No kernel word changed: the mark rides in the top bit of the reference word from unit 2.5 and the
+kernel reads it as it did.
+
+**Asking a shape 3803 times needed an index.**
+The predicate is asked once per entry-tile pair, and the first version answered it by walking every
+edge of the shape for every tile: binning the profiled frame went from 4 ms to about 20 ms, which
+is more than the dispatch could win back.
+`VGEdgeIndex` holds the edges of a shape in bands of rows over its bounding box, each edge in every
+band its own rows reach, and `anEdgeMeets:` and `windingAt:` read one band.
+Bands and not cells of a grid, because a band is read once and holds each edge once, so a winding
+counted over a band counts each crossing exactly once; a two-dimensional grid would need a stamp
+per edge to promise that.
+The count is `edges / 8` rounded up, capped at 64, and a shape whose box has no height is one band,
+answered without dividing.
+The index cut each card border's pass over its 72 tiles from about 1000 to about 200 microseconds.
+
+**What it costs and what it buys, measured on the profiled 800 by 600 frame.**
+Interior pairs rise from 1728 of 3803 to 2208: the 480 new marks are the twelve card bodies, forty
+tiles each, every one of them inside the rounded rectangle its clip was cut out by.
+The dispatch falls from 166.659 and 167.692 ms to 158.779 and 156.631 ms in alternating passes —
+about five and a half per cent, with every new-predicate pass faster than every old one.
+The predicate pass of the encoding rises from 4.4-4.6 ms to 9.7-11.6 ms, of which 5.5 ms is the one
+background fill that was already asked and 3.6 ms is the twenty-four card entries that were refused
+before they were asked.
+So the frame is about three milliseconds cheaper in all, which is a win and a small one, and the
+reason it is small is worth recording.
+
+**Why the win is small.**
+A ring encloses nothing.
+Each of the twelve cards is drawn as a body and a border, and a border is a stroke flattened to a
+ring of 224 edges whose inside is a few pixels wide: its own edges enclose none of the 72 tiles it
+reaches, though the shape of its clip encloses forty of them.
+Those twelve rings carry 217 000 of the frame's 235 604 edge-tile pairs, which is 92 per cent of the
+edge work the kernel does, and no mark can reach them.
+The bound is measurable: with the predicate forced to answer true the dispatch of this frame is
+10-12 ms, and forced to answer false it is 171-182 ms, so the sub-row walk is about 95 per cent of
+the dispatch and the marks this unit adds land on the cheap pairs.
+The next lever is therefore not the mark but the walk: bin the edges per tile in the kernel, so a
+tile reads the edges that reach it rather than all 224 of them.
+
+Three tests of the index, one of the widened predicate and one of the binning.
+`VGRasteriserTest` holds the three: a one-band index answers exactly what a scan over every edge
+answers for `anEdgeMeets:` and `windingAt:` over an eight-pixel walk of the box of three shapes;
+every edge of a shape is in the bands it reaches and in no others; and a shape of no height answers
+without dividing by nought.
+`VGCairoDrawingTest` asks a fill under a star clip for a rectangle the star encloses, and
+`VGTileBinningTest` bins a fill under a circular clip over a 64 by 64 frame and requires the four
+tiles the circle encloses to be marked and the corners of every other tile to fall outside it.
+`VGEdgeIndexExamples` holds two `<sampleInstance>` examples — the index of a star and the index of a
+shape of one row — and `VGEdgeIndex`'s `Bands` tab lists each band with the rows it covers, the
+edges it holds, the boxes of those edges and what the index itself answers for that band.
+`VGSpanScanner` gains an `Enclosure` tab: its own box cut into a four by four grid, with
+`enclosesWholly:` and each of the three answers it is built from asked of the scanner for every
+rectangle, so a verdict that parted from its parts would show as a row.
+
+Critics are clean on `VectorGraphics-Cairo`, its examples and tests and the two Vulkan packages but
+for the critiques earlier units accepted — the argument counts of Cairo's own mask verb and the
+`ReClassNotReferencedRule` every examples class draws.
+The whole project is 722 tests over 57 test classes and passes: 379 on the Cairo side, 214 in the
+`VectorGraphics` package and 129 of the Vulkan path, which includes every tiled and device frame of
+the corpus byte for byte.
+
+Gate met, and one clause of it met narrowly: the dispatch does fall, by five and a half per cent,
+which is what there was to win on a frame of ring strokes.
+Unit 2.8 proceeds.
+
 ### 2.8 — blur on the GPU
 
 A separable two-pass Gaussian.
