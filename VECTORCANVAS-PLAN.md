@@ -4202,6 +4202,131 @@ the device than on the host for the first time.
 Gate: the host stages of the stage table under 1 ms in total on the reference frame, the blur of a
 small shadow faster end to end than `VGA8GaussianBlurFilter`, and the same pixels everywhere.
 
+**Done.** The device is held open for the session, on both halves of the path: the fill keeps one
+context, one kernel and one set of buffers per tile extent, and the blur keeps one kernel and one
+pair of parameter buffers per pass with the two fields beside them.
+The second frame and the second blur of a session pay none of what the first paid, and a small
+shadow is now faster on the device than on the host, end to end, for the first time.
+
+**What holds what.**
+`VGVulkanDeviceSession` is the one session-lived object: it answers the `VkContext`, it answers one
+`VGTiledFillDispatch` per tile extent and one `VGBlurDispatch` for every blur, and `releaseDevice`
+destroys all of it, children before the device, and forgets the reason a machine with no driver
+recorded so that the next ask probes again rather than answering a stale no.
+Unit 2.0's rule stands: selection decides a backend class and never shares an instance, so a
+backend asks the session for the device and holds nothing itself.
+The session's method is named `releaseDevice` and not `release`, because `Object >> release` is the
+dependents hook Pharo's own tools send, and a class whose `release` means something else hides it;
+`VGBlurDispatch` and `VGTiledFillDispatch` answer the same selector, so one name means one thing
+across the three of them.
+
+**Growing and never shrinking.**
+A buffer is replaced only when a frame or a blur needs it larger than the largest one the session
+has seen, and the replacement is bound into every kernel that reads it *before* the buffer it
+replaces is destroyed — `PVComputeKernel >> rebindBuffer:atBinding:` is what makes that possible.
+The order is the whole of the invariant: a descriptor set is read when the device runs a command
+buffer, not when the set is written, so a set that still names a destroyed buffer is a fault on the
+next submission and not on this one.
+
+**One submission a blur, which is what the gate turned on.**
+Residency alone did not win the blur.
+A six-pass blur of a 64 by 64 field was still slower on the device than the host walk, and the
+reason was not arithmetic: `PVComputeKernel >> dispatch:y:z:` allocates a command buffer, records,
+submits and waits, and one submission costs about 0.426 ms of host time whatever it carries —
+measured as 100 dispatches of one workgroup.
+Six passes therefore paid about 2.6 ms of pure submission before the first byte was blurred.
+So a blur now records every pass into one command buffer, with a compute-to-compute barrier between
+neighbours, and submits once: `submissionsOfLastBlur` answers 1 for a six-pass blur and for a
+two-pass one, and a test asserts it, because the number is the point of the unit and not an
+implementation detail.
+The barrier is needed and not defensive: dispatches in one command buffer are unordered without
+one, and every pass reads the field the pass before it wrote.
+
+**Why one kernel a pass and not one a axis.**
+Two passes in one submission cannot share a parameters buffer, for the same reason the barrier is
+needed: the device reads the descriptor set and the buffer behind it when it runs the recorded
+dispatch, so a parameters buffer overwritten between two recorded passes would be read twice with
+the second pass's words.
+`VGBlurDispatch` therefore holds one prepared kernel, one `params` buffer and one `corrections`
+buffer for every pass of the longest blur the session has seen, and the two field buffers
+`fieldA` and `fieldB` beside them.
+A shorter blur reuses the first kernels of a longer one, which is why the axis of a pass is read
+off its index — `VGBlurDispatch class >> axisOfPass:`, odd rows, even columns — rather than out of
+the plan of the current blur: rebinding a grown field has to reach kernels the current plan has no
+pass for.
+
+**The numbers, on an Intel Iris Plus Graphics ICL GT2, tile extent 64 by 64.**
+Interleaved medians of 25 alternating pairs, end to end through the two filter classes, in
+milliseconds:
+
+| Case | `VGA8GaussianBlurFilter` | `VGVulkanBlurFilter` |
+|---|---|---|
+| `shadow-rounded-rectangle`, radius 10 | 5.556 | 5.383 |
+| `shadow-circle`, radius 16 | 4.534 | 4.521 |
+| `shadow-sharp-rectangle`, radius 4 | 3.881 | 3.589 |
+
+The passes alone, over the same byte arrays, medians of 25: box radii `#(3 3 4)` 2.100 against
+1.467, `#(5 5 6)` 1.286 against 1.272, `#(0 0 1)` 1.202 against 0.943.
+Interleaving the two paths in one loop and taking medians is what made the comparison stable;
+absolute per-case figures drift by about 30 per cent between runs.
+
+The end-to-end margin is thin because both paths pay the same floor, and it is not the blur:
+`prepareBuffers` and `writeBufferBackToTheSurface` copy the mask byte by byte through
+`surface data unsignedByteAt:`, including the lazy `surface flush` that draws the mask, and that is
+4.332, 3.382 and 2.663 ms of the three cases above.
+It dominates the end-to-end figure of both filters and is the next thing worth attacking, not in
+this unit.
+
+The host stages of the fill, on the reference frame, are the other half of the gate: `module`
+0.003 ms and `allocate` 0.023 ms, 0.026 ms in total, with `prepare` and `release` gone from the
+table altogether — against the 1 ms the gate allows.
+The whole table of that frame, three repeats, is `writeBuffers` 2.111 ms, `module` 0.003 ms,
+`allocate` 0.023 ms, `upload` 1.824 ms, `dispatch` 72.786 ms and `readback` 0.604 ms.
+`writeBuffers` and `upload` are the packing and the copy of the buffers, not the setup of a device,
+and they are unit 3.4's own gate; `dispatch` is what units 3.2 and 3.3 attack.
+
+**Six extension methods, each in `VectorGraphics-Vulkan` and each with the reason written down.**
+`PVComputeKernel >> recordComputeInto:groupsAcross:down:layers:` records a bind, a bind and a
+dispatch into a command buffer a caller owns, which is what batching needs and what
+`dispatch:y:z:` cannot give.
+`VkCommandBuffer class >> computeToComputeBarrier` and
+`VkCommandBuffer >> recordComputeToComputeBarrier` are the barrier between neighbouring passes.
+`VkPipelineStage2 class >> computeShaderBit`, `VkAccess2 class >> shaderWriteBit` and
+`VkAccess2 class >> shaderReadBit` are the three bits those two need; PharoVulkan's generated
+constant classes name only the bits PharoVulkan itself records.
+All six are extensions and not edits because PharoVulkan is another project's package, and they
+carry a comment saying so.
+
+**The artefacts.**
+Two tests are new in `VGVulkanBlurTest` — a blur is one submission whatever the count of passes,
+and the kernels and buffers of a blur last as long as the session, a field grows for a larger blur
+and never shrinks for a smaller one, and both dictionaries are empty once the session is released —
+beside the session tests that cover the fill half.
+`VGVulkanBlurExamples class >> residentBlurOfThisMachine` warms two blurs of a 64 by 64 field at the
+radii a shadow of width ten asks for and answers the dispatch;
+`VGVulkanDeviceSessionExamples class >> sessionOfThisMachine` warms two frames of one tile extent
+and two blurs, so one click shows a session holding both stages.
+Each answers a planned but never dispatched object on a machine with no device, because an example
+may not raise.
+`VGBlurDispatch`'s `Residency` tab names every buffer it holds, the bytes it was grown to and the
+passes that read it, asking `buffersOfPass:` rather than restating the rule, and its `Passes` tab
+lists the passes of the last blur; the session's `Residency` tab now carries the blur's rows beside
+the fill's, labelled by stage.
+Both `Residency` tabs took a gate they had been written without, which the inherited
+`testEveryViewHasAGate` of the examples test is what caught: a blur's rows read the buffers and the
+kernels, so a dispatch that has planned no pass holds neither, and a released session's empty table
+is the fact that tab states rather than a reason to hide it.
+
+Critics are clean on `VectorGraphics-Vulkan`, `VectorGraphics-Vulkan-Tests` and
+`VectorGraphics-Vulkan-Examples` but for the two `ReExcessiveArgumentsRule` critiques earlier units
+accepted and two on `PVComputeKernel` itself, which is PharoVulkan's class and reported here only
+because this package extends it.
+
+The project is 805 tests over 62 concrete test classes and passes, counted one `TestSuite` a
+concrete class so that the abstract test cases are not counted through their subclasses.
+
+Gate met. Unit 3.2 proceeds.
+
 ### 3.2 — read the tile's own records once a workgroup
 
 Every invocation of a workgroup reads the same tile record, the same reference words, the same
