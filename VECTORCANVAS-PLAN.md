@@ -4617,6 +4617,89 @@ and the plan has to say so.
 Gate: the pack and upload stages under 1 ms on the reference frame, a frame that is never read back
 costing no readback, and the same pixels when it is.
 
+**Done, gate met on all three clauses, on an integrated device.**
+The pack and upload stages of the reference frame fall from 1.445 and 1.112 ms to 0.035 and
+0.239 ms, so the two together are 0.274 ms against the 1 ms the gate asked for.
+A frame that is never read back reaches no readback, reports no `#readback` row and leaves the host
+array as it was; the pixels it left on the device are the same bytes a frame read back at once gives
+the host, which is what `VGTiledFillTest` asserts twice over.
+Every suite of `VectorGraphics-Vulkan-Tests` passes, so every device frame is still byte identical.
+
+**One copy, not three.**
+The elements of a `WordArray` and a `Float32Array` lie in object memory in the order and the width a
+storage buffer reads them, little-endian, which is exactly what the old `encode:target:` built by
+hand with `uint32AtOffset:put:`.
+So the middle copy had nothing to decide, and it is gone: `VGTiledFillDispatch` no longer packs the
+blocks of a frame, it names them.
+`blocksOf:target:` answers a dictionary from binding name to the object the upload will copy out of
+— for thirteen of the fifteen bindings that object is the encoding's own array, identical to it and
+not a copy of it, for `#target` it is the array the caller passed, and only the two-word frame
+record is built, as a `WordArray` rather than a `ByteArray`.
+`upload` then copies each block straight out of its own memory with `LibC memCopy:to:size:`.
+
+**The mapping is kept for the session.**
+`VkBuffer >> sessionPointer` maps on the first ask and keeps the pointer until the buffer is
+destroyed.
+One frame writes fourteen buffers and reads one back, so a mapping and an unmapping a call was
+thirty calls into the driver a frame for an address that does not move while a buffer lives.
+The memory is allocated host visible and coherent, which is what lets a write through a kept pointer
+reach the device with no `vkFlushMappedMemoryRanges`, and freeing memory that is still mapped unmaps
+it, so nothing is owed at destroy; anything that unmaps a buffer leaves it with no pointer and the
+next ask maps again.
+`VkBuffer` is PharoVulkan's class and these methods are ours, in `*VectorGraphics-Vulkan`, as
+`uploadBytes:` already was: it is our measurement that a frame cannot afford the mapping.
+`uploadBits:byteCount:` checks the count before it touches the pointer, because the bytes go out
+through a raw pointer and a count larger than the buffer's own would land outside its memory rather
+than fail.
+The inspector's buffer tab gained a "Mapped at" column, so the one mapping a session keeps is
+visible beside the buffer that holds it.
+
+**The readback is a request.**
+`draw:into:readBack:` is the frame and `draw:into:` is that frame with the request answered yes, so
+every caller of today's API pays what it paid before.
+`readbackInto:` fetches the pixels later, out of the mapping the buffer still holds.
+No production caller passes `false` yet — the Bloc path still ends in a host `Form` — and that
+caller is unit 3.6's window path, where a frame goes to a swapchain image and the host never reads
+it.
+
+**The figures, on an Intel Iris Plus.**
+Both columns are from one image session, 800 by 600, 1900 tiles touched on the reference frame, so
+they are comparable with each other; the unit 3.3 headline figures below are from an earlier
+session.
+
+| Stage, reference frame | Before | After |
+|---|---|---|
+| `writeBuffers` | 1.445 ms | 0.035 ms |
+| `module` | 0.002 ms | 0.001 ms |
+| `allocate` | 0.016 ms | 0.023 ms |
+| `upload` | 1.112 ms | 0.239 ms |
+| `dispatch` | 10.21 ms | 10.06 ms |
+| `readback` | 0.315 ms | 0.201 ms |
+
+The headline `deviceMilliseconds` after the unit are 5.103 ms for the background frame, 7.060 ms for
+the cards frame and 10.573 ms for the reference frame, against the 5.419, 7.746 and 13.297 ms unit
+3.3 recorded.
+The reference frame's 2.7 ms is the host cost this unit removed; the other two frames were never
+copy-bound and barely move.
+
+**What this unit is on a discrete device.**
+It is a loss, and the plan says so as unit 2.1's verdict did.
+A discrete part has no host-visible device-local memory to speak of, so a buffer the host writes is
+a staging buffer and the device reads it over the bus or a copy command moves it into device-local
+memory first.
+Keeping the staging mapping is still right, but the copy this unit removed would come back as a
+`vkCmdCopyBuffer`, and a readback that is a request would matter more rather than less, because the
+bus is the cost.
+Nothing here is wrong on such a device; the 2.5 ms saved is simply not there to save.
+
+**Two things the unit leaves behind.**
+The stage is still called `#writeBuffers` although it writes no buffer any more — it writes the
+frame record and names the blocks — and the name is kept deliberately, so that the stage figures of
+units 3.0 to 3.6 can be read against each other; `VGTiledFillDispatch class >> stageNames` says so.
+`VGVulkanRoundTrip` now measures a copy into a block that is already mapped, which is what a frame
+really pays, so unit 2.1's 7563 MB/s — a figure that included the mapping — is historical and should
+not be compared with what the harness answers today.
+
 ### 3.5 — the encoding, which is now the larger half
 
 With 3.1 to 3.4 done the dispatch is single-digit milliseconds and the 34.5 ms encoding is the
