@@ -4344,6 +4344,132 @@ almost all this fixed cost.
 Gate: the background frame's dispatch under 3 ms, the cards frame no slower, the visit census
 showing one record read a workgroup where there were 256, and every frame byte identical.
 
+**Done, and the gate is not met.**
+The records are staged in workgroup memory and read once a workgroup, which is the census half of
+the gate, and every frame is byte identical.
+The background frame's dispatch is 6.42 to 6.59 ms against the 3 ms the gate asked for and the
+6.636 ms it started from, so the speed half of the gate fails, and it fails because the premise
+behind it was wrong: the fixed cost the unit set out to remove is 0.734 ms of the frame, not 6.6.
+The unit is kept all the same — it is worth 4 per cent of the cards frame's device time and 8 per
+cent of the reference frame's — and the profiling below is what replaces the premise, because unit
+3.3 was aimed by the same arithmetic and has to be aimed again.
+
+**What the kernel does now.**
+`VGTiledFillStagedBlock` owns the layout of two blocks of `SpvStorageClass workgroup` storage: 89
+word slots — the frame record, the tile record, the reference word, the offset of the shape block,
+the header of the entry standing and sixteen shape records — and 24 float slots — the clip, the
+rectangle of the mask and the paint block.
+That is 452 bytes a workgroup, which is nothing against the 32 KB an Intel workgroup may ask for.
+`VGSpirvKernel >> declareSharedStorage` and `sharedVariables` are the hooks that let a kernel
+declare such a block and name it in its entry point's interface, and a kernel that shares nothing
+declares nothing.
+
+The staging is cooperative by run and not by slot.
+A record's words lie contiguously in its buffer and contiguously in the staged block, so one record
+is staged by one guarded step: the invocation whose local index is below the length of the run
+copies the word at that index.
+Seven such steps stage an entry — the two reference words, the header, the clip, the mask rectangle,
+the paint block and the shape block — and two stage the tile, where the first implementation of this
+unit emitted one guarded store a slot, 113 of them, and was slower on the cards frame than no
+staging at all.
+The run is the unit of the whole design: `{ storage . first slot . record name . field names }`, so
+its length is the number of words it names and a run cannot claim a word its record has not; the
+inspector's rows, the writer of a slot and the emission all read the same table, and the longest run
+is the 64-word shape block, which fits the narrowest workgroup this kernel is built for.
+
+Five barriers stand between the rounds, and their placement is the correctness of the unit.
+The entry loop and all the staging run in control flow the whole workgroup executes — only the read
+of the destination pixel, the sweep and the write-back are guarded by whether this invocation has a
+pixel of the frame at all — because a barrier one invocation of a workgroup reaches and another does
+not is undefined behaviour.
+The 70 by 54 frame of `VGTiledFillTest` is what holds that: its last column and last row of tiles
+are short, so a third of the invocations of those workgroups have no pixel, and the frame is byte
+identical to the software backend's.
+
+Sixteen shape records are staged and an entry may carry any number, so a shape past the capacity is
+read from global memory by every invocation that walks it, as every record was before this unit.
+`VGKernelVisitCensus` counts that honestly — staged reads are `1 + (shapes min: capacity)` a
+reference and the rest are multiplied by the invocations of a tile — and a test draws twenty stacked
+clips to assert it.
+
+**The census half of the gate, met.**
+Record reads on the background frame are 3800 where the frame needs 3800, and on the cards frame
+7256 where it needs 7256, against 972 800 and 1 857 536 before: exactly the 256 the §3.0 census
+predicted, with nothing left over, because neither frame carries an entry past the staged capacity.
+
+**The numbers, on the same Intel Iris Plus Graphics ICL GT2.**
+Milliseconds, each figure the mean of twenty frames of a resident session and each pass repeated:
+
+| | background | cards | reference |
+|---|---|---|---|
+| dispatch, before 3.1 and 3.2 | 6.636 | 11.127 | 42.795 |
+| dispatch, now | 6.42–6.59 | 9.66–9.76 | 39.9–40.6 |
+| stage `dispatch`, before | 3.809 | 7.988 | 39.661 |
+| stage `dispatch`, now | 4.70–4.88 | 7.65–7.71 | 36.2–36.3 |
+| host stages, now | 1.58–1.63 | 1.90–1.99 | 3.30–3.70 |
+
+The host stages fell because of unit 3.1, not this unit: `prepare` and `release` are gone from the
+stage table altogether and `allocate` is 0.015 ms where it was 0.167, since the pipeline, the
+descriptor sets and the buffers now belong to the session.
+The device stage is what this unit moved, and it moved in two directions: down 4 per cent on the
+cards frame and 8 per cent on the reference frame, up about a millisecond on the background frame.
+The direction follows the references a tile carries.
+A frame whose tiles carry one interior reference apiece pays the staging — five barriers and nine
+guarded loads a tile — and has nothing to spread it over, because 256 invocations reading the same
+89 words out of global memory were already reading one cache line apiece and the device was already
+broadcasting that line.
+A frame whose tiles carry two references apiece, or ten, amortises the same cost and wins.
+
+**Where the background frame's milliseconds actually are.**
+Three measurements, all with this kernel and no code changed for them.
+A frame of one 8 by 8 fill in an 800 by 600 target still dispatches all 1900 workgroups and still
+writes every destination pixel, and its device stage is 0.734 ms: that is the launch of 1900
+workgroups, the staging of 1900 tile records and the whole destination traffic, and it is the fixed
+cost of a frame on this device.
+Growing the fill grows the stage with the tiles it covers — 475 tiles 2.487 ms, 950 tiles 3.828 ms,
+1900 tiles 4.732 ms — so about 2.1 µs a swept tile at full coverage and 3.3 to 3.7 µs at partial,
+the difference being how well 1900 workgroups fill a 64-execution-unit device when most of them
+finish immediately.
+Adding whole-frame fills to that frame costs about 0.9 ms each above four of them — 1, 2, 4, 8 and
+16 fills measure 4.88, 6.38, 6.65, 9.00 and 16.78 ms — which is about 0.5 µs a tile for a second
+reference against 2.1 µs for the first.
+
+So the background frame's 4.7 ms is per-pixel sweep work and not fixed cost: 480 000 invocations,
+each staging its share, walking one reference, evaluating a solid paint, blending and writing, at
+about 8 ns apiece.
+The 6.6 ms the gate quoted is that 4.7 ms plus 1.6 ms the host pays for a frame of any content, and
+the record reads the unit removed were worth none of it.
+
+**What this says about unit 3.3.**
+The sweep is where the device time is, which 3.3 is right about, but the frame it pays off on is the
+reference frame and not the background one: the background frame sweeps 444 edge-and-tile pairs and
+the reference frame 48 550, and their device stages are 4.7 ms and 36.2 ms.
+So 3.3 keeps its gate — the reference frame's dispatch under 10 ms — and loses the claim that it
+helps the two cheaper frames much; the background frame is near the floor of what this shape of
+kernel can do, and §12.7's one-invocation-per-sub-row shape is the only thing left for it.
+The one cheap thing this unit leaves behind for the next is the barrier count: the five rounds exist
+because the offset of a header is read out of the staged reference word and the offset of a shape
+block out of the staged header, and three rounds would do if those two offsets were computed by
+every invocation from the reference index instead of read back from workgroup memory.
+That is worth measuring on the background frame, where the staging is pure overhead and the barriers
+are most of it.
+
+**The cycle.**
+`VGTiledFillKernelTest` is 17 tests, 3 of them new to this unit: that the staged block gives every
+word of the records it holds one slot of its own, that the kernel declares its workgroup blocks and
+names them in the interface, and that every run is staged by as many invocations as it has words,
+numbered from the first.
+`VGKernelVisitCensusTest` is 7, with the gate's own test and the test of a shape past the capacity.
+`VGTiledFillTest` is 42 and passes on the device, every frame byte identical, including the 70 by 54
+frame the barriers need.
+`VGFrameProfileTest` is 14 and holds the new class in its package and tag.
+`VGTiledFillExamples class >> stagedBlockOfTheDefaultTile` is the `<sampleInstance>`, and the
+block's `Slots` tab lists every slot with the record it stages, the word it holds and the invocation
+that stages it, read off the runs the kernel really loads rather than restated.
+Critics are clean on every class this unit touched.
+
+Gate not met on speed, met on reads and on bytes. Unit 3.3 proceeds, re-aimed.
+
 ### 3.3 — the crossings of a sub-row, computed once
 
 This is the unit the phase exists for.
