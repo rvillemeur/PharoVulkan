@@ -4494,6 +4494,111 @@ Gate: the reference frame's dispatch under 10 ms, byte identical, with the censu
 a sub-row; and if it lands above 20 ms the unit stops the phase rather than tuning, because then the
 one-invocation-per-pixel shape is wrong and §12.7 is the answer.
 
+**Done, and the gate is not met, but the phase goes on.**
+Every sub-row of a tile is swept once for the whole workgroup, which is the census half of the gate,
+and every frame is byte identical.
+The reference frame's dispatch is 13.297 ms against the 10 ms the gate asked for and the 39.9 to
+40.6 ms it started from, so the speed half of the gate fails by a third.
+It is nowhere near the 20 ms at which the unit was to stop the phase, so the one-invocation-a-pixel
+shape stands and §12.7 is not the answer yet.
+This is the unit phase 3 existed for and it is worth three times the reference frame: the device
+time inside the dispatch falls from 36.2 ms to 10.609 ms, the cards frame from 7.65 to 6.000 ms and
+the background frame from 4.70 to 4.332 ms.
+
+**What the kernel does now.**
+`VGTiledFillSpanBlock` owns the layout of two more blocks of `SpvStorageClass workgroup` storage:
+240 word slots, one a sub-row of the tile, each holding how many spans that sub-row found; and 1920
+float slots, four spans a sub-row and two bounds a span.
+That is 8640 bytes beside the staged records' 452, which is 9092 of the 16 KB Vulkan guarantees
+every conformant device, so the kernel asks no more of a device than the standard promises.
+A tile is sixteen rows of sixteen pixels and a row is sampled fifteen times, so a tile is 240
+sub-rows and a workgroup of it is 256 invocations: one round of the sweep gives every sub-row a
+sweeper of its own and sixteen invocations sweep nothing.
+A smaller tile turns the round more than once, which is what `sweepsPerInvocation` answers.
+
+For each entry of the tile, once the staged records are visible, every invocation of the workgroup
+reads the header, the clip and the shape records back out of shared memory — not only the ones with
+a pixel of the frame to draw, because an invocation with no pixel may still own a sub-row to sweep.
+Whether the entry covers the whole tile and whether any of its shapes is antialiased are then the
+same answer for every invocation, so where it is neither interior nor aliased throughout each
+invocation sweeps its own sub-rows: the crossings of every edge of every antialiased shape, over the
+whole width of the tile cut to the clip, with the verdict read at the start and at each crossing,
+and the maximal runs it finds written into the block.
+A barrier, and then each pixel sums, for its own fifteen sub-rows, the overlap of each span with its
+own column, which is arithmetic over a list of at most four pairs and reads no edge at all.
+Five barriers an entry where there were four: one at the top of the loop, two between the three
+rounds of the staging, one once the staging is written and one once the sweep is written.
+The gate of the aliased shapes moved with it: an aliased shape is sampled at the centre of its own
+pixel row, so it answers the same for the fifteen sub-rows of a row and is now asked once a row
+instead of fifteen times.
+
+**Why the sums are the same floats.**
+A maximal run of the points every antialiased shape calls inside is a function of x alone, because
+the verdict at a point is one scan of the edges and the crossings are computed from the edges and
+the sampling line only.
+So the runs inside a pixel's window are the runs of the tile's window cut to it: a bound inside the
+window is the same float the sweep computed, and a bound at the edge of the window is the larger of
+the start and the left edge, or the smaller of the end and the right edge, which is exactly that
+edge.
+Each term a pixel adds is therefore the same subtraction of the same two floats as before, in the
+same left-to-right order over the same sub-rows, and a run that misses the window adds nothing
+rather than a zero.
+A run that ends exactly where a window starts adds nothing on both paths, because both ask the same
+predicate at the same x.
+That is the argument; the forty-two cases of `VGTiledFillTest`, the thirteen of `VGTiledBlitTest`,
+the eleven each of `VGTiledClipTest` and `VGTiledSurfacePaintTest`, the thirteen of
+`VGVulkanBackendTest` and the twelve of `VGVulkanRoundTripTest` are what checks it, all byte
+identical on the device, the 70 by 54 frame among them.
+
+**What it measures**, on the Intel Iris Plus of this machine, 800 by 600, 1900 tiles, the whole of
+`draw:into:` averaged over the repeats, with the figures unit 3.2 left beside them.
+
+| frame | dispatch before | dispatch now | stage `dispatch` before | stage `dispatch` now |
+| --- | --- | --- | --- | --- |
+| background | 6.42 – 6.59 | 5.419 | 4.70 – 4.88 | 4.332 |
+| cards | 9.66 – 9.76 | 7.746 | 7.65 – 7.71 | 6.000 |
+| reference | 39.9 – 40.6 | 13.297 | 36.2 – 36.3 | 10.609 |
+
+The host stages of the reference frame are 0.998 ms writing the buffers, 0.723 uploading them and
+0.246 reading the target back; the background frame's are 0.222, 0.509 and 0.181.
+`module` and `allocate` are a hundredth of a millisecond, as unit 3.1 left them.
+
+**What the census says.**
+On the reference frame: 1595 swept references, 382 800 sub-row sweeps against 382 800 needed, and
+11 652 000 edge reads against 11 652 000 needed.
+Both ratios were sixteen before this unit and are one now, which is the whole of what the sweep had
+to give.
+The census also reports a bound it cannot turn into a count: 656 of those 1595 references carry more
+than eight edges, and a reference of no more than twice the span capacity in edges cannot overflow a
+sub-row at all.
+A reference above the bound usually does not overflow either — a circle of a hundred edges crosses a
+sub-row twice — and a sub-row that does overflow carries a mark instead of a count and is swept
+again, once a pixel of it, which keeps the answer right and costs what the sweep used to cost.
+
+**The capacity, measured rather than argued.**
+Seven spans a sub-row is the most the 16 KB budget allows, and it measured 14.297 ms on the
+reference frame against four's 13.297: the storage a workgroup asks for is what a device divides its
+occupancy by.
+Two spans a sub-row measured 13.285 ms, which is four's figure, so the fallback is rare enough not
+to show.
+Four is kept because it is twice what the frames ask and leaves room before the fallback, and the
+thing to revisit is the fallback and not the number.
+
+**What is left of the reference frame's 10.6 ms.**
+The sweep is no longer repeated, so what remains is one scan of the edges of a shape for each
+crossing of each sub-row it reaches, and the scan is linear in the edges of the shape.
+A sub-row of a tile that a hundred-edge circle reaches scans those hundred edges once a crossing,
+and that is where the next cut is: an edge list ordered by its own rows, or a per-shape active list
+the sweep advances left to right.
+That is not a unit of this phase — units 3.4 and 3.5 face the copies and the encoding, which are now
+1.7 ms of the reference frame's 13.3 against the dispatch's 10.6 — and it is written here so that
+the next phase can start from it.
+
+`VGTiledFillKernel` now holds 63 methods and Renraku says so.
+It is one class because one module is built by one walk and the pixel emitter already shares it; the
+answer, when it comes, is a sweep emitter of its own with the same shared state, and that is a
+refactor and not a unit.
+
 ### 3.4 — one copy, not three
 
 A word of the encoding is written into a `WordArray`, copied into a `ByteArray` by `encode:target:`,
