@@ -5010,6 +5010,86 @@ Two tests hold the finding so that it fails if Bloc ever starts retaining entrie
 `>> testTwoFramesOfTheSameSceneRecordTheSameGeometry`. `VGFrameProfileTest` is 16 tests, green;
 critics clean. No other code was written, since steps 2 to 4 were conditional on a yes.
 
+### 3.8 — what a dispatch costs when it computes nothing, measured
+
+The question unit 3.3's stop rule needs answered before any more kernel surgery is scheduled: of the
+background frame's dispatch, how much is the queue submission and the fence the host waits on, and
+how much is work the kernel really does? A fixed cost cannot be optimised by a better inner loop. If
+most of the 4.3 ms unit 3.3 recorded were submission overhead, no edge-list work would reach parity
+and 12.7's change of shape would be the only lever left.
+
+**Method.** The real kernel of the real session, over the real buffers of the background frame —
+800 by 600, 1900 touched tiles, a 16 by 16 tile, one invocation a pixel — dispatched directly
+through `PVComputeKernel >> dispatch:y:z:` rather than through `VGTiledFillDispatch >> draw:into:`,
+so that neither the encoding, nor the upload of the bindings, nor the readback of the target is
+inside any figure below. The grid is varied by dispatching fewer workgroups over the same buffers,
+and the work a workgroup does is varied by blanking fields of the records already uploaded: zeroing
+every tile record's `referenceCountField` leaves a workgroup that stages its tile and draws no
+entry, and zeroing the frame record's `frameWidthField` and `frameHeightField` leaves every
+invocation outside the frame, which is the test the kernel guards the destination read, the entry
+and the write back with. Each measurement is forked at priority 70, five passes thrown away, forty
+timed; the median is quoted.
+
+**The fixed cost.**
+
+| what was submitted | median | min |
+|---|---|---|
+| an empty command buffer, allocated, submitted and waited on | 0.466 ms | 0.349 ms |
+| the kernel bound, its descriptors bound, nought workgroups dispatched | 0.176 ms | 0.168 ms |
+| one workgroup | 0.298 ms | 0.290 ms |
+| 1900 workgroups, the whole background frame | 4.188 ms | 4.035 ms |
+
+Allocating and recording a command buffer without submitting it costs 0.062 ms, so almost all of the
+fixed figure is the submission and the wait. The empty command buffer reads higher than the dispatch
+of nought workgroups because it was the first thing submitted after the device had been idle; taken
+together the two say the fixed cost of a frame is between 0.18 and 0.47 ms, and the lower figure is
+what a frame in a running loop pays.
+
+**Where the rest goes.** The same 1900 workgroups, with the records blanked as described:
+
+| what the workgroups did | median | difference |
+|---|---|---|
+| launched and staged the frame and tile records, nothing else | 1.081 ms | — |
+| and read and wrote their pixel | 1.342 ms | pixel read and write, 0.261 ms |
+| and staged and swept the one entry, no pixel | 2.649 ms | entry staging and sweep, 1.568 ms |
+| the whole background frame | 4.085 ms | compositing the entry into the pixel, 1.175 ms |
+
+So the background frame's 4.1 ms dispatch is 4 per cent submission, 26 per cent launching 1900
+workgroups and staging their records, 6 per cent the destination read and write back, 38 per cent
+the cooperative sweep of one entry's sub-rows and 29 per cent compositing that entry into a pixel.
+
+**What follows.** The submission is not the floor: edge-list work is not ruled out by a fixed cost,
+because there is no large fixed cost. Two thirds of the frame is the sweep and the composite, which
+is exactly what units 3.3 and 12.7 propose to attack.
+
+The shape is a floor of its own, though, and a hard one. A grid of 1900 workgroups whose invocations
+stage their tile record and do nothing else costs 1.081 ms, which is 9.3 times Cairo's entire
+background frame of 0.116 ms. No amount of kernel work removes it, so the cheapest frames can never
+reach Cairo with one workgroup a tile and one invocation a pixel. Against the reference frame it
+reads very differently: 1.081 ms is 18 per cent of Cairo's 6.040 ms, so on the frame the verdict
+actually turns on the shape leaves five sixths of the Cairo budget for real work, and the 29 ms
+above that budget is work, not overhead.
+
+That splits 12.7's options by what they can reach. One invocation per word of four pixels quarters
+the invocations and so attacks the 1.44 ms the pixel read, write and composite make; it leaves the
+per-workgroup staging and the sweep where they are. A smaller tile raises the workgroup count and
+makes the 1.081 ms worse, not better, unless the staging shrinks with the tile. A two-kernel frame
+pays the fixed cost twice, which is cheap at 0.18 ms, and is the only one of the three that changes
+what the sweep costs.
+
+**One caveat on reading these numbers.** A run made while the device was still ramping measured the
+same 1900-workgroup dispatch at 2.486 ms; three later runs under sustained load all read between
+3.811 and 4.188 ms, which is the state unit 3.3's 4.332 ms was recorded in. The settled figures are
+quoted throughout. A benchmark that dispatches once on a cold device reads about 1.7 times faster
+than anything a running tool gets.
+
+One test holds what the finding depends on:
+`VGTiledFillTest >> testAFramePaysOneQueueSubmissionWhateverItsTileCount` counts the sends that make
+a frame one submission — `draw:into:readBack:` dispatching once, `dispatchOver:` sending
+`dispatch:y:z:` once, and `PVComputeKernel >> dispatch:y:z:` submitting once — so the share quoted
+above for the fixed cost fails the suite if a later shape splits the frame into two dispatches.
+`VGTiledFillTest` is 49 tests, green; critics on it are unchanged.
+
 ### 12.7 — not scheduled: a different shape, if 3.3 fails
 
 Written down so that the stop rule has somewhere to point.
@@ -5019,3 +5099,63 @@ buffer and a second one shades the pixels from them; a smaller tile, since 8 by 
 unit 2.2 and rejected on binning cost alone, which a cheaper binning changes; and one invocation per
 word of four pixels, which quarters the invocation count and the fixed cost with it.
 None of them is cheap, and none should be started before 3.3 has been measured.
+
+## 13. The stale device session defect
+
+Found while running unit 3.8's benchmark, and it had been in the image for as long as
+`VGVulkanDeviceSession class >> default` has existed.
+
+**What happened.** Running `VGTiledFillTest` as a class took the virtual machine down — not a
+failure, not an error, the process gone and the MCP connection refused. Four restarts narrowed it:
+a bisect that logged `START <selector>` and `DONE <selector>` to a file in the image directory
+before and after each test named
+`testAFrameNotReadBackAtOnceHasOnTheDeviceThePixelsAFrameReadBackHasInTheHost`, the first test of
+that class in alphabetical order that draws on a device; a second log, of that test's own steps,
+put the crash at its first `draw:into:`; a third compared sessions and showed
+`VGVulkanDeviceSession new` drawing both a plain frame and the mixed-fill frame without complaint
+while `VGVulkanDeviceSession default` died on the first frame; and a fourth, in a freshly started
+image, logged `defaultIsNil=false` before it crashed.
+
+**The defect.** `Default` is a class variable, so it is saved into the image. An image saved while
+the default session held a device comes back holding a `VGVulkanDeviceSession` whose context,
+command pool, pipelines and buffers are Vulkan handles of a virtual machine run that has ended.
+Reading one of them is a dereference of a dangling pointer: the virtual machine dies on the spot,
+with nothing an image can catch and no VkResult to inspect. Every image start since the save was
+one frame away from it, and the frame that happened to find it was a test.
+
+Releasing the stale session is not the fix and is the same crash: `vkDestroyDevice` on a handle of a
+dead process dereferences it exactly as drawing does. A stale session must be dropped, not released
+— nothing leaks, because the device went with the process that owned it.
+
+**The fix, in two places.** `VGVulkanDeviceSession class >> initialize` registers the class with
+`SessionManager default registerUserClassNamed:`, and `class >> startUp:` sets `Default := nil` when
+the image is starting, sending the forgotten session no message at all. That covers the session the
+project itself caches.
+
+A session held anywhere else — an instance variable of a benchmark, a renderer or an inspector that
+was saved with the image — is not reachable from `Default`, so the check is made where it matters as
+well: the session remembers the `Smalltalk session` object its device was opened under in a new
+`imageRun` slot, `isOfThisImageRun` answers whether that is the run going now, and `contextOrNil`
+sends `forgetDeviceOfAnotherImageRun` and probes again rather than answering handles of another run.
+`forgetDeviceOfAnotherImageRun` nils the context and the blur, empties the dispatches and forgets
+the reason a driver once gave, and destroys none of it.
+
+**The artefacts.** Three tests, each red before the code existed:
+`VGVulkanDeviceSessionTest >> testTheSessionClassIsRegisteredWithTheSessionManager`,
+`>> testAnImageStartForgetsTheDefaultSessionAndDoesNotReleaseIt` and
+`>> testASessionOfAnotherImageRunOpensItsDeviceAgainAndDestroysNothing`. The second and third stand a
+plain `Object` in for the stale session and for its stale context and dispatch, so a hook that
+releases what it should drop fails them with a doesNotUnderstand rather than quietly working on this
+machine. A fourth, `>> testTheLifetimeRowsAskTheSessionItselfWhatRunItsDeviceBelongsTo`, holds the
+rows behind the new `Lifetime` inspector tab, which names what the session holds, the run that holds
+it, the dispatches hanging off it, the registration that will forget it at the next image start and
+the reason a machine without a driver gave — every value asked of the predicate, the dictionary or
+the session manager, so no row can drift from the code. The example is
+`VGVulkanDeviceSessionExamples class >> sessionThatDroppedADeviceOfAnotherImageRun`: one click opens
+a device, drops it the way an image start does, and opens another.
+
+**What this costs a reader of the earlier numbers.** Nothing: every figure in units 3.0 to 3.8 was
+measured on a session built with `VGVulkanDeviceSession new` inside one run of the virtual machine,
+which is the path that was never stale. What it did cost was six image restarts, and the lesson for
+the next one is in the method: a device handle is valid for one run of the virtual machine, so
+anything that caches one belongs in `SessionManager` and should say which run it belongs to.
