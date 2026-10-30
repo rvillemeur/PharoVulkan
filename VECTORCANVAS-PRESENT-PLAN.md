@@ -178,6 +178,7 @@ is in that state now, which means `PVVulkanDriver class >> install` was used in 
 than `installDuring:`, exactly the hazard that method's own comment warns about. A Vulkan-presenting
 host class must not copy that test, and the stray installation should be undone
 (`PVVulkanDriver uninstall`) or made deliberate before any window work starts.
+Both were done on 30 October 2026, as the unit §6b records.
 
 **Verdict: yes.** The seam exists and is reachable by subclassing alone. Nothing else in a frame
 depends on the CPU buffer. The cost is one more subclass than §6 assumed, at the host and host-space
@@ -185,6 +186,81 @@ level rather than the renderer alone, because the CPU round trip this document e
 created by the SDL streaming texture the host space builds, not by the renderer that fills it.
 That does not reopen §1: this is still a different shape from `VECTORCANVAS-PLAN.md`'s three seam
 rules, and §7 of this document stays unscoped until it is committed to.
+
+## 6b. The hazard, undone and held: `VGVulkanDriverSdl2Host`
+
+Done on 30 October 2026, as the first unit after the §6a investigation, because every window unit
+after it would have been built in an image where Bloc could not open a window at all.
+
+**The stray installation.** `OSWindowDriver current className` answered `'PVVulkanDriver'` in the
+working image and again in the image as it was saved on disk, so some session had called
+`PVVulkanDriver class >> install` rather than `installDuring:`. `PVVulkanDriver uninstall` puts the
+stock driver back; `BlHostRegistry default refreshAvailableHosts` then answers
+`#(BlOSWindowSDL2Host BlMorphicWindowHost BlHeadlessHost)` again.
+
+**Why undoing it is not the whole fix.** The hazard is not the stray call, it is that nothing says
+when it bites. `BlOSWindowSDL2Host class >> isSupported` is `OSWindowDriver current className =
+#OSSDL2Driver`, so *any* correct use of the driver — `installDuring:` around a window, which is
+what `PVHelloTriangleScene` and four `PVGraphicsTest` tests already do — takes Bloc's SDL2 host away
+for the duration and hands any space opened in that window the Morphic host instead, with no error.
+The driver has to be a subclass of `OSSDL2Driver`: it exists to add `SDL_WINDOW_VULKAN` to the flags
+and answer an `OSSDL2VulkanBackendWindow`, and it falls through to `super` for every other window.
+
+**The fix: one subclass, in this project, that answers for exactly that case.**
+`VGVulkanDriverSdl2Host`, in `VectorGraphics-Vulkan` under the `Backend` tag, is a subclass of
+`BlOSWindowSDL2Host` that adds one class-side method:
+
+```smalltalk
+isSupported
+	^ OSWindowDriver current isKindOf: PVVulkanDriver
+```
+
+Nothing else is overridden, so the attributes, the host space and the renderer it builds are Bloc's
+own. The two cases partition: under the stock driver Bloc's host answers supported and this one does
+not; under PharoVulkan's driver the reverse. That matters because `BlHostRegistry >> registerHost:`
+sorts by `order` alone and both classes answer 10, so two supported SDL2 hosts would make the
+registry's choice between them arbitrary.
+
+Package placement follows the dependency table: `VectorGraphics-Vulkan` is the one family allowed to
+name a PharoVulkan class, and the host names `PVVulkanDriver`. Bloc is not edited, which §6a required
+of any host class; the rule it states — *a Vulkan-presenting host class must not copy Bloc's
+class-name test* — is now held by a test rather than by a sentence in this document.
+
+**Why the trait is declared again on the subclass.** `BlHostRegistry >> refreshAvailableHosts`
+registers the singleton of each class in `TBlSingletonHost users`, and `users` holds the classes that
+use the trait, not their subclasses — `VGPixelBufferHost`, a subclass of `BlHeadlessHost`, is absent
+from it. Without `traits: { TBlSingletonHost }` the new host would never be offered by a registry.
+The cost is that Renraku reports the trait's nine class-side copies — `default`, `cleanUp`, `start`,
+`stop`, `label`, `isRunning`, `pulseProcess`, `uiProcessDo:`, `universe` — as equivalently defined in
+the superclass, which also uses the trait. They are copies of one trait, not code written here, and
+Tonel does not write them out. Excluding them from the composition — `TBlSingletonHost - #( … )` —
+leaves the copies in the method dictionary and changes nothing, so the class is defined plainly and
+the reason is in its comment.
+
+**What holds it.** `VGVulkanDriverSdl2HostTest`, five tests:
+
+| Test | Fact |
+|---|---|
+| `testBlocsOwnSdl2HostIsLostWhileTheVulkanDriverIsInstalled` | Bloc's own host answers not supported under the Vulkan driver — the reason the subject exists, and the canary that lets it be deleted if Bloc ever asks a kind-of question |
+| `testTheHostIsSupportedWhileTheVulkanDriverIsInstalled` | the subject answers supported then |
+| `testTheHostIsNotSupportedWhileTheStockDriverIsInstalled` | and not under the stock driver |
+| `testExactlyOneSdl2HostIsSupportedUnderEitherDriver` | the two cases partition, under either driver |
+| `testAnSdl2HostIsAvailableWhileTheVulkanDriverIsInstalled` | a registry built while the driver is installed offers a kind of `BlOSWindowSDL2Host`, which is the whole point |
+
+The tests swap drivers through `PVVulkanDriver class >> installDuring:` and, for the stock driver it
+cannot install, through `withDriverClass:during:`, which restores the previous driver in an `ensure:`
+exactly as `installDuring:` does. They build `BlHostRegistry new` rather than refreshing the image's
+own, because `refreshAvailableHosts` sends `stop` to each host it prunes; `tearDown` sends
+`VGVulkanDriverSdl2Host cleanUp`, because `BlOSWindowSDL2Host class >> default` registers each
+singleton it builds in the image's registry as well.
+
+The example is `VGVulkanDriverSdl2HostExamples class >> hostOfferedWhileTheVulkanDriverIsInstalled`:
+one click answers the host a fresh registry offers while the driver is installed, and puts the
+driver, the registry and the singleton back. The view is `VGVulkanDriverSdl2Host >> inspectorHost:`,
+a six-row table — the driver it answers to, the driver installed, whether each of the two SDL2 hosts
+is supported now, the host a space would be given, and the spaces open on it — every row asking the
+live predicate, none of them writing anything. `VGVulkanExamplesTest >> exampleHolders` names the new
+holder, so the four example gates cover it.
 
 ## 7. If the answer is yes — the shape of what comes after, not yet scoped
 
