@@ -4845,6 +4845,63 @@ driver, and the second leaves the Vulkan path a correctness-preserving curiosity
 Gate: the verdict recorded with the device named, and `VGBackend class >> preferred` changed, or
 explicitly left alone, by that number.
 
+**The numbers, with the device named.**
+Intel(R) Iris(R) Plus Graphics (ICL GT2), same machine and the same session as the three frames
+below. `VGFrameDeviceBenchmark >> wholeFrameMilliseconds` adds the encode this project pays to the
+dispatch it drains, because Cairo pays no separate encoding phase of its own and comparing the
+dispatch alone would understate what a caller of this project actually pays against it.
+`VGFrameStageBenchmark >> slowerThanCairoBy` divides that whole-frame figure by the Cairo figure the
+harness already measures live, and `verdictRows` appends both to the report so a reader of the tab
+sees the bottom line without computing it by hand.
+
+| frame | whole frame | Cairo | slower than Cairo by |
+|---|---|---|---|
+| background | 14.828 ms | 0.116 ms | 127.5 times |
+| cards | 16.296 ms | 0.349 ms | 46.7 times |
+| reference | 30.222 ms | 6.040 ms | 5.0 times |
+
+The reference frame is the real Bloc scene `VGFrameProfile` builds — 88 entries drawn through an
+actual `BlElement` tree via `aeFullDrawOn:`, not a synthetic case — so it is the one of the three that
+answers what a user actually gets, and it is also the one where Cairo itself has real work to do
+rather than next to none. The background and cards ratios are mostly an artefact of how little Cairo
+pays for a near-empty or lightly populated frame; a factor against a 0.1–0.3 ms baseline swings on
+noise the reference frame's 6.04 ms does not.
+
+**The verdict.** Five times slower than Cairo, and 30 ms against a 16.6 ms frame budget, is not close
+enough: Bloc's default stays Cairo. This is a different finding from unit 2.1's go, which was Vulkan
+against this project's own software failover and is untouched by anything measured here — Vulkan
+remains 127 to 266 times faster than the software path on all three frames this session, so the
+internal ranking `VGBackend class >> preferred` encodes is still correct on this machine. `preferred`
+is left alone: nothing here moves the Vulkan-versus-software question, and nothing inside `VGBackend`
+decides Cairo-versus-VectorGraphics in the first place — Bloc's own default is
+`BlHostRenderer preferableClass:`, outside this project.
+
+**What remains, and what it costs.** On the reference frame the encode (17.024 ms) is larger than the
+dispatch it feeds (13.198 ms, 10.106 ms of it the dispatch stage alone) — units 3.4 and 3.5 already
+cut the encode from 34.5 ms to this, and it is still the bigger half. Closing the gap further means
+cutting the encode again, not the device: a dispatch-only reference frame is already only 2.2 times
+Cairo's 6.04 ms. The lever units 3.4 and 3.5 did not take is retained encoding — memoising a drawn
+entry's tile and band records on the entry itself, keyed on the entry's own identity, so a frame that
+redraws what the last one drew re-encodes nothing for it. That is a real cache-invalidation design,
+not a tuning pass, and nothing in this unit's gate asked for it to be built.
+
+Two tests are new: `VGFrameDeviceBenchmarkTest >> testWholeFrameMillisecondsIsEncodeAndDispatchTogether`
+and `VGFrameStageBenchmarkTest >> testSlowerThanCairoByIsTheWholeFrameOverCairo`, both red before the
+two accessors existed. `VGFrameDeviceBenchmarkTest` is 11 tests and `VGFrameStageBenchmarkTest` is 16,
+both green; critics are clean on `VGFrameDeviceBenchmark`, `VGFrameStageBenchmark` and both test
+classes.
+
+**One incident recorded so the next reader is not surprised by it.** The image was restarted mid-unit
+and came back before `wholeFrameMilliseconds`, `slowerThanCairoBy` and `verdictRows` had been
+committed; it also came back with its working copy's reference commit one commit behind the
+repository's actual head (`IceWorkingCopyDesyncronized` on the first `commitWithMessage:` after the
+restart). `IceWorkingCopy >> adoptCommit:` against `repository headCommit` resynced it — safe here
+because the head commit was confirmed a strict descendant of the stale reference with
+`commonAncestorWithCommit:` before adopting, not assumed. The three methods were recompiled through
+the red-green cycle a second time rather than reconstructed from memory of the first attempt, and the
+result was committed before the three-frame run that had crashed the image the first time, so a
+second crash would not cost the same work twice.
+
 ### 12.7 — not scheduled: a different shape, if 3.3 fails
 
 Written down so that the stop rule has somewhere to point.
