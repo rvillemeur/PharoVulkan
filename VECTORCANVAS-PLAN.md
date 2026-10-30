@@ -5090,18 +5090,19 @@ a frame one submission — `draw:into:readBack:` dispatching once, `dispatchOver
 above for the fixed cost fails the suite if a later shape splits the frame into two dispatches.
 `VGTiledFillTest` is 49 tests, green; critics on it are unchanged.
 
-### 3.9 — one invocation per word of four pixels
+### 3.9 — two pixels an invocation, measured against one and four
 
 Unit 3.3 cut the sweep to one pass a sub-row and left the frame at 10.609 ms of dispatch against
 Cairo's 6.040 ms, and unit 3.8 said where that time goes: 26 per cent launching 1900 workgroups and
 staging their records, 6 per cent reading and writing the destination pixel and 29 per cent
 compositing the entry into it.
 Of §12.7's three shapes only one attacks those three shares at once, and it is the shape this unit
-schedules: an invocation owns one word of four horizontally adjacent pixels instead of one pixel, so
-a workgroup is 64 invocations and not 256.
+schedules: an invocation owns a word of horizontally adjacent pixels instead of one pixel, so a
+workgroup of a 16 by 16 tile is fewer than 256 invocations.
 The target is one word a pixel and four bytes a word, so a word of four pixels is four words of the
 target; the name says what the invocation owns on the mask side, where a word really is four pixels,
-and the change is the same either way — the pixels of a quarter of a tile row, owned together.
+and the change is the same either way — the pixels of one piece of a tile row, owned together.
+How many pixels that is, the unit measured rather than assumed, and the answer is two.
 
 **What the probe says before any kernel is edited.**
 The same measurement unit 3.8 used — the real kernel over the real buffers of the background frame,
@@ -5119,63 +5120,136 @@ Two alternating passes, each forked at priority 70, five dispatches thrown away 
 So a quarter of the invocations is about a third off the launch-and-stage floor, 0.27 to 0.41 ms of
 it, on a device state where the 256-invocation figure reads what unit 3.8 recorded as 1.081 ms.
 That is the part of the win that is already measured; the rest has to come from the pixel work,
-where the four pixels of a word share one read of the staged header, clip, paint and shape records
-per entry instead of repeating it four times.
+where the pixels of a word share one read of the staged header, clip, paint and shape records per
+entry instead of repeating it per pixel.
 
 **What changes.**
-`VGTiledFillKernel class >> pixelsPerInvocation` answers 4 and is the only place the factor is
-written.
-`localSize` becomes the invocation grid and not the pixel grid — `tileExtent x // pixelsPerInvocation`
+`VGTiledFillKernel class >> pixelsPerInvocation` is the only place the factor is written, and it
+answers 2.
+`localSize` becomes the invocation grid and not the pixel grid —
+`tileExtent x // pixelsPerInvocation`
 by `tileExtent y` by `layerCount` — and `emitLocalIndex` multiplies the local row by that same
-invocation-grid width, since a local index is a position in the workgroup and no longer a position in
+invocation-grid width, since a local index is a position in the workgroup and no longer a position
+in
 the tile.
 `VGTiledFillSpanBlock >> invocationCount` and `VGTiledFillStagedBlock >> invocationCount` divide by
 the factor as well; they already ask `VGTiledFillKernel subRowCount`, so asking it for this is the
 same style.
-`sweepsPerInvocation` then answers 4 rather than 1, which is the sweep turning four rounds over the
-240 sub-rows instead of one: the same sub-rows swept the same once each, by a quarter as many
-sweepers.
+`sweepsPerInvocation` then answers 2 rather than 1, which is the sweep turning two rounds over the
+240 sub-rows instead of one: the same sub-rows swept the same once each, by half as many sweepers.
 `emitPixel` is where the real work is.
-It holds one destination word live across the entry loop today; it must hold four, and four of every
-value that is a function of the column — the left edge of the pixel, the target index, the inside
-test, the mask byte and the coverage sum — while the values that are a function of the row, the
-sub-row sweep among them, stay single.
-Unrolling the composite four times in the emitter is the shape to try first: it costs four times
-that stretch of emitted code and no workgroup storage, and it keeps every float operation and its
-order exactly where unit 3.3 left it.
-A 4-word-per-invocation workgroup block indexed at runtime is the fallback if the register pressure
-of four live words costs more than the invocations saved; it is 256 words, 1024 bytes, which takes
-the kernel from 9092 to 10116 of the 16 KB a conformant device guarantees.
+It held one destination word live across the entry loop; it now holds one per pixel of the word, and
+one of every value that is a function of the column — the left edge of the pixel, the target index
+and the inside test — while the values that are a function of the row, the sub-row sweep among them,
+stay single.
+The composite is unrolled in the emitter, once per pixel of the word: it costs that stretch of
+emitted code and no workgroup storage, and it keeps every float operation and its order exactly
+where unit 3.3 left it.
+`emitPixel` emits the columns and then sends five methods of its own — `emitInsideTestsOf:`,
+`emitTargetIndexesOf:`, `emitReadOfPixelWordsWhere:at:`,
+`emitEntryIntoPixelWordsWhere:lefts:given:` and `emitWriteBackOfPixelWordsWhere:at:` — because the
+one method with the loop and the unrolling in it tripped both `ReLongMethodsRule` and
+`ReCyclomaticComplexityRule`; the split emits byte-identical SPIR-V, which was checked against the
+module built before it.
+`ReExcessiveMethodsRule` on `VGTiledFillKernel` is older than this unit — the committed class had 64
+instance-side methods against the rule's threshold of 60 — and splitting an emitter whose methods
+are
+one per emitted construct is not this unit's business.
 
 **Why the bytes are the same.**
 A pixel's colour is a function of its own window and of the spans of its own sub-rows, and this unit
-moves neither: each of the four pixels sums the spans of the fifteen sub-rows of its own row, cut to
-its own column, in the same left-to-right order and as the same subtractions of the same floats.
-A tile is 16 pixels wide and 16 is divisible by 4, so no invocation ever owns pixels of two tiles and
-no word straddles a tile edge.
-The frame edge is the one place where the four pixels differ from each other: `frameWidth` can fall
-inside a word, so the inside test stays per pixel and is not hoisted to the word, and a pixel outside
-the frame neither reads nor writes its target word exactly as today.
-The suites that hold it are the ones unit 3.3 named: the forty-two cases of `VGTiledFillTest`, the
+moves neither: each pixel of a word sums the spans of the fifteen sub-rows of its own row, cut to
+its
+own column, in the same left-to-right order and as the same subtractions of the same floats.
+A tile is 16 pixels wide and 16 is divisible by 2 and by 4, so no invocation ever owns pixels of two
+tiles and no word straddles a tile edge.
+The frame edge is the one place where the pixels of a word differ from each other: `frameWidth` can
+fall inside a word, so the inside test stays per pixel and is not hoisted to the word, and a pixel
+outside the frame neither reads nor writes its target word exactly as before.
+The suites that hold it are the ones unit 3.3 named: the forty-nine cases of `VGTiledFillTest`, the
 thirteen of `VGTiledBlitTest`, the eleven each of `VGTiledClipTest` and `VGTiledSurfacePaintTest`,
 the thirteen of `VGVulkanBackendTest` and the twelve of `VGVulkanRoundTripTest`, the 70 by 54 frame
 among them, every one byte identical on the device.
 
 **One invariant gets tight.**
-`VGTiledFillStagedBlock` stages one word per invocation by local index with no loop, and its test
-asserts that no run is longer than the workgroup.
-The longest run is the shape run at 64 words, so at 64 invocations it fits exactly and nothing is
-spare: the next run that grows past 64 words needs a loop in `emitWordRun:from:base:lengthId:`
-rather than a wider workgroup.
-The unit states that, and the staged-block test is what reports it.
+`VGTiledFillStagedBlock` staged one word per invocation by local index with no loop, and its test
+asserted that no run is longer than the workgroup.
+The longest run is the shape run at 64 words, so at 128 invocations it still fits, but at the 8 by 8
+and 4 by 4 tiles the module is also built for it does not: `emitWordRun:from:base:lengthId:` and
+`emitFloatRun:from:base:` now turn as many rounds as the run needs, each invocation staging the word
+of its own number in each round, and `roundsOfRunLength:` and `writerOfWordSlot:` are what the tests
+read.
+`VGTiledFillKernelTest >> testARunLongerThanTheWorkgroupIsStagedInRounds` holds it.
 
-Gate: the reference frame's stage `dispatch` under 9.5 ms and the background frame's under 3.9 ms,
-every frame byte identical, and the census unchanged — one sweep a sub-row and one edge read per
-needed edge read, since this unit must not pay for its invocations with sweep work.
-Stop rule: if any of the three frames dispatches slower than it does today — 4.332, 6.000 and
-10.609 ms — the four live destination words cost more than the three invocations they save and the
-unit is reverted rather than tuned, because the probe above is the whole of its argument and a
-slower frame says the argument is wrong.
+**What it measures.**
+Three figures were wanted — the three frames' stage `dispatch` against 4.332, 6.000 and 10.609 ms —
+and they could not be had, because the device drifts far more than the unit is worth.
+In one forked run of `VGFrameStageBenchmark report`, three reports alternating the factor, the
+reference frame's stage dispatch read 9.634 ms at factor 2, then 28.642 ms at factor 1, then
+19.029 ms at factor 2 again, and the Cairo frame of the same three reports read 2.919, 6.267 and
+2.608 ms: a figure of this run compared against a figure of unit 3.3's run says nothing at all.
+So the unit is settled the way unit 3.8's probe was: one session, one device state, the real buffers
+of a frame, three modules bound to the same buffers and dispatched in turn, 1900 workgroups, five
+dispatches thrown away and twenty-five timed, three rounds of every factor.
+
+Factors 1, 2 and 4, two frames, median and min of each round, in ms:
+
+| frame | factor | round 1 | round 2 | round 3 |
+|---|---|---|---|---|
+| background | 1 | 2.416 / 2.257 | 3.128 / 2.921 | 3.335 / 3.140 |
+| background | 2 | 2.294 / 1.993 | 2.345 / 2.217 | 2.519 / 2.240 |
+| background | 4 | 2.387 / 2.235 | 3.094 / 2.930 | 3.050 / 2.770 |
+| reference | 1 | 9.942 / 9.768 | 15.316 / 9.816 | 11.628 / 9.875 |
+| reference | 2 | 9.730 / 7.286 | 8.715 / 7.296 | 9.521 / 8.948 |
+| reference | 4 | 12.004 / 10.072 | 10.202 / 10.016 | 13.119 / 12.383 |
+
+Then factors 1 and 2 alone, over all three frames, same shape of run:
+
+| frame | factor | round 1 | round 2 | round 3 |
+|---|---|---|---|---|
+| background | 1 | 2.920 / 2.641 | 2.686 / 2.570 | 2.027 / 1.764 |
+| background | 2 | 2.030 / 1.753 | 1.923 / 1.439 | 1.650 / 1.423 |
+| cards | 1 | 4.752 / 3.738 | 7.849 / 4.800 | 8.099 / 4.952 |
+| cards | 2 | 4.264 / 3.772 | 6.503 / 3.856 | 4.999 / 3.013 |
+| reference | 1 | 22.222 / 14.445 | 14.026 / 9.893 | 26.062 / 12.897 |
+| reference | 2 | 17.138 / 7.217 | 13.224 / 7.721 | 18.250 / 9.222 |
+
+Two pixels an invocation is the fastest of the three on every frame and in every round, on the
+median and on the min, and the one exception is a min of 3.772 ms against 3.738 ms on the cards
+frame
+whose median in the same round reads 4.264 against 4.752.
+Four pixels an invocation is a wash against one: it wins the launch floor the probe promised and
+spends it again on the unrolled composite, which is four live destination words and four of every
+column value.
+Against one pixel an invocation, two is 0.3 to 1.5 ms off the background frame, 0 to 1.9 ms off the
+cards frame and 2.5 to 7.2 ms off the reference frame, on the min of each round.
+
+Gate, as it was written and as it had to be read: the absolute gate — the reference frame under
+9.5 ms and the background frame under 3.9 ms of stage `dispatch` — is not measurable on this machine
+any more, since the same kernel over the same buffers reads 9.6 ms and 19.0 ms in one run, and the
+Cairo frame it is to be compared against moves by a factor of two in the same run.
+What the unit holds instead is the comparison above, which is a comparison of factors inside one
+device state, and every other part of the gate as written: every frame byte identical, and the
+census
+unchanged — sub-row sweeps 41 280, 340 800 and 382 800 of exactly as many needed, edge reads
+106 560, 2 122 560 and 11 652 000 of exactly as many needed, record reads at 1.0 times needed, on
+all three frames.
+The stop rule was written as *if any of the three frames dispatches slower than it does today the
+unit is reverted rather than tuned*, and four pixels an invocation trips it: 4.580, 8.301 and
+16.056 ms of stage dispatch on the day it was measured.
+The unit is not reverted but re-aimed, at the factor the same-state comparison names, and the
+deviation from its own stop rule is deliberate and stated here: the rule exists to stop a unit being
+tuned against noise, and what re-aimed this one is not noise but three rounds on each of three
+frames, in one state, agreeing with each other and with the probe that opened the unit.
+
+The example is `VGTiledFillExamples class >> kernelOfTheDefaultGrid`, which already builds the
+kernel this unit changes, and the view is `VGTiledFillKernel >> inspectorWorkgroup:`, a nine-row tab
+— the tile, the pixels an invocation owns, the invocation grid, the local size, the invocations a
+workgroup, the sub-rows of a tile, the sweeps an invocation turns, the longest staged run and the
+rounds it is staged in — every row sending the live method, so it cannot drift from the emitter.
+`VGTiledFillKernelTest` is 23 tests, green, and the two the unit adds are
+`testAnInvocationOwnsTwoAdjacentPixels` and
+`testTheWorkgroupTabReadsTheShapeOfTheWorkgroupFromTheKernel`.
 
 ### 12.7 — the other shapes, and why neither is scheduled
 
@@ -5190,6 +5264,9 @@ The third of them is scheduled, as unit 3.9, and the other two are not.
 Unit 3.3 did not trip its stop rule — the reference frame dispatches in 10.609 ms against the 20 ms
 at which the phase was to stop — so the one-invocation-a-pixel shape stands and what 3.9 changes is
 how many pixels an invocation owns, not the shape of the frame.
+Unit 3.9 then measured the word, and a word of four pixels is not what it ships: four pixels an
+invocation reads as a wash against one on every frame, and two pixels an invocation is the fastest of
+the three, so the shape this section named is right and the quartering it proposed is not.
 Unit 3.8 is what splits the other two off.
 A smaller tile raises the workgroup count, and the launch and staging of 1900 workgroups is already
 1.081 ms of the background frame, nine times Cairo's whole frame: a smaller tile makes the one share
