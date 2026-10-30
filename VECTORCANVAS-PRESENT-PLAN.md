@@ -114,6 +114,78 @@ document as its own section before any other section of this plan is written. A 
 document the way a no closed §12.7 of the other plan: written down so the next reader does not ask
 the same question again, and nothing past this unit gets built.
 
+## 6a. The answer: yes, with one window-level condition the question did not anticipate
+
+Read in the image on 30 October 2026, each answer with its class and selector. Nothing was built.
+
+**How a live window picks its renderer.** `BlOSWindowSDL2Host >> newHostSpaceFor:` builds the host
+space and sends it `renderer: self newHostRenderer`; `BlHost >> newHostRenderer` is
+`^ BlHostRenderer preferableClass new`. The choice is late-bound exactly the way `VGBackend class >>
+preferred` is, and `BlHostRenderer class >> preferableClass:` sets it for the whole image.
+`VGRendererTest >> testTheRendererIsAHostRendererBlocCanChoose` already holds that fact. Two
+details worth carrying forward: `availableClasses` is `self allSubclasses`, and an unset
+`preferableClass` is `availableClasses anyOne`, so adding a third renderer subclass makes the
+unset default arbitrary; and `preferableClass` is one global for every space, not a per-space
+choice, which is where §7's failover boundary has to live.
+
+**What the frame loop calls, and whether it is polymorphic.** `BlSpaceFrameDrawingPhase >> runOn:`
+sends `aSpace render`; `BlSpace >> render` sends `aHostSpace render: self`; `BlHostSpace >> render:`
+is `self renderer render: self`, which `BlOSWindowSDL2HostSpace >> render:` overrides only to wrap
+the same send in `OSWindowRenderThread uniqueInstance critical:`. No class in that chain names
+`BARenderer`. `BlHostRenderer >> render:` is a `subclassResponsibility`, `BARenderer >> render:` is
+its only implementor, and it is also the **only sender in the image** of
+`lockSurfaceFor:scaleFactor:during:` — now held by
+`VGRendererTest >> testTheCpuSurfaceLockIsSentByTheFrameMethodAlone`, which fails if a second
+sender ever appears. A renderer that overrides `render:` therefore escapes the CPU-pixel contract
+without touching a Bloc class.
+
+**What else the window draws in the same frame.** Nothing that needs those pixels. The cursor is
+the OS cursor: `BlOSWindowSDL2HostSpace >> cursor:` is `window setMouseCursor: aCursor`. The chrome
+is the OS window's own, reached through `title:`, `borderless:`, `fullscreen:` and friends on the
+host space, never drawn into the canvas. Overlays are ordinary elements — `BlOverlayElement` is a
+`BlElement` — and so are composition layers, both drawn through the one `aeFullDrawOn:` the
+renderer already drives. The SDL renderer's other hooks are empty: `BlOSWindowSDL2Renderer >>
+exposed`, `>> resized` and `>> present` have no body and `>> updateAll` is `shouldNotImplement`, so
+no second path redraws or re-presents the window between frames.
+
+**The condition the question did not anticipate, and the real reason this is not renderer-only.**
+`BlOSWindowSDL2HostSpace >> lockSurfaceFor:scaleFactor:during:` does not merely lend pixels: it
+locks an `SDL_TEXTUREACCESS_STREAMING` texture created in `>> initializeRenderer`, and after the
+renderer has filled it, it runs `sdlRenderer copy: texture; present`. That `sdlRenderer` is created
+unconditionally, one step earlier, by `BlOSWindowSDL2HostSpace >> initializeWithAttributes:` sending
+`window newBlocRenderer`, which is `OSSDL2BackendWindow >> newBlocRenderer` →
+`BlOSWindowSDL2Renderer for:` → `sdl2Window createAcceleratedRenderer`. A window that presents a
+Vulkan swapchain cannot also own an SDL accelerated renderer on the same handle, and
+`BlOSWindowSDL2Host >> newAttributesFor:` builds a plain `OSWindowAttributes` with `glAttributes`
+and no `vulkanAttributes`, so the window is not created with `SDL_WINDOW_VULKAN` either.
+So the substitution is three subclasses, not one: a renderer overriding `render:`, a host space
+overriding `initializeWithAttributes:` (create the window through `PVWindowAttributes` carrying
+`vulkanAttributes`, and do not send `newBlocRenderer`) and answering whatever present hook the new
+renderer sends in place of `lockSurfaceFor:scaleFactor:during:`, and a host overriding
+`newAttributesFor:` and `newHostSpaceFor:`. All three are subclasses in this project's own
+packages, which is what the question asked: no class outside `VectorGraphics` and
+`PharoVulkan-Graphics` is modified. `PVVulkanDriver >> createWindowWithAttributes:osWindow:` already
+creates exactly that window — `SDL2Vulkan sdlWindowVulkan` in the flags, an
+`OSSDL2VulkanBackendWindow` as the result — and falls through to `super` for attributes that carry
+no `vulkanAttributes`, so the existing driver serves both kinds of window.
+
+**One hazard found while reading, which is a defect in this project and not in Bloc.**
+`BlOSWindowSDL2Host class >> isSupported` is `OSWindowDriver current className = #OSSDL2Driver`, a
+literal class-name test, and `PVVulkanDriver` is a *subclass* of `OSSDL2Driver`, so installing it
+makes Bloc's SDL2 host unsupported: `BlHostRegistry default availableHostClasses` in this image is
+`#(BlMorphicWindowHost BlHeadlessHost)` and `BlOSWindowSDL2Host isSupported` is `false`. The image
+is in that state now, which means `PVVulkanDriver class >> install` was used in some session rather
+than `installDuring:`, exactly the hazard that method's own comment warns about. A Vulkan-presenting
+host class must not copy that test, and the stray installation should be undone
+(`PVVulkanDriver uninstall`) or made deliberate before any window work starts.
+
+**Verdict: yes.** The seam exists and is reachable by subclassing alone. Nothing else in a frame
+depends on the CPU buffer. The cost is one more subclass than §6 assumed, at the host and host-space
+level rather than the renderer alone, because the CPU round trip this document exists to remove is
+created by the SDL streaming texture the host space builds, not by the renderer that fills it.
+That does not reopen §1: this is still a different shape from `VECTORCANVAS-PLAN.md`'s three seam
+rules, and §7 of this document stays unscoped until it is committed to.
+
 ## 7. If the answer is yes — the shape of what comes after, not yet scoped
 
 Sketched only so the investigation unit has something to report against, not committed to:
