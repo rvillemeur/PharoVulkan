@@ -5247,6 +5247,8 @@ kernel this unit changes, and the view is `VGTiledFillKernel >> inspectorWorkgro
 — the tile, the pixels an invocation owns, the invocation grid, the local size, the invocations a
 workgroup, the sub-rows of a tile, the sweeps an invocation turns, the longest staged run and the
 rounds it is staged in — every row sending the live method, so it cannot drift from the emitter.
+Its gate is `inspectorWorkgroupContext:`, which answers inactive for a kernel with no tile extent,
+and `VGVulkanExamplesTest >> testEveryViewHasAGate` is what asks for the gate.
 `VGTiledFillKernelTest` is 23 tests, green, and the two the unit adds are
 `testAnInvocationOwnsTwoAdjacentPixels` and
 `testTheWorkgroupTabReadsTheShapeOfTheWorkgroupFromTheKernel`.
