@@ -5090,7 +5090,94 @@ a frame one submission — `draw:into:readBack:` dispatching once, `dispatchOver
 above for the fixed cost fails the suite if a later shape splits the frame into two dispatches.
 `VGTiledFillTest` is 49 tests, green; critics on it are unchanged.
 
-### 12.7 — not scheduled: a different shape, if 3.3 fails
+### 3.9 — one invocation per word of four pixels
+
+Unit 3.3 cut the sweep to one pass a sub-row and left the frame at 10.609 ms of dispatch against
+Cairo's 6.040 ms, and unit 3.8 said where that time goes: 26 per cent launching 1900 workgroups and
+staging their records, 6 per cent reading and writing the destination pixel and 29 per cent
+compositing the entry into it.
+Of §12.7's three shapes only one attacks those three shares at once, and it is the shape this unit
+schedules: an invocation owns one word of four horizontally adjacent pixels instead of one pixel, so
+a workgroup is 64 invocations and not 256.
+The target is one word a pixel and four bytes a word, so a word of four pixels is four words of the
+target; the name says what the invocation owns on the mask side, where a word really is four pixels,
+and the change is the same either way — the pixels of a quarter of a tile row, owned together.
+
+**What the probe says before any kernel is edited.**
+The same measurement unit 3.8 used — the real kernel over the real buffers of the background frame,
+1900 workgroups, every tile record's reference count zeroed and the frame record's extent zeroed, so
+that a workgroup stages its records and draws nothing — run against a module of a 4 by 16 tile,
+which has 64 invocations and asks for exactly the same workgroup storage as the 16 by 16 module:
+240 span-count words, 1920 span floats and 89 staged words in both.
+Two alternating passes, each forked at priority 70, five dispatches thrown away and forty timed:
+
+| invocations a workgroup | median, pass 1 | median, pass 2 | min |
+|---|---|---|---|
+| 256 | 0.861 ms | 1.106 ms | 0.435 ms |
+| 64 | 0.592 ms | 0.692 ms | 0.242 ms |
+
+So a quarter of the invocations is about a third off the launch-and-stage floor, 0.27 to 0.41 ms of
+it, on a device state where the 256-invocation figure reads what unit 3.8 recorded as 1.081 ms.
+That is the part of the win that is already measured; the rest has to come from the pixel work,
+where the four pixels of a word share one read of the staged header, clip, paint and shape records
+per entry instead of repeating it four times.
+
+**What changes.**
+`VGTiledFillKernel class >> pixelsPerInvocation` answers 4 and is the only place the factor is
+written.
+`localSize` becomes the invocation grid and not the pixel grid — `tileExtent x // pixelsPerInvocation`
+by `tileExtent y` by `layerCount` — and `emitLocalIndex` multiplies the local row by that same
+invocation-grid width, since a local index is a position in the workgroup and no longer a position in
+the tile.
+`VGTiledFillSpanBlock >> invocationCount` and `VGTiledFillStagedBlock >> invocationCount` divide by
+the factor as well; they already ask `VGTiledFillKernel subRowCount`, so asking it for this is the
+same style.
+`sweepsPerInvocation` then answers 4 rather than 1, which is the sweep turning four rounds over the
+240 sub-rows instead of one: the same sub-rows swept the same once each, by a quarter as many
+sweepers.
+`emitPixel` is where the real work is.
+It holds one destination word live across the entry loop today; it must hold four, and four of every
+value that is a function of the column — the left edge of the pixel, the target index, the inside
+test, the mask byte and the coverage sum — while the values that are a function of the row, the
+sub-row sweep among them, stay single.
+Unrolling the composite four times in the emitter is the shape to try first: it costs four times
+that stretch of emitted code and no workgroup storage, and it keeps every float operation and its
+order exactly where unit 3.3 left it.
+A 4-word-per-invocation workgroup block indexed at runtime is the fallback if the register pressure
+of four live words costs more than the invocations saved; it is 256 words, 1024 bytes, which takes
+the kernel from 9092 to 10116 of the 16 KB a conformant device guarantees.
+
+**Why the bytes are the same.**
+A pixel's colour is a function of its own window and of the spans of its own sub-rows, and this unit
+moves neither: each of the four pixels sums the spans of the fifteen sub-rows of its own row, cut to
+its own column, in the same left-to-right order and as the same subtractions of the same floats.
+A tile is 16 pixels wide and 16 is divisible by 4, so no invocation ever owns pixels of two tiles and
+no word straddles a tile edge.
+The frame edge is the one place where the four pixels differ from each other: `frameWidth` can fall
+inside a word, so the inside test stays per pixel and is not hoisted to the word, and a pixel outside
+the frame neither reads nor writes its target word exactly as today.
+The suites that hold it are the ones unit 3.3 named: the forty-two cases of `VGTiledFillTest`, the
+thirteen of `VGTiledBlitTest`, the eleven each of `VGTiledClipTest` and `VGTiledSurfacePaintTest`,
+the thirteen of `VGVulkanBackendTest` and the twelve of `VGVulkanRoundTripTest`, the 70 by 54 frame
+among them, every one byte identical on the device.
+
+**One invariant gets tight.**
+`VGTiledFillStagedBlock` stages one word per invocation by local index with no loop, and its test
+asserts that no run is longer than the workgroup.
+The longest run is the shape run at 64 words, so at 64 invocations it fits exactly and nothing is
+spare: the next run that grows past 64 words needs a loop in `emitWordRun:from:base:lengthId:`
+rather than a wider workgroup.
+The unit states that, and the staged-block test is what reports it.
+
+Gate: the reference frame's stage `dispatch` under 9.5 ms and the background frame's under 3.9 ms,
+every frame byte identical, and the census unchanged — one sweep a sub-row and one edge read per
+needed edge read, since this unit must not pay for its invocations with sweep work.
+Stop rule: if any of the three frames dispatches slower than it does today — 4.332, 6.000 and
+10.609 ms — the four live destination words cost more than the three invocations they save and the
+unit is reverted rather than tuned, because the probe above is the whole of its argument and a
+slower frame says the argument is wrong.
+
+### 12.7 — the other shapes, and why neither is scheduled
 
 Written down so that the stop rule has somewhere to point.
 If one invocation a pixel cannot be made cheap enough, the shapes worth trying are a two-kernel
@@ -5098,7 +5185,20 @@ frame, where a first dispatch writes the span lists of every sub-row of every ti
 buffer and a second one shades the pixels from them; a smaller tile, since 8 by 8 was measured at
 unit 2.2 and rejected on binning cost alone, which a cheaper binning changes; and one invocation per
 word of four pixels, which quarters the invocation count and the fixed cost with it.
-None of them is cheap, and none should be started before 3.3 has been measured.
+
+The third of them is scheduled, as unit 3.9, and the other two are not.
+Unit 3.3 did not trip its stop rule — the reference frame dispatches in 10.609 ms against the 20 ms
+at which the phase was to stop — so the one-invocation-a-pixel shape stands and what 3.9 changes is
+how many pixels an invocation owns, not the shape of the frame.
+Unit 3.8 is what splits the other two off.
+A smaller tile raises the workgroup count, and the launch and staging of 1900 workgroups is already
+1.081 ms of the background frame, nine times Cairo's whole frame: a smaller tile makes the one share
+of the frame that no kernel work removes worse, unless the staging shrinks with the tile.
+A two-kernel frame is the only one of the three that changes what the sweep costs, and the fixed cost
+it pays twice is cheap at 0.18 to 0.47 ms, but it breaks
+`VGTiledFillTest >> testAFramePaysOneQueueSubmissionWhateverItsTileCount`, which counts a frame as
+one submission; scheduling it means restating that test, and that is a decision for the phase and not
+for a unit.
 
 ## 13. The stale device session defect
 
