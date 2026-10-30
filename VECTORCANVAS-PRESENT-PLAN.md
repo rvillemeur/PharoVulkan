@@ -65,10 +65,15 @@ is sitting unused by VectorGraphics today.
 
 ## 5. What is confirmed open, not assumed either way
 
-- `BlHostRenderer` is the abstract root; `BARenderer` (Cairo) and `VGRenderer` (ours) are its only
-  two concrete subclasses, and each defines its own `render:` — `render:` is not a shared method that
-  forces a CPU hand-off, it is overridable per renderer. That is the real extension point, and it is
-  already exercised: `VGRenderer` is a second renderer Bloc did not ship.
+- `BlHostRenderer` is the abstract root and declares `render:` a `subclassResponsibility`;
+  `BARenderer` (Cairo) is its only direct subclass and its only implementor of `render:`, and
+  `VGRenderer` (ours) is a subclass of `BARenderer` that overrides
+  `renderWith:pixels:stride:physicalRectangle:logicalRectangle:` and inherits `render:` unchanged.
+  Corrected while answering unit 3.7's step 1, where this hierarchy was read in the image: the point
+  the paragraph was making still holds — `render:` is overridable per renderer and nothing above it
+  forces a CPU hand-off — but a renderer that never locks a CPU surface has to override `render:`
+  itself, not merely the pixel-lending method `VGRenderer` overrides today, because it is
+  `BARenderer >> render:` that sends `lockSurfaceFor:scaleFactor:during:`.
 - `BlHostSpace` has its own `renderer` instance variable and three known subclasses
   (`BlAbstractMorphicHostSpace`, `BlOSWindowSDL2HostSpace`, and this project's own
   `VGPixelBufferHostSpace`, built for exactly this kind of substitution). Only `BARenderer >> render:`

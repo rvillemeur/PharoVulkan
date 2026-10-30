@@ -4961,6 +4961,55 @@ changed costs no more than encoding k entries from scratch plus the concatenatio
 gates of §9; and step 1's finding written down either way, since a no on reuse is itself the result
 this unit is scoped to produce.
 
+**Step 1's finding: no. Entries are not reused, so this unit stops here.**
+
+Measured in the image, not assumed. The reference scene is built once as one `BlElement` tree and
+drawn twice through `aeFullDrawOn:` onto a canvas of its own each time, which is what a window
+redraw of an unchanged tree does. Both frames record 88 entries — 25 `VGFillEntry` and 63
+`VGBlitEntry` — and **no entry of the first frame is an entry of the second**: zero shared
+identities, and zero shared `paint`, `clip` or `segments` objects underneath them either. The
+entries are new objects every frame.
+
+What the two frames do share is their content: all 25 fills have `=` equal coordinate arrays across
+the two frames, so the second frame re-encodes, point for point, a picture it already encoded. The
+repeated work is real; what is missing is a key to hang the memo on. Nothing on the path from
+element to entry survives a frame:
+
+- `BlElement >> aeDrawGeometryOn:` does send the element to the geometry
+  (`self geometry aeApplyTo: aeCanvas element: self`), but the geometry answers the canvas a path
+  factory block, and `AeCanvas` holds no element — its slots are `pathBlock`, `figureBlock`,
+  `borderBlock` and caches of forms and fonts, never the element that filled them. By the time
+  `VGCairoContext` appends an entry to the display list, which element produced it is gone.
+- The display list itself is per surface (`VGCairoImageSurface`'s own `displayList` slot), and
+  `VGRenderer >> renderWith:pixels:stride:physicalRectangle:logicalRectangle:` builds a new surface
+  over the window's pixels every frame. The canvas is kept between frames; the display list is not.
+- `BARenderer >> render:`, which `VGRenderer` inherits rather than overrides, draws
+  `space aeFullDrawOn:` over the damaged rectangle and then clears the dirty elements. A live
+  window therefore already pays nothing for a frame with no dirty element, and pays a full redraw
+  of everything intersecting the damage when there is one. The case the memo was scoped for —
+  "mostly the entries it drew last frame" — is, in Bloc's own redraw path, a case that either draws
+  nothing at all or rebuilds every entry it draws.
+
+So the cache would have to be keyed on the element and filled above the canvas, which is a change
+to how Bloc hands drawing to a backend, not a memo on an entry. Memoising a record that is thrown
+away at the end of every frame costs more than it saves, which is the stop rule this unit's step 1
+was written to apply.
+
+**One number worth keeping, measured while answering the above.** Forked at priority 70, three
+passes thrown away, ten timed, on the reference frame's own display list: the whole 88 entries
+encode in 14.7 ms, the 25 fill entries alone in 13.2 ms and the 63 blit entries alone in 3.8 ms
+(each sub-list pays the fixed grid and buffer cost of about 2.3 ms, which is why the two parts sum
+to more than the whole). The encode is the fills, not the glyphs. Of the blit side, the glyph atlas
+surfaces *are* shared across frames — 63 blit entries over 14 distinct surfaces, the same 14
+objects in both frames — so a memo keyed on a surface rather than on an entry does have a stable
+key available today; it is worth at most the 1.5 ms marginal cost of the blits, and is not worth a
+cache-invalidation design on its own. Nothing here moves 3.6's verdict: Bloc's default stays Cairo.
+
+Two tests hold the finding so that it fails if Bloc ever starts retaining entries:
+`VGFrameProfileTest >> testTwoFramesOfTheSameSceneShareNoEntry` and
+`>> testTwoFramesOfTheSameSceneRecordTheSameGeometry`. `VGFrameProfileTest` is 16 tests, green;
+critics clean. No other code was written, since steps 2 to 4 were conditional on a yes.
+
 ### 12.7 — not scheduled: a different shape, if 3.3 fails
 
 Written down so that the stop rule has somewhere to point.
