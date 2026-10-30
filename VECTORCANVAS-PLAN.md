@@ -4902,6 +4902,65 @@ the red-green cycle a second time rather than reconstructed from memory of the f
 result was committed before the three-frame run that had crashed the image the first time, so a
 second crash would not cost the same work twice.
 
+### 3.7 — retained encoding, the entry remembers itself
+
+Not committed to; scoped at the user's request after 3.6 asked what remains and what it costs.
+
+On the reference frame the encode (17.024 ms) is still bigger than the dispatch it feeds
+(13.198 ms), and a Bloc window redraws a scene whose entries are mostly the ones it drew last frame.
+Unit 3.5 named this lever and did not take it: "memoise an entry's records on the entry, because a
+Bloc window redraws a scene whose entries are mostly the ones it drew last frame and
+`VGTiledFillSources`, the shapes and the bands are all functions of the entry alone", with the one
+rule already written down — the staleness check has to be the entry's own identity, not a version
+number a caller maintains, or it drifts.
+
+What this buys, measured against 3.6's numbers: a reference frame whose entries are all unchanged
+from the previous one pays no binning, no band work and no per-entry writes, only the buffer
+concatenation and upload — call it the 0.274 ms of unit 3.4's pack-plus-upload rather than 17.024 ms
+of encode. Whole frame would then be dispatch plus that, near 13.5 ms against Cairo's 6.040 ms on
+the same frame: 2.2 times rather than 5.0, which is what a dispatch-only figure already is. A frame
+where k of n entries changed costs the encode of those k entries and nothing for the rest, so the
+saving scales with how static the scene is between frames and buys nothing on a frame that is all
+new paint.
+
+This does not change the 3.6 verdict by itself — Bloc's default stays Cairo either way, since Cairo
+pays 6.040 ms regardless of what changed — but it is the cheapest remaining lever before anything
+that touches the device, and a Bloc UI frame (the case VectorGraphics exists for) is exactly the
+mostly-static case it helps.
+
+**Design.** An entry gets one instance variable, its own memoised `VGTiledFillSources` record (or
+whatever unit 2.7b's census shows is worth caching alongside it — the band indexes in particular).
+The memo is built once, the first time the entry is encoded, and is read instead of rebuilt by every
+later encoding of the same entry, including across frames, as long as the entry itself has not
+changed. Staleness is the entry's own identity: the memo is invalidated by whatever message already
+mutates the entry's paint, path or clip — not by a frame counter or a dirty flag the caller has to
+remember to set, which is the drift unit 3.5 already warned against. `VGCairoContext` entries are
+immutable once appended to the display list (rule 1, §3), so the real question this unit has to
+answer first is where mutation actually happens: a new entry each frame is the common case already,
+so the memo's win is realised only if the *same entry object* is reused across frames, which means
+checking whether Bloc's own redraw path reuses `BlElement` paint entries or builds a fresh display
+list of fresh entries every time regardless of what changed on screen. If it is the latter, this
+unit buys nothing until that is also true, and the investigation step below is the one that finds
+out before any code is written.
+
+**Order of work.**
+1. Read `BlElement >> aeFullDrawOn:` (or whatever unit 3.6's `VGFrameProfile` scene construction
+   calls) and confirm, by instrumentation rather than assumption, whether an unchanged `BlElement`
+   across two drawn frames hands the canvas the same entry object or a newly built one. If it is
+   always new, write that down as the reason this unit stops here, since memoising a record that is
+   thrown away at the end of every frame costs more than it saves.
+2. If entries are reused: a test that encodes the same entry twice and counts calls into
+   `VGTiledFillSources`'s building methods — once, not twice — before any caching code exists (red).
+3. The memo and its invalidation rule (green).
+4. Re-run `VGFrameStageBenchmark onTheReferenceFrame` with the same entries drawn twice before
+   timing starts, and with a fresh scene each time, so the report shows both the cached and the
+   uncached cost side by side.
+
+Gate: a repeated, unmodified reference frame's encode under 1 ms; a frame where k of n entries
+changed costs no more than encoding k entries from scratch plus the concatenation; the five generic
+gates of §9; and step 1's finding written down either way, since a no on reuse is itself the result
+this unit is scoped to produce.
+
 ### 12.7 — not scheduled: a different shape, if 3.3 fails
 
 Written down so that the stop rule has somewhere to point.
