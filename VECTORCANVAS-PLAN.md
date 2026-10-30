@@ -4718,6 +4718,119 @@ identity and not a version number the caller maintains, or it will drift.
 Gate: the encoding of the reference frame under 10 ms, byte identical buffers to the ones built from
 scratch, and a test that an entry drawn twice in one frame is encoded once.
 
+**Done, and the gate met.**
+The encoding of the reference frame is 8.1 to 8.9 ms, of which binning is 3.3 ms, against a gate of
+10 ms.
+Two of the gate's three clauses are tests rather than measurements:
+`VGTiledFillTest >> testAnEntryDrawnTwiceInOneFrameIsEncodedOnce` and
+`VGTiledFillTest >> testTheBuffersOfAFrameAreTheSameBytesWhenItsEntriesCarryTheirMemos`, which
+encodes one display list twice and compares every buffer the layout names, byte for byte.
+Nothing in the drawing changed: the Cairo path, the conformance corpus and the kernels are the ones
+unit 3.4 left.
+
+**The measurement had to be fixed before anything could be believed.**
+An entry keeps the fill the tiled rasteriser draws in its place once it has built it, so encoding
+the same display list a second time reads memos that no running application ever has.
+`VGFrameDeviceBenchmark >> millisecondsPerRepeatEncodingAFreshFrame` now records the frame afresh
+for every repeat and leaves the recording outside the clock, and the figures below were taken either
+through it or by prebuilding fifteen display lists, collecting garbage and encoding each exactly
+once, which agree.
+Three things about the measuring itself are worth knowing, because each of them cost a wrong answer
+first.
+A measurement is forked at priority 70 and read only once it has finished: an evaluation through the
+MCP server runs at 60 and a fork at the background priority of 30 is starved by it, two forks at one
+priority halve each other, and a poll landing inside the timed region is counted.
+The first passes after a recompile read 2 to 3 ms high and settle by the third, so a figure is taken
+from a run of at least six.
+The pre-compaction baseline of 11.0 ms could not be reproduced on the same code the next day, which
+measured 13.0 ms; a twenty-million-add loop at 61 ms, and 63 ms again after all of this, said the
+machine was not throttling, so the figures here are all from one session and the older ones should
+not be read against them.
+
+**What the frame costs, step by step.**
+The mask of a blit is read in one go — `VGCairoSurfaceMask >> alphaBytesOver:` fills a `ByteArray`
+over a rectangle, zero outside the surface, where the encoder asked a pixel at a time — and that is
+13.0 to 12.7 ms.
+The mark pass asks the block of tiles inside the ring an entry reaches in one question instead of
+tile by tile, and that is 12.7 to 11.3 ms.
+Five hoists together are 11.3 to 9.9 ms: the bounding box of every entry taken once for both
+passes, the buffers of the write loops fetched before the loop rather than per element, `VGPaint`'s
+matrix built without a dictionary, the band base hoisted out of the block loop, and
+`VGEdgeIndex >> fillBands` building a stream only for the bands an edge reaches.
+Copying a band's edges inside the `Float32Array` with `replaceFrom:to:with:startingAt:` rather than
+element by element is the last of those steps: at a length of four floats the primitive copy is
+still four times quicker than the element-wise loop, 0.35 ms against 1.4 ms a frame.
+With all of that in, the frame measured 10.7 to 11.2 ms, which is where the profiler was asked
+where the rest of it went.
+
+**What the profiler named, and the four cuts it paid for.**
+`MessageTally` over fifteen frames put 37.9 per cent of the encoding in the binning and the rest in
+the writes, and it named four places where the work was per pixel or per tile and did not have to
+be.
+A mask is now read a row at a time: `VGCairoImageSurface >> alphaBytesOfRow:from:to:` reads the run
+with the stride, the width of a pixel and the depth of the format read once, where the mask asked
+the pixel reader for each of a quarter of a million pixels a frame.
+A grid works out its column and row counts when it is built rather than once a tile, because the
+count is a division that builds a fraction and the bounds of all 1900 tiles are worked out from it.
+A clip compares the four numbers of a rectangle rather than two points, since a point comparison of
+a fractional clip bound against a whole tile bound coerces one number against the other twice a
+corner, and the binning asks it of every entry and tile pair.
+The buffers of an encoding are held in an `IdentityDictionary`, so the thousands of fetches a frame
+compare pointers rather than the characters of a symbol.
+Together they are 10.7 to 11.2 ms down to 8.1 to 8.9 ms, and the binning alone 3.9 ms down to
+3.3 ms.
+Two things the profile named were measured and left alone: a shape is indexed twice a frame, once
+in bands of its own edge count for the enclosure questions and once in bands a tile high for the
+band blocks, and the whole-shape edge run is written a float at a time because the coordinates of a
+shape are a plain `Array` and the buffer is a `Float32Array`, so no primitive copies between them.
+
+**Why the shortcut is drawn around the ring and not around the block.**
+`coversEveryPixelOf:` is conservative: it says no to any rectangle an edge of the shape lies on, and
+an entry's own edges lie on the tiles its bounding box ends in.
+So a question about a whole block, or a whole row, of the tiles an entry reaches is always answered
+no — measured, not reasoned: 0 hits, 319 extra wide-strip questions and 2 ms added.
+The question is monotone, though: if every pixel of a rectangle is covered, so is every pixel of
+anything inside it, because no edge meets the larger rectangle and insideness is constant over it.
+Asking only the block strictly inside the ring, and only when both intervals are more than two tiles
+long, is 25 questions, 13 hits and 2208 pairs answered, which is every interior mark the reference
+frame has.
+The census is 3803 pairs over 1900 tiles and 88 entries: 2208 interior, 636 refused at the clip's
+bounding box, 784 refused by the segments, 175 entries that are not fills, and none refused by a
+clip shape.
+
+**Two things measured and not kept.**
+Reusing a shape's whole-shape run for a band block saves 40 edges of 5365, so the band pass copies
+inside the buffer instead.
+The whole-block mark shortcut is described above; the reason it cannot work is written into
+`VGTileBinning >> markReferencesOf:box:ordinal:cursors:`, so the next reader does not measure it
+again.
+
+**One layering defect the suite caught.**
+The memo of unit 3.5 put `VGBlitEntry >> newTiledFill` on a Cairo class that names
+`VGMaskedFillEntry`, a Vulkan one, which `VGArchitectureTest` and `VGBackendSelectionTest` both
+refuse: the engine has to load where there is no Vulkan driver.
+The method is now an extension carried by `VectorGraphics-Vulkan`, and the memo accessor that stays
+behind on the Cairo side names no class of the backend.
+
+**One defect of my own the tests caught.**
+The first shape of the inner-block shortcut carried the block as a `Rectangle` and said "no block"
+with an empty one, which Pharo normalises into a rectangle that does hold tiles, so every tile of
+the ring was marked interior and four binning tests and three device comparisons went red.
+`VGTileBinning >> innerBlockOf:rows:columns:` now says "no block" with negative bounds, which no
+column or row of a grid can be in, and the reason is written into the method.
+
+**One assertion the suite had that was not a fact.**
+One test of `VGFrameDeviceBenchmarkTest` compared a frame's dispatch with the build of its SPIR-V
+module, `testEveryFrameOfTheBenchmarkDrawsOnTheDeviceWhatTheSoftwareBackendDraws`, and the suite
+run of this unit left it as the one red test that was not the dead font handle.
+A module is built once a session and a dispatch is paid once a frame, so neither of the two numbers
+bounds the other: measured here the background frame is 4.36 ms of dispatch against 4.44 ms of
+module build and the cards frame 6.40 against 6.31, which makes the comparison a coin toss, while
+the reference frame is 11.18 against 3.27 and passes.
+The test now compares the dispatch with the software frame it already draws for the pixel
+comparison — 4.36 ms against 1016 ms, 6.40 against 2027 and 11.18 against 2155 — which is the fact
+the measurement exists to state, and the reason a module build is no bound is written into the test.
+
 ### 3.6 — the verdict, with the device named
 
 Re-run the stage harness on the three frames and on a real Bloc frame drained through
