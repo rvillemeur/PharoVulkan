@@ -262,23 +262,217 @@ is supported now, the host a space would be given, and the spaces open on it —
 live predicate, none of them writing anything. `VGVulkanExamplesTest >> exampleHolders` names the new
 holder, so the four example gates cover it.
 
-## 7. If the answer is yes — the shape of what comes after, not yet scoped
+## 7. Scoped: the frame presented from the device
 
-Sketched only so the investigation unit has something to report against, not committed to:
+Scoped on 1 November 2026 at the user's request, after §6a answered yes and §6b removed the window
+hazard. Everything below was read in the image before it was written; where it contradicts the
+sketch this section replaces, the sketch's own wording is kept and the correction is stated, because
+the sketch is what the §6 investigation reported against.
 
-1. A new `BlHostRenderer` subclass, in a package of its own (`VectorGraphics-Present` or inside
-   `PharoVulkan-Graphics`, whichever the investigation unit's findings make the natural owner), whose
-   `render:` acquires a swapchain image instead of locking a CPU surface.
-2. The compute kernel's target becomes a storage image in the swapchain's own format — the format
-   discipline `PVOffscreenTarget` already states — instead of a storage buffer, so there is nothing
-   to copy out of after the dispatch, only an image layout transition before `present:`.
-3. Pixel-identity gates stay: the existing subset corpus must draw the same pixels through this path
-   as through the software backend, read back once for the test's own sake, which does not reintroduce
-   the per-frame cost this document exists to remove.
-4. Failover: a `VGBackendFailure` here cannot fall back to software mid-frame the way the compute
-   backend does, because a swapchain image already acquired cannot quietly become a `ByteArray`; the
-   fallback boundary has to move to "which renderer a `BlSpace` is given," decided before the window
-   opens, not inside a frame.
+### 7a. What reading the image changed about the sketch
+
+The sketch had four points. Two stand, one is wrong in a way that makes this phase much smaller, and
+one gains a condition.
+
+**Point 1 stands.** A `BlHostRenderer` subclass whose `render:` acquires a swapchain image instead of
+locking a CPU surface is the shape. `BlHost >> newHostRenderer` is
+`BlHostRenderer preferableClass new`, a single global choice, but `BlOSWindowSDL2Host >>
+newHostSpaceFor:` sends `renderer: self newHostRenderer` as one keyword of the cascade that builds
+the host space, so a host subclass overriding `newHostSpaceFor:` names its own renderer without
+touching `preferableClass` and without disturbing which renderer every other window in the image
+gets. `VGRenderer` keeps `preferableClass` for the software path.
+
+**Point 2 is wrong, and the correction is the main saving of this phase.** The sketch said the
+compute kernel's target becomes a storage image in the swapchain's format, "so there is nothing to
+copy out of after the dispatch". It does not have to. The kernel writes a storage buffer of packed
+pixels, and `vkCmdCopyBufferToImage` moves that buffer into the acquired swapchain image on the
+device, with no CPU trip and no SPIR-V change at all. The reasons to prefer it:
+
+- The format already matches, by measurement rather than by luck: `VkRenderConfig formatRenderedIn`
+  is 44, `VK_FORMAT_B8G8R8A8_UNORM`, whose bytes in memory are B, G, R, A — which on a little-endian
+  machine is exactly what Cairo calls `ARGB32` and exactly what the kernel already writes.
+  `VkSurface class >> formatPreferredFrom:` already asks the surface for that format first.
+- Unit 3.9's kernel, its workgroup shape and its 65712 SPIR-V bytes stay untouched, so the pixel
+  identity the subset corpus holds is preserved by construction rather than re-established.
+- The seam `VGTiledFillDispatch >> draw:into:readBack:` already exists for exactly this case — its
+  own comment says "a frame that ends on the device has no use for it: the pixels stay in the target
+  buffer, which the next frame of the same dispatch reads as its own destination". That method was
+  written in unit 3.4 for the measurement harness; this phase is its first real caller.
+
+A storage image remains the right answer if a later unit wants the kernel to sample the destination
+with image operations rather than index it as words. Nothing here forecloses it.
+
+**Point 3 stands.** Pixel identity against the software backend stays the gate, and the test reads
+the image back for its own sake. A readback inside a test is not the per-frame cost this document
+exists to remove.
+
+**Point 4 gains a condition.** Failover moves to "which renderer a `BlSpace` is given", decided
+before the window opens, as the sketch says. The condition the sketch did not see: the choice is a
+host choice, and `BlHostRegistry >> registerHost:` sorts by `order` alone, where every SDL2 host in
+this image answers 10. §6b already partitioned two hosts on the installed driver. A third host makes
+that partition three ways, so it has to be exact, and `VGVulkanDriverSdl2Host class >> isSupported`
+has to be narrowed in the same unit that adds the new host.
+
+### 7b. What the trips cost today, so the phase has a number to beat
+
+Per frame of the reference frame, from §2 and from unit 3.0's stage figures:
+
+| Trip | Where | Cost |
+|---|---|---|
+| read the target's own pixels into a packed `ByteArray` | `VGVulkanBackend >> pixelsOf:` | one 1.83 MB CPU copy |
+| that `ByteArray` into the host-visible buffer | `VGTiledFillDispatch >> packBlocksOf:target:` | inside `writeBuffers` |
+| the buffer across the bus | `>> upload` | 0.156-0.222 ms |
+| the frame back across the bus | `>> readbackInto:` | 0.201-0.604 ms |
+| the `ByteArray` into the target's rows | `VGVulkanBackend >> write:into:` | one 1.83 MB CPU copy |
+| the target into an SDL streaming texture | `BlOSWindowSDL2HostSpace >> lockSurfaceFor:scaleFactor:during:` | one 1.83 MB write to write-combined memory, then `sdlRenderer copy:` |
+
+Six movements of one frame, of which this phase removes five and replaces the sixth with a
+device-local `vkCmdCopyBufferToImage`. The two bus figures are the only ones measured; the four
+copies are not, and measuring them on the three benchmark frames is unit 7.6's job rather than an
+assumption made here. Nothing in this table is arithmetic, which is why §2 says no shader removes
+it, and nothing in it closes the gap to Cairo on its own, which is why §8 stands.
+
+### 7c. The division of labour, following Bloc's own
+
+Bloc's window host space owns the window and the SDL texture; its renderer owns the drawing and is
+handed the pixels inside a bracket the host space controls. This phase keeps that shape exactly, and
+substitutes at each of the three levels:
+
+| Level | Class | What it does differently |
+|---|---|---|
+| host | `VGVulkanPresentHost` | builds `PVWindowAttributes` carrying `vulkanAttributes`, so `PVVulkanDriver` creates an `OSSDL2VulkanBackendWindow`; answers its own host space and its own renderer from `newHostSpaceFor:` |
+| host space | `VGVulkanPresentHostSpace` | creates the window without sending `newBlocRenderer`, so no SDL accelerated renderer and no streaming texture exist on the handle; owns the `VkSurface` and the `VkSwapchain`; answers `presentFrameFor:scaleFactor:during:`, the bracket that replaces `lockSurfaceFor:scaleFactor:during:` |
+| renderer | `VGVulkanPresentRenderer` | overrides `render:`, because it is `BARenderer >> render:` that sends the CPU-surface bracket; inside the new bracket it drives `space aeFullDrawOn:` over a canvas whose backend ends on the device |
+
+The bracket is named for what it does and mirrors the method it replaces: the host space acquires an
+image, evaluates the block, and presents. The renderer never sees a swapchain index or a queue, the
+host space never sees a canvas, and `OSWindowRenderThread uniqueInstance critical:` keeps wrapping
+the frame, as `BlOSWindowSDL2HostSpace >> render:` does today, because queue submission has the same
+one-thread discipline the SDL renderer had.
+
+### 7d. Decisions frozen for this phase
+
+| Decision | Choice | Reason |
+|---|---|---|
+| what the kernel writes into | the storage buffer it writes today | §7a point 2: the format already matches and the SPIR-V does not change |
+| how the frame reaches the swapchain image | `vkCmdCopyBufferToImage`, device-local | no bus trip, no CPU copy, no kernel change |
+| where the previous frame lives | the device target buffer, across frames | it already does, per `draw:into:readBack:`; this is what lets the upload go too |
+| damage rectangles | kept | the backend composites over the destination, and a frame that redraws everything would cost more dispatch than the trips it saves |
+| failover | before the window opens, at host selection | a swapchain image already acquired cannot become a `ByteArray` mid-frame |
+| opt-in | yes, explicit | §8: Bloc's default stays Cairo, so a presenting host answers supported only when something asks for it |
+
+### 7e. The units
+
+Each is a full cycle — failing test first, smallest code, refactor, `<sampleInstance>` example,
+inspector view, `run_critics` — and each is independently runnable, as this project's phases are.
+
+**7.1 The window with no SDL renderer.** `VGVulkanPresentHost`, `VGVulkanPresentHostSpace` and a
+`VGVulkanPresentRenderer` whose `render:` only counts the frame and clears the dirty elements. No
+Vulkan object is created yet. Gate: under `PVVulkanDriver` a `BlSpace` opens on this host, pulses,
+and closes; the backend window is an `OSSDL2VulkanBackendWindow`; its `renderer` is nil, so no SDL
+accelerated renderer was built; `lockSurfaceFor:scaleFactor:during:` is never sent, which the host
+space holds by implementing it as `shouldNotImplement`; the three SDL2 hosts partition exactly, under
+either driver and whether or not presenting is enabled.
+
+**7.2 The swapchain, cleared and presented.** The host space builds `VkSurface` and `VkSwapchain`
+over its window, and `presentFrameFor:scaleFactor:during:` acquires an image, evaluates the block,
+and presents. The block does nothing yet beyond a clear. Gate: a visible window presents thirty
+frames in sequence, the image index cycles through `imageCount`, the swapchain's `format` is
+`VkRenderConfig formatRenderedIn` on this machine and the unit refuses loudly when it is not, a
+resize recreates the swapchain at the new `vulkanDrawableExtent`, and closing the space destroys
+swapchain, surface and semaphores in reverse order with nothing left on the device.
+
+**7.3 The frame that ends on the device.** `VGTiledFillDispatch` gains the device-local copy: the
+target buffer into a given `VkImage` by `vkCmdCopyBufferToImage`, with the layout transitions around
+it, and `VGVulkanBackend` gains the path that asks for it instead of `drainInto:`. Gate: the subset
+corpus draws the same pixels through the copy as the software backend draws, read back once inside
+the test; the frame records no `readback` stage; `pixelsOf:` and `write:into:` are not sent.
+
+**7.4 The real frame in the real window.** `VGVulkanPresentRenderer >> render:` drives the canvas
+over a backend bound to the acquired image. Gate: each of the three benchmark frames appears in a
+real window, and the pixels read back from the presented image equal the software backend's, tested
+offscreen against the same corpus rather than by screenshot.
+
+**7.5 The upload removed as well.** The target buffer already holds the previous frame for the same
+extent, so `packBlocksOf:target:` stops packing the destination pixels when the dispatch can prove
+it owns them — same extent, same buffer, no release since. Gate: identical pixels on a frame drawn
+twice, the `writeBuffers` stage smaller by the frame's own size, and a correct first frame after a
+release, which is the degenerate state this gate exists for.
+
+**7.6 The measurement and the verdict.** Alternating same-state comparison against the readback path
+on all three frames, three rounds, the way unit 3.9 measured: same session, same window, the two
+renderers swapped between runs. Written verdict in this document either way, including what the four
+unmeasured copies of §7b turn out to cost.
+
+### 7f. Stop rule
+
+The same shape as the other plan's: if 7.6 measures the presented path no faster than the readback
+path on the reference frame, the verdict is written and the code stays behind its opt-in rather than
+being tuned. What this phase removes is host cost, not arithmetic, so a null result would mean the
+frame was never spending time there — which is worth knowing, and is the one thing §2 asserts
+without having measured it.
+
+### 7.1 as built, 1 November 2026
+
+Three classes in `VectorGraphics-Vulkan` under a new `Present` tag, and one narrowing of §6b's host.
+No Vulkan object is created in this unit: the subject is the window that has room for one.
+
+**The opt-in is a flag, not a configuration.** `VGVulkanPresentHost class >> isEnabled` reads a
+class-side variable that only `enableDuring:` sets, and `isSupported` is `self
+respondsToVulkanDriver and: [ self isEnabled ]`. §6b's host is narrowed to `self
+respondsToVulkanDriver and: [ VGVulkanPresentHost isEnabled not ]`, and the shared half moves to
+`VGVulkanDriverSdl2Host class >> respondsToVulkanDriver`, so the three-way partition is written once
+in each direction rather than twice in one. The `isKindOf:` test for the driver stays as §6b wrote
+it, because `PVVulkanDriver` is a subclass of the driver Bloc's own host names by class name.
+
+**The window with no SDL renderer.** `BlOSWindowSDL2HostSpace >> initializeWithAttributes:` ends
+with `window newBlocRenderer`, which is where the SDL accelerated renderer and the streaming texture
+are built; `VGVulkanPresentHostSpace` repeats that method without the last line. The cost of that is
+one inherited method that no longer works: `OSBackendWindow >> canvasExtent` answers `renderer
+canvasExtent`, so `physicalSize` fails with `receiver of "canvasExtent" is nil` and is overridden to
+ask `OSSDL2VulkanBackendWindow >> vulkanDrawableExtent`, which is `SDL_Vulkan_GetDrawableSize` and
+is the right question for a swapchain anyway. `lockSurfaceFor:scaleFactor:during:` answers `self
+shouldNotImplement`: the seam §6 found is held open by refusing the CPU route out loud rather than
+by a comment saying nobody takes it.
+
+**The renderer falls back rather than failing.** `VGVulkanPresentRenderer >> render:` counts the
+frame only for a `VGVulkanPresentHostSpace` and sends `super render:` for anything else. The reason
+is `BlHostRenderer preferableClass`, a single global choice: a renderer class that assumed its host
+space presented would break every other window in the image the moment it became preferable, and
+§7c's division of labour puts the window's kind on the host space, which is the object that knows.
+
+**What holds it.** `VGVulkanPresentHostTest`, eight tests:
+
+| Test | Fact |
+|---|---|
+| `testThePresentHostIsSupportedOnlyWhileEnabledUnderTheVulkanDriver` | the flag and the driver are both required |
+| `testExactlyOneSdl2HostIsSupportedInEveryCombination` | the three hosts partition in all four driver-by-flag combinations |
+| `testTheWindowOfMyHostSpaceIsAVulkanWindow` | the backend window is an `OSSDL2VulkanBackendWindow`, so `SDL_WINDOW_VULKAN` is in its flags |
+| `testMyWindowOwnsNoSdlAcceleratedRenderer` | its `renderer` is nil — the point of the unit |
+| `testTheCpuSurfaceLockIsRefusedByMyHostSpace` | the lock raises `ShouldNotImplement` |
+| `testThePhysicalSizeOfMyHostSpaceComesFromTheVulkanDrawable` | `physicalSize` equals `vulkanDrawableExtent` |
+| `testAFrameOfMySpaceReachesMyRendererAndNotTheSurfaceLock` | a frame of a real space on this host arrives at the new renderer |
+| `testMyRendererDrawsTheCpuFrameForAHostSpaceThatDoesNotPresent` | with the new renderer preferable, a `VGPixelBufferHost` space still draws its pixels, and the frame count stays 0 |
+
+The helper that swaps in a driver Bloc can install moved to `VGVulkanDriverSdl2HostTest class >>
+withDriverClass:during:` so both test classes use the one implementation, with the instance-side
+method delegating to it.
+
+One test of §6 had to be widened. `VGRendererTest >>
+testTheCpuSurfaceLockIsSentByTheFrameMethodAlone` counts the senders of
+`lockSurfaceFor:scaleFactor:during:` and expected `BARenderer >> render:` alone, excluding itself
+for naming the selector to ask the question. This unit's test names it too, so the exclusion is now
+every `TestCase` subclass: a test that names the selector is asking about the seam, which is the
+opposite of a frame taking the CPU route through it. The fact the test holds is unchanged — one
+production sender, and it is the method a renderer subclass overrides.
+
+The example is `VGVulkanPresentHostExamples class >> hostOfferedWhileThePresentHostIsEnabled`: one
+click answers the host a fresh registry offers with the driver installed and the flag set, and puts
+the driver, the flag and the singleton back. The view is `VGVulkanPresentHost >>
+inspectorPresentHost:`, an eight-row table naming the installed driver, the flag, which of the three
+SDL2 hosts is supported now, the host a space would be given, the renderer this host builds and the
+spaces open on it — every row asking the live predicate. `run_critics` on the five new classes
+reports only the nine class-side trait copies §6b documents.
 
 ## 8. What this is not
 
