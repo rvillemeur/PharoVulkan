@@ -235,13 +235,23 @@ VkSwapchain class >> unlimitedImageCount [
 	^ VkSurfaceCapabilitiesKHR unlimitedImageCount
 ]
 
-{ #category : 'rendering' }
+{ #category : 'presenting' }
 VkSwapchain >> acquireNextImage: semaphore fence: fence [
+	"The unbounded acquire: it waits for an image for as long as the presentation engine takes.
+	 That wait is inside a plain uFFI call, so it blocks the whole virtual machine, the user
+	 interface included. A caller that drives frames should give a bound and send
+	 acquireNextImage:fence:timeout: instead."
+
+	^ self acquireNextImage: semaphore fence: fence timeout: Vk noTimeout
+]
+
+{ #category : 'presenting' }
+VkSwapchain >> acquireNextImage: semaphore fence: fence timeout: nanoseconds [
 	"Asks the presentation engine for the next image to draw into and answers its index. The
 	 driver writes the index into a plain block, which is not a structure and so keeps its
-	 named width, and the block goes back whatever the call answers. The acquire blocks until
-	 an image is free, and a suboptimal swapchain is not a failure here, as it is not in a
-	 present."
+	 named width, and the block goes back whatever the call answers. A suboptimal swapchain is
+	 not a failure here, as it is not in a present; a timeout is, and it raises, because the
+	 caller that gave a bound wants to hear about it rather than present a stale image."
 
 	| indexBlock result |
 	indexBlock := ExternalAddress allocate: self class imageIndexByteCount.
@@ -249,7 +259,7 @@ VkSwapchain >> acquireNextImage: semaphore fence: fence [
 	  result := Vk
 		            acquireNextImageKHR: device handle
 		            swapchain: handle
-		            timeout: Vk noTimeout
+		            timeout: nanoseconds
 		            semaphore: semaphore
 		            fence: fence
 		            pImageIndex: indexBlock.

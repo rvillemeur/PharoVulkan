@@ -1238,6 +1238,25 @@ PVGraphicsTest >> testTheCoveragePopulationsAreNotEmpty [
 ]
 
 { #category : 'tests' }
+PVGraphicsTest >> testTheUnboundedAcquireIsTheBoundedAcquireWithTheUnboundedTimeout [
+	"An acquire is a plain uFFI call, so a wait inside it blocks the whole virtual machine and
+	 takes the image's user interface down with it: on 4 November an unbounded acquire in a
+	 present loop froze the image for minutes. A caller that renders frames needs a bounded
+	 wait, so the bounded selector is the one that reaches the driver and the unbounded one
+	 delegates to it with Vk noTimeout. One acquire, and the senders that were there before
+	 keep the behaviour they had."
+
+	| unbounded bounded driverSelector |
+	unbounded := VkSwapchain >> #acquireNextImage:fence:.
+	bounded := VkSwapchain >> #acquireNextImage:fence:timeout:.
+	driverSelector := #acquireNextImageKHR:swapchain:timeout:semaphore:fence:pImageIndex:.
+	self assert: (bounded sendsSelector: driverSelector).
+	self deny: (unbounded sendsSelector: driverSelector).
+	self assert: (unbounded sendsSelector: #acquireNextImage:fence:timeout:).
+	self assert: (unbounded sendsSelector: #noTimeout)
+]
+
+{ #category : 'tests' }
 PVGraphicsTest >> testVertexDataSize [
 
 	| data |
