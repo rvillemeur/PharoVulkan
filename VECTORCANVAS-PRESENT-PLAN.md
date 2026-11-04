@@ -474,6 +474,138 @@ SDL2 hosts is supported now, the host a space would be given, the renderer this 
 spaces open on it — every row asking the live predicate. `run_critics` on the five new classes
 reports only the nine class-side trait copies §6b documents.
 
+### 7.2 as built, 4 November 2026
+
+Two halves: a class that owns the chain of Vulkan objects over one window, and the host space that
+keeps one such chain per drawable extent and presents a frame through it.
+
+#### `VGVulkanPresentChain`, in `VectorGraphics-Vulkan` under the `Present` tag
+
+One object owns, in this order, the `VkSurface` over the backend window, the `VkSwapchain` at the
+window's `vulkanDrawableExtent`, the colour `VkRenderPass`, one `VkFramebuffer` per swapchain image
+view, the command pool and its one buffer, the two semaphores and the in-flight fence. It is handed
+a `VkContext` and destroys none of it.
+
+The order is stated once, in `partsInCreationOrder`, and `partsInDestructionOrder` answers that list
+reversed, which is what `destroy` walks. A framebuffer references an image view of the swapchain and
+the swapchain references the surface, so destroying forwards would hand the driver objects whose
+dependencies are already gone; writing the order out twice would let the two copies drift. The test
+holds the one list against the other rather than a hand-written sequence.
+
+`onContext:backendWindow:` builds the chain inside an `ifCurtailed:` that destroys it, for the
+reason `PVHelloTriangleScene class >> prepare:backendWindow:` gives: a raise part way through
+initialisation would otherwise strand the Vulkan objects already created on an instance no caller
+ever receives.
+
+**Two refusals, both as soon as the driver has answered.** `verifyFormat:` refuses a swapchain whose
+format is not `VkRenderConfig formatRenderedIn`: the kernel writes `b8g8r8a8Unorm` words, a presented
+frame has to be the same bytes an offscreen frame is, and a frame drawn in swapped channels is worse
+than a window that says why it cannot open. `verifySurface:presentsOnQueueFamily:` refuses a queue
+family the surface does not accept: presenting on such a queue is invalid use that nothing reports
+with the validation layers off — the frame goes nowhere and the next acquire waits for an image the
+presentation engine never gives back. The first is arithmetic and is tested without a device; the
+second is tested against `VGNonPresentingSurfaceStub`, because no working window system offers a
+surface no family can present on.
+
+**Every wait of a frame is bounded.** `frameTimeoutNanoseconds` is one second, and both the fence
+wait and the image acquire take it. A Vulkan wait happens inside a plain uFFI call, so the virtual
+machine sits in the driver until it returns, the user interface with it, and no Pharo process can
+interrupt it; a frame loop that waits without a bound therefore has no way back from a presentation
+engine that stops answering. Past the bound the driver answers `VK_TIMEOUT`, which `Vk checkResult:`
+raises on, so a stall becomes a failing test instead of a dead image.
+`testEveryWaitOfAPresentedFrameIsBounded` holds the bound and reads the method for the selectors it
+sends, because the next person to copy the hello-triangle loop would copy `Vk noTimeout` with it.
+
+PharoVulkan needed one change for that: `VkSwapchain >> acquireNextImage:fence:timeout:` is now the
+acquire that reaches the driver, and `acquireNextImage:fence:` delegates to it with `Vk noTimeout`,
+so every existing sender keeps the behaviour it had. `PVGraphicsTest` holds the delegation.
+
+**The frame.** `presentFrameDuring:` waits for the previous frame's fence, resets it, acquires an
+image, evaluates the block with that image — which is where unit 7.4 draws — clears the image in a
+render pass, submits, presents, records the index in `presentedIndexes` and answers it. The clear is
+a render pass because the pass this chain builds is the one that leaves the image in `presentSrcKHR`,
+and the pass is closed explicitly: `VkCommandBuffer >> end` does not close an open pass, which is
+also why `PVHelloTriangleScene >> renderFrame` leaves one open. `presentedIndexes` outlives `destroy`,
+so an example can close its window and still hand back what it did.
+
+#### The host space half
+
+`VGVulkanPresentHostSpace` gained `presentContext`, `presentChain` and
+`presentFrameFor:scaleFactor:during:`, which is the method that stands where
+`lockSurfaceFor:scaleFactor:during:` stands on the CPU path and which 7.4 will have the renderer send.
+
+The context is the host space's own, built on first use from `requiredInstanceExtensions`. It is not
+`VGVulkanDeviceSession`'s: the session's context is created for compute and carries none of the
+instance extensions a surface needs. Unit 7.3 is where the two become one, and `presentContext` is
+the only method that has to change for it.
+
+`presentChain` keeps one chain per drawable extent: it answers the chain it holds while
+`matchesDrawable` is true, and otherwise destroys it and builds the next one. A swapchain is created
+for one extent and is not valid for another, so a resized window needs a new one — and an unresized
+window must not pay for a new one every frame. The test resizes a real window through
+`windowExtent:`, waits, bounded, until SDL answers the new drawable extent, and then asserts the
+chain is a different one, the old one is destroyed, and the new one is at the new extent.
+
+`close` destroys chain, then context, then sends `super close`, which closes the window: the reverse
+of the order they were acquired in, because the surface inside the chain belongs to the instance the
+context holds. It tolerates a second close, as the inherited method does.
+
+`VGFrameProfile class >> stageByPackageAndTag` gained `'VectorGraphics-Vulkan/Present' -> #handover`,
+which is the entry the `Present` tag has been missing since 7.1, so
+`VGFrameProfileTest >> testEveryPackageAndTagOfThisProjectHasAStageAndNoOthers` is green again.
+
+#### The two tabs
+
+`frameReport` answers ten rows, each asking the live chain: whether it is destroyed, how many parts
+it still holds, the format and extent the driver gave, the image count, how many frames it presented
+and which indexes they went into, whether those covered every image of the swapchain, the frame wait
+bound, and whether it still matches the drawable. Every row answers after `destroy` as well, because
+the swapchain is gone by the time an example hands a chain back and `presentedIndexes` is what is
+left to read.
+
+`inspectorFrames:` is a table over that report, so the tab cannot drift from what the chain answers,
+and its gate is active always — after destruction it is the only tab that says anything. `inspectorParts:`
+numbers each part by the step of `destroy` that reaches it, reading `partsInDestructionOrder` rather
+than a list written in the view, so a part added to the chain appears in the tab untouched; its gate
+closes on a destroyed chain, which holds no part. Both are held by device-free tests that build the
+presenter on a bare `VGVulkanPresentChain new` and pull each cell by hand, since a table column's
+block only runs for a drawn row.
+
+Renraku reports `ReExcessiveVariablesRule` on the chain and it is right about the count: one slot per
+Vulkan object owned is the point of the class, and splitting them across helpers would move the
+destruction order out of the single list that states it. The class comment says so rather than the
+rule being silenced.
+
+#### The example, and the gate that must not run it
+
+`VGVulkanPresentChainExamples class >> openWindowAndPresentFrames` is the one-click example: a real,
+visible Vulkan window, thirty frames presented through a chain of its own, and the chain answered
+with window, context and driver already released, each by its own `ensure:`. Presenting to a hidden
+window would prove nothing about the presentation engine, so the window is visible, and the example
+answers nil on a machine with no Vulkan device, as every device example of this project does.
+
+An example suite must not run it, and this unit is where the shared gate learned that.
+`VGCairoExamplesTest` ran every `<sampleInstance>` example four times in one pass — once for
+`testEveryExampleRunsAndAnswersSomething`, twice for `testEveryExampleRebuildsItsObject`, and again
+through `exampleSubjects` for each view gate — which for a window-and-device example means four
+windows opened and four devices driven inside one test run. So `allExampleMethods` is now the whole
+set, `windowExampleMethods` selects the ones whose selector begins with `open`, and `exampleMethods`
+— what every running gate takes — is the rest. `testAnExampleThatOpensAWindowIsNamedForItAndNoGateRunsIt`
+holds what is left of the rule structurally: a window example is class-side, pragma-tagged,
+argument-free, named `open…`, and absent from the set the gates run. It is run by hand, alone, after
+committing, which is what §7f and `~/.claude` memory already say about anything that can take the
+image down.
+
+**What the three stalls of 4 November actually were.** Every suite call that opens windows or drives
+the device ran past the MCP client's request timeout, which is about a minute, while the image kept
+working; the call was abandoned, not the image. Two of them had the whole example suite behind them,
+so they were never going to answer in time. The session was then lost for a different reason: a
+debugger opened on a failed Epicea write and the image was killed to clear it, which cost the
+uncommitted half of this unit and had it replayed from disk HEAD. The lesson for the rest of §7 is
+the mechanical one — commit first, then run a long or window-opening suite forked at priority 60 with
+its result written to a file in `Smalltalk imageDirectory`, and poll that file in calls short enough
+to answer.
+
 ## 8. What this is not
 
 Not a phase of `VECTORCANVAS-PLAN.md`, not gated by anything in its §9, and not expected to change
