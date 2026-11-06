@@ -16,8 +16,7 @@ SpvEmitterTest >> buildVectorAddModule [
 	  fn blk gidLoad iExtract aChain aVal bChain bVal sum rChain spvFn |
 	em := SpvModuleEmitter new.
 	mod := em module.
-	mod addCapability: 1.
-	mod setAddressingModel: 0 memoryModel: 1.
+	mod beShaderModule.
 	tr := mod typeRegistry.
 	cp := mod constantPool.
 	f32 := tr floatType: 32.

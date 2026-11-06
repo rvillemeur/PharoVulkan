@@ -69,8 +69,7 @@ PVSPIRVEmitter class >> compileComputeKernel: regOps annotation: ann typeMap: ty
 	em := self new.
 	em annotation: ann.
 	mod := em module.
-	mod addCapability: 1.
-	mod setAddressingModel: 0 memoryModel: 1.
+	mod beShaderModule.
 	interfaces := em emitComputeInterfaces.
 	spvFunc := em newComputeMainFunction.
 	blk := spvFunc addBlock.
@@ -90,8 +89,7 @@ PVSPIRVEmitter class >> compileComputeKernelLoop: loopNode annotation: ann selec
 	| em interfaces sims phis |
 	em := self new.
 	em annotation: ann.
-	em module addCapability: 1.
-	em module setAddressingModel: 0 memoryModel: 1.
+	em module beShaderModule.
 	interfaces := em emitComputeInterfaces.
 	sims := self computeLoopSimulations: loopNode annotation: ann selectorTable: st.
 	phis := self loopPhisFrom: (sims at: #preheader) latch: (sims at: #latch).
@@ -109,8 +107,7 @@ PVSPIRVEmitter class >> compileComputeKernelNestedLoop: nestedNode annotation: a
 	| em interfaces sims innerPhis outerPhis |
 	em := self new.
 	em annotation: ann.
-	em module addCapability: 1.
-	em module setAddressingModel: 0 memoryModel: 1.
+	em module beShaderModule.
 	interfaces := em emitComputeInterfaces.
 	sims := self
 		        computeNestedLoopSimulations: nestedNode
@@ -140,8 +137,7 @@ PVSPIRVEmitter class >> compileComputeKernelSelection: selNode annotation: ann s
 	| em interfaces sims |
 	em := self new.
 	em annotation: ann.
-	em module addCapability: 1.
-	em module setAddressingModel: 0 memoryModel: 1.
+	em module beShaderModule.
 	interfaces := em emitComputeInterfaces.
 	sims := self computeSelectionSimulations: selNode annotation: ann selectorTable: st.
 	^ em
@@ -160,8 +156,7 @@ PVSPIRVEmitter class >> compileKernel: regOps typeMap: typeMap annotation: ann s
 	| em |
 	em := self new.
 	em annotation: ann.
-	em module addCapability: 1.    "Shader"
-	em module setAddressingModel: 0 memoryModel: 1.    "Logical GLSL450"
+	em module beShaderModule.
 	em emitKernelFunction: regOps typeMap: typeMap selectorTable: st name: funcName.
 	^ em module serialize
 ]
@@ -172,8 +167,7 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 	em := self new.
 	em annotation: ann.
 	mod := em module.
-	mod addCapability: 1.
-	mod setAddressingModel: 0 memoryModel: 1.
+	mod beShaderModule.
 	paramTempDefs := Dictionary new.
 	ann params doWithIndex: [ :p :i |
 		| pId |
@@ -218,7 +212,7 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 		em regMap at: (preInitRegs at: k) put: phiId ].
 	em emitRegOps: headerSim first typeMap: typeMap selectorTable: st block: hdrBlk.
 	condSpvId := em spvIdFor: headerSim third.
-	hdrBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoopMerge resultType: nil resultId: nil operands: { exitBlk id. latchBlk id. 0 }).
+	hdrBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoopMerge resultType: nil resultId: nil operands: { exitBlk id. latchBlk id. SpvLoopControl none }).
 	hdrBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. latchBlk id. exitBlk id }).
 	em emitRegOps: latchSim first typeMap: typeMap selectorTable: st block: latchBlk.
 	phiLatchSpvIds := Dictionary new.
@@ -240,8 +234,7 @@ PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeM
 	em := self new initialize.
 	em annotation: ann.
 	mod := em module.
-	mod addCapability: 1.
-	mod setAddressingModel: 0 memoryModel: 1.
+	mod beShaderModule.
 	paramTempDefs := Dictionary new.
 	ann params doWithIndex: [ :p :i |
 		| pId pType |
@@ -275,7 +268,7 @@ PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeM
 	em emitRegOps: condRegOps typeMap: typeMap selectorTable: st block: entryBlk.
 	condSpvId := em spvIdFor: condReg.
 	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge
-		resultType: nil resultId: nil operands: { mergeBlkSpv id. 0 }).
+		resultType: nil resultId: nil operands: { mergeBlkSpv id. SpvSelectionControl none }).
 	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional
 		resultType: nil resultId: nil operands: { condSpvId. trueBlkSpv id. falseBlkSpv id }).
 	condRegMapSave := em regMap copy.
@@ -304,8 +297,7 @@ PVSPIRVEmitter class >> compileShaderKernel: regOps annotation: ann typeMap: typ
 	em := self new.
 	em annotation: ann.
 	mod := em module.
-	mod addCapability: 1.
-	mod setAddressingModel: 0 memoryModel: 1.
+	mod beShaderModule.
 	interfaces := OrderedCollection new.
 	location := 0.
 	ann params doWithIndex: [ :p :i |
@@ -355,8 +347,7 @@ PVSPIRVEmitter class >> compileShaderKernelSelection: selNode annotation: ann ty
 	em := self new.
 	em annotation: ann.
 	mod := em module.
-	mod addCapability: 1.
-	mod setAddressingModel: 0 memoryModel: 1.
+	mod beShaderModule.
 	interfaces := OrderedCollection new.
 	location := 0.
 	paramTempDefs := Dictionary new.
@@ -403,7 +394,7 @@ PVSPIRVEmitter class >> compileShaderKernelSelection: selNode annotation: ann ty
 	trueSpvBlk := spvFunc addBlock.
 	falseSpvBlk := spvFunc addBlock.
 	mergeSpvBlk := spvFunc addBlock.
-	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge resultType: nil resultId: nil operands: { mergeSpvBlk id. 0 }).
+	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge resultType: nil resultId: nil operands: { mergeSpvBlk id. SpvSelectionControl none }).
 	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. trueSpvBlk id. falseSpvBlk id }).
 	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
 	trueRegOps := trueSim first.
@@ -617,8 +608,7 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 	| em paramTypes spvFunc entryBlk trueBlkSpv falseBlkSpv mergeBlkSpv condReg trueReg falseReg condSpvId phiId phiType retType funcType condSimResult condTempDefs |
 	em := self new initialize.
 	em annotation: ann.
-	aModule addCapability: 1.
-	aModule setAddressingModel: 0 memoryModel: 1.
+	aModule beShaderModule.
 	"Seed regMap and typeMap with param SpvIds"
 	ann params doWithIndex: [ :p :i |
 		| pId pType |
@@ -662,7 +652,7 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 	(condSimResult first) do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: (PVSelectorTable standard) block: entryBlk ].
 	condSpvId := em spvIdFor: condReg.
 	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge
-		resultType: nil resultId: nil operands: { mergeBlkSpv id. 0 }).
+		resultType: nil resultId: nil operands: { mergeBlkSpv id. SpvSelectionControl none }).
 	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional
 		resultType: nil resultId: nil operands: { condSpvId. trueBlkSpv id. falseBlkSpv id }).
 	"True branch"
@@ -772,12 +762,6 @@ PVSPIRVEmitter class >> inspectorCooperativeMatrixTypes: aBuilder [
 		  yourself
 ]
 
-{ #category : 'constants' }
-PVSPIRVEmitter class >> loopControlNone [
-	"OpLoopMerge takes a loop control mask; the compiler requests no unrolling hints."
-	^ 0
-]
-
 { #category : 'compiling' }
 PVSPIRVEmitter class >> loopPhisFrom: preheaderSim latch: latchSim [
 	"A loop-carried variable is one the latch leaves in a different register than the
@@ -843,13 +827,6 @@ PVSPIRVEmitter class >> scalarByteWidths [
 			  (#f32 -> 4).
 			  (#i32 -> 4).
 			  (#f16 -> 2) }
-]
-
-{ #category : 'constants' }
-PVSPIRVEmitter class >> selectionControlNone [
-	"OpSelectionMerge takes a selection control mask; the compiler requests no flattening
-	 hints."
-	^ 0
 ]
 
 { #category : 'compiling' }
@@ -1508,7 +1485,7 @@ PVSPIRVEmitter >> emitLoopHeaderIn: ctx [
 				 operands: {
 						 (ctx at: #exitBlock) id.
 						 (ctx at: #latchBlock) id.
-						 self class loopControlNone });
+						 SpvLoopControl none });
 		terminate: (SpvInstruction
 				 opcode: SpvOpcode opBranchConditional
 				 resultType: nil
@@ -1630,7 +1607,7 @@ PVSPIRVEmitter >> emitNestedInnerHeaderIn: ctx [
 				 operands: {
 						 (ctx at: #innerMergeBlock) id.
 						 (ctx at: #innerBodyBlock) id.
-						 self class loopControlNone });
+						 SpvLoopControl none });
 		terminate: (SpvInstruction
 				 opcode: SpvOpcode opBranchConditional
 				 resultType: nil
@@ -1681,7 +1658,7 @@ PVSPIRVEmitter >> emitNestedOuterHeaderIn: ctx [
 				 operands: {
 						 (ctx at: #exitBlock) id.
 						 (ctx at: #outerLatchBlock) id.
-						 self class loopControlNone });
+						 SpvLoopControl none });
 		terminate: (SpvInstruction
 				 opcode: SpvOpcode opBranchConditional
 				 resultType: nil
@@ -1803,7 +1780,7 @@ PVSPIRVEmitter >> emitSelection: selNode typeMap: typeMap selectorTable: st func
 	"Terminate cond block with OpSelectionMerge + OpBranchConditional"
 	condSpvBlk := spvFunc blocks at: spvFunc blocks size - 3.
 	condSpvBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge
-		resultType: nil resultId: nil operands: { mergeSpvBlk id. 0 }).
+		resultType: nil resultId: nil operands: { mergeSpvBlk id. SpvSelectionControl none }).
 	condSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional
 		resultType: nil resultId: nil operands: { condId. trueSpvBlk id. falseSpvBlk id }).
 	trueVal := self emitBytecodeBlock: trueBlk typeMap: typeMap selectorTable: st block: trueSpvBlk.
@@ -1887,7 +1864,7 @@ PVSPIRVEmitter >> emitSelectionConditionIn: ctx [
 				 resultId: nil
 				 operands: {
 						 (ctx at: #mergeBlock) id.
-						 self class selectionControlNone });
+						 SpvSelectionControl none });
 		terminate: (SpvInstruction
 				 opcode: SpvOpcode opBranchConditional
 				 resultType: nil

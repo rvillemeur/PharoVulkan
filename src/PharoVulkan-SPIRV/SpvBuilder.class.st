@@ -60,6 +60,14 @@ SpvBuilder >> addMemberDecoration: sid member: idx decoration: dec literals: lit
     module addMemberDecoration: sid member: idx decoration: dec literals: lits
 ]
 
+{ #category : 'module header' }
+SpvBuilder >> beShaderModule [
+	"Asked of the builder, so a caller that holds one never reaches past it to the module.
+	 See SpvModule >> beShaderModule for what the three facts are."
+
+	module beShaderModule
+]
+
 { #category : 'inspecting' }
 SpvBuilder >> blockRows [
 	"One row a block of the current function, in the order the module serialises them. Every

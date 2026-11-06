@@ -78,8 +78,7 @@ PVTriangleScene class >> vertexDataSize [
 PVTriangleScene >> buildFragmentShader [
     | mod tr cp f32 vec3 vec4 pInVec3 pOutVec4 voidType funcType inColor outColor one32 fn blk colorValId rId gId bId outVec4Id |
     mod := SpvModule new initialize.
-    mod addCapability: 1.
-    mod setAddressingModel: 0 memoryModel: 1.
+    mod beShaderModule.
     tr := mod typeRegistry.
     cp := mod constantPool.
     f32 := tr floatType: 32.
@@ -148,8 +147,7 @@ PVTriangleScene >> buildVertexData [
 PVTriangleScene >> buildVertexShader [
     | mod tr cp f32 vec2 vec3 vec4 perVertexStruct pOutPerVertex pOutVec4 pInVec2 pInVec3 pOutVec3 voidType funcType inPos inColor outPerVertex outColor zero32 one32 zeroUInt32 fn blk posValId posXId posYId posVec4Id posChainId colorValId |
     mod := SpvModule new initialize.
-    mod addCapability: 1.
-    mod setAddressingModel: 0 memoryModel: 1.
+    mod beShaderModule.
     tr := mod typeRegistry.
     cp := mod constantPool.
     f32 := tr floatType: 32.

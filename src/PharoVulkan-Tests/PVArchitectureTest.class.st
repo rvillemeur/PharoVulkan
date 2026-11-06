@@ -297,6 +297,32 @@ PVArchitectureTest >> testGraphicsTestsStayInsideTheirAllowedDependencies [
 	self assertEdgesOfPackageNamed: 'PharoVulkan-Graphics-Tests'
 ]
 
+{ #category : 'tests - rules' }
+PVArchitectureTest >> testNoProjectMethodWritesTheModulePrologueAsANumber [
+	"The project forbids a magic value, and the SPIR-V capability, addressing model and
+	 memory model are the case CLAUDE.md names. A method that passes one of them as a bare
+	 number has written the specification's value into the emitting code, where nothing says
+	 which value it is. A capability named by its symbol, #Shader, is the specification's own
+	 name and is allowed."
+
+	| prologue senders offenders |
+	prologue := #( #addCapability: #setAddressingModel:memoryModel: #setMemoryModel:memoryModel: ).
+	senders := OrderedCollection new.
+	offenders := OrderedCollection new.
+	self class projectPackageNames do: [ :each |
+		((self class environment at: #PackageOrganizer) default packageNamed: each) methods do: [ :method |
+			(method ast allChildren select: [ :node |
+				 node isMessage and: [ prologue includes: node selector ] ]) do: [ :node |
+				senders add: method.
+				(node arguments anySatisfy: [ :argument |
+					 argument isLiteralNode and: [ argument value isNumber ] ]) ifTrue: [
+					offenders add:
+						method methodClass name , ' >> ' , method selector ] ] ] ].
+	"A mistyped selector would leave nothing to scan and pass in silence."
+	self deny: senders isEmpty.
+	self assertEmpty: offenders asSortedCollection asArray
+]
+
 { #category : 'tests - layering' }
 PVArchitectureTest >> testSpirvStaysInsideItsAllowedDependencies [
 

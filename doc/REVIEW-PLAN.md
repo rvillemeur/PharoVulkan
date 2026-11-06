@@ -231,6 +231,34 @@ adding any.
 Gain: high — ten call sites collapse to one, and the rule the project wrote down starts holding.
 Risk: low.
 
+**Done**, in two steps, each one red test first.
+
+`SpvModule >> beShaderModule` now writes the prologue, over `SpvModule class >> shaderCapability`
+and the `logicalAddressingModel` and `glsl450MemoryModel` constants that already existed.
+`SpvBuilder >> beShaderModule` delegates to it, so a caller holding a builder never reaches past it
+to the module. Seventeen call sites lost their numbers: ten `PVSPIRVEmitter class` compile methods,
+`PVTriangleScene >> buildVertexShader` and `buildFragmentShader`, `SpvEmitterTest` and
+`SpvBuilderTest >> buildVectorAddModule`, `PVComputeTest >> buildVectorAddSpirv`, and two more
+`SpvBuilderTest` tests. `SpvCapability`, `SpvAddressingModel` and `SpvMemoryModel` do not exist: the
+package's convention is a constant on `SpvModule class`, so the capability was added there.
+
+The trailing `0` of a merge instruction was written inline at five sites, and `PVSPIRVEmitter class`
+held its own `selectionControlNone` and `loopControlNone` beside the `SpvSelectionControl none` and
+`SpvLoopControl none` that `SpvBuilder` and `PVTiledMatmulKernel` already use. One number, two
+names.
+The two emitter constants are deleted and all nine sites now ask the SPIR-V constant classes.
+
+`PVArchitectureTest >> testNoProjectMethodWritesTheModulePrologueAsANumber` holds it: it reads every
+project method's AST and fails on a numeric literal passed to `addCapability:`,
+`setAddressingModel:memoryModel:` or `setMemoryModel:memoryModel:`. A capability named by its own
+symbol, `#Shader`, is the specification's name rather than a number and stays allowed. The test also
+denies that the scan found nothing, so a mistyped selector cannot make it pass in silence.
+
+`SpvModule >> headerRows` and the `Header` inspector tab read the module beside the prologue's own
+constants, `SpvBuilderExamples class >> shaderModulePrologue` gives the one click, and
+`SpvBuilderTest >> testHeaderRowsOfAModuleShowItsOwnValuesBesideTheShaderPrologue` proves the tab
+reads the module and not a copy of the numbers.
+
 ---
 
 ## P2 — duplication

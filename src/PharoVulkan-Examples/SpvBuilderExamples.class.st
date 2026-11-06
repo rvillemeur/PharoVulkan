@@ -296,6 +296,16 @@ SpvBuilderExamples class >> scalarBitWidth [
 ]
 
 { #category : 'examples' }
+SpvBuilderExamples class >> shaderModulePrologue [
+	"One click: an empty module carrying only the prologue every module this project emits.
+	 Open the Header tab to read the three facts beside the ones the shader prologue asks
+	 for."
+
+	<sampleInstance>
+	^ SpvModule new beShaderModule
+]
+
+{ #category : 'examples' }
 SpvBuilderExamples class >> structuredControlFlowBuilder [
 	"One click: a module built only from the builder's structured control flow. Two function
 	 variables stand in the entry block, a counting loop turns loopLimit times, a selection

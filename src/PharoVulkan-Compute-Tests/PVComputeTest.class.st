@@ -53,8 +53,7 @@ PVComputeTest >> buildVectorAddSpirv [
 	  mainFn entryBlock invIdGlobal bufA bufB bufR voidType
 	  invIdVar idx zero aPtr bPtr rPtr aVal bVal rVal |
 	b := SpvBuilder new.
-	b addCapability: #Shader.
-	b setMemoryModel: 0 memoryModel: 1.
+	b beShaderModule.
 	types := b types. consts := b constants.
 	f32 := types floatType: 32.
 	u32 := types intType: 32 signed: false.

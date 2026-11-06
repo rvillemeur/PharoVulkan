@@ -20,8 +20,7 @@ SpvBuilderTest >> buildVectorAddModule [
       invIdVar idx zero aPtr bPtr rPtr aVal bVal rVal |
 
     b := SpvBuilder new.
-    b addCapability: #Shader.
-    b setMemoryModel: 0 memoryModel: 1.
+    b beShaderModule.
     types  := b types.
     consts := b constants.
 
@@ -170,8 +169,7 @@ SpvBuilderTest >> testArrayLengthConstantIsDefinedBeforeTheArrayType [
 
 	| b types f32 array lengthId bytes order |
 	b := SpvBuilder new.
-	b addCapability: #Shader.
-	b setMemoryModel: 0 memoryModel: 1.
+	b beShaderModule.
 	types := b types.
 	f32 := types floatType: 32.
 	array := types arrayType: f32 length: 16.
@@ -348,6 +346,24 @@ SpvBuilderTest >> testFunctionVariableIsDeclaredInTheFirstBlockWhateverBlockAsks
 				 instruction opcode = SpvOpcode opVariable ] ])
 ]
 
+{ #category : 'tests - module' }
+SpvBuilderTest >> testHeaderRowsOfAModuleShowItsOwnValuesBesideTheShaderPrologue [
+	"The Header tab reads the module, not a copy of the numbers. A module built with the
+	 Vulkan memory model must show a memory model the shader prologue column does not."
+
+	| prologue other memoryRow |
+	prologue := SpvModule new beShaderModule.
+	prologue headerRows do: [ :row |
+		self assert: (row at: #value) equals: (row at: #expected) ].
+	other := SpvModule new beShaderModule.
+	other
+		setAddressingModel: SpvModule logicalAddressingModel
+		memoryModel: SpvModule vulkanMemoryModel.
+	memoryRow := other headerRows detect: [ :row |
+		(row at: #fact) = 'Memory model' ].
+	self deny: (memoryRow at: #value) equals: (memoryRow at: #expected)
+]
+
 { #category : 'tests' }
 SpvBuilderTest >> testMemorySemanticsAreSingleBitsOfOneMask [
 	"Memory semantics is a bitmask, so the named values have to be distinct single bits that
@@ -426,6 +442,18 @@ SpvBuilderTest >> testSerializeHeader [
     self assert: (bytes at: 2) equals: 16r02.
     self assert: (bytes at: 3) equals: 16r23.
     self assert: (bytes at: 4) equals: 16r07
+]
+
+{ #category : 'tests - module' }
+SpvBuilderTest >> testShaderModulePrologueDeclaresTheShaderCapabilityAndTheGlsl450MemoryModel [
+	"Every module this project emits opens with the same three facts. One message puts them
+	 there, asked of the module, so no emitter writes the numbers again."
+
+	| mod |
+	mod := SpvModule new beShaderModule.
+	self assert: (mod capabilities includes: SpvModule shaderCapability).
+	self assert: mod addressingModel equals: SpvModule logicalAddressingModel.
+	self assert: mod memoryModel equals: SpvModule glsl450MemoryModel
 ]
 
 { #category : 'tests' }
@@ -534,8 +562,7 @@ SpvBuilderTest >> testWorkgroupBarrierCarriesThreeConstantIds [
 
 	| b barrier scopeId semanticsId |
 	b := SpvBuilder new.
-	b addCapability: #Shader.
-	b setMemoryModel: 0 memoryModel: 1.
+	b beShaderModule.
 	barrier := b workgroupBarrier.
 	scopeId := b constants constantUInt32: SpvScope workgroup.
 	semanticsId := b constants constantUInt32:
