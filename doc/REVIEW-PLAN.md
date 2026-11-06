@@ -573,6 +573,62 @@ checkout.
 
 Gain: low. Risk: low.
 
+**Plan as validated** (interviewed 2026-11-06), and it is not the move this point first described.
+
+The point was written against the standard's rule that an example lives in the `-Examples` package.
+Two facts found before editing say the body cannot follow that rule literally. First,
+`PVSceneExamples`'s own class comment already records the opposite decision: "The scene classes keep
+`renderTriangle` themselves, because `doc/glsl-api-tutorial.md` documents it as the method a user
+writes on their own scene" — which is the standard's own exemption for a method the documentation
+tells a user to write. The tutorial does exactly that at its lines 252 and 335 to 357, and
+`PVGlslTriangleScene`'s class comment names `PVGlslTriangleScene renderTriangle` as the entry point.
+Second, a `renderTriangle` left behind to delegate to the examples class would be an edge from
+`PharoVulkan-Graphics` to `PharoVulkan-Examples`, which the dependency table does not declare and
+will not.
+
+So the pragma moves and the body stays:
+
+1. `PVSceneExamples class >> openRenderTriangle` and its `openGlslRenderTriangle`, each a one-line
+   `<sampleInstance>` answering `PVHelloTriangleScene renderTriangle` and
+   `PVGlslTriangleScene renderTriangle`. The `open…` prefix because they open a window.
+2. Take `<sampleInstance>` off `PVHelloTriangleScene class >> renderTriangle`; the method and its
+   comment stay, with a line saying why it is not in the examples package.
+3. Delete `PVGlslTriangleScene class >> renderTriangle` outright. Its body was `^ super
+   renderTriangle` and it existed only so the pragma would give that class a button of its own;
+   inheritance already answers `PVGlslTriangleScene renderTriangle`, so the tutorial stays true
+   without an edit.
+
+Every clickable example then lives in `PharoVulkan-Examples`, the documented method stays where the
+tutorial shows it, and no new dependency appears: `PharoVulkan-Examples` may already reference
+`PharoVulkan-Graphics`, which is how `PVGlslTriangleScene` subclasses `PVHelloTriangleScene`.
+
+`exampleFrameCount`, read by that method alone, and `exampleExtent`, read by five tests and ten
+examples, both stay on the scene class with the body.
+
+Verification: `run_critics` on the three classes, and `PVGraphicsTest` (53) run forked and alone
+against a committed checkout, because the two new examples drive the GPU and open a window.
+
+**Done, as validated.** `PVSceneExamples class >> openRenderTriangle` and `openGlslRenderTriangle`
+are the two `<sampleInstance>` examples that open a window, one send each.
+`PVHelloTriangleScene class >> renderTriangle` kept its body and lost the pragma, and its comment
+now says why it is not in the examples package. `PVGlslTriangleScene class >> renderTriangle` is
+gone: `PVGlslTriangleScene class lookupSelector: #renderTriangle` answers the inherited method, so
+`PVGlslTriangleScene renderTriangle` in the tutorial and in that class's comment still works.
+
+A scan of every method of every `PharoVulkan*` package counts 118 `<sampleInstance>` pragmas, none
+of them outside `PharoVulkan-Examples`, where before there was one. The only senders of
+`renderTriangle` are the two new examples. 594 tests over the ten non-graphics classes pass;
+`PVGraphicsTest` (53) is run forked and alone after this commit, as the point requires.
+`PVSceneExamples`'s class comment gained the paragraph about the two window openers, and
+`doc/architecture.md` now states the rule and this one exception to where the documented method
+lives.
+
+Noticed on the way, and left alone: 74 class comments in `PharoVulkan*` packages hold LF rather
+than CR in the image, `PVSceneExamples`'s among them before this change. It is invisible on disk —
+Tonel writes LF for every line of all 366 exported files, and `grep -rlU $'\r' src/` finds none —
+so the CR rule bites on method source, not on what Tonel normalises. A sweep would touch 74
+comments for no change to the repository and is not part of this point.
+
 ---
 
 ## Order

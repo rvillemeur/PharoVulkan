@@ -183,7 +183,10 @@ One class per subject — `VkContextExamples`, `VkPipelineExamples`, `PVCompiler
 `PVSceneExamples` and so on — each holding as class-side methods the `<sampleInstance>` examples of
 the thing it is named after. An example rebuilds its object on every call, asserts nothing, and
 runs from one click in the browser; the inspector views and the tests read them, which is why most
-test packages depend on this one.
+test packages depend on this one. Every `<sampleInstance>` of the project lives here, the two that
+open a window included (`PVSceneExamples class >> openRenderTriangle` and `openGlslRenderTriangle`);
+`renderTriangle` itself stays on the scene classes, because `doc/glsl-api-tutorial.md` documents it
+as the method a user writes on their own scene.
 
 ---
 

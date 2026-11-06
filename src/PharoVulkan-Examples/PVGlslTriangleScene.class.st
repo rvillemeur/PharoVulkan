@@ -9,16 +9,6 @@ Class {
 	#tag : 'Graphics'
 }
 
-{ #category : 'examples' }
-PVGlslTriangleScene class >> renderTriangle [
-	"Same lifecycle as the superclass; redefined only so the example button shows up
-	 on this class too, since the sampleInstance pragma is not looked up in
-	 superclasses. windowTitle supplies the only difference."
-
-	<sampleInstance>
-	^ super renderTriangle
-]
-
 { #category : 'constants' }
 PVGlslTriangleScene class >> windowTitle [
 	^ 'GLSL Triangle'

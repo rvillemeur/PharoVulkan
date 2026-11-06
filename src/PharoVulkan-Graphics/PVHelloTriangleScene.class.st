@@ -116,9 +116,12 @@ PVHelloTriangleScene class >> renderTriangle [
 	 creation: scene, then context, then window, then the OSWindow driver. A raise
 	 or a user interrupt mid-loop must not leave a live VkInstance, an SDL window
 	 still registered with the driver, or the driver itself swapped out — with the
-	 validation layers off, that state resurfaces as a segfault on the next run."
+	 validation layers off, that state resurfaces as a segfault on the next run.
 
-	<sampleInstance>
+	 It stays here, outside PharoVulkan-Examples, because doc/glsl-api-tutorial.md
+	 documents it as the method a user writes on their own scene. The one-click
+	 example is PVSceneExamples class >> openRenderTriangle, and it sends this."
+
 	| attrs |
 	attrs := PVWindowAttributes newVulkan.
 	attrs

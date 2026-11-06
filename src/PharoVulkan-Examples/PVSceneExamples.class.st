@@ -2,6 +2,11 @@
 Examples of the offscreen graphics path run end to end on this machine: the cleared render target, and the triangle rendered into one.
 
 Each builds a context, renders, reads the pixels back and destroys everything it created before answering, so what it hands back is the result rather than live driver objects. They need a Vulkan driver but no window. The scene classes keep renderTriangle themselves, because doc/glsl-api-tutorial.md documents it as the method a user writes on their own scene.
+
+openRenderTriangle and openGlslRenderTriangle are the two that do open a window and drive the
+GPU, one per scene class. Each is a single send of renderTriangle: the scene classes keep that
+method, so the examples hold no second copy of the lifecycle. Run those two alone, against a
+committed checkout.
 "
 Class {
 	#name : 'PVSceneExamples',
@@ -29,6 +34,27 @@ PVSceneExamples class >> clearedTargetOnThisMachine [
 	  target renderWith: [ :c |  ] on: queue pool: pool.
 	  target destroy.
 	  target ] ensure: [ pool destroy ] ] ensure: [ context destroy ]
+]
+
+{ #category : 'examples' }
+PVSceneExamples class >> openGlslRenderTriangle [
+	"One click: the same triangle with both shaders compiled from Pharo source by
+	 PVKernelCompiler instead of the hand-written SPIR-V. Inherits the lifecycle from
+	 PVHelloTriangleScene. It opens a window and drives the GPU, so run it alone."
+
+	<sampleInstance>
+	^ PVGlslTriangleScene renderTriangle
+]
+
+{ #category : 'examples' }
+PVSceneExamples class >> openRenderTriangle [
+	"One click: the hand-written SPIR-V triangle in a window of its own. The scene class keeps
+	 renderTriangle because doc/glsl-api-tutorial.md documents it as the method a user writes
+	 on their own scene, so this example sends it rather than holding a second copy of the
+	 lifecycle. It opens a window and drives the GPU, so run it alone."
+
+	<sampleInstance>
+	^ PVHelloTriangleScene renderTriangle
 ]
 
 { #category : 'examples' }
