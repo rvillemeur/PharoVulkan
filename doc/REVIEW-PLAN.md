@@ -60,6 +60,22 @@ adding a new raw-offset method still can.
 Gain: high — a green suite is the precondition for everything else here. Risk: none; one test
 changes and no production code does.
 
+**Done.** The test now reads the memory instead of the selectors: a method may reach a counted
+offset only if it allocates the block itself, through `ExternalAddress`, and names no declared
+structure while doing so. Both halves were proved by planting a violation of each — a poke into a
+`VkSwapchainCreateInfoKHR` it allocated, and a poke into a handle it was given — and each one alone
+turns the test red. It also denies an empty scan, so a mistyped ban list cannot pass in silence.
+
+Twenty-six sibling tests in `VkBindingsTest` carry their own copy of the same twelve-selector ban
+list. Five of them pin the allowed selectors as strings (`equals: #( 'VkSurface >> ...' )`) and are
+a rename away from the same false red: `testSurfaceQueriesReadNoFieldAtAHandCountedOffset`,
+`testImageCreationWritesNoScalarFieldAtAHandCountedOffset`,
+`testRenderPassCreationWritesNoScalarFieldAtAHandCountedOffset`,
+`testComputePipelineCreationWritesNoFieldAtAHandCountedOffset` and
+`testNoOffsetIsCountedInTheGraphicsPipelineAnyMore`. Two more look a method up by selector
+(`VkImage >> #createView`), which errors rather than fails when the selector moves. Converting them
+is not part of this point; the test above is the shape to follow.
+
 ### 2. Two class-side methods named after a reflection selector
 
 The global standard forbids this outright: a class-side constant named after a selector Pharo's own

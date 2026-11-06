@@ -5170,29 +5170,37 @@ VkBindingsTest >> testSwapchainCreateInfoLayoutMatchesTheCLayout [
 { #category : 'tests - layout' }
 VkBindingsTest >> testSwapchainCreationWritesNoScalarFieldAtAHandCountedOffset [
 	"Both structures a swapchain writes are declared, so no method may write either at a
-	 counted offset. What is left is named, and none of it is a structure: the out parameter a
-	 creation answers through, the image index an acquire is given, the count and the run of
-	 image handles the driver fills, and the two runs of one entry a present request points
-	 at."
+	 counted offset. What may still reach one is named by the memory it touches rather than by
+	 its selector: a method qualifies only if it allocates the block itself, through
+	 ExternalAddress, and names no declared structure while doing so. The blocks that qualify are
+	 the out parameter a creation answers through, the image index an acquire is given, the count
+	 and the run of image handles the driver fills, and the two runs of one entry a present
+	 request points at."
 
-	| banned offenders |
+	"This test used to pin the five selectors as strings, and renaming acquireNextImage:fence:
+	 to acquireNextImage:fence:timeout: turned it red while no structure had been poked. The rule
+	 is about the memory, so the memory is what it reads."
+
+	| banned reaching |
 	banned := #( #unsignedLongAt: #unsignedLongAt:put: #unsignedShortAt:
 	             #unsignedShortAt:put: #unsignedLongLongAt:
 	             #unsignedLongLongAt:put: #signedLongAt: #signedLongAt:put:
 	             #floatAt: #floatAt:put: #pointerAt: #pointerAt:put: ).
-	offenders := (VkSwapchain methods , VkSwapchain class methods) select: [
-		             :method |
-		             method messages anySatisfy: [ :each |
-			             banned includes: each ] ].
+	reaching := (VkSwapchain methods , VkSwapchain class methods) select: [ :method |
+		            method messages anySatisfy: [ :each | banned includes: each ] ].
+	"A mistyped banned list would leave nothing to check and pass in silence."
+	self deny: reaching isEmpty.
 	self
-		assert: (offenders collect: [ :each |
-				 each methodClass name asString , ' >> ' , each selector ])
-				asSortedCollection asArray
-		equals: #( 'VkSwapchain >> acquireNextImage:fence:'
-			           'VkSwapchain >> imagesFromDriver'
-			           'VkSwapchain class >> handleForCreateInfo:on:'
-			           'VkSwapchain class >> runOfOneHandle:'
-			           'VkSwapchain class >> runOfOneImageIndex:' )
+		assertEmpty: ((reaching reject: [ :method |
+				  (method literals anySatisfy: [ :each |
+					   each isVariableBinding and: [ each value == ExternalAddress ] ])
+					  and: [
+						  method literals noneSatisfy: [ :each |
+							  each isVariableBinding and: [
+								  each value isBehavior and: [
+									  each value inheritsFrom: FFIExternalStructure ] ] ] ] ])
+				 collect: [ :method |
+				 method methodClass name , ' >> ' , method selector ])
 ]
 
 { #category : 'tests - layout' }
