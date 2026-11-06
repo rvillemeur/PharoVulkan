@@ -3,9 +3,8 @@ Runs the subgroup-reduced dot product of PVKernelExamples >> #subgroupDotOf:a:b:
 "
 Class {
 	#name : 'PVSubgroupDotProduct',
-	#superclass : 'Object',
+	#superclass : 'PVDeviceRun',
 	#instVars : [
-		'context',
 		'size',
 		'partialSums',
 		'laneCounts',
@@ -216,14 +215,11 @@ PVSubgroupDotProduct >> reportedSubgroupSize [
 
 { #category : 'running' }
 PVSubgroupDotProduct >> run [
-	"Dispatches once and keeps the slots. Buffers and pipeline are built and destroyed around
-	 the dispatch, so a second run does not accumulate device memory."
+	"Guard before the inherited run: with no subgroup arithmetic on the device the dispatch
+	 would answer partial sums that mean nothing."
 
-	| buffers |
 	self available ifFalse: [ PVTypeError signal: self unavailableReason ].
-	buffers := self newBuffers.
-	^ [ self runWithBuffers: buffers ] ensure: [
-		  buffers do: [ :each | each destroy ] ]
+	^ super run
 ]
 
 { #category : 'private' }

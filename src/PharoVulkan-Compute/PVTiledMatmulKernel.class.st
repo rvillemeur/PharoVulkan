@@ -5,10 +5,8 @@ It takes the matrix order from the dispatch grid, exactly as the naive matmul do
 "
 Class {
 	#name : 'PVTiledMatmulKernel',
-	#superclass : 'Object',
+	#superclass : 'PVSpirvKernel',
 	#instVars : [
-		'spirv',
-		'builder',
 		'builtInVariables',
 		'bufferVariables',
 		'tileVariables'
@@ -113,20 +111,6 @@ PVTiledMatmulKernel >> boolType [
 ]
 
 { #category : 'building' }
-PVTiledMatmulKernel >> buildSpirv [
-	"Assemble the module. The built-ins, the buffers and the shared tiles are declared
-	 before the function, because a definition has to precede every use of its id."
-
-	builder := SpvBuilder new.
-	builder module addCapability: self class shaderCapability.
-	self declareBuiltIns.
-	self declareBuffers.
-	self declareSharedTiles.
-	self emitMain.
-	^ builder module serialize
-]
-
-{ #category : 'building' }
 PVTiledMatmulKernel >> declareBuffers [
 	"Three Block-decorated structs, each holding one runtime array of floats. The type
 	 registry hands back the same array and struct for all three bindings, and a type
@@ -167,6 +151,15 @@ PVTiledMatmulKernel >> declareBuiltIns [
 	builtInVariables := Dictionary new.
 	self class builtIns do: [ :each |
 		builtInVariables at: each put: (self newBuiltInVariable: each) ]
+]
+
+{ #category : 'building' }
+PVTiledMatmulKernel >> declareModule [
+	"The built-ins, the buffers and the shared tiles."
+
+	self declareBuiltIns.
+	self declareBuffers.
+	self declareSharedTiles
 ]
 
 { #category : 'building' }
@@ -587,23 +580,6 @@ PVTiledMatmulKernel >> newBlocksFor: aFunction [
 ]
 
 { #category : 'building' }
-PVTiledMatmulKernel >> newBufferVariableOfType: aPointerType binding: anInteger [
-	| variable |
-	variable := builder
-		            addGlobalVariable: aPointerType
-		            storageClass: SpvStorageClass storageBuffer.
-	builder module
-		addDecoration: variable id
-		decoration: SpvDecoration descriptorSet
-		literals: { PVSPIRVEmitter computeDescriptorSet }.
-	builder module
-		addDecoration: variable id
-		decoration: SpvDecoration bindingDecoration
-		literals: { anInteger }.
-	^ variable
-]
-
-{ #category : 'building' }
 PVTiledMatmulKernel >> newBuiltInVariable: aBuiltIn [
 	| variable |
 	variable := builder
@@ -701,14 +677,6 @@ PVTiledMatmulKernel >> sharedMemoryBytes [
 
 	^ self class tileCount * self tileElementCount
 	  * (PVSPIRVEmitter storageBufferArrayStrideFor: self class bufferElementType)
-]
-
-{ #category : 'accessing' }
-PVTiledMatmulKernel >> spirv [
-	"The module bytes, built once per instance: the build allocates result ids from one
-	 counter, so it is a fresh builder each time or nothing."
-
-	^ spirv ifNil: [ spirv := self buildSpirv ]
 ]
 
 { #category : 'types' }

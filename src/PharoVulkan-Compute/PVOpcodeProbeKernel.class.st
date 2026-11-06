@@ -7,10 +7,8 @@ One workgroup of elementCount invocations, one invocation an element, two storag
 "
 Class {
 	#name : 'PVOpcodeProbeKernel',
-	#superclass : 'Object',
+	#superclass : 'PVSpirvKernel',
 	#instVars : [
-		'spirv',
-		'builder',
 		'types',
 		'ids',
 		'results'
@@ -286,21 +284,6 @@ PVOpcodeProbeKernel >> binary: anOpcode left: aLeftId right: aRightId type: aTyp
 		  type: aType
 ]
 
-{ #category : 'building' }
-PVOpcodeProbeKernel >> buildSpirv [
-	"Assemble the module. The types, the buffers and the extended instruction set are
-	 declared before the function, because a definition has to precede every use of its id.
-	 The module's own defaults state the addressing and the memory model."
-
-	builder := SpvBuilder new.
-	builder module addCapability: self class shaderCapability.
-	ids := Dictionary new.
-	self declareTypes.
-	self declareBuffers.
-	self emitMain.
-	^ builder module serialize
-]
-
 { #category : 'reporting' }
 PVOpcodeProbeKernel >> comparisonRows [
 	"One row an invocation: what it was given, what the device answered and what the formula
@@ -378,6 +361,16 @@ PVOpcodeProbeKernel >> declareBuffers [
 				 newBufferVariableOfType: pointerType
 				 binding: self class outputBinding);
 		at: #invocationId put: self newInvocationIdVariable
+]
+
+{ #category : 'building' }
+PVOpcodeProbeKernel >> declareModule [
+	"The types, the buffers and the extended instruction set. The defaults of the module state
+	 the addressing and the memory model, so nothing is said about them here."
+
+	ids := Dictionary new.
+	self declareTypes.
+	self declareBuffers
 ]
 
 { #category : 'building' }
@@ -838,23 +831,6 @@ PVOpcodeProbeKernel >> interfaceVariables [
 ]
 
 { #category : 'building' }
-PVOpcodeProbeKernel >> newBufferVariableOfType: aPointerType binding: anInteger [
-	| variable |
-	variable := builder
-		            addGlobalVariable: aPointerType
-		            storageClass: SpvStorageClass storageBuffer.
-	builder module
-		addDecoration: variable id
-		decoration: SpvDecoration descriptorSet
-		literals: { PVSPIRVEmitter computeDescriptorSet }.
-	builder module
-		addDecoration: variable id
-		decoration: SpvDecoration bindingDecoration
-		literals: { anInteger }.
-	^ variable
-]
-
-{ #category : 'building' }
 PVOpcodeProbeKernel >> newInvocationIdVariable [
 	| variable |
 	variable := builder
@@ -932,14 +908,6 @@ PVOpcodeProbeKernel >> runOn: aContext [
 		input destroy.
 		output destroy ].
 	^ results
-]
-
-{ #category : 'accessing' }
-PVOpcodeProbeKernel >> spirv [
-	"The module bytes, built once: the build allocates result ids, so a second build would
-	 answer different ids for the same kernel."
-
-	^ spirv ifNil: [ spirv := self buildSpirv ]
 ]
 
 { #category : 'accessing' }

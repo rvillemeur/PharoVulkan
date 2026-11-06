@@ -3,9 +3,8 @@ Times one matmul kernel on the device. Build it with on:order:repeats:kernel: to
 "
 Class {
 	#name : 'PVBenchmark',
-	#superclass : 'Object',
+	#superclass : 'PVDeviceRun',
 	#instVars : [
-		'context',
 		'order',
 		'repeats',
 		'result',
@@ -155,7 +154,7 @@ PVBenchmark >> kernelMethod [
 	^ kernelMethod
 ]
 
-{ #category : 'running' }
+{ #category : 'private' }
 PVBenchmark >> newBuffers [
 	"Three buffers of the precision under measurement, so the bytes moved per dispatch are
 	 the bytes that precision actually moves."
@@ -204,17 +203,6 @@ PVBenchmark >> reportRows [
 { #category : 'accessing' }
 PVBenchmark >> result [
 	^ result
-]
-
-{ #category : 'measuring' }
-PVBenchmark >> run [
-	"Answer a PVBenchmarkResult for this configuration. Buffers and pipeline are built and
-	 destroyed around the measurement, so repeated runs do not accumulate device memory."
-
-	| buffers |
-	buffers := self newBuffers.
-	^ [ self runWithBuffers: buffers ] ensure: [
-		  buffers do: [ :each | each destroy ] ]
 ]
 
 { #category : 'private' }

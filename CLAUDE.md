@@ -27,7 +27,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 | `PharoVulkan-SPIRV` | 51 | SPIR-V binary builder: module, builder, IR, types, constant pool, serialiser, validator, `PVTypeError` |
 | `PharoVulkan-Compiler` | 27 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
 | `PharoVulkan-Core` | 17 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
-| `PharoVulkan-Compute` | 15 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks |
+| `PharoVulkan-Compute` | 17 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks, and the two abstract superclasses of the hand-built kernels (`PVSpirvKernel`) and of the runs that allocate their buffers around a dispatch (`PVDeviceRun`) |
 | `PharoVulkan-Graphics` | 17 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
 | `PharoVulkan-Generator` | 13 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes. Dev time only, outside `default` |
 | `PharoVulkan-Examples` | 19 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples the inspector views and the tests read |

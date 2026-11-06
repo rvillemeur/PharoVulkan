@@ -346,6 +346,106 @@ subclass only what differs.
 
 Gain: medium. Risk: low.
 
+**Plan as validated** (interviewed 2026-11-06; nothing edited before this was agreed).
+
+Family 1 — `PVSpirvKernel`, an `Object` subclass with slots `spirv builder`, in
+`PharoVulkan-Compute` tag `Kernels`, with a class comment. Abstract, so it gets no
+`<sampleInstance>` example and no inspector view: an abstract class cannot be instantiated, and the
+pulled-up bodies keep the coverage the three subclasses' tests already give them.
+
+1. Rename `PVCooperativeMatrixKernel >> newBufferVariableOfPointerType:binding:` to
+   `newBufferVariableOfType:binding:`, through Pharo's own rename refactoring so the senders are
+   rewritten. The three bodies then agree and can be pulled up.
+2. Create `PVSpirvKernel`, reparent `PVCooperativeMatrixKernel`, `PVOpcodeProbeKernel` and
+   `PVTiledMatmulKernel` under it, and take `spirv` and `builder` out of each.
+3. Pull up `spirv` (the lazy memo, identical three times) and `newBufferVariableOfType:binding:`
+   (identical three times); delete the six copies.
+4. Pull up `buildSpirv` as a template method:
+
+   ```smalltalk
+   builder := SpvBuilder new.
+   builder addCapability: self class shaderCapability.
+   self declareModule.
+   self emitMain.
+   ^ builder module serialize
+   ```
+
+   `SpvBuilder >> addCapability:` forwards to `module addCapability:`, so the capability line means
+   what each of the three bodies means today. Each subclass keeps the rest as `declareModule`:
+   `declareCapabilities` and `declareBuffers` for the cooperative matrix kernel, whose
+   `declareCapabilities` loses its first line because the template now adds the shader capability;
+   `ids := Dictionary new`, `declareTypes` and `declareBuffers` for the opcode probe;
+   `declareBuiltIns`, `declareBuffers` and `declareSharedTiles` for the tiled matmul.
+5. Declare `declareModule`, `emitMain` and class-side `shaderCapability` as `subclassResponsibility`
+   on `PVSpirvKernel` — exactly what the pulled-up code sends, and no more.
+
+Family 2 — `PVDeviceRun`, an `Object` subclass with slot `context`, in `PharoVulkan-Compute` tag
+`Benchmarks`, with a class comment. Abstract, same consequence as above.
+
+6. Create `PVDeviceRun` and reparent `PVBenchmark`, `PVSubgroupDotProduct` and
+   `PVTiledMatmulComparison`, taking `context` out of each. `PVNoSubgroupArithmeticStub`, the
+   graphics-free fixture, follows under `PVSubgroupDotProduct`.
+7. Pull up `run` — allocate the buffers, run, destroy them in an `ensure:`. `PVSubgroupDotProduct`
+   keeps an override: its availability guard, then `^ super run`. Delete the other two copies.
+8. Declare `newBuffers` and `runWithBuffers:` as `subclassResponsibility` on `PVDeviceRun`.
+
+Deliberately left alone. `PVCooperativeMatrixComparison` stays outside family 2: its `run` allocates
+no buffer, so it would not follow the template and would inherit three hooks it has to switch off,
+which would make the superclass a shared slot rather than a shared shape. `reportRows` is not pulled
+up: its three bodies differ and no method of either superclass sends it. Nor are `groupCount`, the
+`setContext:…` setters and `on:…` constructors of different arities, `voidType` (two occurrences),
+`newBuffers`, `inputMatrixWithOffset:`, `order` and `repeats` of `PVBenchmark` and
+`PVTiledMatmulComparison` (two occurrences), or `add:to:`, which names addition of floats in one
+class and of unsigned integers in the other — a common name there would hide the difference. Two
+occurrences are a coincidence; the rule needs three.
+
+Verification. `PVComputeTest` (63 tests) after every step, and no test changed during the
+refactoring: if a refactoring forces a test to change, stop and report it. `run_critics` on the five
+touched classes and the two new ones. The whole suite at the end, with `PVGraphicsTest` forked.
+`PVArchitectureTest class >> allowedDependencies` and `BaselineOfPharoVulkan` need no edit: no new
+package and no new edge, since `PharoVulkan-Compute` may already reference `PharoVulkan-SPIRV`,
+where `SpvBuilder` lives.
+
+**Done, as validated.** `PVSpirvKernel` and `PVDeviceRun` exist, each abstract, each with a class
+comment and neither with an example or a view.
+
+`PVSpirvKernel` holds `spirv` and `builder` and, for `PVCooperativeMatrixKernel`,
+`PVOpcodeProbeKernel` and `PVTiledMatmulKernel`: `spirv`, the lazy memo that was written three
+times; `newBufferVariableOfType:binding:`, which was written three times once the cooperative matrix
+kernel's `newBufferVariableOfPointerType:binding:` was renamed; and `buildSpirv` as the template,
+which opens the builder, adds `self class shaderCapability` and then sends `declareModule` and
+`emitMain`. Each subclass keeps its own `declareModule` with what the template does not do, and the
+cooperative matrix kernel's `declareCapabilities` lost the shader capability line the template now
+adds first — `SpvBuilder >> addCapability:` forwards to `module addCapability:`, so the three
+modules are byte-for-byte what they were, which
+`testCooperativeMatrixKernelFromPharoSourceMatchesTheHandBuiltOne` pins.
+
+`PVDeviceRun` holds `context` and `run` for `PVBenchmark`, `PVSubgroupDotProduct` and
+`PVTiledMatmulComparison`. `PVSubgroupDotProduct >> run` is now its availability guard and
+`^ super run`, which `PVNoSubgroupArithmeticStub` still exercises. `PVCooperativeMatrixComparison`
+stayed outside, as decided.
+
+Two things the plan did not foresee. First, Renraku's `ReMissingSubclassResponsibilityRule` asks for
+a `subclassResponsibility` on every selector all the subclasses define, not only on what the
+pulled-up code sends: `PVSpirvKernel` therefore also declares `declareBuffers`, `interfaceVariables`
+and class-side `entryPointName`, and `PVDeviceRun` also declares `groupCount` and `reportRows` —
+declarations of the protocol, no body pulled up. Second,
+`ReInconsistentMethodClassificationRule` then fired, because the subclasses had classified the same
+selector under three different protocols: `run` is `running`, `runWithBuffers:` and `newBuffers` are
+`private`, `reportRows` is `reporting`, `groupCount` is `accessing`, and `interfaceVariables` is
+`building`, with four subclass methods reclassified to agree. Critics are clean on the eight
+classes.
+
+A trap for the next rename: the MCP `method_rename` tool removed
+`newBufferVariableOfPointerType:binding:` without installing the renamed method and without
+rewriting the one sender, and said so only as a hint ("Use find_senders to update callers"). The
+body was recovered from Epicea through `e content methodRemoved sourceCode` on the newest
+`EpMethodRemoval`. Check `allImplementorsOf:` after any rename through that tool.
+
+No test was changed. The suite is 647 tests over eleven test classes and passes: 594 counted in one
+run of the ten non-graphics classes, `PVGraphicsTest` (53) forked on its own, after the commit.
+`allowedDependencies` and the baseline needed no edit.
+
 ### 9. The inspector-row infrastructure, duplicated nine times over three conventions
 
 ```smalltalk

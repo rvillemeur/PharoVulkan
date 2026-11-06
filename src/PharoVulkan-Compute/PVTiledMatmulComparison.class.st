@@ -5,9 +5,8 @@ Build it with on:order:repeats:, send run, and read the numbers through reportRo
 "
 Class {
 	#name : 'PVTiledMatmulComparison',
-	#superclass : 'Object',
+	#superclass : 'PVDeviceRun',
 	#instVars : [
-		'context',
 		'order',
 		'repeats',
 		'tiledResult',
@@ -199,19 +198,7 @@ PVTiledMatmulComparison >> reportRows [
 			   value: maximumCompiledDifference) }
 ]
 
-{ #category : 'measuring' }
-PVTiledMatmulComparison >> run [
-	"Answer self, with both measurements and the difference between the two results filled
-	 in. The buffers are built and destroyed around the pair of runs, so repeated
-	 comparisons do not accumulate device memory."
-
-	| buffers |
-	buffers := self newBuffers.
-	^ [ self runWithBuffers: buffers ] ensure: [
-		  buffers do: [ :each | each destroy ] ]
-]
-
-{ #category : 'running' }
+{ #category : 'private' }
 PVTiledMatmulComparison >> runWithBuffers: buffers [
 	"The hand-built tiled kernel first, then the naive one, then the tiled kernel compiled
 	 from Pharo source, all three over the same buffers. Each output is read back before

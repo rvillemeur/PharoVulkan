@@ -7,10 +7,8 @@ It needs a context built by capability rather than by position, `VkContext coope
 "
 Class {
 	#name : 'PVCooperativeMatrixKernel',
-	#superclass : 'Object',
+	#superclass : 'PVSpirvKernel',
 	#instVars : [
-		'spirv',
-		'builder',
 		'bufferVariables'
 	],
 	#category : 'PharoVulkan-Compute-CooperativeMatrix',
@@ -154,18 +152,6 @@ PVCooperativeMatrixKernel >> bufferTypeOfBinding: anInteger [
 		  ifFalse: [ #bufferOf_f16 ]
 ]
 
-{ #category : 'building' }
-PVCooperativeMatrixKernel >> buildSpirv [
-	"Assemble the module. The capabilities and the buffers are declared before the function,
-	 because a definition has to precede every use of its id."
-
-	builder := SpvBuilder new.
-	self declareCapabilities.
-	self declareBuffers.
-	self emitMain.
-	^ builder module serialize
-]
-
 { #category : 'accessing' }
 PVCooperativeMatrixKernel >> countOf: anOpcode in: aCountDictionary [
 	"Zero where the opcode is absent: a report saying none is better than a report that
@@ -189,7 +175,7 @@ PVCooperativeMatrixKernel >> declareBuffers [
 		bufferVariables
 			at: binding
 			put: (self
-					 newBufferVariableOfPointerType:
+					 newBufferVariableOfType:
 					 (pointerTypes
 						  at: bufferType
 						  ifAbsentPut: [ self newDecoratedBlockPointerFor: bufferType ])
@@ -198,12 +184,12 @@ PVCooperativeMatrixKernel >> declareBuffers [
 
 { #category : 'building' }
 PVCooperativeMatrixKernel >> declareCapabilities [
-	"Five capabilities and one extension. CooperativeMatrixKHR needs the extension named and
-	 VulkanMemoryModel declared beside it, which in turn means the module must name the
-	 Vulkan memory model rather than the GLSL450 one the other kernels of this project use.
-	 Float16 and the 16-bit storage access cover the half precision inputs."
+	"Four capabilities beyond the shader one the superclass adds, and one extension.
+	 CooperativeMatrixKHR needs the extension named and VulkanMemoryModel declared beside it,
+	 which in turn means the module must name the Vulkan memory model rather than the GLSL450
+	 one the other kernels of this project use. Float16 and the 16-bit storage access cover the
+	 half precision inputs."
 
-	builder addCapability: self class shaderCapability.
 	builder addCapability: PVSPIRVEmitter float16Capability.
 	builder addCapability: PVSPIRVEmitter storageBuffer16BitAccessCapability.
 	builder addCapability: PVSPIRVEmitter vulkanMemoryModelCapability.
@@ -213,6 +199,14 @@ PVCooperativeMatrixKernel >> declareCapabilities [
 	builder
 		setMemoryModel: SpvModule logicalAddressingModel
 		memoryModel: SpvModule vulkanMemoryModel
+]
+
+{ #category : 'building' }
+PVCooperativeMatrixKernel >> declareModule [
+	"The capabilities and the buffers, in that order."
+
+	self declareCapabilities.
+	self declareBuffers
 ]
 
 { #category : 'building' }
@@ -289,7 +283,7 @@ PVCooperativeMatrixKernel >> inspectorModule: aBuilder [
 		  in: aBuilder
 ]
 
-{ #category : 'accessing' }
+{ #category : 'building' }
 PVCooperativeMatrixKernel >> interfaceVariables [
 	"SPIR-V 1.4 onwards wants every module-scope variable the entry point touches named in
 	 its interface list. This kernel reads no built-in: one tile sits at the start of each
@@ -351,26 +345,6 @@ PVCooperativeMatrixKernel >> module [
 
 	self spirv.
 	^ builder module
-]
-
-{ #category : 'building' }
-PVCooperativeMatrixKernel >> newBufferVariableOfPointerType: aPointerType binding: anInteger [
-	"One storage buffer variable at that binding of the single descriptor set this project's
-	 compute pipelines use."
-
-	| variable |
-	variable := builder
-		            addGlobalVariable: aPointerType
-		            storageClass: SpvStorageClass storageBuffer.
-	builder module
-		addDecoration: variable id
-		decoration: SpvDecoration descriptorSet
-		literals: { PVSPIRVEmitter computeDescriptorSet }.
-	builder module
-		addDecoration: variable id
-		decoration: SpvDecoration bindingDecoration
-		literals: { anInteger }.
-	^ variable
 ]
 
 { #category : 'building' }
@@ -538,14 +512,6 @@ PVCooperativeMatrixKernel >> shapeDescription [
 	^ 'M' , self class matrixOrder printString , ' N'
 	  , self class matrixOrder printString , ' K'
 	  , self class matrixOrder printString , ', f16 x f16 into f32'
-]
-
-{ #category : 'accessing' }
-PVCooperativeMatrixKernel >> spirv [
-	"The module bytes, built once per instance: the build allocates result ids from one
-	 counter, so it is a fresh builder each time or nothing."
-
-	^ spirv ifNil: [ spirv := self buildSpirv ]
 ]
 
 { #category : 'accessing' }
