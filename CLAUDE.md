@@ -11,9 +11,8 @@ existing `OSSDL2BackendWindow` infrastructure.
 ## Current state
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
-`PACKAGE-PLAN.md` are all done. The suite is 633 tests over ten test classes. One is red:
-`VkBindingsTest >> testSwapchainCreationWritesNoScalarFieldAtAHandCountedOffset`, which pins a list
-of selectors that a rename made stale — point 1 of `doc/REVIEW-PLAN.md`.
+`PACKAGE-PLAN.md` are all done. The suite is 633 tests over ten test classes and passes.
+`doc/REVIEW-PLAN.md` holds the architecture and code review, and says which of its points are done.
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
 
