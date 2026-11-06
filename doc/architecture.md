@@ -13,7 +13,7 @@ PharoVulkan has two independent paths sharing the same binding and core layers:
 
 ## Package Layers
 
-Fifteen packages: eight of code, seven of tests. An arrow upward in this diagram is a dependency
+Sixteen packages: nine of code, seven of tests. An arrow upward in this diagram is a dependency
 downward in the layering, and nothing reaches up: `PharoVulkan-Bindings` and `PharoVulkan-SPIRV`
 name no other package of this project at all.
 
@@ -22,7 +22,8 @@ name no other package of this project at all.
 │  PharoVulkan-Examples        PharoVulkan-<Name>-Tests (6)           │
 │  one <Subject>Examples       one test package per code package,     │
 │  class per subject           plus PharoVulkan-Tests for the         │
-│                              architecture test                      │
+│  PharoVulkan-Inspector       architecture, document and example     │
+│  PVFactRow, one fact row     gates                                  │
 ├──────────────────────────────┬──────────────────────────────────────┤
 │   PharoVulkan-Graphics       │      PharoVulkan-Compute             │
 │  VkSurface  VkSwapchain      │  VkComputePipeline  VkDescriptorPool │
@@ -66,9 +67,9 @@ package, because `VkBuffer` raises `PVTypeError`.
 ### What enforces this
 
 `PVArchitectureTest class >> allowedDependencies` declares the allowed outgoing edges of every one
-of the fifteen packages, and twenty tests hold the code to that table:
+of the sixteen packages, and twenty-two tests hold the code to that table:
 
-- fifteen read one package's own methods — `package methods`, so an extension method this project
+- sixteen read one package's own methods — `package methods`, so an extension method this project
   adds to `Number` or `SequenceableCollection` is read as well — collect every package of this
   project their literals name, and fail naming each method whose reference the table does not
   grant;
@@ -78,10 +79,21 @@ of the fifteen packages, and twenty tests hold the code to that table:
   whoever loads the project a group at a time;
 - one reads a reference planted inside three nested blocks, because a class named inside a block
   lives in the block's literals and not the method's — the first scan of this project missed 86
-  edges that way.
+  edges that way;
+- one holds every method of the project to naming the capability, the addressing model and the
+  memory model it passes to `addCapability:` and `setAddressingModel:memoryModel:`, rather than
+  writing the specification's numbers there.
 
 `PVArchitectureTest class >> inspectorDependencies:` shows declared and actual edges side by side,
 one row per package.
+
+`PVDocumentationTest` holds this document to the image: every name it writes between backticks
+outside a fenced block must be a class, a class variable of a code package or a package, and every
+qualified form it writes, such as `SpvBuilder >> addCapability:`, must be answered by that
+class. `PVExamplesTest` holds the views and the examples to their shape: a view takes the
+presenter builder, an example is a one-click class-side method of `PharoVulkan-Examples`, and an
+example that opens a window is named `open…` so that no gate runs it. Both skip rather than
+fail in an image with no checkout of the repository.
 
 ### Baseline groups
 

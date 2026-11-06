@@ -559,6 +559,115 @@ stays green.
 
 Gain: medium, and it is the gain that keeps the rest of this plan from being undone. Risk: low.
 
+**Plan as validated** (interviewed 2026-11-06; nothing edited before this was agreed).
+
+Two new test classes in `PharoVulkan-Tests`, tag `Tests`, each with a class comment:
+`PVDocumentationTest` for `doc/architecture.md`, `PVExamplesTest` for the views and the examples.
+VectorGraphics splits its gates the same way, but it builds one gate class per package and this
+project builds one of each: the architecture document covers the whole project, and so do the
+example gates, because every example of the project lives in one package.
+
+Both classes read the document and the checkout through `IceRepository registry`, and skip with a
+message naming the repository when there is none — an image that loaded the project from Metacello
+has no `doc/` and must stay green.
+
+`PVDocumentationTest` — the backticked-token gate, as VectorGraphics writes it:
+
+1. Every capitalised one-word token between backticks, outside a fenced block, must be a class of
+   the image, a class variable of a code package of this project, or a package name. A fence holds
+   a drawing, not a claim.
+2. Every `Class >> selector` and `Class class >> selector` token must be understood by that class,
+   inherited included.
+3. Every bare keyword-selector token — a colon, no space — must be implemented somewhere.
+4. A token written `<…>` is read as a pragma, not as a message: it passes when its inner selector
+   is implemented, or when a method of a code package of this project carries it as a pragma.
+   Measured: `<param:named:>` is implemented nowhere and carried by 47 methods, so without this
+   rule the gate fails on a true sentence.
+5. A class-side exemption list carries the ten names the image must not hold, each with its reason:
+   `OpPhi`, a SPIR-V mnemonic the emitter writes and no class of this project; `PVSSAConstructor`,
+   `PVSSAVar`, `PVPhiNode`, `PVControlFlowGraph` and `PVBasicBlock`, removed at point 4, which the
+   document records as removed; and `VkShaderStageFlagBits`, `VkMemoryPropertyFlagBits`,
+   `VkImageUsageFlagBits` and `VkPipelineStageFlags2`, Vulkan C names in the renaming table whose
+   whole point is that this project does not use them. A further gate asserts every exemption is
+   still absent from the image, so an entry cannot outlive its reason.
+6. A gate proving the others can fail: a name and a method the image does not have are rejected,
+   and one of each that it does have is accepted. Another proves the tokeniser reads backticks
+   outside a fence and nothing inside one.
+
+`PVExamplesTest` — structural gates only, and no gate runs an example. Measured: 32 of the 118
+examples name the machine in their selector and need a Vulkan driver, and 2 open a window, so a
+gate that runs examples makes the suite depend on the machine it runs on.
+
+1. Every inspector view of the project takes the presenter builder, the rule read from
+   `StInspectionContext >> methodSelectorNeedsBuilder` rather than restated.
+2. Every `<sampleInstance>` of the project lives in `PharoVulkan-Examples` — the gate point 12 was
+   missing.
+3. Every example is a class-side method with no argument, so the browser runs it with one click.
+4. Every class holding an example has a class comment.
+5. An example that opens a window is named `open…`, no example that is not so named opens one, and
+   no gate runs those: an error inside one opens a debugger and the call answers nothing.
+6. Every `<Subject>Examples` holder is named for a class the image holds, which catches a holder
+   left behind by a rename.
+
+Not built: "every class with a view is fed by an example of its own kind". VectorGraphics gets that
+fact by running the example and comparing kinds, which is what is excluded here. The name-based
+substitute was measured and rejected: matching each view's class against the classes an example's
+literals name leaves 43 of the 74 view subjects falsely red, because most subjects are reached
+through a context rather than named.
+
+`doc/architecture.md` is corrected in the same pass where it is stale, by hand, since no gate reads
+prose: "Fifteen packages: eight of code, seven of tests" is sixteen, nine and seven; the diagram's
+top row does not name `PharoVulkan-Inspector`; "every one of the fifteen packages" is sixteen;
+"twenty tests" is twenty-two and "fifteen read one package's own methods" is sixteen. `CLAUDE.md`
+follows for the two new test classes and the suite count. On names the document is already right:
+with the pragma rule and the ten exemptions in, the gate reports no unknown name and no missing
+method.
+
+Order: red test first in each class — the tokeniser gate for `PVDocumentationTest`, the
+presenter-builder gate for `PVExamplesTest` — then the helpers, then the remaining gates, then
+`run_critics` on both classes and on `PharoVulkan-Tests`.
+
+**Done, as validated**, with two gates replaced for a measured reason.
+
+`PVDocumentationTest`, eight gates: the tokeniser (written first, run red), every backticked name,
+every qualified method form, every bare keyword selector, every exemption still absent from the
+image, the gate can fail, and the report its view shows agrees with the gates. `PVExamplesTest`,
+seven gates: every view takes the presenter builder (written first, run red), every
+`<sampleInstance>` lives in `PharoVulkan-Examples`, every example is one-click and class-side,
+every holder has a class comment, the window examples are named for it both ways, the helpers are
+not vacuous, and the report its view shows agrees with the gates. Critics clean on both classes and
+on `PharoVulkan-Tests`; no method or class comment holds an LF.
+
+Replaced, each because the measurement refuted the plan:
+
+- "every `<Subject>Examples` holder is named for a class the image holds" — ten of the nineteen
+  holders are named for a theme and not a class (`VkResourceExamples`, `VkCommandExamples`,
+  `PVSceneExamples`, …), so the gate would be ten false reds. In its place
+  `testTheGateSeesTheViewsAndTheExamplesOfThisProject` holds the helpers to floors — at least 74
+  views, 118 examples, 19 holders, exactly 2 window examples — because the other five gates all
+  assert that the wrong entries of a collection are none, and a helper answering nothing would pass
+  every one of them.
+- the sixth document gate was going to be the only one naming a class of a code package; it now
+  reaches the window examples through the helpers instead. A literal `PVSceneExamples` in
+  `PharoVulkan-Tests` made `PVArchitectureTest >>
+  testTheAggregateTestPackageStaysInsideItsAllowedDependencies` fail, which is the right answer:
+  the gates read the packages through the organiser, and that is what keeps the test package
+  independent of the packages it reads.
+
+Each class also carries one class-side inspector view, as `PVArchitectureTest` does — Document
+claims, 149 rows of token, what the gate reads it as and whether the image bears it out; Examples,
+118 rows of holder, example, one-click and opens-a-window — and no example, since an abstract
+gate has no instance worth a `<sampleInstance>`. Both views were opened through a real
+`SpPresenterBuilder` and render their rows; both are now held by the project's own
+presenter-builder gate.
+
+The document gate earned itself on the first run: the sentence this point added to
+`doc/architecture.md` named `SpvModule class >> magic`, which no class answers. The gate failed,
+and the sentence now names `addCapability:` and `setAddressingModel:memoryModel:`, which the
+prologue test really reads. `doc/architecture.md` is otherwise corrected as validated, and
+`CLAUDE.md` names both new classes. The suite is 662 over thirteen test classes: 609 run here and
+green, `PVGraphicsTest` (53) is run forked and alone after this commit, as the point requires.
+
 ### 12. One example outside `PharoVulkan-Examples`, and it opens a window
 
 `PVHelloTriangleScene class >> renderTriangle` is an example by every test in the standard, living

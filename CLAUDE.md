@@ -11,7 +11,7 @@ existing `OSSDL2BackendWindow` infrastructure.
 ## Current state
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
-`PACKAGE-PLAN.md` are all done. The suite is 647 tests over eleven test classes and passes.
+`PACKAGE-PLAN.md` are all done. The suite is 662 tests over thirteen test classes and passes.
 `doc/REVIEW-PLAN.md` holds the architecture and code review, and says which of its points are done.
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
@@ -41,7 +41,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 | `PharoVulkan-Core-Tests` | `VkCoreTest` (68) | `PVQueueFamilyStub` |
 | `PharoVulkan-Compute-Tests` | `PVComputeTest` (63) | `PVNoSubgroupArithmeticStub` |
 | `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (53), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
-| `PharoVulkan-Tests` | `PVArchitectureTest` (22), `PVFactRowTest` (5) | `PVNestedBlockReferenceFixture` |
+| `PharoVulkan-Tests` | `PVArchitectureTest` (22), `PVDocumentationTest` (8), `PVExamplesTest` (7), `PVFactRowTest` (5) | `PVNestedBlockReferenceFixture` |
 
 A test package is named for the package it covers and ends in `-Tests`, which is what Pharo's
 tools and Renraku's `ReTestClassNotInPackageWithTestEndingNameRule` expect. Its `Tests` tag holds
@@ -50,11 +50,15 @@ test classes and its `Fixtures` tag holds the stubs those tests build.
 ### Which package may depend on which
 
 This file does not say. `PVArchitectureTest class >> allowedDependencies` does, with one entry per
-package, and twenty-one tests hold both the code and the baseline to it: sixteen read each package's
+package, and twenty-two tests hold both the code and the baseline to it: sixteen read each package's
 own methods — `package methods`, so extension methods on base classes are read too — four check
 the table against the organiser, against what the code really references and against
-`BaselineOfPharoVulkan`, and one proves the scan finds a reference planted inside three nested
-blocks. Adding a dependency means stating it in the table and in the baseline, in the commit that
+`BaselineOfPharoVulkan`, one proves the scan finds a reference planted inside three nested
+blocks, and one holds every method to naming the capability and the memory models it passes to
+`addCapability:` and `setAddressingModel:memoryModel:` rather than writing their numbers.
+`PVDocumentationTest` holds `doc/architecture.md` to the image and `PVExamplesTest` holds the
+inspector views and the `<sampleInstance>` examples to their shape; both skip in an image with no
+checkout. Adding a dependency means stating it in the table and in the baseline, in the commit that
 needs it; adding a package means giving it an entry, or the meta test fails.
 
 The baseline's groups: `bindings`, `spirv`, `compiler` (SPIR-V and compiler, no driver code, so it
