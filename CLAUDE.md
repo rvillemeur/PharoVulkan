@@ -11,7 +11,9 @@ existing `OSSDL2BackendWindow` infrastructure.
 ## Current state
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
-`PACKAGE-PLAN.md` are all done. The suite is 621 tests over ten test classes and passes.
+`PACKAGE-PLAN.md` are all done. The suite is 633 tests over ten test classes. One is red:
+`VkBindingsTest >> testSwapchainCreationWritesNoScalarFieldAtAHandCountedOffset`, which pins a list
+of selectors that a rename made stale — point 1 of `doc/REVIEW-PLAN.md`.
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
 
@@ -24,7 +26,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 |---|---|---|
 | `PharoVulkan-Bindings` | 144 | Generated Vulkan uFFI bindings: commands, structures, handles, the named constant classes (tag `Constants`), `VkResult` and `VkError` |
 | `PharoVulkan-SPIRV` | 51 | SPIR-V binary builder: module, builder, IR, types, constant pool, serialiser, validator, `PVTypeError` |
-| `PharoVulkan-Compiler` | 31 | Pharo bytecode → SPIR-V in nine stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-Compiler` | 26 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
 | `PharoVulkan-Core` | 17 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
 | `PharoVulkan-Compute` | 15 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks |
 | `PharoVulkan-Graphics` | 17 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
@@ -35,7 +37,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 |---|---|---|
 | `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) | — |
 | `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (16), `SpvEmitterTest` (2) | — |
-| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (80), `PVSpirvValidatorTest` (30) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (78), `PVSpirvValidatorTest` (30) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
 | `PharoVulkan-Core-Tests` | `VkCoreTest` (68) | `PVQueueFamilyStub` |
 | `PharoVulkan-Compute-Tests` | `PVComputeTest` (59) | `PVNoSubgroupArithmeticStub` |
 | `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (52), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
@@ -140,7 +142,7 @@ updating this file.
 | Type annotations | Pragmas: `<gpu>`, `<param: #f32 named: #x>` | Minimal syntax, parsed at compile time |
 | `globalId` access | `WorkItem` object passed as method parameter | Clean OOP, no pseudo-globals |
 | Sync API | `VK_KHR_synchronization2` only | No legacy sync primitives |
-| SSA algorithm | Braun et al. (on-the-fly) | ~200 lines, no dominance pre-pass |
+| SSA algorithm | None. `PVSPIRVEmitter` saves and restores its register map at a merge point and writes `OpPhi` itself | The Braun et al. stage of `prompt.md` and `design-notes.md` was an identity function that nothing read; removed 2026-11-06 |
 | CFG structuring | Pattern recognizer (not general) | Pharo compiler is sole producer |
 | DSL scope | Monomorphic calls only, Phase 1–6 | Eliminates devirtualization |
 

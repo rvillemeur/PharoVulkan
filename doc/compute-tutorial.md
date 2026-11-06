@@ -200,22 +200,23 @@ spirvBytes := PVKernelCompiler compile: (MyKernels >> #addVectors:and:).
 "=> ByteArray — 32-bit LE SPIR-V binary, passes spirv-val"
 ```
 
-`PVKernelCompiler compile:` is a class-side factory that runs all 9 stages:
+`PVKernelCompiler compile:` is a class-side factory that runs all 7 stages:
 
 | Stage | Class | Input → Output |
 |---|---|---|
 | 1 | `PVBytecodeDecoder` | `CompiledMethod` → `Array of PVBytecodeOp` |
-| 2 | `PVCFGBuilder buildBytecodeBlocks:` | bytecode ops → `Array of PVBytecodeBlock` (identifies straight-line / selection / loop) |
-| 3 | `PVStackSimulator` | bytecode ops → `Array of PVRegisterOp` (stack machine → register IR) |
-| 4 | `PVCFGBuilder buildFrom:` | register ops → `PVControlFlowGraph` |
-| 5 | `PVSSAConstructor` | CFG → SSA CFG (Braun et al., phi nodes on-the-fly) |
-| 6 | `PVTypeInferencer` | SSA + pragma annotations → `typeMap: reg → SpvType` |
-| 7 | `PVStructuredCFGRecognizer` | CFG → `PVSelectionNode` or `PVLoopNode` or nil |
-| 8 | `PVSPIRVEmitter` | typed SSA → `SpvModule` |
-| 9 | `SpvSerializer + SpvValidator` | `SpvModule` → `ByteArray` |
+| 2 | `PVStackSimulator` | bytecode ops → `Array of PVRegisterOp` (stack machine → register IR) |
+| 3 | `PVTypeInferencer` | register ops + pragma annotations → `typeMap: reg → SpvType` |
+| 4 | `PVCFGBuilder buildBytecodeBlocks:` | bytecode ops → `Array of PVBytecodeBlock` (identifies straight-line / selection / loop) |
+| 5 | `PVStructuredCFGRecognizer` | blocks → `PVSelectionNode` or `PVLoopNode` or nil, and a straight-line method skips it |
+| 6 | `PVSPIRVEmitter` | register ops and `typeMap` → `SpvModule` |
+| 7 | `SpvSerializer + SpvValidator` | `SpvModule` → `ByteArray` |
+
+There is no SSA stage. A merge point needs `OpPhi`, and `PVSPIRVEmitter` writes those itself by
+saving its register map before an arm and restoring it after.
 
 If `<gpu>` is missing, stage 1 raises `PVTypeError signal: 'Method is not
-annotated with <gpu>'`. If the control flow is unrecognised, stage 7 raises
+annotated with <gpu>'`. If the control flow is unrecognised, stage 5 raises
 `PVTypeError signal: 'Unrecognized CFG shape'`.
 
 ---

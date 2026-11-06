@@ -39,7 +39,7 @@ name no other package of this project at all.
 ├─────────────────────────────────────────────────────────────────────┤
 │              PharoVulkan-Compiler                                   │
 │  PVKernelCompiler  PVBytecodeDecoder  PVCFGBuilder                  │
-│  PVStackSimulator  PVSSAConstructor  PVTypeInferencer               │
+│  PVStackSimulator  PVTypeInferencer                                 │
 │  PVStructuredCFGRecognizer  PVSPIRVEmitter  PVSelectorTable         │
 ├──────────────────────────────┬──────────────────────────────────────┤
 │   PharoVulkan-Bindings       │      PharoVulkan-SPIRV              │
@@ -163,9 +163,9 @@ one row per package.
 
 | Class | Role |
 |---|---|
-| `PVKernelCompiler` | Entry point: a `CompiledMethod` in, SPIR-V bytes out, through the nine stages below |
+| `PVKernelCompiler` | Entry point: a `CompiledMethod` in, SPIR-V bytes out, through the seven stages below |
 | `PVBytecodeDecoder`, `PVStackSimulator` | Bytecode to a register IR |
-| `PVCFGBuilder`, `PVSSAConstructor`, `PVStructuredCFGRecognizer` | Control flow: blocks, SSA, and the shapes the emitter accepts |
+| `PVCFGBuilder`, `PVStructuredCFGRecognizer` | Control flow: the basic blocks, and the shapes the emitter accepts |
 | `PVTypeInferencer`, `PVTypeAnnotation` | Types, seeded from the `<gpu>` and `<param:named:>` pragmas |
 | `PVSPIRVEmitter`, `PVSelectorTable` | Emission, and the table mapping a Pharo selector to a SPIR-V opcode |
 | `PVSpirvValidator` | Wraps the external `spirv-val`, and reports the tool as missing rather than failing when it is absent |
@@ -198,35 +198,35 @@ CompiledMethod
     List of PVBytecodeOp
     (push, send, return, jump, ...)
     │
-    ▼ Stage 2 — PVCFGBuilder buildBytecodeBlocks:
+    ▼ Stage 2 — PVStackSimulator
+    List of PVRegisterOp
+    (converts stack machine → register machine IR)
+    │
+    ▼ Stage 3 — PVTypeInferencer
+    typeMap: reg → SpvType
+    (seeded from <gpu> / <param: #f32 named: #x> pragmas)
+    │
+    ▼ Stage 4 — PVCFGBuilder buildBytecodeBlocks:
     List of PVBytecodeBlock
     (detects whether straight-line, selection, or loop)
     │
     ├── straight-line (1 block) ──────────────────────────────────┐
     │                                                             │
-    ▼ Stage 3 — PVStackSimulator                                  │
-    List of PVRegisterOp                                          │
-    (converts stack machine → register machine IR)               │
-    │                                                             │
-    ▼ Stage 4 — PVCFGBuilder buildFrom:                           │
-    PVControlFlowGraph                                            │
-    │                                                             │
-    ▼ Stage 5 — PVSSAConstructor  (Braun et al.)                  │
-    SSA CFG (phi nodes inserted on-the-fly)                       │
-    │                                                             │
-    ▼ Stage 6 — PVTypeInferencer                                  │
-    typeMap: reg → SpvType                                        │
-    (seeded from <gpu> / <param: #f32 named: #x> pragmas)        │
-    │                                                             │
-    ▼ Stage 7 — PVStructuredCFGRecognizer                         │
+    ▼ Stage 5 — PVStructuredCFGRecognizer                         │
     PVSelectionNode  or  PVLoopNode  or  nil                      │
     │                                                             │
-    ▼ Stage 8 — PVSPIRVEmitter                                    │
+    ▼ Stage 6 — PVSPIRVEmitter                                    │
     SpvModule (built via SpvModuleEmitter superclass)             ◄┘
     │
-    ▼ Stage 9 — SpvSerializer + SpvValidator
+    ▼ Stage 7 — SpvSerializer + SpvValidator
     ByteArray  (32-bit LE SPIR-V binary, spirv-val clean)
 ```
+
+There is no SSA stage. `PVSPIRVEmitter` writes the `OpPhi` instructions a merge point needs
+itself, by saving its register map before an arm and restoring it after. The Braun et al.
+construction that `prompt.md` and `design-notes.md` specify as stage ⑤ was written as an identity
+function, never wired into the pipeline, and removed on 2026-11-06 together with `PVSSAConstructor`,
+`PVSSAVar`, `PVPhiNode`, `PVControlFlowGraph` and `PVBasicBlock`.
 
 ### Pragma annotations (compiler input contract)
 

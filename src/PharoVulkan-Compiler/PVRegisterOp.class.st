@@ -11,9 +11,9 @@ Class {
 		'inputs',
 		'literal'
 	],
-	#category : 'PharoVulkan-Compiler-SSA',
+	#category : 'PharoVulkan-Compiler-Registers',
 	#package : 'PharoVulkan-Compiler',
-	#tag : 'SSA'
+	#tag : 'Registers'
 }
 
 { #category : 'instance creation' }

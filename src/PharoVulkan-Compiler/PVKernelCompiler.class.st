@@ -93,9 +93,6 @@ PVKernelCompiler >> compile [
 	isCompute ifTrue: [
 		^ self compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st ].
 	blocks size = 1 ifTrue: [
-		| cfg ssaCFG |
-		cfg := PVCFGBuilder buildFrom: regOps.
-		ssaCFG := PVSSAConstructor construct: cfg.
 		^ PVSPIRVEmitter compileKernel: regOps typeMap: typeMap annotation: annotation selectorTable: st name: method selector ].
 	structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
 	structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].

@@ -297,17 +297,6 @@ PVCompilerTest >> testBytecodeBlockBuilderSplits [
 ]
 
 { #category : 'tests' }
-PVCompilerTest >> testCFGBuilderSingleBlock [
-	| m bytecodeOps regOps cfg |
-	m := (Smalltalk at: #PVKernelExamples) >> #addFloat:to:.
-	bytecodeOps := PVBytecodeDecoder decode: m.
-	regOps := PVStackSimulator simulate: bytecodeOps.
-	cfg := PVCFGBuilder buildFrom: regOps.
-	self assert: cfg blocks size equals: 1.
-	self assert: cfg entry ops size equals: regOps size
-]
-
-{ #category : 'tests' }
 PVCompilerTest >> testCapabilitiesDeclaredForEachBufferType [
 	"What the Buffer types tab shows must be what an emitted module carries, so the answer
 	 comes from the emitter's own declaration step."
@@ -889,19 +878,6 @@ PVCompilerTest >> testRecognizesSelection [
 	self assert: (node isKindOf: PVSelectionNode).
 	self assert: node trueBlocks size equals: 1.
 	self assert: node falseBlocks size equals: 1
-]
-
-{ #category : 'tests' }
-PVCompilerTest >> testSSAConstructorNoPhisForStraightLine [
-
-	| m bytecodeOps regOps cfg ssaCFG |
-	m := (Smalltalk at: #PVKernelExamples) >> #addFloat:to:.
-	bytecodeOps := PVBytecodeDecoder decode: m.
-	regOps := PVStackSimulator simulate: bytecodeOps.
-	cfg := PVCFGBuilder buildFrom: regOps.
-	ssaCFG := PVSSAConstructor construct: cfg.
-	"Straight-line: SSA is identity, same object"
-	self assert: ssaCFG identicalTo: cfg
 ]
 
 { #category : 'tests' }

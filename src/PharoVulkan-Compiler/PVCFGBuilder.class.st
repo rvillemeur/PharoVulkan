@@ -66,17 +66,3 @@ PVCFGBuilder class >> buildBytecodeBlocks: bytecodeOps [
 							jTarget predecessors add: blk ] ] ].
 	^ blocks asArray
 ]
-
-{ #category : 'building' }
-PVCFGBuilder class >> buildFrom: aRegisterOpArray [
-	| blk cfg |
-	blk := PVBasicBlock new.
-	blk id: 0.
-	blk ops: aRegisterOpArray.
-	blk successors: #().
-	blk predecessors: #().
-	cfg := PVControlFlowGraph new.
-	cfg entry: blk.
-	cfg blocks: { blk }.
-	^ cfg
-]

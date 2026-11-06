@@ -72,7 +72,7 @@ the browser and carry no meaning beyond that.
 |---|---|---|
 | `PharoVulkan-Bindings` | 144 | uFFI Vulkan commands, structures, handle wrappers, every named constant class, `VkResult` and `VkError` |
 | `PharoVulkan-SPIRV` | 51 | SPIR-V IR builder: `SpvModule`, `SpvBuilder`, `SpvFunction`, `SpvBlock`, the type hierarchy, constant pool, serialiser, validator |
-| `PharoVulkan-Compiler` | 31 | Pharo bytecode → SPIR-V: decode, CFG, recogniser, SSA, type inference, emit, the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-Compiler` | 26 | Pharo bytecode → SPIR-V: decode, register IR, type inference, blocks, recogniser, emit, the DSL selector table, and the `spirv-val` wrapper |
 | `PharoVulkan-Core` | 17 | `VkContext`, `VkDevice`, `VkPhysicalDevice`, `VkQueue`, `VkBuffer`, command pool and buffer, `VkShaderModule`, `VkPipelineLayout`, the device capability survey |
 | `PharoVulkan-Compute` | 15 | Descriptor set layout, descriptor pool and set, compute pipeline, `PVComputeKernel`, the cooperative matrix path, the benchmarks |
 | `PharoVulkan-Graphics` | 17 | `VkSurface`, `VkSwapchain`, `VkRenderPass`, `VkFramebuffer`, `VkGraphicsPipeline`, offscreen targets, the sync wrappers, the scenes, and the SDL2 integration |
@@ -83,13 +83,13 @@ the browser and carry no meaning beyond that.
 |---|---|
 | `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) |
 | `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (16), `SpvEmitterTest` (2) |
-| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (80), `PVSpirvValidatorTest` (30) |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (78), `PVSpirvValidatorTest` (30) |
 | `PharoVulkan-Core-Tests` | `VkCoreTest` (68) |
 | `PharoVulkan-Compute-Tests` | `PVComputeTest` (59) |
 | `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (52), `VkImageTest` (8) |
 | `PharoVulkan-Tests` | `PVArchitectureTest` (20) |
 
-621 tests in all. Each test package also carries a `Fixtures` tag for the stubs its tests build, so
+633 tests in all. Each test package also carries a `Fixtures` tag for the stubs its tests build, so
 the `Tests` tag holds test classes and nothing else.
 
 Which package may depend on which is stated as a test, not as a paragraph:
