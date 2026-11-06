@@ -64,17 +64,19 @@ VkPipelineViewportStateCreateInfo >> inspectorViewport: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Viewport'>
 	| rows |
 	rows := self viewportRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Viewports'. (rows at: #viewportCount) }.
-				  { 'Viewport run given'. (rows at: #viewportRunGiven) }.
-				  { 'Scissors'. (rows at: #scissorCount) }.
-				  { 'Scissor run given'. (rows at: #scissorRunGiven) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Viewports' value: (rows at: #viewportCount)).
+				  (PVFactRow
+					   name: 'Viewport run given'
+					   value: (rows at: #viewportRunGiven)).
+				  (PVFactRow name: 'Scissors' value: (rows at: #scissorCount)).
+				  (PVFactRow
+					   name: 'Scissor run given'
+					   value: (rows at: #scissorRunGiven)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

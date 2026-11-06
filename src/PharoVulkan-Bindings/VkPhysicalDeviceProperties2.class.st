@@ -76,13 +76,12 @@ VkPhysicalDeviceProperties2 >> inspectorChain: aBuilder [
 	 structure cannot change what the driver wrote into it."
 
 	<inspectorPresentationOrder: 10 title: 'Chain'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each key ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each value ]);
-		  items: self chainRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self chainRows collect: [ :each |
+				   PVFactRow name: each key value: each value ])
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

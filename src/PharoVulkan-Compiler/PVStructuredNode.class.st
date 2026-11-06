@@ -65,13 +65,11 @@ PVStructuredNode >> inspectorTargets: aBuilder [
 	 emitter for the target in hand is the refusal PVKernelCompiler reports."
 
 	<inspectorPresentationOrder: 30 title: 'Targets'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Target' evaluated: [ :each |
-				   each at: #target ]);
-		  addColumn: (SpStringTableColumn title: 'Emitted' evaluated: [ :each |
-				   each at: #emitted ]);
-		  items: self targetRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self targetRows
+		  nameColumn: 'Target'
+		  valueColumn: 'Emitted'
+		  in: aBuilder
 ]
 
 { #category : 'emitting' }
@@ -89,12 +87,10 @@ PVStructuredNode >> targetRows [
 	 emitter has one, and one that inherits the refusal does not."
 
 	^ self emitterSelectorsByTarget collect: [ :each |
-		  Dictionary new
-			  at: #target put: each key;
-			  at: #emitted
-			  put: ((self class lookupSelector: each value) methodClass
-					    = self classHoldingTheRefusals
+		  PVFactRow
+			  name: each key
+			  value: ((self class lookupSelector: each value) methodClass
+					   = self classHoldingTheRefusals
 					   ifTrue: [ 'no' ]
-					   ifFalse: [ 'yes' ]);
-			  yourself ]
+					   ifFalse: [ 'yes' ]) ]
 ]

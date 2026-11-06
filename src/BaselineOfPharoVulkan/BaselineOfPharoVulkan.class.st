@@ -18,7 +18,11 @@ BaselineOfPharoVulkan >> baseline: spec [
 	 the constants and the foreign calls, and reaches nothing else, so it loads first and requires
 	 nothing. PharoVulkan-SPIRV emits SPIR-V and reaches nothing either; PharoVulkan-Compiler sits
 	 on it alone — it answers bytes and talks to no driver, which is what the compiler group loads
-	 without any Vulkan code. PharoVulkan-Core holds the device lifecycle, so it requires the
+	 without any Vulkan code. PharoVulkan-Inspector holds the row every
+	 two-column inspector view shows and requires nothing either, so every other package may
+	 require it without the layering gaining an edge anyone has to reason about; it is in no
+	 group of its own, because the packages that build rows pull it in.
+	 PharoVulkan-Core holds the device lifecycle, so it requires the
 	 bindings it calls through and the SPIR-V package that declares the type error it raises.
 	 PharoVulkan-Compute dispatches and PharoVulkan-Graphics renders, so both require the compiler
 	 that answers them a module as well as the lifecycle that answers them a device, and Graphics
@@ -42,23 +46,30 @@ BaselineOfPharoVulkan >> baseline: spec [
 	<baseline>
 	spec for: #common do: [
 		spec
-			package: 'PharoVulkan-Bindings';
-			package: 'PharoVulkan-SPIRV';
+			package: 'PharoVulkan-Inspector';
+			package: 'PharoVulkan-Bindings'
+			with: [ spec requires: #( 'PharoVulkan-Inspector' ) ];
+			package: 'PharoVulkan-SPIRV'
+			with: [ spec requires: #( 'PharoVulkan-Inspector' ) ];
 			package: 'PharoVulkan-Compiler'
-			with: [ spec requires: #( 'PharoVulkan-SPIRV' ) ];
+			with: [
+				spec requires: #( 'PharoVulkan-Inspector' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Core'
 			with: [
-				spec requires: #( 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' ) ];
+				spec requires:
+					#( 'PharoVulkan-Bindings' 'PharoVulkan-Inspector'
+					   'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Compute'
 			with: [
 				spec requires:
 					#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compiler'
-					   'PharoVulkan-SPIRV' ) ];
+					   'PharoVulkan-Inspector' 'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Graphics'
 			with: [
 				spec requires:
 					#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compute'
-					   'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' ) ];
+					   'PharoVulkan-Compiler' 'PharoVulkan-Inspector'
+					   'PharoVulkan-SPIRV' ) ];
 			package: 'PharoVulkan-Generator'
 			with: [
 				spec requires: #( 'PharoVulkan-SPIRV' 'PharoVulkan-Bindings' ) ];
@@ -66,13 +77,14 @@ BaselineOfPharoVulkan >> baseline: spec [
 			with: [
 				spec requires:
 					#( 'PharoVulkan-Graphics' 'PharoVulkan-Bindings' 'PharoVulkan-Core'
-					   'PharoVulkan-Compute' 'PharoVulkan-Compiler' 'PharoVulkan-SPIRV' ) ];
+					   'PharoVulkan-Compute' 'PharoVulkan-Compiler' 'PharoVulkan-SPIRV'
+					   'PharoVulkan-Inspector' ) ];
 			package: 'PharoVulkan-Bindings-Tests'
 			with: [
 				spec requires:
 					#( 'PharoVulkan-Bindings' 'PharoVulkan-Core' 'PharoVulkan-Compute'
 					   'PharoVulkan-Graphics' 'PharoVulkan-Generator'
-					   'PharoVulkan-Examples' ) ];
+					   'PharoVulkan-Examples' 'PharoVulkan-Inspector' ) ];
 			package: 'PharoVulkan-SPIRV-Tests'
 			with: [
 				spec requires:
@@ -106,7 +118,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 					#( 'PharoVulkan-Bindings-Tests' 'PharoVulkan-SPIRV-Tests'
 					   'PharoVulkan-Compiler-Tests' 'PharoVulkan-Core-Tests'
 					   'PharoVulkan-Compute-Tests' 'PharoVulkan-Graphics-Tests'
-					   'PharoVulkan-Core' ) ].
+					   'PharoVulkan-Core' 'PharoVulkan-Inspector' ) ].
 		spec
 			group: 'bindings' with: #( 'PharoVulkan-Bindings' );
 			group: 'spirv' with: #( 'PharoVulkan-SPIRV' );

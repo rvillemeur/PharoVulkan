@@ -45,14 +45,15 @@ VkPhysicalDeviceSubgroupProperties >> inspectorFeatures: aBuilder [
 	 so the table cannot say a feature is present where a caller would find it absent."
 
 	<inspectorPresentationOrder: 10 title: 'Features'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Feature' evaluated: [ :each |
-					   each ]);
-		  addColumn: (SpStringTableColumn title: 'Supported' evaluated: [ :each |
-					   (self supportsFeature: (VkSubgroupFeature perform: each))
-						   printString ]);
-		  items: VkSubgroupFeature featureSelectors;
-		  yourself
+	^ PVFactRow
+		  tableOf: (VkSubgroupFeature featureSelectors collect: [ :each |
+					   PVFactRow
+						   name: each
+						   value:
+						   (self supportsFeature: (VkSubgroupFeature perform: each)) ])
+		  nameColumn: 'Feature'
+		  valueColumn: 'Supported'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

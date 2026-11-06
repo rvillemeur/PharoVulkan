@@ -185,29 +185,26 @@ PVFloat16 >> fieldReport [
 	 encode and decode disagree about this half."
 
 	^ {
-		  (self rowNamed: 'Word' value: word printStringHex).
-		  (self rowNamed: 'Value' value: self value printString).
-		  (self rowNamed: 'Classification' value: self classification).
-		  (self rowNamed: 'Sign' value: self sign printString).
-		  (self rowNamed: 'Biased exponent' value: self biasedExponent printString).
-		  (self rowNamed: 'Mantissa' value: self mantissa printString).
-		  (self
-			   rowNamed: 'Re-encodes to'
+		  (PVFactRow name: 'Word' value: word printStringHex).
+		  (PVFactRow name: 'Value' value: self value).
+		  (PVFactRow name: 'Classification' value: self classification).
+		  (PVFactRow name: 'Sign' value: self sign).
+		  (PVFactRow name: 'Biased exponent' value: self biasedExponent).
+		  (PVFactRow name: 'Mantissa' value: self mantissa).
+		  (PVFactRow
+			   name: 'Re-encodes to'
 			   value: (self class wordForFloat: self value) printStringHex) }
 ]
 
 { #category : 'inspector' }
 PVFloat16 >> inspectorFields: aBuilder [
+
 	<inspectorPresentationOrder: 10 title: 'Half'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Field' evaluated: [ :each |
-					   each at: #setting ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self fieldReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: self fieldReport
+		  nameColumn: 'Field'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'testing' }
@@ -249,14 +246,6 @@ PVFloat16 >> printOn: aStream [
 		nextPutAll: ', ';
 		nextPutAll: self classification;
 		nextPut: $)
-]
-
-{ #category : 'reporting' }
-PVFloat16 >> rowNamed: aString value: anObject [
-	^ Dictionary new
-		  at: #setting put: aString;
-		  at: #value put: anObject asString;
-		  yourself
 ]
 
 { #category : 'initialization' }

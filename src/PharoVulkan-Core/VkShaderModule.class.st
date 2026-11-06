@@ -130,18 +130,15 @@ VkShaderModule >> inspectorModule: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Module'>
 	| rows |
 	rows := self moduleRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Bytes'. (rows at: #bytes) }.
-				  { 'Words'. (rows at: #words) }.
-				  { 'Whole words'. (rows at: #wholeWords) }.
-				  { 'Handle live'. (rows at: #live) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Bytes' value: (rows at: #bytes)).
+				  (PVFactRow name: 'Words' value: (rows at: #words)).
+				  (PVFactRow name: 'Whole words' value: (rows at: #wholeWords)).
+				  (PVFactRow name: 'Handle live' value: (rows at: #live)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

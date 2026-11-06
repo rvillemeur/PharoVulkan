@@ -230,13 +230,12 @@ VkBuffer >> inspectorCapacity: aBuilder [
 	 something a write would not do."
 
 	<inspectorPresentationOrder: 10 title: 'Capacity'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Bytes written' evaluated: [ :each |
-					   each printString ]);
-		  addColumn: (SpStringTableColumn title: 'Fits' evaluated: [ :each |
-					   (self fitsByteCount: each) printString ]);
-		  items: self capacityProbeCounts;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self capacityProbeCounts collect: [ :each |
+				   PVFactRow name: each value: (self fitsByteCount: each) ])
+		  nameColumn: 'Bytes written'
+		  valueColumn: 'Fits'
+		  in: aBuilder
 ]
 
 { #category : 'mapping' }

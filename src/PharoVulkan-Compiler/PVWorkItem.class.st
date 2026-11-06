@@ -62,10 +62,7 @@ PVWorkItem >> dispatchReport [
 	 answer rather than silently working on the GPU only."
 
 	^ self kernelSelectors collect: [ :selector |
-		  Dictionary new
-			  at: #selector put: selector;
-			  at: #value put: (self valueForSelector: selector);
-			  yourself ]
+		  PVFactRow name: selector value: (self valueForSelector: selector) ]
 ]
 
 { #category : 'accessing' }
@@ -82,15 +79,11 @@ PVWorkItem >> inspectorDispatch: aBuilder [
 	 selector the compiler gains without a host-side method is visible at a glance."
 
 	<inspectorPresentationOrder: 10 title: 'Dispatch'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Selector' evaluated: [ :each |
-					   each at: #selector ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self dispatchReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: self dispatchReport
+		  nameColumn: 'Selector'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

@@ -43,17 +43,14 @@ VkRect2D >> inspectorRect: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Rectangle'>
 	| rows |
 	rows := self rectRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Offset'. (rows at: #offset) }.
-				  { 'At the origin'. (rows at: #atTheOrigin) }.
-				  { 'Extent'. (rows at: #extent) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Offset' value: (rows at: #offset)).
+				  (PVFactRow name: 'At the origin' value: (rows at: #atTheOrigin)).
+				  (PVFactRow name: 'Extent' value: (rows at: #extent)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

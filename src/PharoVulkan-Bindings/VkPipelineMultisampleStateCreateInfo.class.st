@@ -96,19 +96,25 @@ VkPipelineMultisampleStateCreateInfo >> inspectorMultisample: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Multisample'>
 	| rows |
 	rows := self multisampleRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Samples'. (rows at: #sampleCountNames) }.
-				  { 'Sample shading'. (rows at: #sampleShading) }.
-				  { 'Minimum sample shading'. (rows at: #minSampleShading) }.
-				  { 'Sample mask given'. (rows at: #sampleMaskGiven) }.
-				  { 'Alpha to coverage'. (rows at: #alphaToCoverage) }.
-				  { 'Alpha to one'. (rows at: #alphaToOne) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Samples' value: (rows at: #sampleCountNames)).
+				  (PVFactRow
+					   name: 'Sample shading'
+					   value: (rows at: #sampleShading)).
+				  (PVFactRow
+					   name: 'Minimum sample shading'
+					   value: (rows at: #minSampleShading)).
+				  (PVFactRow
+					   name: 'Sample mask given'
+					   value: (rows at: #sampleMaskGiven)).
+				  (PVFactRow
+					   name: 'Alpha to coverage'
+					   value: (rows at: #alphaToCoverage)).
+				  (PVFactRow name: 'Alpha to one' value: (rows at: #alphaToOne)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

@@ -51,19 +51,27 @@ VkPresentInfoKHR >> inspectorPresent: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Present'>
 	| rows |
 	rows := self presentRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Presents' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Semaphores waited on'. (rows at: #waitSemaphoreCount) }.
-				  { 'Semaphore run given'. (rows at: #waitsOnASemaphore) }.
-				  { 'Swapchains'. (rows at: #swapchainCount) }.
-				  { 'Swapchain run given'. (rows at: #swapchainGiven) }.
-				  { 'Image index run given'. (rows at: #imageIndexGiven) }.
-				  { 'Per-swapchain results asked for'. (rows at: #resultsRequested) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Semaphores waited on'
+					   value: (rows at: #waitSemaphoreCount)).
+				  (PVFactRow
+					   name: 'Semaphore run given'
+					   value: (rows at: #waitsOnASemaphore)).
+				  (PVFactRow name: 'Swapchains' value: (rows at: #swapchainCount)).
+				  (PVFactRow
+					   name: 'Swapchain run given'
+					   value: (rows at: #swapchainGiven)).
+				  (PVFactRow
+					   name: 'Image index run given'
+					   value: (rows at: #imageIndexGiven)).
+				  (PVFactRow
+					   name: 'Per-swapchain results asked for'
+					   value: (rows at: #resultsRequested)) }
+		  nameColumn: 'Presents'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

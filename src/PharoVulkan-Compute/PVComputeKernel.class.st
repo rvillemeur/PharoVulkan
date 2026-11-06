@@ -130,10 +130,11 @@ PVComputeKernel >> bindBuffer: aBuffer [
 PVComputeKernel >> bindingRows [
 	"The binding index is the position in the bind order, which is what prepare writes into
 	 the descriptor set, so the row cannot name a binding the set does not use."
+
 	^ (1 to: (buffers ifNil: [ #(  ) ]) size) collect: [ :index |
-		  self
-			  rowNamed: self class bindingRowPrefix , (index - 1) printString
-			  value: (buffers at: index) size printString , ' bytes' ]
+			  PVFactRow
+				  name: self class bindingRowPrefix , (index - 1) printString
+				  value: (buffers at: index) size printString , ' bytes' ]
 ]
 
 { #category : 'accessing' }
@@ -188,36 +189,36 @@ PVComputeKernel >> inspectorPipeline: aBuilder [
 	"What this kernel will dispatch. The rows are built from the kernel's own state and from
 	 the emitted module, so the tab cannot claim a binding or a workgroup shape the dispatch
 	 would not use."
+
 	<inspectorPresentationOrder: 10 title: 'Pipeline'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self pipelineReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: self pipelineReport
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'reporting' }
 PVComputeKernel >> moduleRows [
 	"Read back out of the emitted SPIR-V rather than from the pragma that asked for it: a
 	 local size the compiler did not emit shows here as the shape the dispatch really runs."
+
 	| module localSize |
 	spirvBytes ifNil: [
-		^ self class moduleRowNames collect: [ :each |
-			  self rowNamed: each value: self class noModuleLabel ] ].
+			^ self class moduleRowNames collect: [ :each |
+				  PVFactRow name: each value: self class noModuleLabel ] ].
 	module := PVSpirvValidator on: spirvBytes.
 	localSize := module localSizeFromWords.
 	^ {
-		  (self
-			   rowNamed: self class moduleBindingRowName
+		  (PVFactRow
+			   name: self class moduleBindingRowName
 			   value:
-			   (module variableCountInStorageClass: SpvStorageClass storageBuffer)
-				   printString).
-		  (self rowNamed: self class localSizeRowName value: localSize printString).
-		  (self
-			   rowNamed: self class invocationsRowName
-			   value: (localSize inject: 1 into: [ :all :each | all * each ]) printString) }
+			   (module variableCountInStorageClass:
+				    SpvStorageClass storageBuffer)).
+		  (PVFactRow name: self class localSizeRowName value: localSize).
+		  (PVFactRow
+			   name: self class invocationsRowName
+			   value: (localSize inject: 1 into: [ :all :each | all * each ])) }
 ]
 
 { #category : 'reporting' }
@@ -230,11 +231,10 @@ PVComputeKernel >> pipelineReport [
 
 { #category : 'reporting' }
 PVComputeKernel >> pipelineRow [
-	^ self
-		  rowNamed: self class pipelineRowName
-		  value: (pipeline
-				   ifNil: [ self class pipelineAbsentLabel ]
-				   ifNotNil: [ self class pipelineBuiltLabel ])
+
+	^ PVFactRow name: self class pipelineRowName value: (pipeline
+			   ifNil: [ self class pipelineAbsentLabel ]
+			   ifNotNil: [ self class pipelineBuiltLabel ])
 ]
 
 { #category : 'pipeline' }
@@ -267,13 +267,6 @@ PVComputeKernel >> prepare [
 	commandPool := VkCommandPool
 		               on: context device
 		               queueFamilyIndex: context computeQueueFamily
-]
-
-{ #category : 'reporting' }
-PVComputeKernel >> rowNamed: aString value: aValueString [
-	^ Dictionary newFrom: {
-			  (#name -> aString).
-			  (#value -> aValueString) }
 ]
 
 { #category : 'accessing' }

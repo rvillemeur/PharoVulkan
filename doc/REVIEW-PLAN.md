@@ -372,6 +372,60 @@ conventions a given class uses.
 Gain: high. Risk: low — the views are covered by the builder-argument gate, and each converted view
 can be checked by building it through `StInspectionContext`.
 
+**Done.** `PVFactRow` holds `name` and `value`, converts both with `asString` so a view can pass a
+number, a boolean or nil straight from the object it describes, and is `beReadOnlyObject` by
+construction, which is the guarantee the dictionaries used to carry. Its class side holds the one
+declaration of the two-column fact table this project shows,
+`tableOf:nameColumn:valueColumn:in:`, and sixty-five views now answer that and nothing else:
+thirty-four in Bindings, thirteen in Core, nine in Compute, four in Compiler, two in Graphics, two
+in SPIRV, and `PVFactRow`'s own `Row` tab. No view declares a column any more.
+
+The class has no layer, so it has no home in the existing eight packages: `allowedDependencies`
+grants Bindings and SPIRV no outgoing edges, and putting the row in either of them would drag that
+package into every group the other packages load. It lives in a new leaf package,
+`PharoVulkan-Inspector`, with an empty allowed set. Bindings, SPIRV, Compiler, Core, Compute,
+Graphics, Examples, `PharoVulkan-Bindings-Tests` and the aggregate `PharoVulkan-Tests` each gained
+the single edge to it, in the table and in `BaselineOfPharoVulkan >> baseline:`;
+`PVArchitectureTest >> testTheInspectorPackageStaysInsideItsAllowedDependencies` holds the new
+package to its own empty set. The package is in no baseline group, because every group that loads a
+package which builds rows requires it transitively.
+
+The nine `rowNamed:value:` copies are deleted. Eighty-one row constructions in twelve store methods
+now answer `PVFactRow` directly — `PVBenchmark`, `PVComputeKernel` (three stores),
+`PVCooperativeMatrixComparison`, `PVCooperativeMatrixKernel`, `PVCooperativeMatrixSurvey`,
+`PVFloat16`, `PVSubgroupDotProduct`, `PVTiledMatmulComparison`, `PVTiledMatmulKernel` and
+`VkDescriptorPool` — so those ten views are one send with no `collect:` in front of it.
+`PVPrecisionComparison` was left alone: its rows carry five keys and its tab is not a fact table.
+
+Two things were deliberately not converted. The keyed `*Rows` stores of `PharoVulkan-Bindings` stay
+dictionaries: a hundred and twenty-four test methods in `PharoVulkan-Bindings-Tests` read them by
+key, and rewriting those tests buys no behaviour. Their views therefore still build the rows at the
+view, from the store's own keys, rather than reading rows the store already holds. And
+`VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage` gained one exception, written into
+the test with its reason: the row reaches nothing itself, so it sits below the bindings rather than
+above them.
+
+Two consequences worth knowing. A hundred and eighty-four redundant `printString` sends went away,
+because `PVFactRow` converts: `Object >> asString` is `^ self printString`, so only `String` and
+`Symbol` values change, and they now read without quotes — which also removes the inconsistency
+between tabs that quoted a string and tabs that did not. Thirty-two test methods changed because
+they pinned the row representation rather than the fact: `at: #name` and `at: #value` became `name`
+and `value`, `each second` became `each value`, and the `valueOfRowNamed:in:` helper of
+`PVComputeTest` and of `VkCoreTest` reads the row's own messages. That is reported here rather than
+passed over in silence, as the refactor step asks.
+
+One trap, for the next mechanical rewrite of this kind. The script that converted the fifty-three
+remaining views emitted the arguments unparenthesised, so
+`PVFactRow name: each at: #name value: each at: #value` compiled as one send of
+`name:at:value:at:` and fifteen views failed with a doesNotUnderstand at the first draw. A send
+whose argument is itself a keyword message has to be parenthesised, and the check is cheap: read
+every method's AST back and fail on a selector that begins with `name:` and is not `name:value:`.
+
+`PVFactRow` carries the five tests of `PVFactRowTest`, the `<sampleInstance>` example
+`PVFactRowExamples class >> wordCountRow` in the Examples package's new `Inspector` tag, and the
+`inspectorRow:` tab that draws the row through the same declaration the other sixty-four views use.
+`run_critics` is clean on the class. The suite is 647 tests over eleven test classes and passes.
+
 ---
 
 ## P3 — the rest, smallest gain last

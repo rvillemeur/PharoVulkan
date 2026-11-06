@@ -69,18 +69,17 @@ PVCooperativeMatrix >> inspectorRows: aBuilder [
 	<inspectorPresentationOrder: 10 title: 'Rows'>
 	| rows |
 	rows := (0 to: order - 1) collect: [ :row |
-		         (0 to: order - 1) collect: [ :column |
-			         self atRow: row col: column ] ].
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn
-				   title: 'Row'
-				   evaluated: [ :each | (rows indexOf: each) - 1 ]);
-		  addColumn: (SpStringTableColumn
-				   title: 'Elements'
-				   evaluated: [ :each |
-					   ', ' join: (each collect: [ :one | one printString ]) ]);
-		  items: rows;
-		  yourself
+		        (0 to: order - 1) collect: [ :column |
+			        self atRow: row col: column ] ].
+	^ PVFactRow
+		  tableOf: (rows collect: [ :each |
+					   PVFactRow
+						   name: (rows indexOf: each) - 1
+						   value:
+						   (', ' join: (each collect: [ :one | one printString ])) ])
+		  nameColumn: 'Row'
+		  valueColumn: 'Elements'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

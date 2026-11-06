@@ -163,24 +163,27 @@ VkImageCreateInfo >> inspectorImage: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Image'>
 	| rows |
 	rows := self imageRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Asks' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Dimensionality'. (rows at: #imageTypeName) }.
-				  { 'Format'. (rows at: #formatName) }.
-				  { 'Extent'. (rows at: #extent) }.
-				  { 'Depth'. (rows at: #depth) }.
-				  { 'Mip levels'. (rows at: #mipLevels) }.
-				  { 'Array layers'. (rows at: #arrayLayers) }.
-				  { 'Tiling'. (rows at: #tilingName) }.
-				  { 'Usage'. (rows at: #usageNames) }.
-				  { 'Layout on creation'. (rows at: #initialLayoutName) }.
-				  { 'Shared between queue families'.
-				  (rows at: #sharedBetweenQueueFamilies) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Dimensionality'
+					   value: (rows at: #imageTypeName)).
+				  (PVFactRow name: 'Format' value: (rows at: #formatName)).
+				  (PVFactRow name: 'Extent' value: (rows at: #extent)).
+				  (PVFactRow name: 'Depth' value: (rows at: #depth)).
+				  (PVFactRow name: 'Mip levels' value: (rows at: #mipLevels)).
+				  (PVFactRow name: 'Array layers' value: (rows at: #arrayLayers)).
+				  (PVFactRow name: 'Tiling' value: (rows at: #tilingName)).
+				  (PVFactRow name: 'Usage' value: (rows at: #usageNames)).
+				  (PVFactRow
+					   name: 'Layout on creation'
+					   value: (rows at: #initialLayoutName)).
+				  (PVFactRow
+					   name: 'Shared between queue families'
+					   value: (rows at: #sharedBetweenQueueFamilies)) }
+		  nameColumn: 'Asks'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

@@ -87,26 +87,47 @@ VkSurfaceCapabilitiesKHR >> inspectorSurface: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Surface'>
 	| rows |
 	rows := self surfaceRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Allows' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Images at least'. (rows at: #minImageCount) }.
-				  { 'Images at most'. (rows at: #maxImageCount) }.
-				  { 'Image maximum unlimited'. (rows at: #maxImageCountIsUnlimited) }.
-				  { 'Images a swapchain would ask for'. (rows at: #swapchainImageCount) }.
-				  { 'Current extent'. (rows at: #currentExtent) }.
-				  { 'Smallest extent'. (rows at: #minImageExtent) }.
-				  { 'Largest extent'. (rows at: #maxImageExtent) }.
-				  { 'Array layers at most'. (rows at: #maxImageArrayLayers) }.
-				  { 'Current transform'. (rows at: #currentTransformName) }.
-				  { 'Transforms supported'. (rows at: #supportedTransformNames) }.
-				  { 'Composite alpha supported'.
-				  (rows at: #supportedCompositeAlphaNames) }.
-				  { 'Image usage supported'. (rows at: #supportedUsageNames) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Images at least'
+					   value: (rows at: #minImageCount)).
+				  (PVFactRow
+					   name: 'Images at most'
+					   value: (rows at: #maxImageCount)).
+				  (PVFactRow
+					   name: 'Image maximum unlimited'
+					   value: (rows at: #maxImageCountIsUnlimited)).
+				  (PVFactRow
+					   name: 'Images a swapchain would ask for'
+					   value: (rows at: #swapchainImageCount)).
+				  (PVFactRow
+					   name: 'Current extent'
+					   value: (rows at: #currentExtent)).
+				  (PVFactRow
+					   name: 'Smallest extent'
+					   value: (rows at: #minImageExtent)).
+				  (PVFactRow
+					   name: 'Largest extent'
+					   value: (rows at: #maxImageExtent)).
+				  (PVFactRow
+					   name: 'Array layers at most'
+					   value: (rows at: #maxImageArrayLayers)).
+				  (PVFactRow
+					   name: 'Current transform'
+					   value: (rows at: #currentTransformName)).
+				  (PVFactRow
+					   name: 'Transforms supported'
+					   value: (rows at: #supportedTransformNames)).
+				  (PVFactRow
+					   name: 'Composite alpha supported'
+					   value: (rows at: #supportedCompositeAlphaNames)).
+				  (PVFactRow
+					   name: 'Image usage supported'
+					   value: (rows at: #supportedUsageNames)) }
+		  nameColumn: 'Allows'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

@@ -263,21 +263,15 @@ PVSpirvValidator >> entryPointReport [
 	tiles := self variableIdsInStorageClass: SpvStorageClass workgroup.
 	named := tiles count: [ :id | self entryPointInterfaceIds includes: id ].
 	^ {
-		  (Dictionary newFrom: {
-				   (#setting -> 'Local size').
-				   (#value -> localSize printString) }).
-		  (Dictionary newFrom: {
-				   (#setting -> 'Invocations per group').
-				   (#value -> (localSize inject: 1 into: [ :a :b | a * b ]) printString) }).
-		  (Dictionary newFrom: {
-				   (#setting -> 'Built-ins read').
-				   (#value -> (', ' join: self builtInsFromWords)) }).
-		  (Dictionary newFrom: {
-				   (#setting -> 'Shared tiles').
-				   (#value -> tiles size printString) }).
-		  (Dictionary newFrom: {
-				   (#setting -> 'Tiles named by entry point').
-				   (#value -> named printString) }) }
+		  (PVFactRow name: 'Local size' value: localSize printString).
+		  (PVFactRow
+			   name: 'Invocations per group'
+			   value: (localSize inject: 1 into: [ :a :b | a * b ])).
+		  (PVFactRow
+			   name: 'Built-ins read'
+			   value: (', ' join: self builtInsFromWords)).
+		  (PVFactRow name: 'Shared tiles' value: tiles size).
+		  (PVFactRow name: 'Tiles named by entry point' value: named) }
 ]
 
 { #category : 'validating' }
@@ -318,27 +312,24 @@ PVSpirvValidator >> inspectorEntryPoint: aBuilder [
 	 numWorkgroups among its built-ins."
 
 	<inspectorPresentationOrder: 50 title: 'Entry point'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Setting' evaluated: [ :each |
-					   each at: #setting ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self entryPointReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: self entryPointReport
+		  nameColumn: 'Setting'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }
 PVSpirvValidator >> inspectorValidation: aBuilder [
-	<inspectorPresentationOrder: 30 title: 'Validation'>
 	"Reports on a copy: asking for a verdict caches it, and a view must not change the
 	 object being inspected."
-	^ aBuilder newTable
-		addColumn: (SpStringTableColumn title: 'Property' evaluated: [ :each | each key ]);
-		addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each | each value printString ]);
-		items: self copy validationReport;
-		yourself
+
+	<inspectorPresentationOrder: 30 title: 'Validation'>
+	^ PVFactRow
+		  tableOf: self copy validationReport
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'private' }
@@ -458,16 +449,31 @@ PVSpirvValidator >> validationOutput [
 PVSpirvValidator >> validationReport [
 	"Facts asked of the real lookup and the real tool, never restated, so the report cannot
 	 drift from what validation actually does."
+
 	| executable |
 	executable := self class findExecutable.
 	executable ifNil: [
-		^ { 'executable' -> (self class executableName , ' not found on PATH') } ].
-	^ { 'executable' -> executable fullName.
-		'target environment' -> self class targetEnv.
-		'module bytes' -> (spirv ifNil: [ 0 ] ifNotNil: [ spirv size ]).
-		'exit code' -> self exitCode.
-		'verdict' -> (self isValid ifTrue: [ 'valid' ] ifFalse: [ 'invalid' ]).
-		'output' -> (self validationOutput ifEmpty: [ '(none)' ] ifNotEmpty: [ :text | text trimBoth ]) }
+		^ {
+			  (PVFactRow
+				   name: 'executable'
+				   value: self class executableName , ' not found on PATH') } ].
+	^ {
+		  (PVFactRow name: 'executable' value: executable fullName).
+		  (PVFactRow name: 'target environment' value: self class targetEnv).
+		  (PVFactRow
+			   name: 'module bytes'
+			   value: (spirv ifNil: [ 0 ] ifNotNil: [ spirv size ])).
+		  (PVFactRow name: 'exit code' value: self exitCode).
+		  (PVFactRow
+			   name: 'verdict'
+			   value: (self isValid
+					    ifTrue: [ 'valid' ]
+					    ifFalse: [ 'invalid' ])).
+		  (PVFactRow
+			   name: 'output'
+			   value: (self validationOutput
+					    ifEmpty: [ '(none)' ]
+					    ifNotEmpty: [ :text | text trimBoth ])) }
 ]
 
 { #category : 'reading - instructions' }

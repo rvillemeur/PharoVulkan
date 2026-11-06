@@ -75,12 +75,12 @@ PVSpirvValidatorTest >> testEntryPointReportOnAModuleWithoutAWorkgroup [
 	self assert: validator localSizeFromWords equals: #( ).
 	rows := validator entryPointReport.
 	self
-		assert: (rows collect: [ :each | each at: #setting ])
+		assert: (rows collect: [ :each | each name ])
 		equals: #( 'Local size' 'Invocations per group' 'Built-ins read'
 			   'Shared tiles' 'Tiles named by entry point' ).
-	self assert: (rows first at: #value) equals: '#()'.
-	self assert: ((rows at: 4) at: #value) equals: '0'.
-	self assert: ((rows at: 5) at: #value) equals: '0'
+	self assert: rows first value equals: '#()'.
+	self assert: (rows at: 4) value equals: '0'.
+	self assert: (rows at: 5) value equals: '0'
 ]
 
 { #category : 'tests - compute' }
@@ -324,15 +324,15 @@ PVSpirvValidatorTest >> testTriVertex [
 	self validateSpirv: (PVKernelCompiler compileMethod: (PVKernelExamples >> #triVertex:color:)) description: 'triVertex:color:'
 ]
 
-{ #category : 'tests - report' }
+{ #category : 'tests - reporting' }
 PVSpirvValidatorTest >> testValidationReportNamesTheToolAndTheVerdict [
 	| validator report |
 	validator := self validatorFor: (PVKernelCompiler compileMethod: (PVKernelExamples >> #vectorAdd:a:b:out:)).
 	report := validator validationReport.
-	self assert: (report collect: [ :each | each key ]) asArray
+	self assert: (report collect: [ :each | each name ]) asArray
 		equals: #( 'executable' 'target environment' 'module bytes' 'exit code' 'verdict' 'output' ).
-	self assert: ((report detect: [ :each | each key = 'executable' ]) value endsWith: PVSpirvValidator executableName).
-	self assert: (report detect: [ :each | each key = 'verdict' ]) value equals: 'valid'
+	self assert: ((report detect: [ :each | each name = 'executable' ]) value endsWith: PVSpirvValidator executableName).
+	self assert: (report detect: [ :each | each name = 'verdict' ]) value equals: 'valid'
 ]
 
 { #category : 'tests - report' }

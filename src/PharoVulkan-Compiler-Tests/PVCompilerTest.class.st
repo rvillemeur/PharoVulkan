@@ -1185,13 +1185,13 @@ PVCompilerTest >> testTargetRowsOfANodeReadTheOverridesAndNotAList [
 	selection := PVSelectionNode new.
 	nested := PVNestedLoopNode new.
 	emitted := [ :node |
-		           (node targetRows select: [ :row | (row at: #emitted) = 'yes' ])
-			           collect: [ :row | row at: #target ] ].
+		           (node targetRows select: [ :row | row value = 'yes' ])
+			           collect: [ :row | row name ] ].
 	self assert: (emitted value: selection) size equals: 3.
 	self
 		assert: (emitted value: nested) asArray
 		equals: #( 'Compute kernel' ).
-	self assert: (nested targetRows size) equals: 3
+	self assert: nested targetRows size equals: 3
 ]
 
 { #category : 'tests - half precision' }
@@ -1351,7 +1351,7 @@ PVCompilerTest >> testWorkItemReportCoversTheWholeVocabulary [
 	| item values |
 	item := PVComputeExamples workItemInA512Grid.
 	self assert: item dispatchReport size equals: item kernelSelectors size.
-	values := item dispatchReport collect: [ :each | each at: #value ].
+	values := item dispatchReport collect: [ :each | each value ].
 	self deny: (values includes: 'not implemented').
 	self assert: (values includes: '512')
 ]

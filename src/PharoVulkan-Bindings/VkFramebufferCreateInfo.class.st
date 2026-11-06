@@ -126,18 +126,22 @@ VkFramebufferCreateInfo >> inspectorFramebuffer: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Framebuffer'>
 	| rows |
 	rows := self framebufferRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Binds' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Render pass set'. (rows at: #renderPassSet) }.
-				  { 'Extent'. (rows at: #extent) }.
-				  { 'Layers'. (rows at: #layers) }.
-				  { 'Attachments'. (rows at: #attachmentCount) }.
-				  { 'Attachment handles set'. (rows at: #attachmentsSet) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Render pass set'
+					   value: (rows at: #renderPassSet)).
+				  (PVFactRow name: 'Extent' value: (rows at: #extent)).
+				  (PVFactRow name: 'Layers' value: (rows at: #layers)).
+				  (PVFactRow
+					   name: 'Attachments'
+					   value: (rows at: #attachmentCount)).
+				  (PVFactRow
+					   name: 'Attachment handles set'
+					   value: (rows at: #attachmentsSet)) }
+		  nameColumn: 'Binds'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

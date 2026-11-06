@@ -1210,7 +1210,7 @@ PVGraphicsTest >> testSwapchainViewReportsEveryImageWithoutMutating [
 		         before := aScene swapchainReport.
 		         view := aScene inspectorSwapchain: SpPresenter new.
 		         imageRows := view items select: [ :each |
-			                      each key beginsWith:
+			                      each name beginsWith:
 				                      PVHelloTriangleScene imageRowPrefix ].
 		         self assert: imageRows size equals: aScene swapchain imageCount.
 		         imageRows do: [ :each | self assert: each value equals: expected ].

@@ -103,22 +103,27 @@ VkRenderPassBeginInfo >> inspectorPass: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Pass'>
 	| rows |
 	rows := self passRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Render pass'. (rows at: #renderPassSet) }.
-				  { 'Framebuffer'. (rows at: #framebufferSet) }.
-				  { 'Render area offset'. (rows at: #renderAreaOffset) }.
-				  { 'Render area'. (rows at: #renderArea) }.
-				  { 'Clear values'. (rows at: #clearValueCount) }.
-				  { 'Clear colour'.
-				  ((rows at: #clearColor) ifEmpty: [ 'values out of reach' ]) }.
-				  { 'Subpass contents'. (rows at: #subpassContentsName) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Render pass' value: (rows at: #renderPassSet)).
+				  (PVFactRow name: 'Framebuffer' value: (rows at: #framebufferSet)).
+				  (PVFactRow
+					   name: 'Render area offset'
+					   value: (rows at: #renderAreaOffset)).
+				  (PVFactRow name: 'Render area' value: (rows at: #renderArea)).
+				  (PVFactRow
+					   name: 'Clear values'
+					   value: (rows at: #clearValueCount)).
+				  (PVFactRow
+					   name: 'Clear colour'
+					   value:
+					   ((rows at: #clearColor) ifEmpty: [ 'values out of reach' ])).
+				  (PVFactRow
+					   name: 'Subpass contents'
+					   value: (rows at: #subpassContentsName)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

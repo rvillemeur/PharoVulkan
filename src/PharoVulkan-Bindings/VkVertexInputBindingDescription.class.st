@@ -75,16 +75,14 @@ VkVertexInputBindingDescription >> inspectorBinding: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Binding'>
 	| rows |
 	rows := self bindingRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Describes' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Binding number'. (rows at: #binding) }.
-				  { 'Bytes per vertex'. (rows at: #stride) }.
-				  { 'Advances'. (rows at: #inputRateName) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Binding number' value: (rows at: #binding)).
+				  (PVFactRow name: 'Bytes per vertex' value: (rows at: #stride)).
+				  (PVFactRow name: 'Advances' value: (rows at: #inputRateName)) }
+		  nameColumn: 'Describes'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

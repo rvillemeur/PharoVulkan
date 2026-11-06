@@ -143,17 +143,16 @@ VkCommandPool >> inspectorPool: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Pool'>
 	| rows |
 	rows := self poolRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Queue family'. (rows at: #queueFamilyIndex) }.
-				  { 'Flags'. (rows at: #flagNames) }.
-				  { 'Handle live'. (rows at: #live) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Queue family'
+					   value: (rows at: #queueFamilyIndex)).
+				  (PVFactRow name: 'Flags' value: (rows at: #flagNames)).
+				  (PVFactRow name: 'Handle live' value: (rows at: #live)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

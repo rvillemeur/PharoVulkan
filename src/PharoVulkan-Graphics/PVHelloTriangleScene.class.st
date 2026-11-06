@@ -232,15 +232,12 @@ PVHelloTriangleScene >> inspectorSwapchain: aBuilder [
 	 mutates nothing it shows."
 
 	<inspectorPresentationOrder: 20 title: 'Swapchain'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn
-				   title: 'Property'
-				   evaluated: [ :each | each key ]);
-		  addColumn: (SpStringTableColumn
-				   title: 'Value'
-				   evaluated: [ :each | each value ]);
-		  items: self swapchainReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self swapchainReport collect: [ :each |
+				   PVFactRow name: each key value: each value ])
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'rendering' }

@@ -77,15 +77,16 @@ VkSurfaceFormatKHR >> inspectorFormat: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Format'>
 	| rows |
 	rows := self formatRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Offers' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Format'. (rows at: #formatName) }.
-				  { 'Colour space'. (rows at: #colorSpaceName) }.
-				  { 'The format this project renders in'.
-				  (rows at: #rendersThisProject) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Format' value: (rows at: #formatName)).
+				  (PVFactRow
+					   name: 'Colour space'
+					   value: (rows at: #colorSpaceName)).
+				  (PVFactRow
+					   name: 'The format this project renders in'
+					   value: (rows at: #rendersThisProject)) }
+		  nameColumn: 'Offers'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]

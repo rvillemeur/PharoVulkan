@@ -142,21 +142,22 @@ VkBufferImageCopy >> inspectorCopy: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Copy'>
 	| rows |
 	rows := self copyRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Buffer offset'. (rows at: #bufferOffset) }.
-				  { 'Tightly packed rows'. (rows at: #tightlyPackedRows) }.
-				  { 'Aspect'. (rows at: #aspectNames) }.
-				  { 'Mip level'. (rows at: #mipLevel) }.
-				  { 'First array layer'. (rows at: #baseArrayLayer) }.
-				  { 'Layers'. (rows at: #layerCount) }.
-				  { 'Image offset'. (rows at: #imageOffset) }.
-				  { 'Extent'. (rows at: #extent) }.
-				  { 'Depth'. (rows at: #depth) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Buffer offset' value: (rows at: #bufferOffset)).
+				  (PVFactRow
+					   name: 'Tightly packed rows'
+					   value: (rows at: #tightlyPackedRows)).
+				  (PVFactRow name: 'Aspect' value: (rows at: #aspectNames)).
+				  (PVFactRow name: 'Mip level' value: (rows at: #mipLevel)).
+				  (PVFactRow
+					   name: 'First array layer'
+					   value: (rows at: #baseArrayLayer)).
+				  (PVFactRow name: 'Layers' value: (rows at: #layerCount)).
+				  (PVFactRow name: 'Image offset' value: (rows at: #imageOffset)).
+				  (PVFactRow name: 'Extent' value: (rows at: #extent)).
+				  (PVFactRow name: 'Depth' value: (rows at: #depth)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]

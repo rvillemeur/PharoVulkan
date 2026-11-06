@@ -44,18 +44,17 @@ VkViewport >> inspectorViewport: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Viewport'>
 	| rows |
 	rows := self viewportRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Origin'. (rows at: #origin) }.
-				  { 'At the target origin'. (rows at: #atTheOrigin) }.
-				  { 'Extent'. (rows at: #extent) }.
-				  { 'Depth range'. (rows at: #depthRange) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Origin' value: (rows at: #origin)).
+				  (PVFactRow
+					   name: 'At the target origin'
+					   value: (rows at: #atTheOrigin)).
+				  (PVFactRow name: 'Extent' value: (rows at: #extent)).
+				  (PVFactRow name: 'Depth range' value: (rows at: #depthRange)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

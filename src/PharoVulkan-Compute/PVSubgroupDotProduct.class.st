@@ -116,15 +116,11 @@ PVSubgroupDotProduct >> inspectorReduction: aBuilder [
 	 instead of showing stale figures."
 
 	<inspectorPresentationOrder: 10 title: 'Reduction'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }
@@ -190,16 +186,24 @@ PVSubgroupDotProduct >> reportRows [
 	 is asked of the run rather than restated here, so the table cannot drift from the code."
 
 	partialSums ifNil: [
-		^ { (self rowNamed: 'State' value: 'not run yet') } ].
+		^ { (PVFactRow name: 'State' value: 'not run yet') } ].
 	^ {
-		  (self rowNamed: 'Elements' value: self size printString).
-		  (self rowNamed: 'Workgroup width' value: self class workgroupWidth printString).
-		  (self rowNamed: 'Workgroups dispatched' value: self groupCount printString).
-		  (self rowNamed: 'Subgroup width reported' value: self reportedSubgroupSize printString).
-		  (self rowNamed: 'Subgroup width measured' value: self measuredSubgroupSize printString).
-		  (self rowNamed: 'Dot product on the device' value: self gpuTotal printString).
-		  (self rowNamed: 'Dot product on the host' value: self cpuTotal printString).
-		  (self rowNamed: 'Difference' value: (self gpuTotal - self cpuTotal) abs printString) }
+		  (PVFactRow name: 'Elements' value: self size).
+		  (PVFactRow
+			   name: 'Workgroup width'
+			   value: self class workgroupWidth).
+		  (PVFactRow name: 'Workgroups dispatched' value: self groupCount).
+		  (PVFactRow
+			   name: 'Subgroup width reported'
+			   value: self reportedSubgroupSize).
+		  (PVFactRow
+			   name: 'Subgroup width measured'
+			   value: self measuredSubgroupSize).
+		  (PVFactRow name: 'Dot product on the device' value: self gpuTotal).
+		  (PVFactRow name: 'Dot product on the host' value: self cpuTotal).
+		  (PVFactRow
+			   name: 'Difference'
+			   value: (self gpuTotal - self cpuTotal) abs) }
 ]
 
 { #category : 'accessing' }
@@ -208,13 +212,6 @@ PVSubgroupDotProduct >> reportedSubgroupSize [
 	 subgroup the device offers rather than the width any given shader runs at."
 
 	^ reportedWidth
-]
-
-{ #category : 'private' }
-PVSubgroupDotProduct >> rowNamed: aString value: aValueString [
-	^ Dictionary newFrom: {
-			  (#name -> aString).
-			  (#value -> aValueString) }
 ]
 
 { #category : 'running' }

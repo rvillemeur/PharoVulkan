@@ -725,26 +725,28 @@ VkContext >> inspectorDeviceChoice: aBuilder [
 	"Why this device and not the first one enumerated: the requirements asked for, each
 	 beside the device that satisfied them. Reflects the list selection used, and reads
 	 nothing from the driver, so it also answers after the context is destroyed."
+
 	<inspectorPresentationOrder: 20 title: 'Device choice'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Requirement' evaluated: [ :each |
-					   each at: #requirement ]);
-		  addColumn: (SpStringTableColumn title: 'Satisfied by' evaluated: [ :each |
-					   each at: #satisfiedBy ]);
-		  items: self deviceChoiceRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self deviceChoiceRows collect: [ :each |
+				   PVFactRow
+					   name: (each at: #requirement)
+					   value: (each at: #satisfiedBy) ])
+		  nameColumn: 'Requirement'
+		  valueColumn: 'Satisfied by'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }
 VkContext >> inspectorDeviceFeatures: aBuilder [
+
 	<inspectorPresentationOrder: 10 title: 'Device features'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Setting' evaluated: [ :each | each key ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each | each value ]);
-		  items: self deviceFeatureReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self deviceFeatureReport collect: [ :each |
+				   PVFactRow name: each key value: each value ])
+		  nameColumn: 'Setting'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

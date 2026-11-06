@@ -114,16 +114,18 @@ VkPipelineDynamicStateCreateInfo >> inspectorDynamicState: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Dynamic state'>
 	| rows |
 	rows := self dynamicStateRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'States'. (rows at: #dynamicStateCount) }.
-				  { 'State run given'. (rows at: #stateRunGiven) }.
-				  { 'Set while recording'. (rows at: #dynamicStateNames) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'States' value: (rows at: #dynamicStateCount)).
+				  (PVFactRow
+					   name: 'State run given'
+					   value: (rows at: #stateRunGiven)).
+				  (PVFactRow
+					   name: 'Set while recording'
+					   value: (rows at: #dynamicStateNames)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

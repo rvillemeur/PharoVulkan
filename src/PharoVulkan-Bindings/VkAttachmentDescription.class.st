@@ -120,19 +120,21 @@ VkAttachmentDescription >> inspectorAttachment: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Attachment'>
 	| rows |
 	rows := self attachmentRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Asks' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Format'. (rows at: #formatName) }.
-				  { 'On load'. (rows at: #loadOpName) }.
-				  { 'On store'. (rows at: #storeOpName) }.
-				  { 'Layout on entry'. (rows at: #initialLayoutName) }.
-				  { 'Layout on exit'. (rows at: #finalLayoutName) }.
-				  { 'Uses stencil'. (rows at: #usesStencil) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Format' value: (rows at: #formatName)).
+				  (PVFactRow name: 'On load' value: (rows at: #loadOpName)).
+				  (PVFactRow name: 'On store' value: (rows at: #storeOpName)).
+				  (PVFactRow
+					   name: 'Layout on entry'
+					   value: (rows at: #initialLayoutName)).
+				  (PVFactRow
+					   name: 'Layout on exit'
+					   value: (rows at: #finalLayoutName)).
+				  (PVFactRow name: 'Uses stencil' value: (rows at: #usesStencil)) }
+		  nameColumn: 'Asks'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

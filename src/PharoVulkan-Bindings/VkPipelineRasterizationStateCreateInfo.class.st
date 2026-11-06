@@ -163,20 +163,22 @@ VkPipelineRasterizationStateCreateInfo >> inspectorRasterization: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Rasterization'>
 	| rows |
 	rows := self rasterizationRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Polygon mode'. (rows at: #polygonModeName) }.
-				  { 'Cull mode'. (rows at: #cullModeNames) }.
-				  { 'Front face'. (rows at: #frontFaceName) }.
-				  { 'Line width'. (rows at: #lineWidth) }.
-				  { 'Depth clamp'. (rows at: #depthClamp) }.
-				  { 'Rasterization discarded'. (rows at: #rasterizationDiscarded) }.
-				  { 'Depth bias'. (rows at: #depthBias) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Polygon mode'
+					   value: (rows at: #polygonModeName)).
+				  (PVFactRow name: 'Cull mode' value: (rows at: #cullModeNames)).
+				  (PVFactRow name: 'Front face' value: (rows at: #frontFaceName)).
+				  (PVFactRow name: 'Line width' value: (rows at: #lineWidth)).
+				  (PVFactRow name: 'Depth clamp' value: (rows at: #depthClamp)).
+				  (PVFactRow
+					   name: 'Rasterization discarded'
+					   value: (rows at: #rasterizationDiscarded)).
+				  (PVFactRow name: 'Depth bias' value: (rows at: #depthBias)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

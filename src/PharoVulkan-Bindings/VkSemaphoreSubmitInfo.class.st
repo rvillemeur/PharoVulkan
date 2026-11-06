@@ -49,18 +49,15 @@ VkSemaphoreSubmitInfo >> inspectorSemaphore: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Semaphore'>
 	| rows |
 	rows := self semaphoreSubmitRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Semaphore set'. (rows at: #semaphoreSet) }.
-				  { 'Stage'. (rows at: #stageNames) }.
-				  { 'Timeline value'. (rows at: #value) }.
-				  { 'Device index'. (rows at: #deviceIndex) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Semaphore set' value: (rows at: #semaphoreSet)).
+				  (PVFactRow name: 'Stage' value: (rows at: #stageNames)).
+				  (PVFactRow name: 'Timeline value' value: (rows at: #value)).
+				  (PVFactRow name: 'Device index' value: (rows at: #deviceIndex)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

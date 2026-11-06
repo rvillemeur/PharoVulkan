@@ -108,20 +108,26 @@ VkComputePipelineCreateInfo >> inspectorComputePipeline: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Pipeline'>
 	| rows |
 	rows := self computePipelineRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Creates' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Shader stage'. (rows at: #stageName) }.
-				  { 'Module given'. (rows at: #moduleGiven) }.
-				  { 'Entry point'. (rows at: #entryPoint) }.
-				  { 'Specialization given'. (rows at: #specializationGiven) }.
-				  { 'Pipeline layout given'. (rows at: #layoutGiven) }.
-				  { 'Derives from a pipeline'. (rows at: #derivesFromAPipeline) }.
-				  { 'Base pipeline index'. (rows at: #basePipelineIndex) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Shader stage' value: (rows at: #stageName)).
+				  (PVFactRow name: 'Module given' value: (rows at: #moduleGiven)).
+				  (PVFactRow name: 'Entry point' value: (rows at: #entryPoint)).
+				  (PVFactRow
+					   name: 'Specialization given'
+					   value: (rows at: #specializationGiven)).
+				  (PVFactRow
+					   name: 'Pipeline layout given'
+					   value: (rows at: #layoutGiven)).
+				  (PVFactRow
+					   name: 'Derives from a pipeline'
+					   value: (rows at: #derivesFromAPipeline)).
+				  (PVFactRow
+					   name: 'Base pipeline index'
+					   value: (rows at: #basePipelineIndex)) }
+		  nameColumn: 'Creates'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

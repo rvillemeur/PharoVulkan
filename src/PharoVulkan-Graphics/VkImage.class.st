@@ -275,13 +275,12 @@ VkImage >> inspectorImage: aBuilder [
 	 optimal tiling adds and the reason the driver's number is the one bound."
 
 	<inspectorPresentationOrder: 10 title: 'Image'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn
-				   title: 'Attribute'
-				   evaluated: [ :each | each key ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each | each value ]);
-		  items: self attributeRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self attributeRows collect: [ :each |
+				   PVFactRow name: each key value: each value ])
+		  nameColumn: 'Attribute'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

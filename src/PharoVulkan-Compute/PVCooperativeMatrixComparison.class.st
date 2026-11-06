@@ -124,15 +124,11 @@ PVCooperativeMatrixComparison >> inspectorComparison: aBuilder [
 	 same table."
 
 	<inspectorPresentationOrder: 10 title: 'Comparison'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn
-				   title: 'Quantity'
-				   evaluated: [ :each | each at: #name ]);
-		  addColumn: (SpStringTableColumn
-				   title: 'Value'
-				   evaluated: [ :each | each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'reporting' }
@@ -163,47 +159,42 @@ PVCooperativeMatrixComparison >> reportRows [
 	 offers the extension here runs on the CPU, and a ratio from it would mean nothing."
 
 	handBuiltResult ifNil: [
-		^ { (self rowNamed: 'State' value: 'not run yet') } ].
+		^ { (PVFactRow name: 'State' value: 'not run yet') } ].
 	^ {
-		  (self rowNamed: 'Matrix order' value: self class order printString).
-		  (self
-			   rowNamed: 'Compiled from'
-			   value: self class compiledKernelSelector asString).
-		  (self
-			   rowNamed: 'Hand-built milliseconds'
-			   value: handBuiltMilliseconds printString).
-		  (self
-			   rowNamed: 'Compiled milliseconds'
-			   value: compiledMilliseconds printString).
-		  (self
-			   rowNamed: 'Largest difference, hand-built against the CPU'
-			   value: (self
-					    largestDifferenceBetween: handBuiltResult
-					    and: referenceResult) printString).
-		  (self
-			   rowNamed: 'Largest difference, compiled against the CPU'
-			   value: (self
-					    largestDifferenceBetween: compiledResult
-					    and: referenceResult) printString).
-		  (self
-			   rowNamed: 'Largest difference, compiled against hand-built'
-			   value: (self
-					    largestDifferenceBetween: compiledResult
-					    and: handBuiltResult) printString) }
+		  (PVFactRow name: 'Matrix order' value: self class order).
+		  (PVFactRow
+			   name: 'Compiled from'
+			   value: self class compiledKernelSelector).
+		  (PVFactRow
+			   name: 'Hand-built milliseconds'
+			   value: handBuiltMilliseconds).
+		  (PVFactRow
+			   name: 'Compiled milliseconds'
+			   value: compiledMilliseconds).
+		  (PVFactRow
+			   name: 'Largest difference, hand-built against the CPU'
+			   value:
+			   (self
+				    largestDifferenceBetween: handBuiltResult
+				    and: referenceResult)).
+		  (PVFactRow
+			   name: 'Largest difference, compiled against the CPU'
+			   value:
+			   (self
+				    largestDifferenceBetween: compiledResult
+				    and: referenceResult)).
+		  (PVFactRow
+			   name: 'Largest difference, compiled against hand-built'
+			   value:
+			   (self
+				    largestDifferenceBetween: compiledResult
+				    and: handBuiltResult)) }
 ]
 
 { #category : 'private' }
 PVCooperativeMatrixComparison >> rightMatrix [
 	^ self flatMatrixWith: [ :row :column |
 		  self class rightAtRow: row col: column ]
-]
-
-{ #category : 'reporting' }
-PVCooperativeMatrixComparison >> rowNamed: aName value: aValue [
-	^ Dictionary new
-		  at: #name put: aName;
-		  at: #value put: aValue;
-		  yourself
 ]
 
 { #category : 'measuring' }

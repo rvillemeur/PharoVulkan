@@ -59,13 +59,11 @@ SpvCooperativeMatrixShape >> inspectorOperands: aBuilder [
 	 type. Each value comes from the accessor the instruction itself asks."
 
 	<inspectorPresentationOrder: 10 title: 'Operands'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Operand' evaluated: [ :each |
-				   each at: #operand ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   (each at: #value) printString ]);
-		  items: self operandRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self operandRows
+		  nameColumn: 'Operand'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }
@@ -83,12 +81,10 @@ SpvCooperativeMatrixShape >> key [
 { #category : 'accessing' }
 SpvCooperativeMatrixShape >> operandRows [
 	"The four operands, each asked of its own accessor, so a row cannot drift from the value
-	 the type emits. Read only: looking at a shape must not change it."
+	 the type emits."
 
 	^ { #rows. #columns. #scope. #use } collect: [ :each |
-		  (Dictionary newFrom: {
-			   (#operand -> each).
-			   (#value -> (self perform: each)) }) beReadOnlyObject ]
+		  PVFactRow name: each value: (self perform: each) ]
 ]
 
 { #category : 'printing' }

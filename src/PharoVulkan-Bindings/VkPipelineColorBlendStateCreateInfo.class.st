@@ -158,22 +158,30 @@ VkPipelineColorBlendStateCreateInfo >> inspectorColorBlend: aBuilder [
 	| rows items |
 	rows := self colorBlendRows.
 	items := OrderedCollection new
-		         add: { 'Attachments'. (rows at: #attachmentCount) };
-		         add:
-			         { 'Attachment run given'. (rows at: #attachmentRunGiven) };
-		         add: { 'Logic operation'. (rows at: #logicOperation) };
+		         add: {
+				         'Attachments'.
+				         (rows at: #attachmentCount) };
+		         add: {
+				         'Attachment run given'.
+				         (rows at: #attachmentRunGiven) };
+		         add: {
+				         'Logic operation'.
+				         (rows at: #logicOperation) };
 		         yourself.
 	(rows includesKey: #blending) ifTrue: [
-		items
-			add: { 'Blending'. (rows at: #blending) };
-			add: { 'Channels written'. (rows at: #colorWriteMaskNames) } ].
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: items;
-		  yourself
+			items
+				add: {
+						'Blending'.
+						(rows at: #blending) };
+				add: {
+						'Channels written'.
+						(rows at: #colorWriteMaskNames) } ].
+	^ PVFactRow
+		  tableOf: (items collect: [ :each |
+				   PVFactRow name: each first value: each second ])
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

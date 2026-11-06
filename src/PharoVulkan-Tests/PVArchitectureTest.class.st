@@ -27,21 +27,28 @@ PVArchitectureTest class >> allowedDependencies [
 	 tests below fail on either, so adding a dependency means stating it here first."
 
 	^ Dictionary newFrom: {
-		  'PharoVulkan-Bindings' -> #(  ).
-		  'PharoVulkan-SPIRV' -> #(  ).
-		  'PharoVulkan-Compiler' -> #( 'PharoVulkan-SPIRV' ).
-		  'PharoVulkan-Core' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' ).
+		  'PharoVulkan-Bindings' -> #( 'PharoVulkan-Inspector' ).
+		  'PharoVulkan-SPIRV' -> #( 'PharoVulkan-Inspector' ).
+		  "The row every two-column inspector view shows belongs to no layer, so it sits in a
+		   package that reaches nothing and that every other package may reach. Without it a
+		   shared row class would have to live in Bindings or in SPIRV, and the two packages
+		   that reach nothing would start reaching each other."
+		  'PharoVulkan-Inspector' -> #(  ).
+		  'PharoVulkan-Compiler' -> #( 'PharoVulkan-Inspector' 'PharoVulkan-SPIRV' ).
+		  'PharoVulkan-Core' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Inspector'
+			   'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Compute' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compiler'
-			   'PharoVulkan-Core' 'PharoVulkan-SPIRV' ).
+			   'PharoVulkan-Core' 'PharoVulkan-Inspector' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Graphics' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compiler'
-			   'PharoVulkan-Compute' 'PharoVulkan-Core' 'PharoVulkan-SPIRV' ).
+			   'PharoVulkan-Compute' 'PharoVulkan-Core' 'PharoVulkan-Inspector'
+			   'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Generator' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Examples' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compiler'
 			   'PharoVulkan-Compute' 'PharoVulkan-Core' 'PharoVulkan-Graphics'
-			   'PharoVulkan-SPIRV' ).
+			   'PharoVulkan-Inspector' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Bindings-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compute'
 			   'PharoVulkan-Core' 'PharoVulkan-Examples' 'PharoVulkan-Generator'
-			   'PharoVulkan-Graphics' ).
+			   'PharoVulkan-Graphics' 'PharoVulkan-Inspector' ).
 		  'PharoVulkan-SPIRV-Tests' -> #( 'PharoVulkan-Compute' 'PharoVulkan-Core'
 			   'PharoVulkan-Examples' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Compiler-Tests' -> #( 'PharoVulkan-Compiler' 'PharoVulkan-Compute'
@@ -57,9 +64,10 @@ PVArchitectureTest class >> allowedDependencies [
 		  'PharoVulkan-Graphics-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compiler'
 			   'PharoVulkan-Compute' 'PharoVulkan-Core' 'PharoVulkan-Examples'
 			   'PharoVulkan-Graphics' ).
-		  "The aggregate package holds this test and its fixtures. Its one edge is the class the
-		   planted fixture names, which is what the scan test below reads."
-		  'PharoVulkan-Tests' -> #( 'PharoVulkan-Core' ) }
+		  "The aggregate package holds this test and its fixtures. Its edges are the class the
+		   planted fixture names and the inspector row, which belongs to no layer and so is
+		   covered here rather than in a test package of its own."
+		  'PharoVulkan-Tests' -> #( 'PharoVulkan-Core' 'PharoVulkan-Inspector' ) }
 ]
 
 { #category : 'reporting' }
@@ -339,6 +347,14 @@ PVArchitectureTest >> testSpirvTestsStayInsideTheirAllowedDependencies [
 PVArchitectureTest >> testTheAggregateTestPackageStaysInsideItsAllowedDependencies [
 
 	self assertEdgesOfPackageNamed: 'PharoVulkan-Tests'
+]
+
+{ #category : 'tests - layering' }
+PVArchitectureTest >> testTheInspectorPackageStaysInsideItsAllowedDependencies [
+	"The row every two-column view shows reaches no package of this project, which is what
+	 lets every package reach it."
+
+	self assertEdgesOfPackageNamed: 'PharoVulkan-Inspector'
 ]
 
 { #category : 'tests - scanning' }

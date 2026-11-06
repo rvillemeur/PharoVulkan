@@ -67,22 +67,30 @@ VkSubmitInfo2 >> inspectorBatch: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Batch'>
 	| rows |
 	rows := self submitRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Flags'. (rows at: #flagNames) }.
-				  { 'Waits on semaphores'. (rows at: #waitSemaphoreInfoCount) }.
-				  { 'Wait infos set'. (rows at: #waitSemaphoreInfosSet) }.
-				  { 'Command buffers'. (rows at: #commandBufferInfoCount) }.
-				  { 'Command buffer infos set'.
-				  (rows at: #commandBufferInfosSet) }.
-				  { 'Signals semaphores'. (rows at: #signalSemaphoreInfoCount) }.
-				  { 'Signal infos set'. (rows at: #signalSemaphoreInfosSet) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Flags' value: (rows at: #flagNames)).
+				  (PVFactRow
+					   name: 'Waits on semaphores'
+					   value: (rows at: #waitSemaphoreInfoCount)).
+				  (PVFactRow
+					   name: 'Wait infos set'
+					   value: (rows at: #waitSemaphoreInfosSet)).
+				  (PVFactRow
+					   name: 'Command buffers'
+					   value: (rows at: #commandBufferInfoCount)).
+				  (PVFactRow
+					   name: 'Command buffer infos set'
+					   value: (rows at: #commandBufferInfosSet)).
+				  (PVFactRow
+					   name: 'Signals semaphores'
+					   value: (rows at: #signalSemaphoreInfoCount)).
+				  (PVFactRow
+					   name: 'Signal infos set'
+					   value: (rows at: #signalSemaphoreInfosSet)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

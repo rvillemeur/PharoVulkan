@@ -153,22 +153,27 @@ VkGraphicsPipelineCreateInfo >> inspectorGraphicsRequest: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Request'>
 	| rows |
 	rows := self graphicsRequestRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Stages'. (rows at: #stageCount) }.
-				  { 'Stage run given'. (rows at: #stagesGiven) }.
-				  { 'States given'. (rows at: #statesGiven) }.
-				  { 'Layout given'. (rows at: #layoutGiven) }.
-				  { 'Render pass given'. (rows at: #renderPassGiven) }.
-				  { 'Subpass'. (rows at: #subpass) }.
-				  { 'Derives from a pipeline'. (rows at: #derivesFromAPipeline) }.
-				  { 'Base pipeline index'. (rows at: #basePipelineIndex) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Stages' value: (rows at: #stageCount)).
+				  (PVFactRow
+					   name: 'Stage run given'
+					   value: (rows at: #stagesGiven)).
+				  (PVFactRow name: 'States given' value: (rows at: #statesGiven)).
+				  (PVFactRow name: 'Layout given' value: (rows at: #layoutGiven)).
+				  (PVFactRow
+					   name: 'Render pass given'
+					   value: (rows at: #renderPassGiven)).
+				  (PVFactRow name: 'Subpass' value: (rows at: #subpass)).
+				  (PVFactRow
+					   name: 'Derives from a pipeline'
+					   value: (rows at: #derivesFromAPipeline)).
+				  (PVFactRow
+					   name: 'Base pipeline index'
+					   value: (rows at: #basePipelineIndex)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

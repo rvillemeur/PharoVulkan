@@ -434,12 +434,17 @@ PVComputeTest >> testBenchmarkReportNamesTheKernelItDispatched [
 	 dispatches, so it cannot name a kernel other than the one that ran."
 
 	| kernel rows |
-	kernel := PVKernelExamples tiledMatmulFor: PVBenchmark defaultElementType.
-	rows := (PVBenchmark on: ctx order: 64 repeats: 1 kernel: kernel)
+	kernel := PVKernelExamples tiledMatmulFor:
+		          PVBenchmark defaultElementType.
+	rows := (PVBenchmark
+		         on: ctx
+		         order: 64
+		         repeats: 1
+		         kernel: kernel)
 		        run;
 		        reportRows.
-	self assert: (rows anySatisfy: [ :row |
-			 (row at: #value) = kernel selector asString ])
+	self assert:
+		(rows anySatisfy: [ :row | row value = kernel selector asString ])
 ]
 
 { #category : 'tests' }
@@ -448,10 +453,15 @@ PVComputeTest >> testBenchmarkReportNamesThePrecisionItMeasured [
 	 precision produced it."
 
 	| rows |
-	rows := (PVBenchmark on: ctx order: 64 repeats: 1 elementType: #f16) run; reportRows.
-	self
-		assert: (rows anySatisfy: [ :row |
-				 (row at: #name) = 'Element type' and: [ (row at: #value) = 'f16' ] ])
+	rows := (PVBenchmark
+		         on: ctx
+		         order: 64
+		         repeats: 1
+		         elementType: #f16)
+		        run;
+		        reportRows.
+	self assert: (rows anySatisfy: [ :row |
+			 row name = 'Element type' and: [ row value = 'f16' ] ])
 ]
 
 { #category : 'tests' }
@@ -462,7 +472,7 @@ PVComputeTest >> testBenchmarkReportRowsBeforeAnyRun [
 	| rows |
 	rows := (PVBenchmark on: ctx order: 64 repeats: 1) reportRows.
 	self assert: rows size equals: 1.
-	self assert: (rows first at: #value) equals: 'not run yet'
+	self assert: rows first value equals: 'not run yet'
 ]
 
 { #category : 'tests' }
@@ -627,24 +637,28 @@ PVComputeTest >> testComputeKernelPipelineExampleReportsEveryBindingAfterItsCont
 	 does not declare would show up as two different numbers. The invocation count is read
 	 back from the module's OpExecutionMode, so it cannot drift from the group the example
 	 dispatches."
+
 	| kernel rows bindings |
 	kernel := PVComputeExamples vectorAddKernelOnThisMachine.
 	rows := kernel pipelineReport.
 	bindings := rows select: [ :each |
-		            (each at: #name) beginsWith: PVComputeKernel bindingRowPrefix ].
+		            each name beginsWith: PVComputeKernel bindingRowPrefix ].
 	self assert: bindings size equals: PVComputeKernel exampleBufferCount.
 	bindings doWithIndex: [ :each :index |
-		self
-			assert: (each at: #name)
-			equals: PVComputeKernel bindingRowPrefix , (index - 1) printString ].
+			self
+				assert: each name
+				equals: PVComputeKernel bindingRowPrefix , (index - 1) printString ].
 	self
-		assert: (self valueOfRowNamed: PVComputeKernel moduleBindingRowName in: rows)
+		assert:
+		(self valueOfRowNamed: PVComputeKernel moduleBindingRowName in: rows)
 		equals: PVComputeKernel exampleBufferCount printString.
 	self
-		assert: (self valueOfRowNamed: PVComputeKernel invocationsRowName in: rows)
+		assert:
+		(self valueOfRowNamed: PVComputeKernel invocationsRowName in: rows)
 		equals: PVComputeKernel exampleElementCount printString.
 	self
-		assert: (self valueOfRowNamed: PVComputeKernel pipelineRowName in: rows)
+		assert:
+		(self valueOfRowNamed: PVComputeKernel pipelineRowName in: rows)
 		equals: PVComputeKernel pipelineAbsentLabel
 ]
 
@@ -653,27 +667,32 @@ PVComputeTest >> testComputeKernelPipelineViewShowsAPreparedPipelineWithoutMutat
 	"A kernel in the middle of a session is the interesting state: the pipeline is built and
 	 the bindings are live. Building the tab must not change what the kernel reports, and a
 	 kernel that has never been prepared must say so rather than reporting nothing."
+
 	| buffers kernel before |
-	buffers := (1 to: PVComputeKernel exampleBufferCount) collect: [ :each |
-		           VkBuffer
-			           storageBuffer: PVComputeKernel exampleElementCount
-			           on: ctx device ].
+	buffers := (1 to: PVComputeKernel exampleBufferCount) collect: [
+			           :each |
+			           VkBuffer
+				           storageBuffer: PVComputeKernel exampleElementCount
+				           on: ctx device ].
 	kernel := PVComputeKernel
 		          fromMethod: PVComputeKernel exampleKernelMethod
 		          on: ctx.
 	[
-	buffers do: [ :each | kernel bindBuffer: each ].
-	kernel prepare.
-	before := kernel pipelineReport.
-	self
-		assert: (self valueOfRowNamed: PVComputeKernel pipelineRowName in: before)
-		equals: PVComputeKernel pipelineBuiltLabel.
-	kernel inspectorPipeline: SpPresenter new.
-	self
-		assertCollection: (kernel pipelineReport collect: [ :each | each at: #value ])
-		hasSameElements: (before collect: [ :each | each at: #value ]) ] ensure: [
-		kernel destroy.
-		buffers do: [ :each | each destroy ] ].
+		buffers do: [ :each | kernel bindBuffer: each ].
+		kernel prepare.
+		before := kernel pipelineReport.
+		self
+			assert:
+			(self valueOfRowNamed: PVComputeKernel pipelineRowName in: before)
+			equals: PVComputeKernel pipelineBuiltLabel.
+		kernel inspectorPipeline: SpPresenter new.
+		self
+			assertCollection:
+			(kernel pipelineReport collect: [ :each | each value ])
+			hasSameElements: (before collect: [ :each | each value ]) ]
+		ensure: [
+				kernel destroy.
+				buffers do: [ :each | each destroy ] ].
 	self
 		assert: (self
 				 valueOfRowNamed: PVComputeKernel pipelineRowName
@@ -1278,7 +1297,7 @@ PVComputeTest >> testSubgroupDotExampleReportsEveryRowAfterItsContextIsGone [
 	run := PVComputeExamples subgroupDotOf1024Elements.
 	self assert: run reportedSubgroupSize isInteger.
 	self assert: (run reportRows anySatisfy: [ :each |
-			 (each at: #name) = 'Subgroup width measured' ])
+			 each name = 'Subgroup width measured' ])
 ]
 
 { #category : 'tests' }
@@ -1350,7 +1369,7 @@ PVComputeTest >> testTiledComparisonExampleReportsEveryRowAfterItsContextIsGone 
 	rows := comparison reportRows.
 	self assert: rows size > 1.
 	rows do: [ :each |
-		self deny: (each at: #value) isEmpty description: (each at: #name) ]
+		self deny: each value isEmpty description: each name ]
 ]
 
 { #category : 'tests' }
@@ -1373,9 +1392,10 @@ PVComputeTest >> testTiledComparisonReportBeforeAnyRun [
 	 of nothing against nothing."
 
 	| rows |
-	rows := (PVTiledMatmulComparison on: ctx order: 64 repeats: 1) reportRows.
+	rows := (PVTiledMatmulComparison on: ctx order: 64 repeats: 1)
+		        reportRows.
 	self assert: rows size equals: 1.
-	self assert: ((rows first at: #value) includesSubstring: 'not run')
+	self assert: (rows first value includesSubstring: 'not run')
 ]
 
 { #category : 'tests-compute' }
@@ -1385,12 +1405,13 @@ PVComputeTest >> testTiledComparisonReportNamesTheCompiledKernel [
 
 	| names |
 	names := ((PVTiledMatmulComparison on: ctx order: 64 repeats: 1) run
-		          reportRows collect: [ :each | each at: #name ]) asArray.
+		          reportRows collect: [ :each | each name ]) asArray.
 	self assert: (names includes: 'Compiled milliseconds').
 	self assert: (names includes: 'Compiled GFLOP/s').
 	self assert: (names includes: 'Cost of going through the DSL').
 	self assert:
-		(names includes: 'Largest difference between compiled and hand-built')
+		(names includes:
+			 'Largest difference between compiled and hand-built')
 ]
 
 { #category : 'tests' }
@@ -1594,5 +1615,5 @@ PVComputeTest >> testVectorAddFromCompiledMethod [
 
 { #category : 'support' }
 PVComputeTest >> valueOfRowNamed: aString in: someRows [
-	^ (someRows detect: [ :each | (each at: #name) = aString ]) at: #value
+	^ (someRows detect: [ :each | each name = aString ]) value
 ]

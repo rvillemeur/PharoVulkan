@@ -71,13 +71,12 @@ VkStructure class >> inspectorWriters: aBuilder [
 	 duplication shows up as a duplication."
 
 	<inspectorPresentationOrder: 50 title: 'Writers'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Method' evaluated: [ :each |
-				   each at: #method ]);
-		  addColumn: (SpStringTableColumn title: 'Fields' evaluated: [ :each |
-				   each at: #fields ]);
-		  items: self writerRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self writerRows collect: [ :each |
+				   PVFactRow name: (each at: #method) value: (each at: #fields) ])
+		  nameColumn: 'Method'
+		  valueColumn: 'Fields'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }
@@ -293,13 +292,12 @@ VkStructure >> inspectorFields: aBuilder [
 	 here and not on one subclass."
 
 	<inspectorPresentationOrder: 20 title: 'Fields'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Field' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Says' evaluated: [ :each |
-					   each second ]);
-		  items: self fieldReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self fieldReport collect: [ :each |
+				   PVFactRow name: each first value: each second ])
+		  nameColumn: 'Field'
+		  valueColumn: 'Says'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }

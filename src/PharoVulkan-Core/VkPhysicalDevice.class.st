@@ -247,13 +247,12 @@ VkPhysicalDevice >> inspectorCompute: aBuilder [
 	 the compiler uses. Nothing here writes to the device or its properties."
 
 	<inspectorPresentationOrder: 30 title: 'Compute'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Capability' evaluated: [ :each |
-					   each key ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each value ]);
-		  items: self computeCapabilityRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self computeCapabilityRows collect: [ :each |
+				   PVFactRow name: each key value: each value ])
+		  nameColumn: 'Capability'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }
@@ -268,14 +267,14 @@ VkPhysicalDevice >> inspectorExtensions: aBuilder [
 
 { #category : 'inspector' }
 VkPhysicalDevice >> inspectorHalfPrecision: aBuilder [
+
 	<inspectorPresentationOrder: 20 title: 'Half precision'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Requirement' evaluated: [ :each |
-				   each key ]);
-		  addColumn: (SpStringTableColumn title: 'Supported' evaluated: [ :each |
-				   each value printString ]);
-		  items: self halfPrecisionReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self halfPrecisionReport collect: [ :each |
+				   PVFactRow name: each key value: each value ])
+		  nameColumn: 'Requirement'
+		  valueColumn: 'Supported'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }

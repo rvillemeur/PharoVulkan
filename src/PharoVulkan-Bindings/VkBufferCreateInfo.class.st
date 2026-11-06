@@ -79,13 +79,12 @@ VkBufferCreateInfo >> inspectorRequest: aBuilder [
 	 Fields tab, and this tab names them."
 
 	<inspectorPresentationOrder: 30 title: 'Request'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Attribute' evaluated: [ :each |
-				   each at: #attribute ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each at: #value ]);
-		  items: self requestRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self requestRows collect: [ :each |
+				   PVFactRow name: (each at: #attribute) value: (each at: #value) ])
+		  nameColumn: 'Attribute'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

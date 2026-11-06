@@ -71,15 +71,11 @@ PVCooperativeMatrixSurvey >> inspectorCooperativeMatrix: aBuilder [
 	 device that would lift it. Each row is asked of the survey rather than written here."
 
 	<inspectorPresentationOrder: 10 title: 'Cooperative matrix'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Device' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Cooperative matrix' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Device'
+		  valueColumn: 'Cooperative matrix'
+		  in: aBuilder
 ]
 
 { #category : 'reporting' }
@@ -89,16 +85,16 @@ PVCooperativeMatrixSurvey >> reportRows [
 
 	| rows |
 	rows := deviceReports collect: [ :each |
-		        Dictionary newFrom: {
-				        (#name -> ((each at: #chosen)
+			        PVFactRow
+				        name: ((each at: #chosen)
 						         ifTrue: [ (each at: #name) , ' (this context)' ]
-						         ifFalse: [ each at: #name ])).
-				        (#value -> ((each at: #supported)
+						         ifFalse: [ each at: #name ])
+				        value: ((each at: #supported)
 						         ifTrue: [ 'reports the extension' ]
-						         ifFalse: [ 'does not report it' ])) } ].
-	^ rows asArray , { (Dictionary newFrom: {
-			   (#name -> 'Verdict').
-			   (#value -> (self skipReason ifNil: [ 'available, nothing skipped' ])) }) }
+						         ifFalse: [ 'does not report it' ]) ].
+	^ rows asArray , { (PVFactRow
+		   name: 'Verdict'
+		   value: (self skipReason ifNil: [ 'available, nothing skipped' ])) }
 ]
 
 { #category : 'initialization' }

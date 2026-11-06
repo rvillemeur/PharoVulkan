@@ -85,19 +85,27 @@ VkRenderPassCreateInfo >> inspectorRequest: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Request'>
 	| rows |
 	rows := self passRequestRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Asks' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Attachments'. (rows at: #attachmentCount) }.
-				  { 'Attachment run set'. (rows at: #attachmentsSet) }.
-				  { 'Subpasses'. (rows at: #subpassCount) }.
-				  { 'Subpass run set'. (rows at: #subpassesSet) }.
-				  { 'Dependencies'. (rows at: #dependencyCount) }.
-				  { 'Dependency run set'. (rows at: #dependenciesSet) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Attachments'
+					   value: (rows at: #attachmentCount)).
+				  (PVFactRow
+					   name: 'Attachment run set'
+					   value: (rows at: #attachmentsSet)).
+				  (PVFactRow name: 'Subpasses' value: (rows at: #subpassCount)).
+				  (PVFactRow
+					   name: 'Subpass run set'
+					   value: (rows at: #subpassesSet)).
+				  (PVFactRow
+					   name: 'Dependencies'
+					   value: (rows at: #dependencyCount)).
+				  (PVFactRow
+					   name: 'Dependency run set'
+					   value: (rows at: #dependenciesSet)) }
+		  nameColumn: 'Asks'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

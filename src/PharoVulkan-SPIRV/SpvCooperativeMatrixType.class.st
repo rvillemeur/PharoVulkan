@@ -74,13 +74,11 @@ SpvCooperativeMatrixType >> inspectorInstruction: aBuilder [
 	 an id, which is why none of these numbers reads as the shape itself."
 
 	<inspectorPresentationOrder: 10 title: 'Instruction'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Position' evaluated: [ :each |
-				   (each at: #position) printString ]);
-		  addColumn: (SpStringTableColumn title: 'Operand id' evaluated: [ :each |
-				   (each at: #operand) printString ]);
-		  items: self instructionRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self instructionRows
+		  nameColumn: 'Position'
+		  valueColumn: 'Operand id'
+		  in: aBuilder
 ]
 
 { #category : 'abstract' }
@@ -101,14 +99,10 @@ SpvCooperativeMatrixType >> instruction [
 { #category : 'accessing' }
 SpvCooperativeMatrixType >> instructionRows [
 	"The instruction this type emits, operand by operand, asked of the instruction itself so
-	 a row cannot describe an operand order the serialiser does not use. Read only."
+	 a row cannot describe an operand order the serialiser does not use."
 
-	| emitted |
-	emitted := self instruction.
-	^ (emitted operands withIndexCollect: [ :operand :index |
-		   (Dictionary newFrom: {
-			    (#position -> index).
-			    (#operand -> operand) }) beReadOnlyObject ]) asArray
+	^ self instruction operands withIndexCollect: [ :operand :index |
+		  PVFactRow name: index value: operand ]
 ]
 
 { #category : 'abstract' }

@@ -282,15 +282,11 @@ PVCooperativeMatrixKernel >> inspectorModule: aBuilder [
 	 claim an instruction the build stopped emitting."
 
 	<inspectorPresentationOrder: 10 title: 'Module'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }
@@ -489,38 +485,35 @@ PVCooperativeMatrixKernel >> reportRows [
 	| counts |
 	counts := self opcodeCounts.
 	^ {
-		  (self rowNamed: 'Shape' value: self shapeDescription).
-		  (self rowNamed: 'Scope' value: (VkScope nameOf: self class subgroupScope)).
-		  (self rowNamed: 'Local size' value: self localSizeDescription).
-		  (self
-			   rowNamed: 'Capabilities'
-			   value: self module capabilities asArray printString).
-		  (self
-			   rowNamed: 'Extensions'
-			   value: self module extensions asArray printString).
-		  (self rowNamed: 'Memory model' value: self memoryModelDescription).
-		  (self
-			   rowNamed: 'Matrix types'
-			   value: (self countOf: SpvOpcode opTypeCooperativeMatrixKHR in: counts)).
-		  (self
-			   rowNamed: 'Loads'
-			   value: (self countOf: SpvOpcode opCooperativeMatrixLoadKHR in: counts)).
-		  (self
-			   rowNamed: 'Multiply-accumulates'
-			   value: (self countOf: SpvOpcode opCooperativeMatrixMulAddKHR in: counts)).
-		  (self
-			   rowNamed: 'Stores'
-			   value: (self countOf: SpvOpcode opCooperativeMatrixStoreKHR in: counts)).
-		  (self rowNamed: 'Module bytes' value: self spirv size printString) }
-]
-
-{ #category : 'reporting' }
-PVCooperativeMatrixKernel >> rowNamed: aString value: aValueString [
-	"Read only: opening the tab must not change the kernel."
-
-	^ (Dictionary newFrom: {
-			   (#name -> aString).
-			   (#value -> aValueString) }) beReadOnlyObject
+		  (PVFactRow name: 'Shape' value: self shapeDescription).
+		  (PVFactRow
+			   name: 'Scope'
+			   value: (VkScope nameOf: self class subgroupScope)).
+		  (PVFactRow name: 'Local size' value: self localSizeDescription).
+		  (PVFactRow
+			   name: 'Capabilities'
+			   value: self module capabilities asArray).
+		  (PVFactRow
+			   name: 'Extensions'
+			   value: self module extensions asArray).
+		  (PVFactRow name: 'Memory model' value: self memoryModelDescription).
+		  (PVFactRow
+			   name: 'Matrix types'
+			   value:
+			   (self countOf: SpvOpcode opTypeCooperativeMatrixKHR in: counts)).
+		  (PVFactRow
+			   name: 'Loads'
+			   value:
+			   (self countOf: SpvOpcode opCooperativeMatrixLoadKHR in: counts)).
+		  (PVFactRow
+			   name: 'Multiply-accumulates'
+			   value:
+			   (self countOf: SpvOpcode opCooperativeMatrixMulAddKHR in: counts)).
+		  (PVFactRow
+			   name: 'Stores'
+			   value:
+			   (self countOf: SpvOpcode opCooperativeMatrixStoreKHR in: counts)).
+		  (PVFactRow name: 'Module bytes' value: self spirv size) }
 ]
 
 { #category : 'building' }

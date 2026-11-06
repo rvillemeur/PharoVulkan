@@ -77,16 +77,15 @@ VkSemaphoreWrapper >> inspectorSemaphore: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Semaphore'>
 	| rows |
 	rows := self semaphoreRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Reserved flags'. (rows at: #reservedFlags) }.
-				  { 'Handle live'. (rows at: #live) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Reserved flags'
+					   value: (rows at: #reservedFlags)).
+				  (PVFactRow name: 'Handle live' value: (rows at: #live)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }

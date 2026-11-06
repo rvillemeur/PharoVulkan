@@ -11,14 +11,14 @@ existing `OSSDL2BackendWindow` infrastructure.
 ## Current state
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
-`PACKAGE-PLAN.md` are all done. The suite is 641 tests over ten test classes and passes.
+`PACKAGE-PLAN.md` are all done. The suite is 647 tests over eleven test classes and passes.
 `doc/REVIEW-PLAN.md` holds the architecture and code review, and says which of its points are done.
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
 
 ## Package layout
 
-Fifteen packages: eight of code, seven of tests. Source layout `src/<PackageName>/` in Tonel
+Sixteen packages: nine of code, seven of tests. Source layout `src/<PackageName>/` in Tonel
 format. Iceberg manages commits of `src/` — do not use git directly for it.
 
 | Package | Classes | Purpose |
@@ -30,7 +30,8 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 | `PharoVulkan-Compute` | 15 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks |
 | `PharoVulkan-Graphics` | 17 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
 | `PharoVulkan-Generator` | 13 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes. Dev time only, outside `default` |
-| `PharoVulkan-Examples` | 18 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples the inspector views and the tests read |
+| `PharoVulkan-Examples` | 19 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples the inspector views and the tests read |
+| `PharoVulkan-Inspector` | 1 | `PVFactRow`, one line of the two-column fact table every inspector view of this project shows, and the one declaration of that table. Depends on nothing, so every other package may require it |
 
 | Test package | Test classes | Fixtures |
 |---|---|---|
@@ -40,7 +41,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 | `PharoVulkan-Core-Tests` | `VkCoreTest` (68) | `PVQueueFamilyStub` |
 | `PharoVulkan-Compute-Tests` | `PVComputeTest` (63) | `PVNoSubgroupArithmeticStub` |
 | `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (53), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
-| `PharoVulkan-Tests` | `PVArchitectureTest` (21) | `PVNestedBlockReferenceFixture` |
+| `PharoVulkan-Tests` | `PVArchitectureTest` (22), `PVFactRowTest` (5) | `PVNestedBlockReferenceFixture` |
 
 A test package is named for the package it covers and ends in `-Tests`, which is what Pharo's
 tools and Renraku's `ReTestClassNotInPackageWithTestEndingNameRule` expect. Its `Tests` tag holds
@@ -49,7 +50,7 @@ test classes and its `Fixtures` tag holds the stubs those tests build.
 ### Which package may depend on which
 
 This file does not say. `PVArchitectureTest class >> allowedDependencies` does, with one entry per
-package, and twenty tests hold both the code and the baseline to it: fifteen read each package's
+package, and twenty-one tests hold both the code and the baseline to it: sixteen read each package's
 own methods — `package methods`, so extension methods on base classes are read too — four check
 the table against the organiser, against what the code really references and against
 `BaselineOfPharoVulkan`, and one proves the scan finds a reference planted inside three nested
@@ -58,7 +59,8 @@ needs it; adding a package means giving it an entry, or the meta test fails.
 
 The baseline's groups: `bindings`, `spirv`, `compiler` (SPIR-V and compiler, no driver code, so it
 loads on a machine with no `libvulkan.so.1`), `core`, `compute`, `graphics`, `default` (Bindings,
-Core, Compute and Graphics), `generator`, `examples` and `tests`.
+Core, Compute and Graphics), `generator`, `examples` and `tests`. `PharoVulkan-Inspector` is in no
+group of its own: the packages that build rows require it, so every group that loads one loads it.
 
 ## Working on a phase
 

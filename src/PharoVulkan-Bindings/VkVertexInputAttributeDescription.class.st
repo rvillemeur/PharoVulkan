@@ -77,17 +77,17 @@ VkVertexInputAttributeDescription >> inspectorAttribute: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Attribute'>
 	| rows |
 	rows := self attributeRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Describes' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Shader location'. (rows at: #location) }.
-				  { 'Read from binding'. (rows at: #binding) }.
-				  { 'Format'. (rows at: #formatName) }.
-				  { 'Byte offset in the vertex'. (rows at: #offset) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Shader location' value: (rows at: #location)).
+				  (PVFactRow name: 'Read from binding' value: (rows at: #binding)).
+				  (PVFactRow name: 'Format' value: (rows at: #formatName)).
+				  (PVFactRow
+					   name: 'Byte offset in the vertex'
+					   value: (rows at: #offset)) }
+		  nameColumn: 'Describes'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

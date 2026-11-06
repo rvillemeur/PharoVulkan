@@ -68,17 +68,23 @@ VkPipelineVertexInputStateCreateInfo >> inspectorVertexInput: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Vertex input'>
 	| rows |
 	rows := self vertexInputRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Reads' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Buffer bindings'. (rows at: #vertexBindingDescriptionCount) }.
-				  { 'Binding run given'. (rows at: #bindingRunGiven) }.
-				  { 'Attributes'. (rows at: #vertexAttributeDescriptionCount) }.
-				  { 'Attribute run given'. (rows at: #attributeRunGiven) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Buffer bindings'
+					   value: (rows at: #vertexBindingDescriptionCount)).
+				  (PVFactRow
+					   name: 'Binding run given'
+					   value: (rows at: #bindingRunGiven)).
+				  (PVFactRow
+					   name: 'Attributes'
+					   value: (rows at: #vertexAttributeDescriptionCount)).
+				  (PVFactRow
+					   name: 'Attribute run given'
+					   value: (rows at: #attributeRunGiven)) }
+		  nameColumn: 'Reads'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

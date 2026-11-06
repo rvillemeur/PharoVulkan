@@ -136,15 +136,15 @@ VkPipelineColorBlendAttachmentState >> inspectorBlendAttachment: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Blending'>
 	| rows |
 	rows := self blendAttachmentRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Blending'. (rows at: #blending) }.
-				  { 'Channels written'. (rows at: #colorWriteMaskNames) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Blending' value: (rows at: #blending)).
+				  (PVFactRow
+					   name: 'Channels written'
+					   value: (rows at: #colorWriteMaskNames)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

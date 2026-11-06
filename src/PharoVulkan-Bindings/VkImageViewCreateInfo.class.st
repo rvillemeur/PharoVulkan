@@ -98,21 +98,18 @@ VkImageViewCreateInfo >> inspectorView: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'View'>
 	| rows |
 	rows := self viewRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Image set'. (rows at: #imageSet) }.
-				  { 'Format'. (rows at: #formatName) }.
-				  { 'Aspect'. (rows at: #aspectNames) }.
-				  { 'Mip levels'. (rows at: #mipLevels) }.
-				  { 'Array layers'. (rows at: #arrayLayers) }.
-				  { 'Swizzle'. (rows at: #swizzleNames) }.
-				  { 'Unswizzled'. (rows at: #identitySwizzle) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Image set' value: (rows at: #imageSet)).
+				  (PVFactRow name: 'Format' value: (rows at: #formatName)).
+				  (PVFactRow name: 'Aspect' value: (rows at: #aspectNames)).
+				  (PVFactRow name: 'Mip levels' value: (rows at: #mipLevels)).
+				  (PVFactRow name: 'Array layers' value: (rows at: #arrayLayers)).
+				  (PVFactRow name: 'Swizzle' value: (rows at: #swizzleNames)).
+				  (PVFactRow name: 'Unswizzled' value: (rows at: #identitySwizzle)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'reporting' }

@@ -183,27 +183,40 @@ VkSwapchainCreateInfoKHR >> inspectorSwapchain: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Swapchain'>
 	| rows |
 	rows := self swapchainRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Asks for' evaluated: [ :each | each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Surface given'. (rows at: #surfaceSet) }.
-				  { 'Images'. (rows at: #minImageCount) }.
-				  { 'Format'. (rows at: #formatName) }.
-				  { 'Colour space'. (rows at: #colorSpaceName) }.
-				  { 'Extent'. (rows at: #extent) }.
-				  { 'Array layers'. (rows at: #imageArrayLayers) }.
-				  { 'Image usage'. (rows at: #usageNames) }.
-				  { 'Shared between queue families'.
-				  (rows at: #sharedBetweenQueueFamilies) }.
-				  { 'Transform'. (rows at: #preTransformNames) }.
-				  { 'Composite alpha'. (rows at: #compositeAlphaNames) }.
-				  { 'Present mode'. (rows at: #presentModeName) }.
-				  { 'Discards obscured pixels'. (rows at: #discardsObscuredPixels) }.
-				  { 'Replaces a swapchain'. (rows at: #replacesASwapchain) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Surface given' value: (rows at: #surfaceSet)).
+				  (PVFactRow name: 'Images' value: (rows at: #minImageCount)).
+				  (PVFactRow name: 'Format' value: (rows at: #formatName)).
+				  (PVFactRow
+					   name: 'Colour space'
+					   value: (rows at: #colorSpaceName)).
+				  (PVFactRow name: 'Extent' value: (rows at: #extent)).
+				  (PVFactRow
+					   name: 'Array layers'
+					   value: (rows at: #imageArrayLayers)).
+				  (PVFactRow name: 'Image usage' value: (rows at: #usageNames)).
+				  (PVFactRow
+					   name: 'Shared between queue families'
+					   value: (rows at: #sharedBetweenQueueFamilies)).
+				  (PVFactRow
+					   name: 'Transform'
+					   value: (rows at: #preTransformNames)).
+				  (PVFactRow
+					   name: 'Composite alpha'
+					   value: (rows at: #compositeAlphaNames)).
+				  (PVFactRow
+					   name: 'Present mode'
+					   value: (rows at: #presentModeName)).
+				  (PVFactRow
+					   name: 'Discards obscured pixels'
+					   value: (rows at: #discardsObscuredPixels)).
+				  (PVFactRow
+					   name: 'Replaces a swapchain'
+					   value: (rows at: #replacesASwapchain)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

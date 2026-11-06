@@ -473,8 +473,8 @@ VkCoreTest >> testCooperativeMatrixSurveyNamesTheDevicesThatSupportIt [
 		assert: survey availableSomewhere
 		equals: survey supportingDeviceNames notEmpty.
 	survey supportingDeviceNames do: [ :each |
-		self assert: (survey deviceReports anySatisfy: [ :report |
-				 (report at: #name) = each and: [ report at: #supported ] ]) ]
+			self assert: (survey deviceReports anySatisfy: [ :report |
+					 (report at: #name) = each and: [ report at: #supported ] ]) ]
 ]
 
 { #category : 'tests' }
@@ -485,7 +485,7 @@ VkCoreTest >> testCooperativeMatrixSurveyReportsAfterItsContextIsGone [
 	| survey |
 	survey := PVCooperativeMatrixExamples surveyOfThisMachine.
 	self assert: survey deviceReports notEmpty.
-	self assert: (survey reportRows last at: #name) equals: 'Verdict'
+	self assert: survey reportRows last name equals: 'Verdict'
 ]
 
 { #category : 'tests - descriptors' }
@@ -533,33 +533,39 @@ VkCoreTest >> testDescriptorPoolViewNamesBothCountsAndTheTypeItRequests [
 	 asking VkDescriptorType which constant answers the value the create info writes, so it
 	 cannot name a type the pool does not request. Building the tab must not change what the
 	 pool reports."
+
 	| pool rows |
 	pool := VkResourceExamples storageBufferPoolForThreeBuffers.
 	rows := pool poolReport.
 	self
-		assert: (self valueOfRowNamed: VkDescriptorPool maxSetsRowName in: rows)
+		assert:
+		(self valueOfRowNamed: VkDescriptorPool maxSetsRowName in: rows)
 		equals: VkDescriptorPool exampleMaxSets printString.
 	self
-		assert:
-		(self valueOfRowNamed: VkDescriptorPool descriptorCountRowName in: rows)
+		assert: (self
+				 valueOfRowNamed: VkDescriptorPool descriptorCountRowName
+				 in: rows)
 		equals: VkDescriptorPool exampleDescriptorCount printString.
-	self
-		assert:
-		(self valueOfRowNamed: VkDescriptorPool setsAllocatedRowName in: rows)
-		equals: VkDescriptorPool exampleMaxSets printString.
-	self
-		assert:
-		(self valueOfRowNamed: VkDescriptorPool descriptorTypeRowName in: rows)
-		equals: #storageBuffer asString.
-	pool inspectorPool: SpPresenter new.
-	self
-		assertCollection: (pool poolReport collect: [ :each | each at: #value ])
-		hasSameElements: (rows collect: [ :each | each at: #value ]).
 	self
 		assert:
 		(self
 			 valueOfRowNamed: VkDescriptorPool setsAllocatedRowName
-			 in: VkDescriptorPool new poolReport)
+			 in: rows)
+		equals: VkDescriptorPool exampleMaxSets printString.
+	self
+		assert:
+		(self
+			 valueOfRowNamed: VkDescriptorPool descriptorTypeRowName
+			 in: rows)
+		equals: #storageBuffer asString.
+	pool inspectorPool: SpPresenter new.
+	self
+		assertCollection: (pool poolReport collect: [ :each | each value ])
+		hasSameElements: (rows collect: [ :each | each value ]).
+	self
+		assert: (self
+				 valueOfRowNamed: VkDescriptorPool setsAllocatedRowName
+				 in: VkDescriptorPool new poolReport)
 		equals: 0 printString
 ]
 
@@ -1298,5 +1304,5 @@ VkCoreTest >> testUnsatisfiedRequirementsMessageNamesEveryRequirementAsked [
 
 { #category : 'support' }
 VkCoreTest >> valueOfRowNamed: aString in: someRows [
-	^ (someRows detect: [ :each | (each at: #name) = aString ]) at: #value
+	^ (someRows detect: [ :each | each name = aString ]) value
 ]

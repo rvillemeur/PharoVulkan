@@ -424,8 +424,8 @@ VkBindingsTest >> testColorBlendExamplesAndTabsAgree [
 	rows := attachment blendAttachmentRows.
 	table := attachment inspectorBlendAttachment: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self
 		assert: attachment colorWriteMask
 		equals: VkColorComponent allChannels.
@@ -1014,8 +1014,8 @@ VkBindingsTest >> testComputePipelineRequestTabShowsEveryRowTheRequestReports [
 	rows := example computePipelineRows.
 	table := example inspectorComputePipeline: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :each | self assert: (shown includes: each) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :each | self assert: (shown includes: each asString) ].
 	self assert: example computePipelineRows equals: rows
 ]
 
@@ -1713,8 +1713,8 @@ VkBindingsTest >> testDynamicStateExampleAndTabAgree [
 	self deny: (rows at: #stateRunGiven).
 	table := state inspectorDynamicState: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ]
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ]
 ]
 
 { #category : 'tests - dynamic state' }
@@ -2121,12 +2121,12 @@ VkBindingsTest >> testFloat16FieldReportReEncodesItsOwnWord [
 	"The Half tab's last row is evidence, so assert it: decode followed by encode must
 	 return the word it started from, including at the subnormal and infinite ends."
 
-	#( 16r0000 16r8000 16r0001 16r03FF 16r0400 16r3555 16r7BFF 16r7C00 16rFC00 )
-		do: [ :each |
+	#( 16r0000 16r8000 16r0001 16r03FF 16r0400 16r3555 16r7BFF 16r7C00
+	   16rFC00 ) do: [ :each |
 			| half |
 			half := PVFloat16 on: each.
 			self
-				assert: (half fieldReport last at: #value)
+				assert: half fieldReport last value
 				equals: each printStringHex ]
 ]
 
@@ -2528,8 +2528,8 @@ VkBindingsTest >> testGraphicsRequestTabShowsEveryRowItsReportAnswers [
 	rows := request graphicsRequestRows.
 	table := request inspectorGraphicsRequest: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self assert: request graphicsRequestRows equals: rows
 ]
 
@@ -2919,8 +2919,8 @@ VkBindingsTest >> testInputAssemblyExampleAndTabAgree [
 	self assert: state topology equals: VkPrimitiveTopology triangleList.
 	table := state inspectorInputAssembly: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self assert: state inputAssemblyRows equals: rows
 ]
 
@@ -3171,8 +3171,8 @@ VkBindingsTest >> testMultisampleStateExampleAndTabAgree [
 		equals: VkSampleCount count1Bit.
 	table := state inspectorMultisample: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self assert: state multisampleRows equals: rows
 ]
 
@@ -3277,16 +3277,18 @@ VkBindingsTest >> testNestedPropertiesNameReadsThroughTheOuterStore [
 		equals: (String new: fieldSize withAll: $A)
 ]
 
-{ #category : 'tests - layering' }
+{ #category : 'tests - architecture' }
 VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage [
 	"The bindings are the bottom of this project: declared structures, declared calls and the
 	 constant tables they are written in terms of. Nothing here may name a class of a package above
 	 it, because a package that loads on its own cannot be made to wait for the lifecycle, the
-	 compiler or the renderer. Blocks are read as well as methods: most driver calls in this project
-	 sit inside an ensure: block, and so do several of the reads a report row makes. The walk asks
-	 the package for its methods rather than for its classes, because a package also owns the
-	 methods it adds to classes it does not define, and those are where unit 8's rename hid a
-	 reference from here to Core and another to Compute for a whole commit."
+	 compiler or the renderer. The one exception is the row a two-column inspector view shows,
+	 which reaches nothing itself and so is below the bindings rather than above them. Blocks are
+	 read as well as methods: most driver calls in this project sit inside an ensure: block, and so
+	 do several of the reads a report row makes. The walk asks the package for its methods rather
+	 than for its classes, because a package also owns the methods it adds to classes it does not
+	 define, and those are where unit 8's rename hid a reference from here to Core and another to
+	 Compute for a whole commit."
 
 	| deep bindings offenders |
 	deep := nil.
@@ -3304,7 +3306,9 @@ VkBindingsTest >> testNoBindingReachesAnotherPharoVulkanPackage [
 	offenders := OrderedCollection new.
 	bindings methods do: [ :method |
 		(deep value: method value: Set new) do: [ :target |
-			(target package notNil and: [ target package ~= bindings ]) ifTrue: [
+			(target package notNil and: [
+				 target package ~= bindings and: [
+					 target package ~= PVFactRow package ] ]) ifTrue: [
 				(target package name beginsWith: self class projectPackageNamePrefix) ifTrue: [
 					offenders add:
 						method methodClass name , ' >> ' , method selector , ' -> '
@@ -4106,8 +4110,8 @@ VkBindingsTest >> testPresentRequestTabShowsEveryRowTheRequestReports [
 	rows := example presentRows.
 	table := example inspectorPresent: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :each | self assert: (shown includes: each) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :each | self assert: (shown includes: each asString) ].
 	self assert: example presentRows equals: rows
 ]
 
@@ -4209,8 +4213,8 @@ VkBindingsTest >> testRasterizationStateExampleAndTabAgree [
 	self assert: state polygonMode equals: VkPolygonMode fill.
 	table := state inspectorRasterization: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self assert: state rasterizationRows equals: rows
 ]
 
@@ -4744,8 +4748,8 @@ VkBindingsTest >> testShaderStageTabShowsEveryRowTheStageReports [
 	rows := stage stageRows.
 	table := stage inspectorStage: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self assert: stage stageRows equals: rows
 ]
 
@@ -5332,8 +5336,8 @@ VkBindingsTest >> testSwapchainRequestTabShowsEveryRowTheRequestReports [
 	rows := example swapchainRows.
 	table := example inspectorSwapchain: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :each | self assert: (shown includes: each) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :each | self assert: (shown includes: each asString) ].
 	self assert: example swapchainRows equals: rows
 ]
 
@@ -5627,8 +5631,8 @@ VkBindingsTest >> testVertexInputTabsShowEveryRowTheirReportsAnswer [
 		rows := example perform: each second.
 		table := example perform: each third with: SpPresenter new.
 		self assert: table items size equals: rows size.
-		shown := table items collect: [ :item | item second ].
-		rows valuesDo: [ :value | self assert: (shown includes: value) ].
+		shown := table items collect: [ :item | item value ].
+		rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 		self assert: (example perform: each second) equals: rows ]
 ]
 
@@ -5845,8 +5849,8 @@ VkBindingsTest >> testViewportStateExampleAndTabAgree [
 		equals: VkGraphicsPipeline viewportsPerPipeline.
 	table := state inspectorViewport: SpPresenter new.
 	self assert: table items size equals: rows size.
-	shown := table items collect: [ :each | each second ].
-	rows valuesDo: [ :value | self assert: (shown includes: value) ].
+	shown := table items collect: [ :each | each value ].
+	rows valuesDo: [ :value | self assert: (shown includes: value asString) ].
 	self assert: state viewportRows equals: rows
 ]
 

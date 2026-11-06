@@ -122,17 +122,16 @@ VkFenceWrapper >> inspectorFence: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Fence'>
 	| rows |
 	rows := self fenceRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Flags'. (rows at: #flagNames) }.
-				  { 'Signalled at creation'. (rows at: #signalledAtCreation) }.
-				  { 'Handle live'. (rows at: #live) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Flags' value: (rows at: #flagNames)).
+				  (PVFactRow
+					   name: 'Signalled at creation'
+					   value: (rows at: #signalledAtCreation)).
+				  (PVFactRow name: 'Handle live' value: (rows at: #live)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'operations' }

@@ -143,15 +143,11 @@ PVBenchmark >> inspectorBenchmark: aBuilder [
 	 and the workgroup beside it is not a result anybody can repeat."
 
 	<inspectorPresentationOrder: 10 title: 'Benchmark'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }
@@ -186,42 +182,28 @@ PVBenchmark >> reportRows [
 	"One row per fact about the measurement. Every number is asked of the result or of the
 	 kernel's own annotation, so the table cannot disagree with what ran."
 
-	result ifNil: [
-		^ { (Dictionary newFrom: {
-				    (#name -> 'State').
-				    (#value -> 'not run yet') }) } ].
+	result ifNil: [ ^ { (PVFactRow name: 'State' value: 'not run yet') } ].
 	^ {
-		  (self rowNamed: 'Element type' value: self elementType asString).
-		  (self rowNamed: 'Kernel' value: self kernelMethod selector asString).
-		  (self rowNamed: 'Matrix order' value: result order printString).
-		  (self
-			   rowNamed: 'Workgroup width'
-			   value: self workgroupWidth printString).
-		  (self rowNamed: 'Groups per side' value: self groupCount printString).
-		  (self rowNamed: 'Dispatches timed' value: result repeats printString).
-		  (self
-			   rowNamed: 'Milliseconds per dispatch'
-			   value: result milliseconds printString).
-		  (self
-			   rowNamed: 'Floating point operations'
-			   value: result floatingPointOperations printString).
-		  (self
-			   rowNamed: 'GFLOP/s'
-			   value: (result gigaflopsPerSecond
-					    ifNil: [ 'too quick to measure' ]
-					    ifNotNil: [ :rate | rate printString ])) }
+		  (PVFactRow name: 'Element type' value: self elementType).
+		  (PVFactRow name: 'Kernel' value: self kernelMethod selector).
+		  (PVFactRow name: 'Matrix order' value: result order).
+		  (PVFactRow name: 'Workgroup width' value: self workgroupWidth).
+		  (PVFactRow name: 'Groups per side' value: self groupCount).
+		  (PVFactRow name: 'Dispatches timed' value: result repeats).
+		  (PVFactRow
+			   name: 'Milliseconds per dispatch'
+			   value: result milliseconds).
+		  (PVFactRow
+			   name: 'Floating point operations'
+			   value: result floatingPointOperations).
+		  (PVFactRow name: 'GFLOP/s' value: (result gigaflopsPerSecond
+				    ifNil: [ 'too quick to measure' ]
+				    ifNotNil: [ :rate | rate printString ])) }
 ]
 
 { #category : 'accessing' }
 PVBenchmark >> result [
 	^ result
-]
-
-{ #category : 'reporting' }
-PVBenchmark >> rowNamed: aString value: aValueString [
-	^ Dictionary newFrom: {
-			  (#name -> aString).
-			  (#value -> aValueString) }
 ]
 
 { #category : 'measuring' }

@@ -475,21 +475,32 @@ VkCommandBuffer >> inspectorBarrier: aBuilder [
 	<inspectorPresentationOrder: 40 title: 'Barrier'>
 	| rows |
 	rows := self barrierRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Waits on stage'. (rows at: #srcStageNames) }.
-				  { 'Waits on access'. (rows at: #srcAccessNames) }.
-				  { 'Visible to stage'. (rows at: #dstStageNames) }.
-				  { 'Visible to access'. (rows at: #dstAccessNames) }.
-				  { 'Memory barriers'. (rows at: #memoryBarrierCount) }.
-				  { 'Buffer barriers'. (rows at: #bufferMemoryBarrierCount) }.
-				  { 'Image barriers'. (rows at: #imageMemoryBarrierCount) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow
+					   name: 'Waits on stage'
+					   value: (rows at: #srcStageNames)).
+				  (PVFactRow
+					   name: 'Waits on access'
+					   value: (rows at: #srcAccessNames)).
+				  (PVFactRow
+					   name: 'Visible to stage'
+					   value: (rows at: #dstStageNames)).
+				  (PVFactRow
+					   name: 'Visible to access'
+					   value: (rows at: #dstAccessNames)).
+				  (PVFactRow
+					   name: 'Memory barriers'
+					   value: (rows at: #memoryBarrierCount)).
+				  (PVFactRow
+					   name: 'Buffer barriers'
+					   value: (rows at: #bufferMemoryBarrierCount)).
+				  (PVFactRow
+					   name: 'Image barriers'
+					   value: (rows at: #imageMemoryBarrierCount)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'inspector' }
@@ -502,18 +513,19 @@ VkCommandBuffer >> inspectorBuffer: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Buffer'>
 	| rows |
 	rows := self bufferRows.
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Property' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Level'. (rows at: #levelName) }.
-				  { 'Queue family'. (rows at: #queueFamilyIndex) }.
-				  { 'Recording flags'. (rows at: #recordingFlagNames) }.
-				  { 'Usable'. (rows at: #live) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Level' value: (rows at: #levelName)).
+				  (PVFactRow
+					   name: 'Queue family'
+					   value: (rows at: #queueFamilyIndex)).
+				  (PVFactRow
+					   name: 'Recording flags'
+					   value: (rows at: #recordingFlagNames)).
+				  (PVFactRow name: 'Usable' value: (rows at: #live)) }
+		  nameColumn: 'Property'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'recording' }

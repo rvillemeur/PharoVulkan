@@ -203,14 +203,13 @@ VkDescriptorPool >> inspectorPool: aBuilder [
 	"What this pool was built for. The rows come from the counts the create info wrote and
 	 from the type that same method requests, so the tab cannot claim a size the driver was
 	 not asked for."
+
 	<inspectorPresentationOrder: 10 title: 'Pool'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self poolReport;
-		  yourself
+	^ PVFactRow
+		  tableOf: self poolReport
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'private' }
@@ -244,22 +243,21 @@ VkDescriptorPool >> poolReport [
 	 of one set holding three descriptors is what a three-buffer kernel allocates. The count
 	 of sets handed out shows when the maxSets bound is reached, which is the error
 	 VK_ERROR_OUT_OF_POOL_MEMORY the driver answers one call later."
+
 	^ {
-		  (self
-			   rowNamed: self class maxSetsRowName
-			   value: (maxSets
-					    ifNil: [ self class notCreatedLabel ]
-					    ifNotNil: [ maxSets printString ])).
-		  (self
-			   rowNamed: self class descriptorCountRowName
+		  (PVFactRow name: self class maxSetsRowName value: (maxSets
+				    ifNil: [ self class notCreatedLabel ]
+				    ifNotNil: [ maxSets printString ])).
+		  (PVFactRow
+			   name: self class descriptorCountRowName
 			   value: (descriptorCount
 					    ifNil: [ self class notCreatedLabel ]
 					    ifNotNil: [ descriptorCount printString ])).
-		  (self
-			   rowNamed: self class setsAllocatedRowName
-			   value: self setsAllocated printString).
-		  (self
-			   rowNamed: self class descriptorTypeRowName
+		  (PVFactRow
+			   name: self class setsAllocatedRowName
+			   value: self setsAllocated).
+		  (PVFactRow
+			   name: self class descriptorTypeRowName
 			   value: self class descriptorTypeName) }
 ]
 
@@ -274,13 +272,6 @@ VkDescriptorPool >> poolSizeOutsideObjectMemory [
 		  type: self class descriptorType;
 		  descriptorCount: descriptorCount;
 		  yourself
-]
-
-{ #category : 'reporting' }
-VkDescriptorPool >> rowNamed: aString value: aValueString [
-	^ Dictionary newFrom: {
-			  (#name -> aString).
-			  (#value -> aValueString) }
 ]
 
 { #category : 'private' }

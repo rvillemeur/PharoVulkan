@@ -62,17 +62,17 @@ VkPipelineShaderStageCreateInfo >> inspectorStage: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Stage'>
 	| rows |
 	rows := self stageRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Shader stage'. (rows at: #stageName) }.
-				  { 'Module given'. (rows at: #moduleGiven) }.
-				  { 'Entry point'. (rows at: #entryPoint) }.
-				  { 'Specialization given'. (rows at: #specializationGiven) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Shader stage' value: (rows at: #stageName)).
+				  (PVFactRow name: 'Module given' value: (rows at: #moduleGiven)).
+				  (PVFactRow name: 'Entry point' value: (rows at: #entryPoint)).
+				  (PVFactRow
+					   name: 'Specialization given'
+					   value: (rows at: #specializationGiven)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

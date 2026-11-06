@@ -312,13 +312,12 @@ VkPhysicalDeviceLimits >> inspectorLimits: aBuilder [
 	 generated accessor, so neither column can drift from the structure. The store is only read."
 
 	<inspectorPresentationOrder: 10 title: 'Limits'>
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Limit' evaluated: [ :each |
-					   each ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   self printableValueOf: each ]);
-		  items: self class fieldSpec fieldNames;
-		  yourself
+	^ PVFactRow
+		  tableOf: (self class fieldSpec fieldNames collect: [ :each |
+				   PVFactRow name: each value: (self printableValueOf: each) ])
+		  nameColumn: 'Limit'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

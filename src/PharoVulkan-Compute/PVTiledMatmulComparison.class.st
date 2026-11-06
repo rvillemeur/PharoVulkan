@@ -91,15 +91,11 @@ PVTiledMatmulComparison >> inspectorComparison: aBuilder [
 	 the two results: a speedup without the agreement beside it says nothing."
 
 	<inspectorPresentationOrder: 10 title: 'Comparison'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing' }
@@ -161,55 +157,46 @@ PVTiledMatmulComparison >> reportRows [
 	 kernel itself, so the table cannot disagree with what ran."
 
 	tiledResult ifNil: [
-		^ { (self rowNamed: 'State' value: 'not run yet') } ].
+		^ { (PVFactRow name: 'State' value: 'not run yet') } ].
 	^ {
-		  (self rowNamed: 'Matrix order' value: order printString).
-		  (self rowNamed: 'Tile width' value: PVTiledMatmulKernel tileWidth printString).
-		  (self
-			   rowNamed: 'Shared memory bytes per group'
-			   value: PVTiledMatmulKernel new sharedMemoryBytes printString).
-		  (self rowNamed: 'Dispatches timed' value: repeats printString).
-		  (self
-			   rowNamed: 'Tiled milliseconds'
-			   value: tiledResult milliseconds printString).
-		  (self
-			   rowNamed: 'Naive milliseconds'
-			   value: naiveResult milliseconds printString).
-		  (self
-			   rowNamed: 'Compiled milliseconds'
-			   value: compiledResult milliseconds printString).
-		  (self
-			   rowNamed: 'Tiled GFLOP/s'
+		  (PVFactRow name: 'Matrix order' value: order).
+		  (PVFactRow name: 'Tile width' value: PVTiledMatmulKernel tileWidth).
+		  (PVFactRow
+			   name: 'Shared memory bytes per group'
+			   value: PVTiledMatmulKernel new sharedMemoryBytes).
+		  (PVFactRow name: 'Dispatches timed' value: repeats).
+		  (PVFactRow
+			   name: 'Tiled milliseconds'
+			   value: tiledResult milliseconds).
+		  (PVFactRow
+			   name: 'Naive milliseconds'
+			   value: naiveResult milliseconds).
+		  (PVFactRow
+			   name: 'Compiled milliseconds'
+			   value: compiledResult milliseconds).
+		  (PVFactRow
+			   name: 'Tiled GFLOP/s'
 			   value: (self rateStringOf: tiledResult)).
-		  (self
-			   rowNamed: 'Naive GFLOP/s'
+		  (PVFactRow
+			   name: 'Naive GFLOP/s'
 			   value: (self rateStringOf: naiveResult)).
-		  (self
-			   rowNamed: 'Compiled GFLOP/s'
+		  (PVFactRow
+			   name: 'Compiled GFLOP/s'
 			   value: (self rateStringOf: compiledResult)).
-		  (self
-			   rowNamed: 'Speedup'
-			   value: (self speedup
-					    ifNil: [ 'too quick to measure' ]
-					    ifNotNil: [ :ratio | ratio asFloat printString ])).
-		  (self
-			   rowNamed: 'Cost of going through the DSL'
+		  (PVFactRow name: 'Speedup' value: (self speedup
+				    ifNil: [ 'too quick to measure' ]
+				    ifNotNil: [ :ratio | ratio asFloat printString ])).
+		  (PVFactRow
+			   name: 'Cost of going through the DSL'
 			   value: (self compiledCost
 					    ifNil: [ 'too quick to measure' ]
 					    ifNotNil: [ :ratio | ratio asFloat printString ])).
-		  (self
-			   rowNamed: 'Largest difference between tiled and naive'
-			   value: maximumDifference printString).
-		  (self
-			   rowNamed: 'Largest difference between compiled and hand-built'
-			   value: maximumCompiledDifference printString) }
-]
-
-{ #category : 'reporting' }
-PVTiledMatmulComparison >> rowNamed: aString value: aValueString [
-	^ Dictionary newFrom: {
-			  (#name -> aString).
-			  (#value -> aValueString) }
+		  (PVFactRow
+			   name: 'Largest difference between tiled and naive'
+			   value: maximumDifference).
+		  (PVFactRow
+			   name: 'Largest difference between compiled and hand-built'
+			   value: maximumCompiledDifference) }
 ]
 
 { #category : 'measuring' }

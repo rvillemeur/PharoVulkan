@@ -76,15 +76,15 @@ VkPipelineInputAssemblyStateCreateInfo >> inspectorInputAssembly: aBuilder [
 	<inspectorPresentationOrder: 30 title: 'Input assembly'>
 	| rows |
 	rows := self inputAssemblyRows.
-	^ aBuilder newTable
-		  addColumn: (SpStringTableColumn title: 'Asks for' evaluated: [ :each |
-					   each first ]);
-		  addColumn: (SpStringTableColumn title: 'Value' evaluated: [ :each |
-				   each second printString ]);
-		  items: {
-				  { 'Topology'. (rows at: #topologyName) }.
-				  { 'Primitive restart'. (rows at: #primitiveRestart) } };
-		  yourself
+	^ PVFactRow
+		  tableOf: {
+				  (PVFactRow name: 'Topology' value: (rows at: #topologyName)).
+				  (PVFactRow
+					   name: 'Primitive restart'
+					   value: (rows at: #primitiveRestart)) }
+		  nameColumn: 'Asks for'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'accessing - structure variables' }

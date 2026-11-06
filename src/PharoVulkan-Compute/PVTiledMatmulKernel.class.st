@@ -492,15 +492,11 @@ PVTiledMatmulKernel >> inspectorModule: aBuilder [
 	 a barrier the kernel stopped emitting."
 
 	<inspectorPresentationOrder: 10 title: 'Module'>
-	^ aBuilder newTable
-		  addColumn:
-			  (SpStringTableColumn title: 'Quantity' evaluated: [ :each |
-					   each at: #name ]);
-		  addColumn:
-			  (SpStringTableColumn title: 'Value' evaluated: [ :each |
-					   each at: #value ]);
-		  items: self reportRows;
-		  yourself
+	^ PVFactRow
+		  tableOf: self reportRows
+		  nameColumn: 'Quantity'
+		  valueColumn: 'Value'
+		  in: aBuilder
 ]
 
 { #category : 'building' }
@@ -651,43 +647,40 @@ PVTiledMatmulKernel >> reportRows [
 	| module |
 	module := PVSpirvValidator on: self spirv.
 	^ {
-		  (self rowNamed: 'Tile width' value: self tileWidth printString).
-		  (self
-			   rowNamed: 'Workgroup'
+		  (PVFactRow name: 'Tile width' value: self tileWidth).
+		  (PVFactRow
+			   name: 'Workgroup'
 			   value: ((self localSize collect: [ :each | each printString ])
 					    inject: ''
 					    into: [ :all :each |
-						    all isEmpty
-							    ifTrue: [ each ]
-							    ifFalse: [ all , ' by ' , each ] ])).
-		  (self
-			   rowNamed: 'Shared memory bytes per group'
-			   value: self sharedMemoryBytes printString).
-		  (self
-			   rowNamed: 'Shared tiles in the module'
+							    all isEmpty
+								    ifTrue: [ each ]
+								    ifFalse: [ all , ' by ' , each ] ])).
+		  (PVFactRow
+			   name: 'Shared memory bytes per group'
+			   value: self sharedMemoryBytes).
+		  (PVFactRow
+			   name: 'Shared tiles in the module'
 			   value:
-			   (module variableCountInStorageClass: SpvStorageClass workgroup)
-				   printString).
-		  (self
-			   rowNamed: 'Buffer bindings in the module'
+			   (module variableCountInStorageClass: SpvStorageClass workgroup)).
+		  (PVFactRow
+			   name: 'Buffer bindings in the module'
 			   value:
-			   (module variableCountInStorageClass: SpvStorageClass storageBuffer)
-				   printString).
-		  (self
-			   rowNamed: 'Barriers'
-			   value: (module countOfOpcode: SpvOpcode opControlBarrier) printString).
-		  (self
-			   rowNamed: 'Loops'
-			   value: (module countOfOpcode: SpvOpcode opLoopMerge) printString).
-		  (self rowNamed: 'Module bytes' value: self spirv size printString).
-		  (self
-			   rowNamed: 'spirv-val'
-			   value: (PVSpirvValidator isAvailable
-					    ifTrue: [
+			   (module variableCountInStorageClass:
+				    SpvStorageClass storageBuffer)).
+		  (PVFactRow
+			   name: 'Barriers'
+			   value: (module countOfOpcode: SpvOpcode opControlBarrier)).
+		  (PVFactRow
+			   name: 'Loops'
+			   value: (module countOfOpcode: SpvOpcode opLoopMerge)).
+		  (PVFactRow name: 'Module bytes' value: self spirv size).
+		  (PVFactRow name: 'spirv-val' value: (PVSpirvValidator isAvailable
+				    ifTrue: [
 						    module isValid
 							    ifTrue: [ 'valid' ]
 							    ifFalse: [ module validationOutput ] ]
-					    ifFalse: [ 'not installed' ])) }
+				    ifFalse: [ 'not installed' ])) }
 ]
 
 { #category : 'accessing' }
@@ -698,13 +691,6 @@ PVTiledMatmulKernel >> rightBuffer [
 { #category : 'accessing' }
 PVTiledMatmulKernel >> rightTile [
 	^ tileVariables second
-]
-
-{ #category : 'reporting' }
-PVTiledMatmulKernel >> rowNamed: aString value: aValueString [
-	^ Dictionary newFrom: {
-			  (#name -> aString).
-			  (#value -> aValueString) }
 ]
 
 { #category : 'accessing' }
