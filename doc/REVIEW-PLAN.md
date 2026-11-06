@@ -406,6 +406,57 @@ side, class side down to one line — with the suite re-run after each, then `ru
 validator, the commit and the device classes. Then the class is measured again and point 7's
 remainder is put as a new question.
 
+**Done, both passes** (2026-11-06). The remainder of this point — Extract Class, and whether the
+methods that carry `typeMap:` and `selectorTable:` as parameters shed them now that both are slots
+— is still open: the class is measured below, and the fresh diagnosis it feeds is the next question
+to put.
+
+Pass 1, `PVBlockSimulation`. The class holds the five readers as decided, built only by
+`PVBlockSimulator` through `ofSimulator:`, which delegates to a private `setFromSimulator:`: the
+five-keyword initialiser the plan implied raised `ReExcessiveArgumentsRule`, and taking the
+simulator instead keeps the freezing in one place. All 73 positional reads became named sends, over
+23 methods of `PVSPIRVEmitter`. Two sites the count had missed came out in the rewrite:
+`inferTypesOver:annotation:selectorTable:` reads `each first` over a collection of simulations, so
+the receiver carries no name a scan for `…Sim` would catch, and the `at: 5` rewrite has to keep the
+space before `stack`. `PVCompilerTest >> testASimulatedBlockNamesItsFiveParts` is the new test, and
+no existing test changed. The example and the view are
+`PVCompilerExamples class >> simulationOfAClampConditionBlock` and
+`PVBlockSimulation >> inspectorParts:`, the view checked by building it through a real
+`StInspectionContext` — five rows, `SpTablePresenter`.
+
+Pass 2, the drivers. The dead `emitSelectionKernel:…` is gone: no sender, no reference, 67 lines.
+`typeMap` and `selectorTable` are slots with accessors. Ten drivers moved their bodies to the
+instance side, each class-side selector kept as a four- to nine-line entry that builds the emitter,
+fills the two slots and sends it; `inspectorCooperativeMatrixTypes:` stays the class-side view it
+was, which is the eleventh. The class comment no longer names `emitModule:`, which no class in the
+image implements, nor the deleted IR, and says what the class side is now for.
+
+One consequence the plan did not foresee. Adding the `typeMap` slot while 25 methods carry a
+parameter of the same name raised `ReTempVarOverridesInstVarRule` 25 times, and twice more for a
+temporary of that name in `prependLoopPhisIn:` and `prependNestedPhisIn:`. Shedding the parameter
+is the re-measure's question and would change the selectors, which tests send, so the parameters
+were renamed instead — `aTypeMap` in the drivers, `blockTypeMap` in the two phi methods. The
+selectors, the callers and the tests are untouched, and the shadowing is gone.
+
+Measured after both passes: 142 methods (97 instance, 45 class), 2026 lines — 129 and 2023 before,
+so the dead driver's 67 lines came back as entries and accessors. Eleven class-side methods are
+still over ten lines, and of those `computeNestedLoopSimulations:annotation:selectorTable:` (57),
+`computeSelectionSimulations:annotation:selectorTable:` (23) and the two `…Phis…` functions are the
+pure functions over simulations, not drivers. Critics on `PVSPIRVEmitter`: the god-class set stays —
+`ReExcessiveMethodsRule`, six long methods, seven excessive-argument methods, four high
+complexities — which is what the remainder of this point is for. `PVBlockSimulation` and
+`PVCompilerExamples` are clean. `PVBlockSimulator` reports `ReVariableReferencedOnceRule` on
+`annotation` and `selectorTable`, which it did before this point: both are set by
+`simulate:initialTempDefs:annotation:selectorTable:` and read by nothing.
+
+Both slots of `PVSPIRVEmitter` added in pass 2 are written by the entries and read by nobody, by
+design: the window the plan opened, which the re-measure closes one way or the other.
+
+Verification, per pass: 184 of 184 green over the seven non-device classes, including
+`PVSpirvValidatorTest`'s 33 `spirv-val` runs. After the pass 1 commit the four device classes ran
+alone and forked — `VkCoreTest` 68, `PVComputeTest` 63, `VkImageTest` 8, `PVGraphicsTest` 53, all
+green, image alive.
+
 ### 8. Two families of classes with no common superclass
 
 - Three hand-built kernel builders each define their own `spirv` and
