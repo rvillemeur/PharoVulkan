@@ -176,15 +176,15 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 		paramTempDefs at: i - 1 put: i.
 		typeMap at: i put: p type ].
 	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: paramTempDefs startingNextReg: ann params size + 1.
-	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim second startingNextReg: preheaderSim fourth.
-	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim second startingNextReg: headerSim fourth.
-	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim second startingNextReg: latchSim fourth initialStack: (preheaderSim at: 5).
+	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim tempDefs startingNextReg: preheaderSim nextReg.
+	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim tempDefs startingNextReg: headerSim nextReg.
+	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim tempDefs startingNextReg: latchSim nextReg initialStack: (preheaderSim stack).
 	phiVarIndices := OrderedCollection new.
 	preInitRegs := Dictionary new.
 	latchResultRegs := Dictionary new.
-	preheaderSim second keysAndValuesDo: [ :k :preReg |
+	preheaderSim tempDefs keysAndValuesDo: [ :k :preReg |
 		| latchReg |
-		latchReg := latchSim second at: k ifAbsent: [ preReg ].
+		latchReg := latchSim tempDefs at: k ifAbsent: [ preReg ].
 		latchReg ~= preReg ifTrue: [
 			phiVarIndices add: k.
 			preInitRegs at: k put: preReg.
@@ -200,7 +200,7 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 	hdrBlk := spvFunc addBlock.
 	latchBlk := spvFunc addBlock.
 	exitBlk := spvFunc addBlock.
-	em emitRegOps: preheaderSim first typeMap: typeMap selectorTable: st block: preBlk.
+	em emitRegOps: preheaderSim regOps typeMap: typeMap selectorTable: st block: preBlk.
 	phiInitSpvIds := Dictionary new.
 	phiVarIndices do: [ :k | phiInitSpvIds at: k put: (em spvIdFor: (preInitRegs at: k)) ].
 	preBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { hdrBlk id }).
@@ -210,19 +210,19 @@ PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: typeMap s
 		phiId := mod newId.
 		phiSpvIds at: k put: phiId.
 		em regMap at: (preInitRegs at: k) put: phiId ].
-	em emitRegOps: headerSim first typeMap: typeMap selectorTable: st block: hdrBlk.
-	condSpvId := em spvIdFor: headerSim third.
+	em emitRegOps: headerSim regOps typeMap: typeMap selectorTable: st block: hdrBlk.
+	condSpvId := em spvIdFor: headerSim resultReg.
 	hdrBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoopMerge resultType: nil resultId: nil operands: { exitBlk id. latchBlk id. SpvLoopControl none }).
 	hdrBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. latchBlk id. exitBlk id }).
-	em emitRegOps: latchSim first typeMap: typeMap selectorTable: st block: latchBlk.
+	em emitRegOps: latchSim regOps typeMap: typeMap selectorTable: st block: latchBlk.
 	phiLatchSpvIds := Dictionary new.
 	phiVarIndices do: [ :k | phiLatchSpvIds at: k put: (em spvIdFor: (latchResultRegs at: k)) ].
 	latchBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { hdrBlk id }).
 	phiType := em spvTypeFor: ann params first type.
 	phiVarIndices do: [ :k |
 		hdrBlk prependInstruction: (SpvInstruction opcode: SpvOpcode opPhi resultType: phiType id resultId: (phiSpvIds at: k) operands: { (phiInitSpvIds at: k). preBlk id. (phiLatchSpvIds at: k). latchBlk id }) ].
-	em emitRegOps: exitSim first typeMap: typeMap selectorTable: st block: exitBlk.
-	retSpvId := em spvIdFor: exitSim third.
+	em emitRegOps: exitSim regOps typeMap: typeMap selectorTable: st block: exitBlk.
+	retSpvId := em spvIdFor: exitSim resultReg.
 	exitBlk terminate: (SpvInstruction opcode: SpvOpcode opReturnValue resultType: nil resultId: nil operands: { retSpvId }).
 	mod addFunction: spvFunc.
 	^ mod serialize
@@ -245,15 +245,15 @@ PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeM
 		typeMap at: i put: p type ].
 	condSim := PVBlockSimulator new simulateBlock: selNode condBlock
 		initialTempDefs: paramTempDefs startingNextReg: ann params size.
-	condRegOps := condSim first.
-	condNextReg := condSim fourth.
-	condReg := condSim third.
+	condRegOps := condSim regOps.
+	condNextReg := condSim nextReg.
+	condReg := condSim resultReg.
 	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first
-		initialTempDefs: condSim second startingNextReg: condNextReg.
-	trueRegOps := trueSim first.
+		initialTempDefs: condSim tempDefs startingNextReg: condNextReg.
+	trueRegOps := trueSim regOps.
 	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first
-		initialTempDefs: condSim second startingNextReg: condNextReg.
-	falseRegOps := falseSim first.
+		initialTempDefs: condSim tempDefs startingNextReg: condNextReg.
+	falseRegOps := falseSim regOps.
 	retType := em spvTypeFor: ann params first type.
 	paramTypes := ann params collect: [ :p | em spvTypeFor: p type ].
 	funcType := mod typeRegistry functionType: retType paramTypes: paramTypes asArray.
@@ -273,14 +273,14 @@ PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: typeM
 		resultType: nil resultId: nil operands: { condSpvId. trueBlkSpv id. falseBlkSpv id }).
 	condRegMapSave := em regMap copy.
 	em emitRegOps: trueRegOps typeMap: typeMap selectorTable: st block: trueBlkSpv.
-	trueResultReg := trueSim third.
+	trueResultReg := trueSim resultReg.
 	trueResultSpvId := em spvIdFor: trueResultReg.
 	trueBlkSpv terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeBlkSpv id }).
 	em regMap: condRegMapSave copy.
 	em emitRegOps: falseRegOps typeMap: typeMap selectorTable: st block: falseBlkSpv.
-	falseResultSpvId := em spvIdFor: falseSim third.
+	falseResultSpvId := em spvIdFor: falseSim resultReg.
 	falseBlkSpv terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeBlkSpv id }).
-	phiType := typeMap at: (trueSim third) ifAbsent: [ ann params first type ].
+	phiType := typeMap at: (trueSim resultReg) ifAbsent: [ ann params first type ].
 	phiId := mod newId.
 	mergeBlkSpv addInstruction: (SpvInstruction opcode: SpvOpcode opPhi
 		resultType: (em spvTypeFor: phiType) id resultId: phiId
@@ -385,10 +385,10 @@ PVSPIRVEmitter class >> compileShaderKernelSelection: selNode annotation: ann ty
 		entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { em regMap at: i }).
 		em regMap at: i put: loadId ].
 	condSim := PVBlockSimulator new simulateBlock: selNode condBlock initialTempDefs: paramTempDefs startingNextReg: ann params size.
-	condRegOps := condSim first.
-	condTempDefs := condSim second.
-	condReg := condSim third.
-	condNextReg := condSim fourth.
+	condRegOps := condSim regOps.
+	condTempDefs := condSim tempDefs.
+	condReg := condSim resultReg.
+	condNextReg := condSim nextReg.
 	condRegOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: entryBlk ].
 	condSpvId := em spvIdFor: condReg.
 	trueSpvBlk := spvFunc addBlock.
@@ -397,13 +397,13 @@ PVSPIRVEmitter class >> compileShaderKernelSelection: selNode annotation: ann ty
 	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge resultType: nil resultId: nil operands: { mergeSpvBlk id. SpvSelectionControl none }).
 	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. trueSpvBlk id. falseSpvBlk id }).
 	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
-	trueRegOps := trueSim first.
+	trueRegOps := trueSim regOps.
 	condRegMapSave := em regMap copy.
 	trueRegOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: trueSpvBlk ].
 	trueSpvBlk isTerminated ifFalse: [ trueSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
 	em regMap: condRegMapSave copy.
 	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
-	falseRegOps := falseSim first.
+	falseRegOps := falseSim regOps.
 	falseRegOps do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: st block: falseSpvBlk ].
 	falseSpvBlk isTerminated ifFalse: [ falseSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
 	mergeSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()).
@@ -435,9 +435,9 @@ PVSPIRVEmitter class >> computeLoopSimulations: loopNode annotation: ann selecto
 
 	| preheaderSim headerSim latchSim exitSim |
 	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: (self paramTempDefsFor: ann) startingNextReg: ann params size + 1.
-	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim second startingNextReg: preheaderSim fourth.
-	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim second startingNextReg: headerSim fourth.
-	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim second startingNextReg: latchSim fourth initialStack: (preheaderSim at: 5).
+	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim tempDefs startingNextReg: preheaderSim nextReg.
+	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim tempDefs startingNextReg: headerSim nextReg.
+	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim tempDefs startingNextReg: latchSim nextReg initialStack: (preheaderSim stack).
 	^ Dictionary newFrom: {
 		  #preheader -> preheaderSim.
 		  #header -> headerSim.
@@ -462,29 +462,29 @@ PVSPIRVEmitter class >> computeNestedLoopSimulations: nestedNode annotation: ann
 		                startingNextReg: ann params size + 1.
 	outerHeaderSim := PVBlockSimulator new
 		                  simulateBlock: nestedNode headerBlock
-		                  initialTempDefs: preheaderSim second
-		                  startingNextReg: preheaderSim fourth.
+		                  initialTempDefs: preheaderSim tempDefs
+		                  startingNextReg: preheaderSim nextReg.
 	innerPreSim := PVBlockSimulator new
 		               simulateBlock: nestedNode innerPreheaderBlock
-		               initialTempDefs: preheaderSim second
-		               startingNextReg: outerHeaderSim fourth.
+		               initialTempDefs: preheaderSim tempDefs
+		               startingNextReg: outerHeaderSim nextReg.
 	innerHeaderSim := PVBlockSimulator new
 		                  simulateBlock: nestedNode innerHeaderBlock
-		                  initialTempDefs: innerPreSim second
-		                  startingNextReg: innerPreSim fourth.
+		                  initialTempDefs: innerPreSim tempDefs
+		                  startingNextReg: innerPreSim nextReg.
 	innerBodySim := PVBlockSimulator new
 		                simulateBlock: nestedNode innerBodyBlocks first
-		                initialTempDefs: innerPreSim second
-		                startingNextReg: innerHeaderSim fourth.
+		                initialTempDefs: innerPreSim tempDefs
+		                startingNextReg: innerHeaderSim nextReg.
 	innerMergeSim := PVBlockSimulator new
 		                 simulateBlock: nestedNode innerMergeBlock
-		                 initialTempDefs: innerPreSim second
-		                 startingNextReg: innerBodySim fourth.
+		                 initialTempDefs: innerPreSim tempDefs
+		                 startingNextReg: innerBodySim nextReg.
 	exitSim := PVBlockSimulator new
 		           simulateBlock: nestedNode exitBlock
-		           initialTempDefs: preheaderSim second
-		           startingNextReg: innerMergeSim fourth
-		           initialStack: (preheaderSim at: 5).
+		           initialTempDefs: preheaderSim tempDefs
+		           startingNextReg: innerMergeSim nextReg
+		           initialStack: (preheaderSim stack).
 	^ Dictionary newFrom: {
 			  (#preheader -> preheaderSim).
 			  (#outerHeader -> outerHeaderSim).
@@ -515,14 +515,14 @@ PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann sel
 
 	| condSim trueSim falseSim mergeSim phiReg inference typeMap |
 	condSim := PVBlockSimulator new simulateBlock: selNode condBlock initialTempDefs: (self paramTempDefsFor: ann) startingNextReg: ann params size + 1.
-	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condSim second startingNextReg: condSim fourth.
-	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condSim second startingNextReg: trueSim fourth.
-	phiReg := falseSim fourth.
-	mergeSim := PVBlockSimulator new simulateBlock: selNode mergeBlock initialTempDefs: condSim second startingNextReg: phiReg + 1 initialStack: (self selectionMergeStackFrom: condSim phiReg: phiReg).
+	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condSim tempDefs startingNextReg: condSim nextReg.
+	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condSim tempDefs startingNextReg: trueSim nextReg.
+	phiReg := falseSim nextReg.
+	mergeSim := PVBlockSimulator new simulateBlock: selNode mergeBlock initialTempDefs: condSim tempDefs startingNextReg: phiReg + 1 initialStack: (self selectionMergeStackFrom: condSim phiReg: phiReg).
 	inference := self inferTypesOver: { condSim. trueSim. falseSim } annotation: ann selectorTable: st.
 	typeMap := inference second.
-	typeMap at: phiReg put: (typeMap at: trueSim third ifAbsent: [ typeMap at: falseSim third ]).
-	inference first inferAll: mergeSim first selectorTable: st.
+	typeMap at: phiReg put: (typeMap at: trueSim resultReg ifAbsent: [ typeMap at: falseSim resultReg ]).
+	inference first inferAll: mergeSim regOps selectorTable: st.
 	^ Dictionary newFrom: {
 		  #cond -> condSim.
 		  #true -> trueSim.
@@ -619,10 +619,10 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 	"Simulate condition block"
 	condSimResult := PVBlockSimulator simulate: selNode condBlock
 		initialTempDefs: em regMap annotation: ann selectorTable: st.
-	condTempDefs := condSimResult second.
-	condReg := condSimResult third.
+	condTempDefs := condSimResult tempDefs.
+	condReg := condSimResult resultReg.
 	"Infer result type of condReg ops"
-	(condSimResult first) do: [ :op |
+	(condSimResult regOps) do: [ :op |
 		(#(#return #returnSelf #self #pop) includes: op opcode) ifFalse: [
 			op result ifNotNil: [ :r |
 				| mapping recv |
@@ -649,7 +649,7 @@ PVSPIRVEmitter class >> emitSelectionKernel: selNode annotation: ann selectorTab
 	falseBlkSpv := spvFunc addBlock.
 	mergeBlkSpv := spvFunc addBlock.
 	"Emit cond block ops into entry"
-	(condSimResult first) do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: (PVSelectorTable standard) block: entryBlk ].
+	(condSimResult regOps) do: [ :op | em emitRegOp: op typeMap: typeMap selectorTable: (PVSelectorTable standard) block: entryBlk ].
 	condSpvId := em spvIdFor: condReg.
 	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge
 		resultType: nil resultId: nil operands: { mergeBlkSpv id. SpvSelectionControl none }).
@@ -714,7 +714,7 @@ PVSPIRVEmitter class >> inferTypesOver: sims annotation: ann selectorTable: st [
 	| inferencer typeMap |
 	inferencer := PVTypeInferencer new initialize annotation: ann.
 	typeMap := nil.
-	sims do: [ :each | typeMap := inferencer inferAll: each first selectorTable: st ].
+	sims do: [ :each | typeMap := inferencer inferAll: each regOps selectorTable: st ].
 	^ { inferencer. typeMap }
 ]
 
@@ -772,9 +772,9 @@ PVSPIRVEmitter class >> loopPhisFrom: preheaderSim latch: latchSim [
 	indices := OrderedCollection new.
 	initRegs := Dictionary new.
 	latchRegs := Dictionary new.
-	preheaderSim second keysAndValuesDo: [ :k :preReg |
+	preheaderSim tempDefs keysAndValuesDo: [ :k :preReg |
 		| latchReg |
-		latchReg := latchSim second at: k ifAbsent: [ preReg ].
+		latchReg := latchSim tempDefs at: k ifAbsent: [ preReg ].
 		latchReg = preReg ifFalse: [
 			indices add: k.
 			initRegs at: k put: preReg.
@@ -798,13 +798,13 @@ PVSPIRVEmitter class >> nestedOuterPhisFrom: preheaderSim innerMerge: innerMerge
 	phis := self loopPhisFrom: preheaderSim latch: innerMergeSim.
 	(innerPhis at: #indices) do: [ :k |
 		(((phis at: #indices) includes: k) not and: [
-			 preheaderSim second includesKey: k ]) ifTrue: [
+			 preheaderSim tempDefs includesKey: k ]) ifTrue: [
 			(phis at: #indices) add: k.
-			(phis at: #init) at: k put: (preheaderSim second at: k).
+			(phis at: #init) at: k put: (preheaderSim tempDefs at: k).
 			(phis at: #latch)
 				at: k
-				put: (innerMergeSim second at: k ifAbsent: [
-						 preheaderSim second at: k ]) ] ].
+				put: (innerMergeSim tempDefs at: k ifAbsent: [
+						 preheaderSim tempDefs at: k ]) ] ].
 	^ phis
 ]
 
@@ -837,7 +837,7 @@ PVSPIRVEmitter class >> selectionMergeStackFrom: condSim phiReg: phiReg [
 	 pops it."
 
 	| stack |
-	stack := (condSim at: 5) asOrderedCollection.
+	stack := (condSim stack) asOrderedCollection.
 	stack isEmpty ifFalse: [ stack removeLast ].
 	stack addLast: phiReg.
 	^ stack
@@ -1069,9 +1069,9 @@ regMap at: op result put: elemPtrId
 PVSPIRVEmitter >> emitBytecodeBlock: blk initialTempDefs: initDefs typeMap: typeMap selectorTable: st block: spvBlk [
 	| simResult regOps finalDefs resultReg |
 	simResult := PVBlockSimulator simulate: blk initialTempDefs: initDefs annotation: annotation selectorTable: st.
-	regOps := simResult first.
-	finalDefs := simResult second.
-	resultReg := simResult third.
+	regOps := simResult regOps.
+	finalDefs := simResult tempDefs.
+	resultReg := simResult resultReg.
 	regOps do: [ :op | self emitRegOp: op typeMap: typeMap selectorTable: st block: spvBlk ].
 	"Seed regMap with newly defined temps for downstream blocks"
 	finalDefs keysAndValuesDo: [ :tempIdx :absReg |
@@ -1089,11 +1089,11 @@ PVSPIRVEmitter >> emitBytecodeBlock: blk typeMap: typeMap selectorTable: st bloc
 			| simResult |
 			simResult := PVBlockSimulator simulate: blk initialTempDefs: regMap annotation: annotation selectorTable: st.
 			"Emit regOps from simResult"
-			(simResult first) do: [ :regOp |
+			(simResult regOps) do: [ :regOp |
 				self emitRegOp: regOp typeMap: typeMap selectorTable: st block: spvBlk ].
 			"Update regMap from simulation"
-			(simResult second) keysAndValuesDo: [ :k :v | regMap at: k put: v ].
-			lastResultReg := simResult third.
+			(simResult tempDefs) keysAndValuesDo: [ :k :v | regMap at: k put: v ].
+			lastResultReg := simResult resultReg.
 			^ lastResultReg ] ].
 	^ lastResultReg
 ]
@@ -1455,7 +1455,7 @@ PVSPIRVEmitter >> emitLoopExitIn: ctx [
 	sims := ctx at: #sims.
 	blk := ctx at: #exitBlock.
 	self
-		emitRegOps: (sims at: #exit) first
+		emitRegOps: (sims at: #exit) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.
@@ -1473,7 +1473,7 @@ PVSPIRVEmitter >> emitLoopHeaderIn: ctx [
 	sims := ctx at: #sims.
 	blk := ctx at: #headerBlock.
 	self
-		emitRegOps: (sims at: #header) first
+		emitRegOps: (sims at: #header) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.
@@ -1491,7 +1491,7 @@ PVSPIRVEmitter >> emitLoopHeaderIn: ctx [
 				 resultType: nil
 				 resultId: nil
 				 operands: {
-						 (self spvIdFor: (sims at: #header) third).
+						 (self spvIdFor: (sims at: #header) resultReg).
 						 (ctx at: #latchBlock) id.
 						 (ctx at: #exitBlock) id })
 ]
@@ -1507,7 +1507,7 @@ PVSPIRVEmitter >> emitLoopLatchIn: ctx [
 	phis := ctx at: #phis.
 	blk := ctx at: #latchBlock.
 	self
-		emitRegOps: (sims at: #latch) first
+		emitRegOps: (sims at: #latch) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.
@@ -1534,7 +1534,7 @@ PVSPIRVEmitter >> emitLoopPreheaderIn: ctx [
 	phis := ctx at: #phis.
 	blk := ctx at: #preBlock.
 	self
-		emitRegOps: (sims at: #preheader) first
+		emitRegOps: (sims at: #preheader) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.
@@ -1558,7 +1558,7 @@ PVSPIRVEmitter >> emitNestedBlock: aSimKey in: ctx into: aBlockKey [
 	 produced, into the SPIR-V block the context holds under that key."
 
 	^ self
-		  emitRegOps: ((ctx at: #sims) at: aSimKey) first
+		  emitRegOps: ((ctx at: #sims) at: aSimKey) regOps
 		  typeMap: ((ctx at: #sims) at: #typeMap)
 		  selectorTable: (ctx at: #selectorTable)
 		  block: (ctx at: aBlockKey)
@@ -1613,7 +1613,7 @@ PVSPIRVEmitter >> emitNestedInnerHeaderIn: ctx [
 				 resultType: nil
 				 resultId: nil
 				 operands: {
-						 (self spvIdFor: ((ctx at: #sims) at: #innerHeader) third).
+						 (self spvIdFor: ((ctx at: #sims) at: #innerHeader) resultReg).
 						 (ctx at: #innerBodyBlock) id.
 						 (ctx at: #innerMergeBlock) id })
 ]
@@ -1664,7 +1664,7 @@ PVSPIRVEmitter >> emitNestedOuterHeaderIn: ctx [
 				 resultType: nil
 				 resultId: nil
 				 operands: {
-						 (self spvIdFor: ((ctx at: #sims) at: #outerHeader) third).
+						 (self spvIdFor: ((ctx at: #sims) at: #outerHeader) resultReg).
 						 (ctx at: #innerPreBlock) id.
 						 (ctx at: #exitBlock) id })
 ]
@@ -1812,11 +1812,11 @@ PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey valueKey: valueKey in:
 	sims := ctx at: #sims.
 	blk := ctx at: blockKey.
 	self
-		emitRegOps: (sims at: armKey) first
+		emitRegOps: (sims at: armKey) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.
-	ctx at: valueKey put: (self spvIdFor: (sims at: armKey) third).
+	ctx at: valueKey put: (self spvIdFor: (sims at: armKey) resultReg).
 	blk terminate: (SpvInstruction
 			 opcode: SpvOpcode opBranch
 			 resultType: nil
@@ -1853,7 +1853,7 @@ PVSPIRVEmitter >> emitSelectionConditionIn: ctx [
 	sims := ctx at: #sims.
 	blk := ctx at: #entryBlock.
 	self
-		emitRegOps: (sims at: #cond) first
+		emitRegOps: (sims at: #cond) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.
@@ -1870,7 +1870,7 @@ PVSPIRVEmitter >> emitSelectionConditionIn: ctx [
 				 resultType: nil
 				 resultId: nil
 				 operands: {
-						 (self spvIdFor: (sims at: #cond) third).
+						 (self spvIdFor: (sims at: #cond) resultReg).
 						 (ctx at: #trueBlock) id.
 						 (ctx at: #falseBlock) id })
 ]
@@ -1897,7 +1897,7 @@ PVSPIRVEmitter >> emitSelectionMergeIn: ctx [
 					 (ctx at: #falseValue).
 					 (ctx at: #falseBlock) id }).
 	self
-		emitRegOps: (sims at: #merge) first
+		emitRegOps: (sims at: #merge) regOps
 		typeMap: (sims at: #typeMap)
 		selectorTable: (ctx at: #selectorTable)
 		block: blk.

@@ -11,7 +11,7 @@ existing `OSSDL2BackendWindow` infrastructure.
 ## Current state
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
-`PACKAGE-PLAN.md` are all done. The suite is 661 tests over twelve test classes and passes.
+`PACKAGE-PLAN.md` are all done. The suite is 662 tests over twelve test classes and passes.
 `doc/REVIEW-PLAN.md` holds the architecture and code review, and says which of its points are done.
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
@@ -25,7 +25,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 |---|---|---|
 | `PharoVulkan-Bindings` | 144 | Generated Vulkan uFFI bindings: commands, structures, handles, the named constant classes (tag `Constants`), `VkResult` and `VkError` |
 | `PharoVulkan-SPIRV` | 39 | SPIR-V binary builder: module, builder, types, constant pool, serialiser, validator, `PVTypeError` |
-| `PharoVulkan-Compiler` | 23 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-Compiler` | 24 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
 | `PharoVulkan-Core` | 17 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
 | `PharoVulkan-Compute` | 18 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks, and the two abstract superclasses of the hand-built kernels (`PVSpirvKernel`) and of the runs that allocate their buffers around a dispatch (`PVDeviceRun`) |
 | `PharoVulkan-Graphics` | 17 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
@@ -37,7 +37,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 |---|---|---|
 | `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) | — |
 | `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (24) | — |
-| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (85), `PVSpirvValidatorTest` (33) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (86), `PVSpirvValidatorTest` (33) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
 | `PharoVulkan-Core-Tests` | `VkCoreTest` (68) | `PVQueueFamilyStub` |
 | `PharoVulkan-Compute-Tests` | `PVComputeTest` (63) | `PVNoSubgroupArithmeticStub` |
 | `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (53), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |

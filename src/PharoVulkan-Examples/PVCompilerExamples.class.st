@@ -51,6 +51,20 @@ PVCompilerExamples class >> selectionOfAClampKernel [
 ]
 
 { #category : 'examples' }
+PVCompilerExamples class >> simulationOfAClampConditionBlock [
+	"One click: what PVBlockSimulator reaches at the end of the condition block of the clamp
+	 kernel. The Parts tab names the five parts PVSPIRVEmitter reads from it."
+
+	<sampleInstance>
+	| node |
+	node := self selectionOfAClampKernel.
+	^ PVBlockSimulator new
+		  simulateBlock: node condBlock
+		  initialTempDefs: Dictionary new
+		  startingNextReg: 1
+]
+
+{ #category : 'examples' }
 PVCompilerExamples class >> tiledMatmulModule [
 	"One click: the hand-built module, with its bytes already built. The Module tab reads
 	 the shared tiles, the barriers and the loops back out of those bytes, and says what

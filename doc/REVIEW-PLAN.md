@@ -332,6 +332,80 @@ point and can be done first, on its own.
 Gain: high. **Risk: high.** This is the last point of the plan, deliberately. One refactoring per
 commit, suite between each, and stop at the first test that a refactoring forces to change.
 
+**Plan as validated** (interviewed 2026-11-06; nothing edited before this was agreed).
+
+The point's own measurements are stale, and one of its three claims does not survive the count.
+
+- 129 methods, not 131: 83 on the instance side, 46 on the class side, 2023 lines in all.
+- **Twelve class methods build an instance and steer it, not forty-eight.** Of the other
+  thirty-four, 22 are constants or one-line helpers and 12 are pure functions over their arguments.
+- Those constants are public API outside this repository. `VGSpirvKernel`, `VGTiledFillSpanBlock`
+  and `VGTiledFillStagedBlock`, in `VectorGraphics-Vulkan`, send `bufferMemberIndex`,
+  `bufferMemberOffset`, `elementTypeOf:` and `storageBufferArrayStrideFor:`; nine PharoVulkan
+  classes send the rest, `PVCooperativeMatrixKernel` alone nine of them. Moving or renaming any of
+  them is outside this point.
+- The parameter object the point asks for already exists: `PVKernelCompiler` holds `method`,
+  `annotation`, `regOps`, `typeMap`, `selectorTable` and `blocks`, and the node classes already
+  pass it — `PVLoopNode >> emitKernelWith: aCompiler` reads three of its fields and hands them to
+  the emitter's class side. A new `PVCompilationContext` would be a second copy of it.
+- The positional read is 73 sends of `first`, `second`, `third`, `fourth` and `at: 5`, every one
+  inside `PVSPIRVEmitter`. All five parts of the array are read, `at: 5` four times, so none of it
+  is dead weight.
+- `PVSPIRVEmitter class >> emitSelectionKernel:annotation:selectorTable:typeMap:module:` has no
+  sender anywhere in the image and is named in no document: 67 lines of dead driver.
+- The compute path is already at the shape this point is driving towards:
+  `compileComputeKernelSelection:annotation:selectorTable:` is thirteen lines that delegate to
+  `emitComputeInterfaces`, `emitComputeSelectionFrom:selectorTable:` and
+  `finishComputeMain:interfaces:`. The generic and shader paths are the fat ones — 60, 64, 67 and
+  70 lines.
+
+The decisions:
+
+1. **Two passes in this point, then re-measure.** Pass 1 names the simulator result, pass 2 moves
+   the drivers. Extract Class is **not** in this pass: once the two are done the class is measured
+   again and the boundaries are put to the user as a fresh diagnosis, because an extraction built
+   on today's guess would have to be unpicked.
+2. **Pass 1 — Replace Data Value with Object.** A new `PVBlockSimulation` in
+   `PharoVulkan-Compiler`, built by `PVBlockSimulator` from the `PVStackSimulator` it ran, with
+   five readers and no setters after build: `regOps`, `tempDefs`, `resultReg`, `nextReg`, `stack`.
+   Each name is the word the receiving parameter already uses, so the data can be followed from one
+   block to the next without translating. The frozen-snapshot semantics stay — `regOps asArray` and
+   `stack copy`, because the loop path reads an earlier block's stack after two later blocks have
+   been simulated. Returning the `PVStackSimulator` itself was rejected for that reason, and
+   because it would expose `handlers` and live mutable state.
+3. **Pass 2 — Move Method, with the class side kept as entry points.** Delete the dead
+   `emitSelectionKernel:…`. Each of the other eleven drivers keeps its class-side selector as a
+   one-line entry that builds the instance and sends it, and its body becomes an instance method
+   that sends `self` where it sent `em`. No caller changes and no test changes: in particular
+   `capabilitiesDeclaredFor:` keeps the signature `PVCompilerTest >>
+   testCapabilitiesDeclaredForEachBufferType` sends, and `inspectorCooperativeMatrixTypes:` stays a
+   class-side view.
+4. **The clump loses its slots in pass 2 and its parameters later.** `typeMap` and `selectorTable`
+   become slots of `PVSPIRVEmitter` beside `annotation`, filled by the class-side entries. The 33
+   methods that carry them as parameters keep them for now; whether they shed them is the first
+   question of the re-measure. In the window between, slot and parameter hold the same value.
+5. **The new class gets one example and one view**, as the cycle requires:
+   `PVCompilerExamples class >> simulationOfAClampConditionBlock` beside the four compiler-stage
+   examples already there, and `PVBlockSimulation >> inspectorParts: aBuilder`, a `PVFactRow` table
+   of the five parts. No new examples holder for one example.
+6. **No new gate test for the positional read.** `PVBlockSimulation` does not understand `second`,
+   so a relapse is a doesNotUnderstand rather than a silent wrong answer, and `first` stays
+   legitimate elsewhere in the emitter (`ann params first`, `trueBlocks first`) — a gate on those
+   selectors would be noise.
+7. **Verification per pass: the suite and `spirv-val`.** The seven non-device classes, then
+   `PVSpirvValidatorTest`, whose 33 tests run `spirv-val` over the emitted modules. No test may
+   change; if a refactoring forces one to, stop and report it. One commit per pass, and the four
+   device classes run alone and forked after each commit. No MuTalk: this point deletes no test,
+   which is the case the score guards, and MuTalk rewrites methods in the image.
+
+Order of work. Pass 1: the failing test on the named parts first, then `PVBlockSimulation`, then
+`PVBlockSimulator` answering it, then the 73 reads, then the example, the view and `run_critics`,
+then the suite and the validator, then the commit and the device classes. Pass 2: the dead driver
+goes, then the two slots and their accessors, then one driver at a time — body to the instance
+side, class side down to one line — with the suite re-run after each, then `run_critics`, the
+validator, the commit and the device classes. Then the class is measured again and point 7's
+remainder is put as a new question.
+
 ### 8. Two families of classes with no common superclass
 
 - Three hand-built kernel builders each define their own `spirv` and

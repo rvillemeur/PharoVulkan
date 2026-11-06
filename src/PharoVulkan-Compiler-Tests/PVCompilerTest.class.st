@@ -301,6 +301,21 @@ PVCompilerTest >> suffixOfATestPackage [
 	^ '-Tests'
 ]
 
+{ #category : 'tests - block simulation' }
+PVCompilerTest >> testASimulatedBlockNamesItsFiveParts [
+	| node sim |
+	node := PVCompilerExamples selectionOfAClampKernel.
+	sim := PVBlockSimulator new
+		       simulateBlock: node condBlock
+		       initialTempDefs: Dictionary new
+		       startingNextReg: 1.
+	self assert: sim regOps isArray.
+	self assert: sim tempDefs isDictionary.
+	self assert: sim resultReg isNumber.
+	self assert: sim nextReg > 1.
+	self assert: sim stack isCollection
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testAlphaClipFragmentCompiles [
 	| bytes |
