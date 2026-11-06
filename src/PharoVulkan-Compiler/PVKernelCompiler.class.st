@@ -1,16 +1,17 @@
 "
-Orchestrates all 9 compiler stages: 
-1. bytecode decode 
-2. stack simulation 
-3. CFG build 
-4. SSA construction 
-5. type inference 
-6. structured-CFG recognition 
-7. SPIR-V emit 
-8.  validation. 
+Orchestrates the seven compiler stages that turn one annotated Pharo method into SPIR-V bytes:
 
+1. PVBytecodeDecoder — Sista bytecode to PVBytecodeOp
+2. PVStackSimulator — stack machine to PVRegisterOp register IR
+3. PVTypeInferencer — register to SpvType, seeded from the <gpu> and <param:named:> pragmas
+4. PVCFGBuilder — bytecode split into PVBytecodeBlock
+5. PVStructuredCFGRecognizer — PVSelectionNode or PVLoopNode, skipped for a single block
+6. PVSPIRVEmitter — the SpvModule
+7. SpvSerializer and SpvValidator — the 32-bit little-endian binary
 
-Entry point: compile:forDevice:.
+There is no SSA stage: PVSPIRVEmitter writes OpPhi itself by saving and restoring its register map at a merge point.
+
+Entry point: compileMethod:. It is not called compile:, which is Behavior >> compile:.
 "
 Class {
 	#name : 'PVKernelCompiler',
@@ -25,8 +26,13 @@ Class {
 }
 
 { #category : 'compiling' }
-PVKernelCompiler class >> compile: aCompiledMethod [
-	^ self new method: aCompiledMethod; compile
+PVKernelCompiler class >> compileMethod: aCompiledMethod [
+	"Front door of the compiler: the SPIR-V bytes of one annotated Pharo method.
+	 Not named compile:, which is Behavior >> compile: and would hide it here."
+
+	^ self new
+		  method: aCompiledMethod;
+		  compile
 ]
 
 { #category : 'constants' }

@@ -68,7 +68,7 @@ VkContextExamples class >> moduleOfTheVectorAddKernelOnThisMachine [
 	  | module |
 	  module := VkShaderModule
 		            fromBytes:
-			            (PVKernelCompiler compile:
+			            (PVKernelCompiler compileMethod:
 				             PVComputeKernel exampleKernelMethod)
 		            device: context device.
 	  module destroy.

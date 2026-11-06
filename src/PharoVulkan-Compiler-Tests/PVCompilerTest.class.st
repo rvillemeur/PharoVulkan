@@ -84,7 +84,7 @@ PVCompilerTest >> assertShapeCompiles: aSelector [
 	 word against SpvSerializer rather than a literal byte pattern."
 
 	| bytes expectedMagic |
-	bytes := PVKernelCompiler compile: (PVCfgShapeFixture >> aSelector).
+	bytes := PVKernelCompiler compileMethod: (PVCfgShapeFixture >> aSelector).
 	self assert: (bytes isKindOf: ByteArray).
 	expectedMagic := (1 to: 4) collect: [ :i |
 		                 (SpvSerializer spirvMagic bitShift: (i - 1) * -8) bitAnd: 16rFF ].
@@ -101,7 +101,7 @@ PVCompilerTest >> assertShapeRejected: aSelector [
 
 	| raised |
 	raised := false.
-	[ PVKernelCompiler compile: (PVCfgShapeFixture >> aSelector) ]
+	[ PVKernelCompiler compileMethod: (PVCfgShapeFixture >> aSelector) ]
 		on: PVTypeError
 		do: [ :e | raised := true ].
 	self
@@ -265,7 +265,7 @@ PVCompilerTest >> recogniserFor: aSelector [
 { #category : 'tests' }
 PVCompilerTest >> testAlphaClipFragmentCompiles [
 	| bytes |
-	bytes := PVKernelCompiler compile: (PVKernelExamples >> #alphaClip:threshold:).
+	bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #alphaClip:threshold:).
 	self assertSpirvMagic: bytes description: 'alphaClip:threshold:'
 ]
 
@@ -383,7 +383,7 @@ PVCompilerTest >> testCfgShapeTwoSequentialSelectionsRejected [
 { #category : 'tests' }
 PVCompilerTest >> testClampCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #clampF32:lo:hi:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #clampF32:lo:hi:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testClampCompiles'
@@ -396,7 +396,7 @@ PVCompilerTest >> testComputeLoopKernelEmitsOneLoopMerge [
 	 basic block and spirv-val still passed the module."
 
 	| counts |
-	counts := self opcodeCountsIn: (PVKernelCompiler compile: (PVCfgShapeFixture >> #computeLoopSum:data:out:)).
+	counts := self opcodeCountsIn: (PVKernelCompiler compileMethod: (PVCfgShapeFixture >> #computeLoopSum:data:out:)).
 	self
 		assert: (counts at: SpvOpcode opLoopMerge ifAbsent: [ 0 ])
 		equals: 1.
@@ -415,7 +415,7 @@ PVCompilerTest >> testComputeNestedLoopsCompiles [
 	 inlined once, which is the silent wrongness the recogniser used to refuse instead."
 
 	| validator |
-	validator := PVSpirvValidator on: (PVKernelCompiler compile:
+	validator := PVSpirvValidator on: (PVKernelCompiler compileMethod:
 			              (PVCfgShapeFixture >> #computeNestedLoops:data:out:)).
 	self
 		assert: (validator countOfOpcode: SpvOpcode opLoopMerge)
@@ -433,7 +433,7 @@ PVCompilerTest >> testComputeSelectionKernelEmitsSelectionMerge [
 	 recogniser."
 
 	| counts |
-	counts := self opcodeCountsIn: (PVKernelCompiler compile: (PVCfgShapeFixture >> #computeSelectionClamp:data:out:)).
+	counts := self opcodeCountsIn: (PVKernelCompiler compileMethod: (PVCfgShapeFixture >> #computeSelectionClamp:data:out:)).
 	self
 		assert: (counts at: SpvOpcode opSelectionMerge ifAbsent: [ 0 ])
 		equals: 1.
@@ -583,7 +583,7 @@ PVCompilerTest >> testDefaultLocalSizeWhenPragmaAbsent [
 
 	| literals |
 	literals := self executionModeLiteralsIn:
-		            (PVKernelCompiler compile:
+		            (PVKernelCompiler compileMethod:
 			             PVKernelExamples >> #vectorAdd:a:b:out:).
 	self assert: literals equals: PVTypeAnnotation defaultLocalSize
 ]
@@ -626,7 +626,7 @@ PVCompilerTest >> testExampleRecogniserOnLoopKernelIsRecognised [
 { #category : 'tests' }
 PVCompilerTest >> testFragmentShaderCompiles [
     | bytes |
-    bytes := PVKernelCompiler compile: (PVKernelExamples >> #triFragment:).
+    bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #triFragment:).
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assertSpirvMagic: bytes description: 'testFragmentShaderCompiles'
@@ -635,7 +635,7 @@ PVCompilerTest >> testFragmentShaderCompiles [
 { #category : 'tests' }
 PVCompilerTest >> testGlslTriFragmentCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriFragment:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testGlslTriFragmentCompiles'
@@ -644,7 +644,7 @@ self assertSpirvMagic: bytes description: 'testGlslTriFragmentCompiles'
 { #category : 'tests' }
 PVCompilerTest >> testGlslTriVertexCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriVertex:color:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testGlslTriVertexCompiles'
@@ -657,7 +657,7 @@ PVCompilerTest >> testGridWidthEmitsNumWorkgroupsBuiltIn [
 
 	| builtIns |
 	builtIns := self builtInDecorationsIn:
-		            (PVKernelCompiler compile:
+		            (PVKernelCompiler compileMethod:
 			             PVKernelExamples >> #sumFirstGridWidth:data:out:).
 	self assert: (builtIns includes: SpvBuiltIn numWorkgroups).
 	self assert: (builtIns includes: SpvBuiltIn globalInvocationId)
@@ -671,10 +671,10 @@ PVCompilerTest >> testHalfKernelDeclaresTheHalfPrecisionCapabilities [
 
 	| half float |
 	half := self capabilitiesIn:
-		        (PVKernelCompiler compile:
+		        (PVKernelCompiler compileMethod:
 			         (PVKernelExamples >> #vectorAddF16:a:b:out:)).
 	float := self capabilitiesIn:
-		         (PVKernelCompiler compile:
+		         (PVKernelCompiler compileMethod:
 			          (PVKernelExamples >> #vectorAdd:a:b:out:)).
 	self assert: (half includes: PVSPIRVEmitter float16Capability).
 	self assert:
@@ -691,10 +691,10 @@ PVCompilerTest >> testHalfKernelDecoratesItsArraysWithATwoByteStride [
 
 	| half float |
 	half := self arrayStridesIn:
-		        (PVKernelCompiler compile:
+		        (PVKernelCompiler compileMethod:
 			         (PVKernelExamples >> #vectorAddF16:a:b:out:)).
 	float := self arrayStridesIn:
-		         (PVKernelCompiler compile:
+		         (PVKernelCompiler compileMethod:
 			          (PVKernelExamples >> #vectorAdd:a:b:out:)).
 	self deny: half isEmpty.
 	self assert: half asSet asArray equals: #( 2 ).
@@ -708,7 +708,7 @@ PVCompilerTest >> testHalfKernelLoadsAndStoresHalvesOnly [
 
 	| widths |
 	widths := (self operandsOf: SpvOpcode opTypeFloat in: (PVKernelCompiler
-			            compile: (PVKernelExamples >> #vectorAddF16:a:b:out:)))
+			            compileMethod: (PVKernelExamples >> #vectorAddF16:a:b:out:)))
 		          collect: [ :each | each second ].
 	self assert: widths asArray equals: #( 16 )
 ]
@@ -720,7 +720,7 @@ PVCompilerTest >> testHalfMatmulAccumulatesInSinglePrecision [
 	 between them."
 
 	| bytes widths |
-	bytes := PVKernelCompiler compile:
+	bytes := PVKernelCompiler compileMethod:
 		         (PVKernelExamples >> #matmulF16:a:b:out:).
 	widths := (self operandsOf: SpvOpcode opTypeFloat in: bytes) collect: [
 		          :each | each second ].
@@ -744,7 +744,7 @@ PVCompilerTest >> testLocalSizePragmaReachesExecutionMode [
 
 	| literals |
 	literals := self executionModeLiteralsIn:
-		            (PVKernelCompiler compile:
+		            (PVKernelCompiler compileMethod:
 			             PVKernelExamples >> #taggedLocalSizeAdd:data:out:).
 	self assert: literals equals: #( 8 4 2 )
 ]
@@ -753,7 +753,7 @@ PVCompilerTest >> testLocalSizePragmaReachesExecutionMode [
 PVCompilerTest >> testLoopKernelCompiles [
 
 	| bytes |
-	bytes := PVKernelCompiler compile:
+	bytes := PVKernelCompiler compileMethod:
 		         PVKernelExamples >> #accumulateUpTo:.
 	self assertSpirvMagic: bytes description: 'testLoopKernelCompiles'
 ]
@@ -761,7 +761,7 @@ PVCompilerTest >> testLoopKernelCompiles [
 { #category : 'tests' }
 PVCompilerTest >> testMat4MulCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #mat4Mul:vec:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #mat4Mul:vec:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testMat4MulCompiles'
@@ -773,7 +773,7 @@ PVCompilerTest >> testMatmulKernelEmitsOneLoopAndA2DLocalSize [
 	 two-dimensional workgroup from the pragma, and a k loop that survives compilation."
 
 	| bytes counts |
-	bytes := PVKernelCompiler compile: PVKernelExamples >> #matmulF32:a:b:out:.
+	bytes := PVKernelCompiler compileMethod: PVKernelExamples >> #matmulF32:a:b:out:.
 	counts := self opcodeCountsIn: bytes.
 	self assert: (counts at: SpvOpcode opLoopMerge ifAbsent: [ 0 ]) equals: 1.
 	self assert: (self executionModeLiteralsIn: bytes) equals: #( 16 16 1 ).
@@ -824,7 +824,7 @@ PVCompilerTest >> testNestedLoopNodeRolesReadEverySlotWithoutMovingAnything [
 { #category : 'tests' }
 PVCompilerTest >> testNormalizeCompiles [
     | bytes |
-    bytes := PVKernelCompiler compile: (PVKernelExamples >> #normalizeV:).
+    bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #normalizeV:).
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assertSpirvMagic: bytes description: 'testNormalizeCompiles'
@@ -884,7 +884,7 @@ PVCompilerTest >> testRecognizesSelection [
 PVCompilerTest >> testSelectionKernelCompiles [
 	| m bytes |
 	m := (Smalltalk at: #PVKernelExamples) >> #relu:.
-	bytes := PVKernelCompiler compile: m.
+	bytes := PVKernelCompiler compileMethod: m.
 	self assert: bytes class equals: ByteArray.
 	self deny: bytes isEmpty.
 	self assert: (bytes at: 1) equals: 3.
@@ -1028,7 +1028,7 @@ PVCompilerTest >> testSpvTypeForHalfIsASixteenBitFloat [
 { #category : 'tests' }
 PVCompilerTest >> testSqrtCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #sqrtF32:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #sqrtF32:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testSqrtCompiles'
@@ -1061,7 +1061,7 @@ self assert: sim nextReg equals: 3
 PVCompilerTest >> testStraightLineAdd [
 	| m bytes |
 	m := PVKernelExamples >> #addFloat:to:.
-	bytes := PVKernelCompiler compile: m.
+	bytes := PVKernelCompiler compileMethod: m.
 	self deny: bytes isEmpty.
 	self assertSpirvMagic: bytes description: 'addFloat:to:'
 ]
@@ -1074,7 +1074,7 @@ PVCompilerTest >> testSubgroupDotKernelDeclaresTheGroupCapabilities [
 
 	| caps |
 	caps := self capabilitiesIn:
-		        (PVKernelCompiler compile:
+		        (PVKernelCompiler compileMethod:
 			         PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:).
 	self assert: (caps includes: PVSPIRVEmitter groupNonUniformCapability).
 	self assert:
@@ -1089,7 +1089,7 @@ PVCompilerTest >> testSubgroupDotKernelReducesOverTheSubgroupScope [
 	 of trusting a number the emitter allocated."
 
 	| bytes reductions scopeId |
-	bytes := PVKernelCompiler compile:
+	bytes := PVKernelCompiler compileMethod:
 		         PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:.
 	reductions := self
 		              operandsOf: SpvOpcode opGroupNonUniformFAdd
@@ -1127,7 +1127,7 @@ PVCompilerTest >> testTiledHalfMatmulHoldsHalfTilesAndAccumulatesInFloat [
 	 because the tiles hold halves while the dot product accumulates in float."
 
 	| bytes module widths |
-	bytes := PVKernelCompiler compile: (PVKernelExamples tiledMatmulFor: #f16).
+	bytes := PVKernelCompiler compileMethod: (PVKernelExamples tiledMatmulFor: #f16).
 	module := PVSpirvValidator on: bytes.
 	self
 		assert: (module variableCountInStorageClass: SpvStorageClass workgroup)
@@ -1148,7 +1148,7 @@ PVCompilerTest >> testTiledHalfMatmulModuleIsValidSpirv [
 	| validator |
 	PVSpirvValidator isAvailable ifFalse: [ ^ self skip ].
 	validator := PVSpirvValidator on:
-		             (PVKernelCompiler compile:
+		             (PVKernelCompiler compileMethod:
 			              (PVKernelExamples tiledMatmulFor: #f16)).
 	self assert: validator isValid description: validator validationOutput
 ]
@@ -1183,7 +1183,7 @@ PVCompilerTest >> testUnknownBufferTypeIsRefused [
 { #category : 'tests' }
 PVCompilerTest >> testVec3AddCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #vec3Add:b:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #vec3Add:b:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testVec3AddCompiles'
@@ -1192,7 +1192,7 @@ self assertSpirvMagic: bytes description: 'testVec3AddCompiles'
 { #category : 'tests' }
 PVCompilerTest >> testVec3DotCompiles [
     | bytes |
-    bytes := PVKernelCompiler compile: (PVKernelExamples >> #dotOfA:b:).
+    bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #dotOfA:b:).
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assertSpirvMagic: bytes description: 'testVec3DotCompiles'
@@ -1201,7 +1201,7 @@ PVCompilerTest >> testVec3DotCompiles [
 { #category : 'tests' }
 PVCompilerTest >> testVec3LengthCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #vec3Length:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #vec3Length:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testVec3LengthCompiles'
@@ -1210,7 +1210,7 @@ self assertSpirvMagic: bytes description: 'testVec3LengthCompiles'
 { #category : 'tests' }
 PVCompilerTest >> testVec4WCompiles [
 | bytes |
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #vec4W:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #vec4W:).
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testVec4WCompiles'
@@ -1220,7 +1220,7 @@ self assertSpirvMagic: bytes description: 'testVec4WCompiles'
 PVCompilerTest >> testVectorAddKernelCompiles [
 | m bytes |
 m := PVKernelExamples >> #vectorAdd:a:b:out:.
-bytes := PVKernelCompiler compile: m.
+bytes := PVKernelCompiler compileMethod: m.
 self assert: bytes class equals: ByteArray.
 self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testVectorAddKernelCompiles'
@@ -1229,7 +1229,7 @@ self assertSpirvMagic: bytes description: 'testVectorAddKernelCompiles'
 { #category : 'tests' }
 PVCompilerTest >> testVertexShaderCompiles [
     | bytes |
-    bytes := PVKernelCompiler compile: (PVKernelExamples >> #triVertex:color:).
+    bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #triVertex:color:).
     self assert: bytes class equals: ByteArray.
     self deny: bytes isEmpty.
     self assertSpirvMagic: bytes description: 'testVertexShaderCompiles'

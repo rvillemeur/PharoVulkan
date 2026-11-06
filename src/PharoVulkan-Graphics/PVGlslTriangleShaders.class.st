@@ -13,12 +13,12 @@ Class {
 
 { #category : 'compiling' }
 PVGlslTriangleShaders class >> fragmentShaderBytes [
-	^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:)
+	^ PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriFragment:)
 ]
 
 { #category : 'compiling' }
 PVGlslTriangleShaders class >> vertexShaderBytes [
-	^ PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:)
+	^ PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriVertex:color:)
 ]
 
 { #category : 'constants' }

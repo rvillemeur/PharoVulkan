@@ -188,7 +188,7 @@ VkPipelineExamples class >> shaderModuleRequestForTheVectorAddKernel [
 	<sampleInstance>
 	| info bytes code kept |
 	info := VkShaderModuleCreateInfo externalInstance.
-	bytes := PVKernelCompiler compile:
+	bytes := PVKernelCompiler compileMethod:
 		         PVComputeKernel exampleKernelMethod.
 	code := VkShaderModule codeOutsideObjectMemory: bytes.
 	^ [

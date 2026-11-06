@@ -33,8 +33,10 @@ SpvMemorySemantics class >> crossWorkgroupMemory [
 ]
 
 { #category : 'constants' }
-SpvMemorySemantics class >> release [
-	"Release: every write before this one is visible to whatever acquires."
+SpvMemorySemantics class >> releaseSemantics [
+	"Release: every write before this one is visible to whatever acquires.
+	 Not named release: that is Object >> release, and a class-side constant of that name
+	 hides the selector Pharo's own tools send."
 
 	^ 16r4
 ]

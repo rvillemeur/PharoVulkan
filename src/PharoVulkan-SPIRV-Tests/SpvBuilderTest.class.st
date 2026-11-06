@@ -355,7 +355,7 @@ SpvBuilderTest >> testMemorySemanticsAreSingleBitsOfOneMask [
 
 	{
 		SpvMemorySemantics acquire.
-		SpvMemorySemantics release.
+		SpvMemorySemantics releaseSemantics.
 		SpvMemorySemantics acquireRelease.
 		SpvMemorySemantics uniformMemory.
 		SpvMemorySemantics subgroupMemory.

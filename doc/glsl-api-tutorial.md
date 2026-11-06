@@ -171,7 +171,7 @@ What the compiler does:
 Compile it:
 
 ```smalltalk
-vertSpirv := PVKernelCompiler compile: (PVKernelExamples >> #triVertex:color:).
+vertSpirv := PVKernelCompiler compileMethod: (PVKernelExamples >> #triVertex:color:).
 ```
 
 Verify it starts with the SPIR-V magic number:
@@ -197,7 +197,7 @@ Receives `vec3 fragColor` from the vertex shader (Location 0), appends
 `alpha = 1.0`, and writes the resulting `vec4` to the framebuffer.
 
 ```smalltalk
-fragSpirv := PVKernelCompiler compile: (PVKernelExamples >> #triFragment:).
+fragSpirv := PVKernelCompiler compileMethod: (PVKernelExamples >> #triFragment:).
 ```
 
 ---
@@ -259,8 +259,8 @@ To run just the compilation and inspect the output without opening a window:
 
 ```smalltalk
 | vBytes fBytes |
-vBytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:).
-fBytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:).
+vBytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriVertex:color:).
+fBytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriFragment:).
 vBytes size.    "=> word count × 4"
 fBytes size.
 ```
@@ -311,8 +311,8 @@ entirely from literal floats via `,` chaining.
 ### 4. Compile
 
 ```smalltalk
-vertSpirv := PVKernelCompiler compile: (MyShaders >> #myVertex:).
-fragSpirv := PVKernelCompiler compile: (MyShaders >> #myFragment).
+vertSpirv := PVKernelCompiler compileMethod: (MyShaders >> #myVertex:).
+fragSpirv := PVKernelCompiler compileMethod: (MyShaders >> #myFragment).
 ```
 
 ### 5. Feed into the graphics pipeline
@@ -325,11 +325,11 @@ PVHelloTriangleScene subclass: #MyTriangleScene
     ...
 
 MyTriangleScene >> buildVertexShader [
-    ^ PVKernelCompiler compile: (MyShaders >> #myVertex:)
+    ^ PVKernelCompiler compileMethod: (MyShaders >> #myVertex:)
 ]
 
 MyTriangleScene >> buildFragmentShader [
-    ^ PVKernelCompiler compile: (MyShaders >> #myFragment)
+    ^ PVKernelCompiler compileMethod: (MyShaders >> #myFragment)
 ]
 
 MyTriangleScene class >> renderTriangle [
@@ -387,7 +387,7 @@ MyTriangleScene renderTriangle
 **Check SPIR-V magic number first:**
 
 ```smalltalk
-bytes := PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:).
+bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriVertex:color:).
 (bytes copyFrom: 1 to: 4) = #[3 2 35 7]    "must be true"
 ```
 

@@ -16,14 +16,14 @@ PVValidationExamples class >> validatorOnComputeLoopKernel [
 	"One click: the compute kernel whose body is a whileTrue:. spirv-val cannot see a
 	 dropped loop, so read the Module tab for the OpLoopMerge as well as the verdict."
 	<sampleInstance>
-	^ PVSpirvValidator on: (PVKernelCompiler compile: (PVKernelExamples >> #sumFirst16:data:out:))
+	^ PVSpirvValidator on: (PVKernelCompiler compileMethod: (PVKernelExamples >> #sumFirst16:data:out:))
 ]
 
 { #category : 'examples' }
 PVValidationExamples class >> validatorOnComputeSelectionKernel [
 	"One click: the compute kernel whose body is an ifTrue:ifFalse:."
 	<sampleInstance>
-	^ PVSpirvValidator on: (PVKernelCompiler compile: (PVKernelExamples >> #clampNegatives:data:out:))
+	^ PVSpirvValidator on: (PVKernelCompiler compileMethod: (PVKernelExamples >> #clampNegatives:data:out:))
 ]
 
 { #category : 'examples' }
@@ -44,7 +44,7 @@ PVValidationExamples class >> validatorOnHalfVectorAddKernel [
 
 	<sampleInstance>
 	^ PVSpirvValidator on:
-		  (PVKernelCompiler compile:
+		  (PVKernelCompiler compileMethod:
 			   (PVKernelExamples >> #vectorAddF16:a:b:out:))
 ]
 
@@ -54,7 +54,7 @@ PVValidationExamples class >> validatorOnMatmulKernel [
 	 workgroup from the kernel's pragma and the numWorkgroups built-in it reads for N."
 
 	<sampleInstance>
-	^ PVSpirvValidator on: (PVKernelCompiler compile: (PVKernelExamples >> #matmulF32:a:b:out:))
+	^ PVSpirvValidator on: (PVKernelCompiler compileMethod: (PVKernelExamples >> #matmulF32:a:b:out:))
 
 ]
 
@@ -63,7 +63,7 @@ PVValidationExamples class >> validatorOnScalarKernel [
 	"One click on the failing path: a scalar <gpu> method compiles to a SPIR-V function
 	 with no OpEntryPoint, which spirv-val must refuse as a standalone module."
 	<sampleInstance>
-	^ PVSpirvValidator on: (PVKernelCompiler compile: (PVKernelExamples >> #relu:))
+	^ PVSpirvValidator on: (PVKernelCompiler compileMethod: (PVKernelExamples >> #relu:))
 ]
 
 { #category : 'examples' }
@@ -74,7 +74,7 @@ PVValidationExamples class >> validatorOnSharedBroadcastKernel [
 
 	<sampleInstance>
 	^ PVSpirvValidator on:
-		  (PVKernelCompiler compile:
+		  (PVKernelCompiler compileMethod:
 			   (PVKernelExamples >> #broadcastFirstOf:data:out:tile:))
 ]
 
@@ -86,7 +86,7 @@ PVValidationExamples class >> validatorOnSubgroupDotKernel [
 
 	<sampleInstance>
 	^ PVSpirvValidator on:
-		  (PVKernelCompiler compile:
+		  (PVKernelCompiler compileMethod:
 			   (PVKernelExamples >> #subgroupDotOf:a:b:out:lanes:))
 ]
 
@@ -104,5 +104,5 @@ PVValidationExamples class >> validatorOnTiledMatmulKernel [
 PVValidationExamples class >> validatorOnVectorAddKernel [
 	"One click: the compute kernel that must pass spirv-val."
 	<sampleInstance>
-	^ PVSpirvValidator on: (PVKernelCompiler compile: (PVKernelExamples >> #vectorAdd:a:b:out:))
+	^ PVSpirvValidator on: (PVKernelCompiler compileMethod: (PVKernelExamples >> #vectorAdd:a:b:out:))
 ]

@@ -189,7 +189,7 @@ test packages depend on this one.
 
 ## Compiler Pipeline (Pharo method → SPIR-V bytes)
 
-Entry: `PVKernelCompiler compile: aCompiledMethod`
+Entry: `PVKernelCompiler compileMethod: aCompiledMethod`
 
 ```
 CompiledMethod
@@ -251,7 +251,7 @@ ctx := VkContext computeContext.
 buf := ctx device allocateBuffer: 1024 usage: VkImageUsage storageBit.
 buf copyFromByteArray: inputData.
 
-spirv := PVKernelCompiler compile: (MyClass >> #myKernel:).
+spirv := PVKernelCompiler compileMethod: (MyClass >> #myKernel:).
 
 kernel := PVComputeKernel on: ctx spirv: spirv.
 kernel bindBuffer: buf.

@@ -70,7 +70,7 @@ PVSpirvValidatorTest >> testEntryPointReportOnAModuleWithoutAWorkgroup [
 
 	| validator rows |
 	validator := PVSpirvValidator on:
-		             (PVKernelCompiler compile:
+		             (PVKernelCompiler compileMethod:
 			              PVKernelExamples >> #triVertex:color:).
 	self assert: validator localSizeFromWords equals: #( ).
 	rows := validator entryPointReport.
@@ -91,7 +91,7 @@ PVSpirvValidatorTest >> testEveryWorkgroupVariableIsNamedByTheEntryPoint [
 	 degenerate case: no tiles, and the list still names its buffers."
 
 	| shared plain tiles |
-	shared := PVSpirvValidator on: (PVKernelCompiler compile:
+	shared := PVSpirvValidator on: (PVKernelCompiler compileMethod:
 			           (PVKernelExamples >> #broadcastFirstOf:data:out:tile:)).
 	plain := PVValidationExamples validatorOnMatmulKernel.
 	tiles := shared variableIdsInStorageClass: SpvStorageClass workgroup.
@@ -180,18 +180,18 @@ PVSpirvValidatorTest >> testGarbageBytesAreReportedInvalid [
 
 { #category : 'tests' }
 PVSpirvValidatorTest >> testGlslTriFragment [
-	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #glslTriFragment:)) description: 'glslTriFragment:'
+	self validateSpirv: (PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriFragment:)) description: 'glslTriFragment:'
 ]
 
 { #category : 'tests' }
 PVSpirvValidatorTest >> testGlslTriVertex [
-	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #glslTriVertex:color:)) description: 'glslTriVertex:color:'
+	self validateSpirv: (PVKernelCompiler compileMethod: (PVKernelExamples >> #glslTriVertex:color:)) description: 'glslTriVertex:color:'
 ]
 
 { #category : 'tests - report' }
 PVSpirvValidatorTest >> testInspectorValidationViewLeavesTheInspectedValidatorUntouched [
 	| bytes validator view |
-	bytes := PVKernelCompiler compile: (PVKernelExamples >> #vectorAdd:a:b:out:).
+	bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #vectorAdd:a:b:out:).
 	validator := self validatorFor: bytes.
 	view := validator inspectorValidation: SpPresenter new.
 	self assert: (validator instVarNamed: 'exitCode') isNil
@@ -207,7 +207,7 @@ PVSpirvValidatorTest >> testLocalIndexKernelValidates [
 
 	self
 		validateSpirv:
-		(PVKernelCompiler compile: (PVKernelExamples >> #localIndexOf:data:out:))
+		(PVKernelCompiler compileMethod: (PVKernelExamples >> #localIndexOf:data:out:))
 		description: 'localIndexOf:data:out:'
 ]
 
@@ -234,7 +234,7 @@ PVSpirvValidatorTest >> testMat4MulNamesTheMatrixTimesVectorInstruction [
 
 	| validator |
 	validator := self validatorFor:
-		             (PVKernelCompiler compile: PVKernelExamples >> #mat4Mul:vec:).
+		             (PVKernelCompiler compileMethod: PVKernelExamples >> #mat4Mul:vec:).
 	self deny: validator isValid.
 	self assert: (validator validationOutput includesSubstring: 'No OpEntryPoint').
 	self deny: (validator validationOutput includesSubstring: 'VectorTimesMatrix')
@@ -247,7 +247,7 @@ PVSpirvValidatorTest >> testMatmulF16 [
 
 	self
 		validateSpirv:
-			(PVKernelCompiler compile:
+			(PVKernelCompiler compileMethod:
 				 (PVKernelExamples >> #matmulF16:a:b:out:))
 		description: 'matmulF16:a:b:out:'
 ]
@@ -258,7 +258,7 @@ PVSpirvValidatorTest >> testScalarGpuMethodHasNoEntryPoint [
 	 to a SPIR-V function, so spirv-val must refuse it as a standalone module. This is
 	 why only the kernels with a WorkItem and the shaders are validated here."
 	| validator |
-	validator := self validatorFor: (PVKernelCompiler compile: (PVKernelExamples >> #relu:)).
+	validator := self validatorFor: (PVKernelCompiler compileMethod: (PVKernelExamples >> #relu:)).
 	self deny: validator isValid.
 	self assert: (validator validationOutput includesSubstring: 'No OpEntryPoint')
 ]
@@ -270,7 +270,7 @@ PVSpirvValidatorTest >> testSharedBroadcastKernelDeclaresOneWorkgroupVariable [
 	 every invocation its own copy and silently losing the broadcast."
 
 	| validator |
-	validator := PVSpirvValidator on: (PVKernelCompiler compile:
+	validator := PVSpirvValidator on: (PVKernelCompiler compileMethod:
 			              (PVKernelExamples >> #broadcastFirstOf:data:out:tile:)).
 	self
 		assert: (validator variableCountInStorageClass: SpvStorageClass workgroup)
@@ -287,7 +287,7 @@ PVSpirvValidatorTest >> testSharedBroadcastKernelValidates [
 
 	self
 		validateSpirv:
-		(PVKernelCompiler compile:
+		(PVKernelCompiler compileMethod:
 			 (PVKernelExamples >> #broadcastFirstOf:data:out:tile:))
 		description: 'broadcastFirstOf:data:out:tile:'
 ]
@@ -316,18 +316,18 @@ PVSpirvValidatorTest >> testSubgroupDotKernelValidates [
 
 { #category : 'tests' }
 PVSpirvValidatorTest >> testTriFragment [
-	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #triFragment:)) description: 'triFragment:'
+	self validateSpirv: (PVKernelCompiler compileMethod: (PVKernelExamples >> #triFragment:)) description: 'triFragment:'
 ]
 
 { #category : 'tests' }
 PVSpirvValidatorTest >> testTriVertex [
-	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #triVertex:color:)) description: 'triVertex:color:'
+	self validateSpirv: (PVKernelCompiler compileMethod: (PVKernelExamples >> #triVertex:color:)) description: 'triVertex:color:'
 ]
 
 { #category : 'tests - report' }
 PVSpirvValidatorTest >> testValidationReportNamesTheToolAndTheVerdict [
 	| validator report |
-	validator := self validatorFor: (PVKernelCompiler compile: (PVKernelExamples >> #vectorAdd:a:b:out:)).
+	validator := self validatorFor: (PVKernelCompiler compileMethod: (PVKernelExamples >> #vectorAdd:a:b:out:)).
 	report := validator validationReport.
 	self assert: (report collect: [ :each | each key ]) asArray
 		equals: #( 'executable' 'target environment' 'module bytes' 'exit code' 'verdict' 'output' ).
@@ -365,7 +365,7 @@ PVSpirvValidatorTest >> testVariableCountInStorageClassSeesTheSharedTiles [
 
 { #category : 'tests' }
 PVSpirvValidatorTest >> testVectorAdd [
-	self validateSpirv: (PVKernelCompiler compile: (PVKernelExamples >> #vectorAdd:a:b:out:)) description: 'vectorAdd:a:b:out:'
+	self validateSpirv: (PVKernelCompiler compileMethod: (PVKernelExamples >> #vectorAdd:a:b:out:)) description: 'vectorAdd:a:b:out:'
 ]
 
 { #category : 'tests' }
@@ -375,7 +375,7 @@ PVSpirvValidatorTest >> testVectorAddF16 [
 
 	self
 		validateSpirv:
-			(PVKernelCompiler compile:
+			(PVKernelCompiler compileMethod:
 				 (PVKernelExamples >> #vectorAddF16:a:b:out:))
 		description: 'vectorAddF16:a:b:out:'
 ]

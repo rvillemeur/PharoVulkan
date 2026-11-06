@@ -196,11 +196,11 @@ accumulateUpTo: n [
 
 ```smalltalk
 | spirvBytes |
-spirvBytes := PVKernelCompiler compile: (MyKernels >> #addVectors:and:).
+spirvBytes := PVKernelCompiler compileMethod: (MyKernels >> #addVectors:and:).
 "=> ByteArray — 32-bit LE SPIR-V binary, passes spirv-val"
 ```
 
-`PVKernelCompiler compile:` is a class-side factory that runs all 7 stages:
+`PVKernelCompiler compileMethod:` is a class-side factory that runs all 7 stages:
 
 | Stage | Class | Input → Output |
 |---|---|---|
@@ -371,7 +371,7 @@ inData := ByteArray new: 16.
 inputBuf copyFromByteArray: inData.
 
 "4. Compile relu kernel"
-spirv := PVKernelCompiler compile: (PVKernelExamples >> #relu:).
+spirv := PVKernelCompiler compileMethod: (PVKernelExamples >> #relu:).
 
 "5. Run"
 kernel := PVComputeKernel on: ctx spirv: spirv.

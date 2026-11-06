@@ -54,7 +54,7 @@ PVComputeKernel class >> exampleKernelMethod [
 { #category : 'factory' }
 PVComputeKernel class >> fromMethod: aCompiledMethod on: aContext [
 	| spirv |
-	spirv := PVKernelCompiler compile: aCompiledMethod.
+	spirv := PVKernelCompiler compileMethod: aCompiledMethod.
 	^ self on: aContext spirv: spirv
 ]
 
