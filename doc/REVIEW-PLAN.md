@@ -93,6 +93,15 @@ siblings — read them before choosing).
 
 Gain: high. Risk: low — mechanical, and the suite covers both call paths.
 
+**Done.** `compileMethod:` and `releaseSemantics`, each carrying a comment naming the reflection
+selector it must not be called after. The rename was done by hand rather than with Pharo's
+automated rename: that refactoring rewrites every sender of the old selector in the image, and
+`Behavior >> compile:` has senders all over Pharo that have nothing to do with this project. All 64
+senders were rewritten — 63 here, and one in VectorGraphics (`VGVulkanCoverageKernel class >>
+inspectorKernel:`), committed in that repository separately. `PVKernelCompiler`'s own class comment
+claimed nine stages, an SSA stage and an entry point `compile:forDevice:` that does not exist; it
+now lists the seven real ones. Commit `8107398`.
+
 ### 3. Twelve `on:do:` handlers that swallow the error
 
 The standard treats a swallowing handler as always a bug. The three in `PVKernelCompiler >> compile`
@@ -112,6 +121,28 @@ whose types cannot be inferred must not compile.
 
 Gain: high. Risk: medium — some currently-green tests may be passing *because* of the swallow, and
 each one that turns red has to be read rather than patched.
+
+**Done, for the three in `PVKernelCompiler >> compile`.** They are gone and the inference stage is
+called plainly. The failing test came first: a kernel with a parameter no `<param:>` pragma declares
+failed with `KeyNotFound: key 5 not found in Dictionary` from inside the emitter, where the
+inferencer had already said `Cannot infer type for recv of +`. `PVUninferableTypeFixture` now holds
+the kernels whose types cannot be inferred, as `PVCfgShapeFixture` holds the CFG shapes, and
+`PVCompilerTest` pins both verdicts. No test was passing because of the swallow: 137 green in the
+compiler and SPIR-V suites, 445 in the rest, 53 in the graphics suite. Renraku's
+`ReTempsReadBeforeWrittenRule` on `typeMap` went away with the handlers. Commit `847bd5c`.
+
+**Triage of the rest.** Eleven of them read `on: VkError do: [ :error | nil ]` in the `*Examples`
+classes and in `VkPhysicalDevice >> memoryTypeRows`. Each catches one named condition — a machine
+with no device, or no memory type matching the allocator's requirement — and the caller tests the
+nil on the next line. They are narrow and handled, and they stay.
+
+**Debt, deliberately not fixed: `VkXmlParser >> parseEnums`.** Its `on: Error do: [ :e | 0 ]` turns
+a value of `vk.xml` it cannot read into the constant 0, so a wrong Vulkan enum would reach the
+generated bindings in silence. It is dev-time code with one sender, `VkBindingGenerator >>
+generateAll:`, and `PharoVulkan-Generator` has no test package at all: fixing it red-first means a
+new `PharoVulkan-Generator-Tests` package, an entry for it in `PVArchitectureTest class >>
+allowedDependencies` and a group in `BaselineOfPharoVulkan`. That is a unit of work of its own, not
+a line in this point, and it is recorded here so the next regeneration of the bindings knows.
 
 ---
 
@@ -148,6 +179,16 @@ belongs in its own phase with its own tests.
 
 Gain: high — a plan document that lies about the pipeline is worse than no document. Risk: low if
 the stage is deleted; the suite's SSA tests go with it.
+
+**Done, by deleting the stage.** `PVSSAConstructor`, `PVSSAVar`, `PVPhiNode`,
+`PVControlFlowGraph`, `PVBasicBlock` and `PVCFGBuilder class >> buildFrom:` are gone, with the two
+tests that were their only senders. `PVSSAConstructor >> construct:` answered its argument
+unchanged, so no emitted module can differ. The tag `SSA` was renamed `Registers`, and the
+documents that claimed the stage runs were corrected: the `PharoVulkan-Compiler` package comment,
+`CLAUDE.md` (stage count and the frozen-decisions row, which now reads that there is no SSA
+algorithm and that `PVSPIRVEmitter` writes `OpPhi` by saving and restoring its register map),
+`README.md`, `doc/architecture.md` and `doc/compute-tutorial.md`. `prompt.md`, `design-notes.md` and
+`PACKAGE-PLAN.md` were left alone as the historical record. Commit `8de4299`.
 
 ### 5. `PVKernelCompiler >> compile` mixes three levels of abstraction
 
