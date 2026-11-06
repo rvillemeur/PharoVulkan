@@ -208,6 +208,40 @@ one.
 Gain: high. Risk: medium — the extraction is safe; the polymorphic dispatch moves code across
 classes and wants the suite between each move.
 
+**Done, in the two commits the point asks for.**
+
+First, Extract Method. `decode` runs stages one to four once and keeps its four results in slots,
+and each target reads them: `compileVertexShader`, `compileFragmentShader`, `compileComputeKernel`
+and `compileGenericKernel`. `recognizedNodeOr:` refuses the recogniser's nil answer in one place
+instead of four. `compileComputeBlocks:regOps:typeMap:selectorTable:` is gone — its four arguments
+were the slots the caller had just filled. `compile` is eleven lines at one level of abstraction,
+and `run_critics` on the class went from a long method and a high cyclomatic complexity to empty.
+
+Second, Replace Conditional with Polymorphism. The seven `isKindOf:` tests are gone. A target now
+sends `emitKernelWith:`, `emitComputeKernelWith:` or `emitShaderWith:executionModel:` to the node
+the recogniser matched. This needed the step the point does not name: the three node classes each
+subclassed `Object`, so a refusal had no single home and a shape with no emitter for the target in
+hand would have reached a doesNotUnderstand. **Extract Superclass** `PVStructuredNode` holds the
+three refusals and `coveredBlocks` as `subclassResponsibility`; `PVSelectionNode` overrides all
+three emitters, `PVLoopNode` two, `PVNestedLoopNode` only the compute one. Adding a shape now means
+adding a subclass with the emitters it has, not a branch in four cascades.
+
+The refusal text changed, deliberately: a shader path said `Unsupported CFG in vertex shader: X`
+and now says `Unrecognized control flow node: X in a shader`. No test and no document quotes it;
+`Unrecognized CFG shape`, which the tutorial and the README do quote, is the recogniser's nil
+answer and is untouched.
+
+Three tests hold the result. `PVCompilerTest >>
+testCompilerAsksTheNodeToEmitInsteadOfTestingItsClass` reads every `PVKernelCompiler` method's AST
+and fails on an `isKindOf:` send. `testNodeShapeWithNoEmitterBehindItIsRefusedByName` pins the
+refusal naming the shape, over `PVCfgShapeFixture >> nestedLoops:`. `PVStructuredNode >>
+targetRows`, the `Targets` inspector tab and
+`testTargetRowsOfANodeReadTheOverridesAndNotAList` read which targets emit a shape by reflecting
+over the node's own class — `classHoldingTheRefusals` asks which class implements `refuseFor:`
+rather than naming it — so the tab cannot drift from the dispatch.
+`PVCompilerExamples class >> selectionOfAClampKernel` gives the one click beside the nested-loop
+example already there.
+
 ### 6. Magic values, against the project's own "No magic values" rule
 
 The SPIR-V module prologue is written out ten times, with the numbers inline:

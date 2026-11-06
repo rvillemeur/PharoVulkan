@@ -389,6 +389,20 @@ self deny: bytes isEmpty.
 self assertSpirvMagic: bytes description: 'testClampCompiles'
 ]
 
+{ #category : 'tests - compiler' }
+PVCompilerTest >> testCompilerAsksTheNodeToEmitInsteadOfTestingItsClass [
+	"The target methods used isKindOf: to choose an emitter entry point, which means every
+	 new node shape has to be added to four cascades. The node knows its own shape."
+
+	| typeTests |
+	typeTests := (PVKernelCompiler methods , PVKernelCompiler class methods) select: [ :each |
+		             each ast allChildren anySatisfy: [ :node |
+			             node isMessage and: [ node selector = #isKindOf: ] ] ].
+	self
+		assertEmpty:
+		(typeTests collect: [ :each | each selector ]) asSortedCollection asArray
+]
+
 { #category : 'tests - compute control flow' }
 PVCompilerTest >> testComputeLoopKernelEmitsOneLoopMerge [
 	"A whileTrue: in a compute kernel must become a real SPIR-V loop. The compute path
@@ -850,6 +864,19 @@ PVCompilerTest >> testNestedLoopNodeRolesReadEverySlotWithoutMovingAnything [
 		equals: idsBefore
 ]
 
+{ #category : 'tests - compiler' }
+PVCompilerTest >> testNodeShapeWithNoEmitterBehindItIsRefusedByName [
+	"Pinned across the move to polymorphic dispatch: a nested loop has a compute emitter and
+	 no plain-kernel one, and the refusal has to name the shape that was recognised."
+
+	| raised |
+	raised := [ PVKernelCompiler compileMethod: (PVCfgShapeFixture >> #nestedLoops:) ]
+		          on: PVTypeError
+		          do: [ :error | error ].
+	self assert: raised class equals: PVTypeError.
+	self assert: (raised messageText includesSubstring: 'PVNestedLoopNode')
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testNormalizeCompiles [
     | bytes |
@@ -1147,6 +1174,24 @@ PVCompilerTest >> testSubgroupSumOnTheHostAnswersTheValueItself [
 	 it is the value. A kernel body has to mean something when it runs in the image."
 
 	self assert: 3.5 subgroupSum equals: 3.5
+]
+
+{ #category : 'tests - compiler' }
+PVCompilerTest >> testTargetRowsOfANodeReadTheOverridesAndNotAList [
+	"The Targets tab must not restate which shape each target emits: it reflects over the
+	 node's own class, so a shape that gains or loses an emitter changes the tab with it."
+
+	| selection nested emitted |
+	selection := PVSelectionNode new.
+	nested := PVNestedLoopNode new.
+	emitted := [ :node |
+		           (node targetRows select: [ :row | (row at: #emitted) = 'yes' ])
+			           collect: [ :row | row at: #target ] ].
+	self assert: (emitted value: selection) size equals: 3.
+	self
+		assert: (emitted value: nested) asArray
+		equals: #( 'Compute kernel' ).
+	self assert: (nested targetRows size) equals: 3
 ]
 
 { #category : 'tests - half precision' }

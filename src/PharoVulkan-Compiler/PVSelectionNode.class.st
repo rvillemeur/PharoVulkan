@@ -3,7 +3,7 @@ Structured CFG node representing an ifTrue:ifFalse: selection. Holds the conditi
 "
 Class {
 	#name : 'PVSelectionNode',
-	#superclass : 'Object',
+	#superclass : 'PVStructuredNode',
 	#instVars : [
 		'condBlock',
 		'trueBlocks',
@@ -33,6 +33,38 @@ PVSelectionNode >> coveredBlocks [
 
 	^ ({ condBlock } , trueBlocks , falseBlocks , { mergeBlock }) reject: [ :each |
 		  each isNil ]
+]
+
+{ #category : 'emitting' }
+PVSelectionNode >> emitComputeKernelWith: aCompiler [
+	"The compute emitters infer their own types, because the per-block simulations number
+	 registers differently from the whole-method one aCompiler typeMap came from."
+
+	^ PVSPIRVEmitter
+		  compileComputeKernelSelection: self
+		  annotation: aCompiler annotation
+		  selectorTable: aCompiler selectorTable
+]
+
+{ #category : 'emitting' }
+PVSelectionNode >> emitKernelWith: aCompiler [
+	^ PVSPIRVEmitter
+		  compileSelection: self
+		  annotation: aCompiler annotation
+		  typeMap: aCompiler typeMap
+		  selectorTable: aCompiler selectorTable
+]
+
+{ #category : 'emitting' }
+PVSelectionNode >> emitShaderWith: aCompiler executionModel: anExecutionModel [
+	"The one shape a vertex or fragment shader may have beyond straight-line code."
+
+	^ PVSPIRVEmitter
+		  compileShaderKernelSelection: self
+		  annotation: aCompiler annotation
+		  typeMap: aCompiler typeMap
+		  selectorTable: aCompiler selectorTable
+		  executionModel: anExecutionModel
 ]
 
 { #category : 'accessing' }

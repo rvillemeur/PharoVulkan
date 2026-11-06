@@ -38,6 +38,19 @@ PVCompilerExamples class >> recogniserOnLoopKernel [
 ]
 
 { #category : 'examples' }
+PVCompilerExamples class >> selectionOfAClampKernel [
+	"One click: the node the recogniser builds for an ifTrue:ifFalse: kernel, the one shape
+	 every target emits. Open the Targets tab beside nestedLoopOfTheTiledMatmul, whose shape
+	 only the compute path emits."
+
+	<sampleInstance>
+	| blocks |
+	blocks := PVCFGBuilder buildBytecodeBlocks:
+		          (PVBytecodeDecoder decode: (PVKernelExamples >> #clampNegatives:data:out:)).
+	^ PVStructuredCFGRecognizer recognizeFrom: blocks
+]
+
+{ #category : 'examples' }
 PVCompilerExamples class >> tiledMatmulModule [
 	"One click: the hand-built module, with its bytes already built. The Module tab reads
 	 the shared tiles, the barriers and the loops back out of those bytes, and says what

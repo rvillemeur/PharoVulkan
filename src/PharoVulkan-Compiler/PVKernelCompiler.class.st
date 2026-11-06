@@ -80,102 +80,58 @@ PVKernelCompiler >> compile [
 PVKernelCompiler >> compileComputeKernel [
 	"A compute kernel with control flow must go through the recogniser like any other
 	 kernel. Returning straight to compileComputeKernel: emitted the linearised register
-	 ops as one basic block, which dropped the loop and still passed spirv-val. The
-	 structured emitters infer their own types, because the per-block simulations number
-	 registers differently from the whole-method one that typeMap came from."
+	 ops as one basic block, which dropped the loop and still passed spirv-val."
 
-	| structNode |
 	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
 			   compileComputeKernel: regOps
 			   annotation: annotation
 			   typeMap: typeMap
 			   selectorTable: selectorTable ].
-	structNode := self recognizedNodeOr: 'Unrecognized CFG shape'.
-	(structNode isKindOf: PVNestedLoopNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileComputeKernelNestedLoop: structNode
-			   annotation: annotation
-			   selectorTable: selectorTable ].
-	(structNode isKindOf: PVLoopNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileComputeKernelLoop: structNode
-			   annotation: annotation
-			   selectorTable: selectorTable ].
-	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileComputeKernelSelection: structNode
-			   annotation: annotation
-			   selectorTable: selectorTable ].
-	PVTypeError signal:
-		'Unrecognized control flow node: ' , structNode class name
+	^ (self recognizedNodeOr: 'Unrecognized CFG shape') emitComputeKernelWith: self
 ]
 
 { #category : 'compiling - targets' }
 PVKernelCompiler >> compileFragmentShader [
-	"A fragment shader is either straight-line code or one selection, as a vertex shader is;
-	 only the emitter entry point and the execution model differ."
+	"A fragment shader is shaped as a vertex shader is; only the straight-line emitter and
+	 the execution model differ."
 
-	| structNode |
 	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
 			   compileFragmentShader: regOps
 			   annotation: annotation
 			   typeMap: typeMap
 			   selectorTable: selectorTable ].
-	structNode := self recognizedNodeOr: 'Unrecognized CFG shape in fragment shader'.
-	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileShaderKernelSelection: structNode
-			   annotation: annotation
-			   typeMap: typeMap
-			   selectorTable: selectorTable
-			   executionModel: SpvExecutionModel fragment ].
-	PVTypeError signal:
-		'Unsupported CFG in fragment shader: ' , structNode class name
+	^ (self recognizedNodeOr: 'Unrecognized CFG shape in fragment shader')
+		  emitShaderWith: self
+		  executionModel: SpvExecutionModel fragment
 ]
 
 { #category : 'compiling - targets' }
 PVKernelCompiler >> compileGenericKernel [
-	"The non-compute, non-shader kernel: a plain <gpu> method, which the emitter compiles
-	 either as one basic block or through the recognised selection or loop."
+	"The non-compute, non-shader kernel: a plain <gpu> method, emitted as one basic block or
+	 by the shape the recogniser matched."
 
-	| structNode |
 	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
 			   compileKernel: regOps
 			   typeMap: typeMap
 			   annotation: annotation
 			   selectorTable: selectorTable
 			   name: method selector ].
-	structNode := self recognizedNodeOr: 'Unrecognized CFG shape'.
-	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileSelection: structNode
-			   annotation: annotation
-			   typeMap: typeMap
-			   selectorTable: selectorTable ].
-	(structNode isKindOf: PVLoopNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileLoop: structNode
-			   annotation: annotation
-			   typeMap: typeMap
-			   selectorTable: selectorTable ].
-	PVTypeError signal:
-		'Unrecognized control flow node: ' , structNode class name
+	^ (self recognizedNodeOr: 'Unrecognized CFG shape') emitKernelWith: self
 ]
 
 { #category : 'compiling - targets' }
 PVKernelCompiler >> compileVertexShader [
-	"A vertex shader is either straight-line code or one selection. Anything else the
-	 recogniser knows has no vertex emitter behind it."
+	"A vertex shader is either straight-line code or a shape with a shader emitter behind
+	 it, which the node itself answers."
 
-	| structNode |
 	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
 			   compileVertexShader: regOps
 			   annotation: annotation
 			   typeMap: typeMap
 			   selectorTable: selectorTable ].
-	structNode := self recognizedNodeOr: 'Unrecognized CFG shape in vertex shader'.
-	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
-			   compileShaderKernelSelection: structNode
-			   annotation: annotation
-			   typeMap: typeMap
-			   selectorTable: selectorTable
-			   executionModel: SpvExecutionModel vertex ].
-	PVTypeError signal:
-		'Unsupported CFG in vertex shader: ' , structNode class name
+	^ (self recognizedNodeOr: 'Unrecognized CFG shape in vertex shader')
+		  emitShaderWith: self
+		  executionModel: SpvExecutionModel vertex
 ]
 
 { #category : 'compiling - stages' }
@@ -223,4 +179,14 @@ PVKernelCompiler >> recognizedNodeOr: aMessageText [
 	node := PVStructuredCFGRecognizer recognizeFrom: blocks.
 	node ifNil: [ PVTypeError signal: aMessageText ].
 	^ node
+]
+
+{ #category : 'accessing' }
+PVKernelCompiler >> selectorTable [
+	^ selectorTable
+]
+
+{ #category : 'accessing' }
+PVKernelCompiler >> typeMap [
+	^ typeMap
 ]

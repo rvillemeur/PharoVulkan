@@ -7,7 +7,7 @@ Key methods: coveredBlocks, which the recogniser's coverage check reads to refus
 "
 Class {
 	#name : 'PVNestedLoopNode',
-	#superclass : 'Object',
+	#superclass : 'PVStructuredNode',
 	#instVars : [
 		'preheaderBlock',
 		'headerBlock',
@@ -33,6 +33,16 @@ PVNestedLoopNode >> coveredBlocks [
 		   innerHeaderBlock } , innerBodyBlocks , {
 		   innerMergeBlock.
 		   exitBlock }) reject: [ :each | each isNil ]
+]
+
+{ #category : 'emitting' }
+PVNestedLoopNode >> emitComputeKernelWith: aCompiler [
+	"Only the compute path emits this shape: it is what a tiled kernel needs."
+
+	^ PVSPIRVEmitter
+		  compileComputeKernelNestedLoop: self
+		  annotation: aCompiler annotation
+		  selectorTable: aCompiler selectorTable
 ]
 
 { #category : 'accessing' }

@@ -3,7 +3,7 @@ Structured CFG node representing a whileTrue: loop. Holds the header block, body
 "
 Class {
 	#name : 'PVLoopNode',
-	#superclass : 'Object',
+	#superclass : 'PVStructuredNode',
 	#instVars : [
 		'preheaderBlock',
 		'headerBlock',
@@ -31,6 +31,25 @@ PVLoopNode >> coveredBlocks [
 
 	^ ({ preheaderBlock. headerBlock } , bodyBlocks , { exitBlock }) reject: [ :each |
 		  each isNil ]
+]
+
+{ #category : 'emitting' }
+PVLoopNode >> emitComputeKernelWith: aCompiler [
+	"The compute emitters infer their own types; see PVSelectionNode >> emitComputeKernelWith:."
+
+	^ PVSPIRVEmitter
+		  compileComputeKernelLoop: self
+		  annotation: aCompiler annotation
+		  selectorTable: aCompiler selectorTable
+]
+
+{ #category : 'emitting' }
+PVLoopNode >> emitKernelWith: aCompiler [
+	^ PVSPIRVEmitter
+		  compileLoop: self
+		  annotation: aCompiler annotation
+		  typeMap: aCompiler typeMap
+		  selectorTable: aCompiler selectorTable
 ]
 
 { #category : 'accessing' }
