@@ -12,13 +12,19 @@ Orchestrates the seven compiler stages that turn one annotated Pharo method into
 There is no SSA stage: PVSPIRVEmitter writes OpPhi itself by saving and restoring its register map at a merge point.
 
 Entry point: compileMethod:. It is not called compile:, which is Behavior >> compile:.
+
+decode runs stages one to four, once per compile whatever the target. One target method then runs stages five to seven: compileVertexShader, compileFragmentShader, compileComputeKernel or compileGenericKernel.
 "
 Class {
 	#name : 'PVKernelCompiler',
 	#superclass : 'Object',
 	#instVars : [
 		'method',
-		'annotation'
+		'annotation',
+		'regOps',
+		'typeMap',
+		'selectorTable',
+		'blocks'
 	],
 	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan-Compiler',
@@ -57,60 +63,21 @@ PVKernelCompiler >> annotation: ann [
 
 { #category : 'compiling' }
 PVKernelCompiler >> compile [
-	| bytecodeOps blocks structNode regOps st typeMap typeInf isCompute |
+	"Front door of the instance side: the annotation decides the target, the prologue runs
+	 once, and one target method emits."
+
 	annotation := PVTypeAnnotation fromMethod: method.
-	annotation isGPU ifFalse: [ PVTypeError signal: 'Method is not annotated with <gpu>, <gpuVertex>, or <gpuFragment>' ].
-	annotation isVertex ifTrue: [
-		bytecodeOps := PVBytecodeDecoder decode: method.
-		regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
-		st := PVSelectorTable standard.
-		typeInf := PVTypeInferencer new initialize annotation: annotation.
-		typeMap := typeInf inferAll: regOps selectorTable: st.
-		blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
-		blocks size = 1 ifTrue: [
-			^ PVSPIRVEmitter compileVertexShader: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
-		structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
-		structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape in vertex shader' ].
-		(structNode isKindOf: PVSelectionNode) ifTrue: [
-			^ PVSPIRVEmitter compileShaderKernelSelection: structNode annotation: annotation typeMap: typeMap selectorTable: st executionModel: SpvExecutionModel vertex ].
-		PVTypeError signal: 'Unsupported CFG in vertex shader: ' , structNode class name ].
-	annotation isFragment ifTrue: [
-		bytecodeOps := PVBytecodeDecoder decode: method.
-		regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
-		st := PVSelectorTable standard.
-		typeInf := PVTypeInferencer new initialize annotation: annotation.
-		typeMap := typeInf inferAll: regOps selectorTable: st.
-		blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
-		blocks size = 1 ifTrue: [
-			^ PVSPIRVEmitter compileFragmentShader: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
-		structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
-		structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape in fragment shader' ].
-		(structNode isKindOf: PVSelectionNode) ifTrue: [
-			^ PVSPIRVEmitter compileShaderKernelSelection: structNode annotation: annotation typeMap: typeMap selectorTable: st executionModel: SpvExecutionModel fragment ].
-		PVTypeError signal: 'Unsupported CFG in fragment shader: ' , structNode class name ].
-	isCompute := annotation params anySatisfy: [ :p |
-		self class computeParamTypes includes: p type ].
-	bytecodeOps := PVBytecodeDecoder decode: method.
-	regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
-	st := PVSelectorTable standard.
-	typeInf := PVTypeInferencer new initialize annotation: annotation.
-	typeMap := typeInf inferAll: regOps selectorTable: st.
-	blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
-	isCompute ifTrue: [
-		^ self compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st ].
-	blocks size = 1 ifTrue: [
-		^ PVSPIRVEmitter compileKernel: regOps typeMap: typeMap annotation: annotation selectorTable: st name: method selector ].
-	structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
-	structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].
-	(structNode isKindOf: PVSelectionNode) ifTrue: [
-		^ PVSPIRVEmitter compileSelection: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
-	(structNode isKindOf: PVLoopNode) ifTrue: [
-		^ PVSPIRVEmitter compileLoop: structNode annotation: annotation typeMap: typeMap selectorTable: st ].
-	PVTypeError signal: 'Unrecognized control flow node: ' , structNode class name
+	annotation isGPU ifFalse: [ PVTypeError signal:
+			'Method is not annotated with <gpu>, <gpuVertex>, or <gpuFragment>' ].
+	self decode.
+	annotation isVertex ifTrue: [ ^ self compileVertexShader ].
+	annotation isFragment ifTrue: [ ^ self compileFragmentShader ].
+	self isCompute ifTrue: [ ^ self compileComputeKernel ].
+	^ self compileGenericKernel
 ]
 
-{ #category : 'compiling' }
-PVKernelCompiler >> compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st [
+{ #category : 'compiling - targets' }
+PVKernelCompiler >> compileComputeKernel [
 	"A compute kernel with control flow must go through the recogniser like any other
 	 kernel. Returning straight to compileComputeKernel: emitted the linearised register
 	 ops as one basic block, which dropped the loop and still passed spirv-val. The
@@ -118,31 +85,123 @@ PVKernelCompiler >> compileComputeBlocks: blocks regOps: regOps typeMap: typeMap
 	 registers differently from the whole-method one that typeMap came from."
 
 	| structNode |
-	blocks size = 1 ifTrue: [
-		^ PVSPIRVEmitter
-			  compileComputeKernel: regOps
-			  annotation: annotation
-			  typeMap: typeMap
-			  selectorTable: st ].
-	structNode := PVStructuredCFGRecognizer recognizeFrom: blocks.
-	structNode isNil ifTrue: [ PVTypeError signal: 'Unrecognized CFG shape' ].
-	(structNode isKindOf: PVNestedLoopNode) ifTrue: [
-		^ PVSPIRVEmitter
-			  compileComputeKernelNestedLoop: structNode
-			  annotation: annotation
-			  selectorTable: st ].
-	(structNode isKindOf: PVLoopNode) ifTrue: [
-		^ PVSPIRVEmitter
-			  compileComputeKernelLoop: structNode
-			  annotation: annotation
-			  selectorTable: st ].
-	(structNode isKindOf: PVSelectionNode) ifTrue: [
-		^ PVSPIRVEmitter
-			  compileComputeKernelSelection: structNode
-			  annotation: annotation
-			  selectorTable: st ].
+	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
+			   compileComputeKernel: regOps
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable ].
+	structNode := self recognizedNodeOr: 'Unrecognized CFG shape'.
+	(structNode isKindOf: PVNestedLoopNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileComputeKernelNestedLoop: structNode
+			   annotation: annotation
+			   selectorTable: selectorTable ].
+	(structNode isKindOf: PVLoopNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileComputeKernelLoop: structNode
+			   annotation: annotation
+			   selectorTable: selectorTable ].
+	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileComputeKernelSelection: structNode
+			   annotation: annotation
+			   selectorTable: selectorTable ].
 	PVTypeError signal:
 		'Unrecognized control flow node: ' , structNode class name
+]
+
+{ #category : 'compiling - targets' }
+PVKernelCompiler >> compileFragmentShader [
+	"A fragment shader is either straight-line code or one selection, as a vertex shader is;
+	 only the emitter entry point and the execution model differ."
+
+	| structNode |
+	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
+			   compileFragmentShader: regOps
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable ].
+	structNode := self recognizedNodeOr: 'Unrecognized CFG shape in fragment shader'.
+	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileShaderKernelSelection: structNode
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable
+			   executionModel: SpvExecutionModel fragment ].
+	PVTypeError signal:
+		'Unsupported CFG in fragment shader: ' , structNode class name
+]
+
+{ #category : 'compiling - targets' }
+PVKernelCompiler >> compileGenericKernel [
+	"The non-compute, non-shader kernel: a plain <gpu> method, which the emitter compiles
+	 either as one basic block or through the recognised selection or loop."
+
+	| structNode |
+	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
+			   compileKernel: regOps
+			   typeMap: typeMap
+			   annotation: annotation
+			   selectorTable: selectorTable
+			   name: method selector ].
+	structNode := self recognizedNodeOr: 'Unrecognized CFG shape'.
+	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileSelection: structNode
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable ].
+	(structNode isKindOf: PVLoopNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileLoop: structNode
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable ].
+	PVTypeError signal:
+		'Unrecognized control flow node: ' , structNode class name
+]
+
+{ #category : 'compiling - targets' }
+PVKernelCompiler >> compileVertexShader [
+	"A vertex shader is either straight-line code or one selection. Anything else the
+	 recogniser knows has no vertex emitter behind it."
+
+	| structNode |
+	blocks size = 1 ifTrue: [ ^ PVSPIRVEmitter
+			   compileVertexShader: regOps
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable ].
+	structNode := self recognizedNodeOr: 'Unrecognized CFG shape in vertex shader'.
+	(structNode isKindOf: PVSelectionNode) ifTrue: [ ^ PVSPIRVEmitter
+			   compileShaderKernelSelection: structNode
+			   annotation: annotation
+			   typeMap: typeMap
+			   selectorTable: selectorTable
+			   executionModel: SpvExecutionModel vertex ].
+	PVTypeError signal:
+		'Unsupported CFG in vertex shader: ' , structNode class name
+]
+
+{ #category : 'compiling - stages' }
+PVKernelCompiler >> decode [
+	"Stages one to four, the same whatever the target: bytecode to register operations,
+	 types inferred over them, and the basic blocks the recogniser reads. The compute path,
+	 the vertex path and the fragment path each wrote this prologue out in full."
+
+	| bytecodeOps typeInferencer |
+	bytecodeOps := PVBytecodeDecoder decode: method.
+	regOps := PVStackSimulator
+		          simulate: bytecodeOps
+		          paramCount: annotation params size.
+	selectorTable := PVSelectorTable standard.
+	typeInferencer := PVTypeInferencer new initialize annotation: annotation.
+	typeMap := typeInferencer inferAll: regOps selectorTable: selectorTable.
+	blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps
+]
+
+{ #category : 'compiling - stages' }
+PVKernelCompiler >> isCompute [
+	"A kernel is a compute kernel when one of its declared parameters is of a type only the
+	 compute path has, the work item or a buffer."
+
+	^ annotation params anySatisfy: [ :each |
+		  self class computeParamTypes includes: each type ]
 ]
 
 { #category : 'accessing' }
@@ -153,4 +212,15 @@ PVKernelCompiler >> method [
 { #category : 'accessing' }
 PVKernelCompiler >> method: aCompiledMethod [
 	method := aCompiledMethod
+]
+
+{ #category : 'compiling - stages' }
+PVKernelCompiler >> recognizedNodeOr: aMessageText [
+	"The recogniser answers nil for a shape it does not know, and nil reaches the emitter as
+	 a missing register rather than as the refusal it is."
+
+	| node |
+	node := PVStructuredCFGRecognizer recognizeFrom: blocks.
+	node ifNil: [ PVTypeError signal: aMessageText ].
+	^ node
 ]
