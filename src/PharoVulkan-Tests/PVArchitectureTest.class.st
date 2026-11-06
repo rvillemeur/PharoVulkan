@@ -19,7 +19,7 @@ Class {
 	#tag : 'Tests'
 }
 
-{ #category : 'constants' }
+{ #category : 'dependencies' }
 PVArchitectureTest class >> allowedDependencies [
 	"The outgoing package references each package of this project may make, keyed by package
 	 name. This table is the agreement: a package missing from it is one nobody has placed in
@@ -49,8 +49,10 @@ PVArchitectureTest class >> allowedDependencies [
 		  'PharoVulkan-Bindings-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compute'
 			   'PharoVulkan-Core' 'PharoVulkan-Examples' 'PharoVulkan-Generator'
 			   'PharoVulkan-Graphics' 'PharoVulkan-Inspector' ).
-		  'PharoVulkan-SPIRV-Tests' -> #( 'PharoVulkan-Compute' 'PharoVulkan-Core'
-			   'PharoVulkan-Examples' 'PharoVulkan-SPIRV' ).
+		  "No edge to Core here since point 10: SpvEmitterTest built a VkContext to dispatch the
+		   module it emitted from the dead IR layer, and it went with that layer."
+		  'PharoVulkan-SPIRV-Tests' -> #( 'PharoVulkan-Compute' 'PharoVulkan-Examples'
+			   'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Compiler-Tests' -> #( 'PharoVulkan-Compiler' 'PharoVulkan-Compute'
 			   'PharoVulkan-Examples' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Core-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compute'

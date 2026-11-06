@@ -189,7 +189,7 @@ PVDocumentationTest >> documentedPackages [
 
 	^ (PackageOrganizer default packages
 		   select: [ :each | each name beginsWith: self repositoryName , '-' ])
-		  reject: [ :each | each name endsWith: self testPackageSuffix ]
+		  reject: [ :each | each name endsWith: self suffixOfATestPackage ]
 ]
 
 { #category : 'private - tokenising' }
@@ -287,6 +287,14 @@ PVDocumentationTest >> skipTheDocumentIsAbsent [
 	^ self skip: 'there is no checkout of ' , self repositoryName , ' in this image'
 ]
 
+{ #category : 'private - constants' }
+PVDocumentationTest >> suffixOfATestPackage [
+	"Not named testPackageSuffix: SUnit collects every zero-argument selector beginning with
+	 'test' as a test, so that name made this constant a phantom test case."
+
+	^ '-Tests'
+]
+
 { #category : 'tests - names' }
 PVDocumentationTest >> testEveryExemptedNameIsStillAbsentFromTheImage [
 	"An exemption says the image must not hold the name. Once the image holds it, the exemption
@@ -339,11 +347,6 @@ PVDocumentationTest >> testEverySelectorTheArchitectureDocumentNamesOnItsOwnIsIm
 		assert: missing isEmpty
 		description: 'named by the document, implemented nowhere: '
 			, missing asSet asSortedCollection asArray printString
-]
-
-{ #category : 'private - constants' }
-PVDocumentationTest >> testPackageSuffix [
-	^ '-Tests'
 ]
 
 { #category : 'tests - reporting' }

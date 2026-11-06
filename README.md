@@ -65,37 +65,38 @@ reaches the bindings, which is a rule `PVArchitectureTest` enforces rather than 
 
 ## Package layout
 
-Fifteen packages: eight of code and seven of tests. Inside each, class tags group the classes for
+Sixteen packages: nine of code and seven of tests. Inside each, class tags group the classes for
 the browser and carry no meaning beyond that.
 
 | Package | Classes | What it contains |
 |---|---|---|
 | `PharoVulkan-Bindings` | 144 | uFFI Vulkan commands, structures, handle wrappers, every named constant class, `VkResult` and `VkError` |
-| `PharoVulkan-SPIRV` | 51 | SPIR-V IR builder: `SpvModule`, `SpvBuilder`, `SpvFunction`, `SpvBlock`, the type hierarchy, constant pool, serialiser, validator |
-| `PharoVulkan-Compiler` | 26 | Pharo bytecode → SPIR-V: decode, register IR, type inference, blocks, recogniser, emit, the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-SPIRV` | 39 | SPIR-V builder: `SpvModule`, `SpvBuilder`, `SpvFunction`, `SpvBlock`, the type hierarchy, constant pool, serialiser, validator |
+| `PharoVulkan-Compiler` | 23 | Pharo bytecode → SPIR-V: decode, register IR, type inference, blocks, recogniser, emit, the DSL selector table, and the `spirv-val` wrapper |
 | `PharoVulkan-Core` | 17 | `VkContext`, `VkDevice`, `VkPhysicalDevice`, `VkQueue`, `VkBuffer`, command pool and buffer, `VkShaderModule`, `VkPipelineLayout`, the device capability survey |
-| `PharoVulkan-Compute` | 15 | Descriptor set layout, descriptor pool and set, compute pipeline, `PVComputeKernel`, the cooperative matrix path, the benchmarks |
+| `PharoVulkan-Compute` | 18 | Descriptor set layout, descriptor pool and set, compute pipeline, `PVComputeKernel`, the cooperative matrix path, the benchmarks |
 | `PharoVulkan-Graphics` | 17 | `VkSurface`, `VkSwapchain`, `VkRenderPass`, `VkFramebuffer`, `VkGraphicsPipeline`, offscreen targets, the sync wrappers, the scenes, and the SDL2 integration |
-| `PharoVulkan-Generator` | 13 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes |
-| `PharoVulkan-Examples` | 18 | One `<Subject>Examples` class per subject, holding every `<sampleInstance>` example |
+| `PharoVulkan-Generator` | 12 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes |
+| `PharoVulkan-Examples` | 20 | One `<Subject>Examples` class per subject, holding every `<sampleInstance>` example |
+| `PharoVulkan-Inspector` | 1 | `PVFactRow`, the one line of the two-column fact table every inspector view of this project shows |
 
 | Test package | Test classes (tests) |
 |---|---|
 | `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) |
-| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (16), `SpvEmitterTest` (2) |
-| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (78), `PVSpirvValidatorTest` (30) |
+| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (24) |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (85), `PVSpirvValidatorTest` (33) |
 | `PharoVulkan-Core-Tests` | `VkCoreTest` (68) |
-| `PharoVulkan-Compute-Tests` | `PVComputeTest` (59) |
-| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (52), `VkImageTest` (8) |
-| `PharoVulkan-Tests` | `PVArchitectureTest` (20) |
+| `PharoVulkan-Compute-Tests` | `PVComputeTest` (63) |
+| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (53), `VkImageTest` (8) |
+| `PharoVulkan-Tests` | `PVArchitectureTest` (22), `PVDocumentationTest` (7), `PVExamplesTest` (7), `PVFactRowTest` (5) |
 
-633 tests in all. Each test package also carries a `Fixtures` tag for the stubs its tests build, so
+661 tests in all. Each test package also carries a `Fixtures` tag for the stubs its tests build, so
 the `Tests` tag holds test classes and nothing else.
 
 Which package may depend on which is stated as a test, not as a paragraph:
 `PVArchitectureTest class >> allowedDependencies` declares the allowed outgoing edges of all
-fifteen packages, and its twenty tests fail both on an edge the code makes and the table does not
-grant, and on an edge the table grants that the baseline does not declare.
+sixteen packages, and its twenty-two tests fail both on an edge the code makes and the table does
+not grant, and on an edge the table grants that the baseline does not declare.
 
 See `doc/architecture.md` for the full layer diagram and class descriptions.
 

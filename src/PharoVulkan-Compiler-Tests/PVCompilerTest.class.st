@@ -158,6 +158,13 @@ PVCompilerTest >> capabilitiesIn: bytes [
 ]
 
 { #category : 'helpers' }
+PVCompilerTest >> codePackagesOfThisProject [
+	^ PackageOrganizer default packages select: [ :package |
+		(package name beginsWith: self projectPackagePrefix)
+			and: [ (package name endsWith: self suffixOfATestPackage) not ] ]
+]
+
+{ #category : 'helpers' }
 PVCompilerTest >> constantIdOfValue: aValue in: bytes [
 	"The result id of the OpConstant holding that value, so a test can state which id an
 	 instruction's scope operand must be rather than guessing an id the emitter allocated.
@@ -208,6 +215,21 @@ PVCompilerTest >> extensionsIn: bytes [
 		  String withAll: characters ]
 ]
 
+{ #category : 'helpers' }
+PVCompilerTest >> gpuPragmaPrefix [
+	"Every pragma that marks a method as a kernel starts with this: <gpu>, <gpuVertex>, <gpuFragment>."
+
+	^ 'gpu'
+]
+
+{ #category : 'helpers' }
+PVCompilerTest >> kernelMethodsOfThisProject [
+	^ self codePackagesOfThisProject flatCollect: [ :package |
+		package methods select: [ :method |
+			method pragmas anySatisfy: [ :pragma |
+				pragma keyword beginsWith: self gpuPragmaPrefix ] ] ]
+]
+
 { #category : 'private - cfg shapes' }
 PVCompilerTest >> opcodeCountsIn: bytes [
 	"Decode the instruction stream of a SPIR-V module and count opcodes. A test about
@@ -255,11 +277,28 @@ PVCompilerTest >> operandsOf: anOpcode in: bytes [
 	^ found asArray
 ]
 
+{ #category : 'helpers' }
+PVCompilerTest >> projectPackagePrefix [
+	^ 'PharoVulkan-'
+]
+
 { #category : 'tests - cfg shapes' }
 PVCompilerTest >> recogniserFor: aSelector [
 	^ PVStructuredCFGRecognizer new initialize:
 		  (PVCFGBuilder buildBytecodeBlocks:
 			   (PVBytecodeDecoder decode: (PVCfgShapeFixture >> aSelector)))
+]
+
+{ #category : 'helpers' }
+PVCompilerTest >> selectorsNoClassImplementsAmong: aCollectionOfSelectors [
+	^ (aCollectionOfSelectors asSet
+		reject: [ :selector | (SystemNavigation default allImplementorsOf: selector) notEmpty ])
+			asSortedCollection asArray
+]
+
+{ #category : 'helpers' }
+PVCompilerTest >> suffixOfATestPackage [
+	^ '-Tests'
 ]
 
 { #category : 'tests' }
@@ -626,6 +665,19 @@ PVCompilerTest >> testEveryMappedSelectorThisProjectAddsToABaseClassStaysInsideI
 			strays add: method methodClass name , ' >> ' , method selector , ' sits in ' , home
 				, ' and names ' , each ] ].
 	self assertEmpty: strays
+]
+
+{ #category : 'tests - dsl selectors' }
+PVCompilerTest >> testEverySelectorAKernelOfThisProjectSendsIsImplemented [
+	| kernels orphans |
+	kernels := self kernelMethodsOfThisProject.
+	self deny: kernels isEmpty.
+	orphans := self selectorsNoClassImplementsAmong:
+		(kernels flatCollect: [ :each | each messages ]).
+	self
+		assert: orphans isEmpty
+		description: 'sent by a kernel of this project, implemented by no class: '
+			, orphans printString
 ]
 
 { #category : 'tests - cfg shapes' }
@@ -1192,6 +1244,16 @@ PVCompilerTest >> testTargetRowsOfANodeReadTheOverridesAndNotAList [
 		assert: (emitted value: nested) asArray
 		equals: #( 'Compute kernel' ).
 	self assert: nested targetRows size equals: 3
+]
+
+{ #category : 'tests - dsl selectors' }
+PVCompilerTest >> testTheKernelSendGateSeesASelectorNoClassImplements [
+	| hole |
+	hole := #thisSelectorNoClassOfTheImageImplements.
+	self assert: (SystemNavigation default allImplementorsOf: hole) isEmpty.
+	self
+		assertCollection: (self selectorsNoClassImplementsAmong: { #at:put:. hole })
+		hasSameElements: { hole }
 ]
 
 { #category : 'tests - half precision' }

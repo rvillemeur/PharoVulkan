@@ -14,3 +14,10 @@ Class {
 	#package : 'PharoVulkan-Compiler',
 	#tag : 'Manifest'
 }
+
+{ #category : 'code-critics' }
+ManifestPharoVulkanCompiler class >> ruleClassNotReferencedRuleV1FalsePositive [
+
+	<ignoreForCoverage>
+	^ #(#(#(#RGClassDefinition #(#PVVec3)) #'2026-11-06T18:06:30.502851-05:00') )
+]

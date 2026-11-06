@@ -545,6 +545,94 @@ classes go.
 Gain: medium. Risk: low, with the sender check. Needs your call on which of the two type
 representations survives.
 
+**Plan as validated** (interviewed 2026-11-06; nothing edited before this was agreed).
+
+The point's own count is wrong. It says eight classes; the measurement finds twenty, because the
+dead code is a whole parallel IR layer and not a handful of strays.
+
+- The IR layer: `SpvIRNode` with ten subclasses, plus `SpvIRBlock` and `SpvIRFunction` — thirteen
+  classes, about 180 lines. Its only caller is `SpvEmitterTest >> buildVectorAddModule`.
+- `SpvModuleEmitter >> emitFunction:`, `assignIds:` and `globalRef:type:`, and the `idMap` slot,
+  serve that layer and nothing else. `PVSPIRVEmitter` inherits from `SpvModuleEmitter` and sends it
+  only `module` and `initialize`.
+- `SpvEmitterTest` holds two tests and both die with the layer. No device coverage is lost:
+  `PVComputeTest >> setUp` builds a `VkContext`, so its sixty-three tests run on the hardware, and
+  `SpvBuilderTest` carries its own `buildVectorAddModule`.
+- `VkTypes` is **not** dead, against what the point implies: it is the shared pool of
+  `VkStructure`. The dependency scan reads method literals, and a pool import is not one.
+- `VkParamDescriptor` is dead — `VkXmlParser >> parseParamsFrom:` builds `VkMemberDescriptor`.
+  Twelve instance methods, zero references.
+- `PVTmpArrayStructProbe` is dead, as `PACKAGE-PLAN.md` already says. One class-side method, zero
+  references.
+- Of the type tokens, `PVVec2`, `PVVec4`, `PVBVec3` and `PVMat4` hold no method at all; `PVVec3`
+  holds one. All five have no sender. The symbols — `#f32`, `#vec2`, `#vec3`, `#vec4`, `#mat4`,
+  `#bvec3`, `#i32`, `#u32`, `#f16`, `#bool` — are what `PVSelectorTable` and `PVTypeAnnotation`
+  really carry.
+- The kernels of this project send thirty-eight distinct selectors and every one has an
+  implementor. `PVVec3` is the only implementor of `#mix:factor:`, which
+  `PVKernelExamples >> glslTriFragment:` sends.
+
+The decisions:
+
+1. **The symbols win.** Delete `PVVec2`, `PVVec4`, `PVBVec3` and `PVMat4`. Keep `PVVec3` for its
+   one method, and rewrite its class comment to say what it is: the implementor of record for
+   `#mix:factor:`, the only selector the kernels send that Pharo itself does not implement.
+2. **Delete the IR layer whole**: the thirteen `SpvIR*` classes, `SpvModuleEmitter >> emitFunction:`,
+   `assignIds:` and `globalRef:type:`, the `idMap` slot, and `SpvEmitterTest`. `SpvModuleEmitter`
+   stays, as `PVSPIRVEmitter`'s superclass, with `module` and `initialize`.
+3. `VkParamDescriptor` and `PVTmpArrayStructProbe` go in the same pass. Twenty classes in all.
+4. **One new gate**, in `PVCompilerTest`: every selector a kernel of this project sends has an
+   implementor, so a deletion like `PVVec3`'s cannot pass unnoticed again. A second test proves the
+   gate bites, as the gates of point 11 do. `PharoVulkan-Compiler-Tests` already declares
+   `PharoVulkan-Examples`, so the dependency table does not change for this.
+5. Deleting `SpvEmitterTest` removes the only reference from `PharoVulkan-SPIRV-Tests` to
+   `PharoVulkan-Core`, which is `VkContext`. `testEveryAllowedDependencyIsOneThePackageReallyMakes`
+   then fails on a declared edge no code makes, so `'PharoVulkan-Core'` leaves that package's entry
+   in `PVArchitectureTest class >> allowedDependencies` and the matching declaration in
+   `BaselineOfPharoVulkan`. The other nineteen classes reference no package of this project, so no
+   other edge moves.
+6. **One commit for all of point 10**, not one per class as the point says. The `find_senders`
+   check still runs per class before it goes.
+7. **Documents: the live ones only.** `CLAUDE.md` and `README.md` — the suite tables, the
+   `PharoVulkan-SPIRV` and `PharoVulkan-Compiler` class counts, the totals and the dependency
+   paragraph — plus this point's Done block. `prompt.md`, `PACKAGE-PLAN.md`, `PHASE7-PLAN.md`,
+   `CFG-PLAN.md` and `GRAPHICS-GPU-PLAN.md` stay as the record of what each phase decided, the way
+   point 4 left `prompt.md` alone. No document under `doc/` names a class being deleted, so
+   `PVDocumentationTest` needs no new exemption.
+
+Order of work: the gate test first, red before its helper exists; then the four type tokens; then
+the IR layer; then the two extras; then the dependency table and the baseline; then the two
+documents; then `run_critics` on every touched package and the whole in-image suite. The suite goes
+to twelve test classes and stays at 662 tests — two gates in, two of `SpvEmitterTest` out — and
+`PVGraphicsTest` runs forked and alone after the commit.
+
+**Done, as validated**, with one correction to the arithmetic. The twenty classes are gone:
+`PVVec2`, `PVVec4`, `PVBVec3`, `PVMat4`; `SpvIRNode` and its ten subclasses, `SpvIRBlock` and
+`SpvIRFunction`; `SpvEmitterTest`; `VkParamDescriptor`; `PVTmpArrayStructProbe`. Each one was
+checked with `allReferencesTo:` immediately before it went, and every reference found was either
+inside the layer itself or inside `SpvEmitterTest`. `SpvModuleEmitter` is reinstalled with the one
+slot `module`, keeps `initialize` and `module`, and its class comment now says why the IR it used
+to walk is not there. `PVVec3` keeps `#mix:factor:` and carries the explanation in its own class
+comment and in the method's; `ReClassNotReferencedRule` is banned for it in
+`ManifestPharoVulkanCompiler`, since no sender is the point.
+
+The new gate is `PVCompilerTest >> testEverySelectorAKernelOfThisProjectSendsIsImplemented`, with
+`testTheKernelSendGateSeesASelectorNoClassImplements` proving it bites, over the helpers
+`kernelMethodsOfThisProject`, `codePackagesOfThisProject`, `selectorsNoClassImplementsAmong:`,
+`gpuPragmaPrefix`, `projectPackagePrefix` and `suffixOfATestPackage`. `'PharoVulkan-Core'` left the
+`PharoVulkan-SPIRV-Tests` entry of `allowedDependencies`, with a comment naming this point, and the
+matching `spec requires:` in `BaselineOfPharoVulkan`.
+
+The suite is 661 tests over twelve test classes, not 662. Writing the gate turned up a second
+phantom: `PVDocumentationTest >> testPackageSuffix` was a constant, and SUnit collects every
+zero-argument selector beginning with `test`, so point 11's eight gates were really seven. It is
+renamed `suffixOfATestPackage`, with a comment saying why, and the new helper in `PVCompilerTest`
+carries the same name for the same reason. 183 tests over the seven non-device classes pass;
+`run_critics` is clean on `SpvModuleEmitter`, `PVVec3`, `PVDocumentationTest` and
+`PVArchitectureTest`. `ReExcessiveMethodsRule` fires on `PVCompilerTest`, as it already did and as
+it does on `VkBindingsTest`, `PVComputeTest`, `VkCoreTest` and `PVGraphicsTest`: it is what one
+test class per package costs, and it is unbanned everywhere, so it stays that way here.
+
 ### 11. The architecture suite has no gate on views, examples or documents
 
 `PVArchitectureTest` holds twenty tests and all twenty are about package dependencies. There is no
@@ -629,7 +717,8 @@ presenter-builder gate for `PVExamplesTest` — then the helpers, then the remai
 
 **Done, as validated**, with two gates replaced for a measured reason.
 
-`PVDocumentationTest`, eight gates: the tokeniser (written first, run red), every backticked name,
+`PVDocumentationTest`, seven gates (eight when written: `testPackageSuffix` was a constant SUnit
+collected as a test, renamed at point 10): the tokeniser (written first, run red), every backticked name,
 every qualified method form, every bare keyword selector, every exemption still absent from the
 image, the gate can fail, and the report its view shows agrees with the gates. `PVExamplesTest`,
 seven gates: every view takes the presenter builder (written first, run red), every

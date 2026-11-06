@@ -88,7 +88,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 			package: 'PharoVulkan-SPIRV-Tests'
 			with: [
 				spec requires:
-					#( 'PharoVulkan-SPIRV' 'PharoVulkan-Core' 'PharoVulkan-Compute'
+					#( 'PharoVulkan-SPIRV' 'PharoVulkan-Compute'
 					   'PharoVulkan-Examples' ) ];
 			package: 'PharoVulkan-Compiler-Tests'
 			with: [
