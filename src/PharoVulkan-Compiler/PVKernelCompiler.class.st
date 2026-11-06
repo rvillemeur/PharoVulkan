@@ -65,7 +65,7 @@ PVKernelCompiler >> compile [
 		regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
 		st := PVSelectorTable standard.
 		typeInf := PVTypeInferencer new initialize annotation: annotation.
-		[ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
+		typeMap := typeInf inferAll: regOps selectorTable: st.
 		blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
 		blocks size = 1 ifTrue: [
 			^ PVSPIRVEmitter compileVertexShader: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
@@ -79,7 +79,7 @@ PVKernelCompiler >> compile [
 		regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
 		st := PVSelectorTable standard.
 		typeInf := PVTypeInferencer new initialize annotation: annotation.
-		[ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
+		typeMap := typeInf inferAll: regOps selectorTable: st.
 		blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
 		blocks size = 1 ifTrue: [
 			^ PVSPIRVEmitter compileFragmentShader: regOps annotation: annotation typeMap: typeMap selectorTable: st ].
@@ -94,7 +94,7 @@ PVKernelCompiler >> compile [
 	regOps := PVStackSimulator simulate: bytecodeOps paramCount: annotation params size.
 	st := PVSelectorTable standard.
 	typeInf := PVTypeInferencer new initialize annotation: annotation.
-	[ typeMap := typeInf inferAll: regOps selectorTable: st ] on: PVTypeError do: [ :e | typeMap := typeInf typeMap ].
+	typeMap := typeInf inferAll: regOps selectorTable: st.
 	blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps.
 	isCompute ifTrue: [
 		^ self compileComputeBlocks: blocks regOps: regOps typeMap: typeMap selectorTable: st ].

@@ -737,6 +737,35 @@ PVCompilerTest >> testInspectorRecognitionViewBuildsARowPerBlock [
 	self assert: view items size equals: recogniser blocks size
 ]
 
+{ #category : 'tests - type errors' }
+PVCompilerTest >> testKernelWhoseTypesCannotBeInferredIsRefused [
+	"Inference raising PVTypeError means the compiler does not know what the kernel computes.
+	 Emitting a module from the partial type map produces SPIR-V that is either invalid or
+	 silently wrong on the device, so the compile must be refused here instead."
+
+	self
+		should: [
+			PVKernelCompiler compileMethod:
+				(PVUninferableTypeFixture >> #sendsASelectorWithNoSpirvMapping:) ]
+		raise: PVTypeError
+]
+
+{ #category : 'tests - type errors' }
+PVCompilerTest >> testKernelWithAParameterNoPragmaDeclaresIsRefusedByName [
+	"The inferencer knows exactly what is wrong — a register it cannot type — and says so.
+	 Discarding that error and emitting from the partial type map hands the user a
+	 KeyNotFound from inside the emitter instead of the reason the kernel was refused."
+
+	| raised |
+	raised := nil.
+	[ PVKernelCompiler compileMethod:
+		  (PVUninferableTypeFixture >> #usesAParameterNoPragmaDeclares:data:out:scale:) ]
+		on: Error
+		do: [ :e | raised := e ].
+	self assert: raised class equals: PVTypeError.
+	self assert: (raised messageText includesSubstring: 'infer')
+]
+
 { #category : 'tests' }
 PVCompilerTest >> testLocalSizePragmaReachesExecutionMode [
 	"A kernel's workgroup shape belongs to the kernel, not to the emitter. A 2-D matmul
