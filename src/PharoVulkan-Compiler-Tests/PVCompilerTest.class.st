@@ -1404,6 +1404,33 @@ PVCompilerTest >> testTargetRowsOfANodeReadTheOverridesAndNotAList [
 	self assert: nested targetRows size equals: 3
 ]
 
+{ #category : 'tests - inspecting' }
+PVCompilerTest >> testTheDispatchViewNamesEveryMappingTheTableHoldsSplitBackIntoSelectorAndReceiverType [
+	"The dispatch table is read when a kernel is refused for a send the table does not know, so
+	 the view must hold one row per mapping and name the receiver type and the selector apart.
+	 The key is built by the table itself, so the view splits it with the table's own inverse
+	 and every row found that way must look the mapping up again."
+
+	| table view rows |
+	table := PVSelectorTable standard.
+	view := table inspectorDispatch: SpPresenter new.
+	rows := view items.
+	self assert: rows size equals: table size.
+	self assert: (rows allSatisfy: [ :each |
+			 (table
+				  at: (each at: #selector)
+				  receiverType: (each at: #receiverType)) spirvOp asString
+			 = (each at: #operation) ]).
+	self assert: (rows allSatisfy: [ :each |
+			 (table
+				  at: (each at: #selector)
+				  receiverType: (each at: #receiverType)) resultTypeSymbol asString
+			 = (each at: #resultType) ]).
+	self
+		assert: (rows collect: [ :each | each at: #receiverType ]) asArray
+		equals: (rows collect: [ :each | each at: #receiverType ]) asArray sort
+]
+
 { #category : 'tests - dispatch' }
 PVCompilerTest >> testTheDispatchViewsReadTheTablesTheyReport [
 	"Both views are read from the tables rather than from a list written beside them, so the
@@ -1438,6 +1465,82 @@ PVCompilerTest >> testTheKernelSendGateSeesASelectorNoClassImplements [
 	self
 		assertCollection: (self selectorsNoClassImplementsAmong: { #at:put:. hole })
 		hasSameElements: { hole }
+]
+
+{ #category : 'tests - inspecting' }
+PVCompilerTest >> testThePipelineViewNamesTheStagesTheCompilerRanAndWhatTheyLeftBehind [
+	"A reader opens a compiler to see how far a compile got. The view names the stage classes in
+	 the order decode sends them, read from that method's own syntax tree, and the target from
+	 the same selector compile dispatches on, so neither can drift. The state rows count what
+	 the stages really left behind."
+
+	| compiler view valueOf stages |
+	compiler := PVCompilerExamples compilerOfTheClampKernel.
+	view := compiler inspectorPipeline: SpPresenter new.
+	valueOf := [ :name |
+	           (view items detect: [ :each | each name = name ]) value ].
+	stages := ((PVKernelCompiler >> #decode) ast allChildren select: [ :each |
+		           each isMessage and: [
+			           each receiver isVariable and: [
+				           each receiver name first isUppercase ] ] ]) collect: [ :each |
+		          each receiver name ].
+	self deny: stages isEmpty.
+	self assert: (stages allSatisfy: [ :each |
+			 view items anySatisfy: [ :row | row name = each ] ]).
+	self
+		assert: (valueOf value: 'target')
+		equals: compiler targetSelector asString.
+	self
+		assert: (valueOf value: 'register operations')
+		equals: compiler registerOperations size printString.
+	self
+		assert: (valueOf value: 'basic blocks')
+		equals: compiler basicBlocks size printString.
+	self
+		assert: (valueOf value: 'inferred types')
+		equals: compiler typeMap size printString
+]
+
+{ #category : 'tests - inspecting' }
+PVCompilerTest >> testThePipelineViewOpensOnACompilerThatHasCompiledNothing [
+	"A compiler is inspected while it is being set up as well as after a compile, so the view
+	 must open on one that holds no method: the stages are still named and every fact beside
+	 them is empty."
+
+	| view stateRows |
+	view := PVKernelCompiler new inspectorPipeline: SpPresenter new.
+	self
+		assert: (view items first: PVKernelCompiler stageClassNames size)
+		equals: ((view items first: PVKernelCompiler stageClassNames size)
+				 select: [ :each | each value endsWith: 'of decode' ]).
+	stateRows := view items allButFirst: PVKernelCompiler stageClassNames size.
+	self deny: stateRows isEmpty.
+	self assert: (stateRows allSatisfy: [ :each | each value = nil asString ])
+]
+
+{ #category : 'tests - inspecting' }
+PVCompilerTest >> testTheTypesViewNamesEveryRegisterTheInferencerTypedAndTheParametersItWasSeededFrom [
+	"A type error is read in this tab: one row per register the inferencer typed, in register
+	 order, and the registers the declared parameters seeded named for the parameter they came
+	 from. The seeding rule is the inferencer's own — a parameter seeds the register of its
+	 position — so the view counts the annotation's parameters rather than restating which
+	 registers are seeds."
+
+	| inferencer view rows params |
+	inferencer := PVCompilerExamples inferencerOfTheClampKernel.
+	view := inferencer inspectorTypes: SpPresenter new.
+	rows := view items.
+	self assert: rows size equals: inferencer typeMap size.
+	self
+		assert: (rows collect: [ :each | each value ]) asArray
+		equals: ((inferencer typeMap keys asSortedCollection collect: [ :key |
+				  (inferencer typeMap at: key) asString ]) asArray).
+	params := inferencer annotation params.
+	self deny: params isEmpty.
+	params doWithIndex: [ :param :index |
+		self assert:
+			((rows detect: [ :each | each name beginsWith: index printString ]) name
+				 includesSubstring: param name asString) ]
 ]
 
 { #category : 'tests - half precision' }

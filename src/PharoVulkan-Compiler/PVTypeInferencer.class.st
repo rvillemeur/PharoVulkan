@@ -62,6 +62,29 @@ PVTypeInferencer >> initialize [
 	typeMap := Dictionary new
 ]
 
+{ #category : 'inspector' }
+PVTypeInferencer >> inspectorTypes: aBuilder [
+	"The type of every register this inferencer reached, which is what a PVTypeError is read
+	 against: a register missing here is the one the emitter could not type."
+
+	<inspectorPresentationOrder: 10 title: 'Types'>
+	^ PVFactRow
+		  tableOf: self typeRows
+		  nameColumn: 'Register'
+		  valueColumn: 'Type'
+		  in: aBuilder
+]
+
+{ #category : 'inspector' }
+PVTypeInferencer >> parameterSuffixFor: aRegister in: aCollectionOfParams [
+	"How a seeded register is named: the declared parameter whose position it is. A register
+	 past the parameters was inferred from an operation and names nothing."
+
+	^ (aRegister between: 1 and: aCollectionOfParams size)
+		  ifTrue: [ ' (' , (aCollectionOfParams at: aRegister) name asString , ')' ]
+		  ifFalse: [ '' ]
+]
+
 { #category : 'private' }
 PVTypeInferencer >> setType: aTypeSymbol forReg: regId [
 	typeMap at: regId put: aTypeSymbol
@@ -75,4 +98,20 @@ PVTypeInferencer >> typeMap [
 { #category : 'accessing' }
 PVTypeInferencer >> typeOf: regId [
 	^ typeMap at: regId ifAbsent: [ PVTypeError signal: 'Unknown register: ' , regId printString ]
+]
+
+{ #category : 'inspector' }
+PVTypeInferencer >> typeRows [
+	"One row per register this inferencer typed, in register order. A register a declared
+	 parameter seeded is named for that parameter: the inferencer seeds the register of each
+	 parameter's own position, so the rule is counted here rather than restated."
+
+	| params |
+	params := annotation
+		          ifNil: [ #(  ) ]
+		          ifNotNil: [ annotation params ].
+	^ (typeMap keys asSortedCollection collect: [ :key |
+		   PVFactRow
+			   name: key printString , (self parameterSuffixFor: key in: params)
+			   value: (typeMap at: key) ]) asArray
 ]

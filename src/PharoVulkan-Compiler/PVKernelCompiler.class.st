@@ -51,6 +51,18 @@ PVKernelCompiler class >> computeParamTypes [
 	  , PVSPIRVEmitter sharedElementTypes keys asArray
 ]
 
+{ #category : 'reflection' }
+PVKernelCompiler class >> stageClassNames [
+	"The stages decode runs, named in the order it sends them and read from that method's own
+	 syntax tree. Listing them again would let the Pipeline view outlive a stage."
+
+	^ (((self >> #decode) ast allChildren select: [ :each |
+		    each isMessage and: [
+			    each receiver isVariable and: [
+				    each receiver name first isUppercase ] ] ]) collect: [ :each |
+		   each receiver name ]) asArray
+]
+
 { #category : 'accessing' }
 PVKernelCompiler >> annotation [
 ^ annotation
@@ -59,6 +71,13 @@ PVKernelCompiler >> annotation [
 { #category : 'accessing' }
 PVKernelCompiler >> annotation: ann [
 	annotation := ann
+]
+
+{ #category : 'accessing' }
+PVKernelCompiler >> basicBlocks [
+	"The basic blocks the CFG builder left, which the recogniser reads to find a shape."
+
+	^ blocks
 ]
 
 { #category : 'compiling' }
@@ -70,10 +89,7 @@ PVKernelCompiler >> compile [
 	annotation isGPU ifFalse: [ PVTypeError signal:
 			'Method is not annotated with <gpu>, <gpuVertex>, or <gpuFragment>' ].
 	self decode.
-	annotation isVertex ifTrue: [ ^ self compileVertexShader ].
-	annotation isFragment ifTrue: [ ^ self compileFragmentShader ].
-	self isCompute ifTrue: [ ^ self compileComputeKernel ].
-	^ self compileGenericKernel
+	^ self perform: self targetSelector
 ]
 
 { #category : 'compiling - targets' }
@@ -151,6 +167,20 @@ PVKernelCompiler >> decode [
 	blocks := PVCFGBuilder buildBytecodeBlocks: bytecodeOps
 ]
 
+{ #category : 'inspector' }
+PVKernelCompiler >> inspectorPipeline: aBuilder [
+	"How far a compile got: the stages of the decode in the order they run, the target that
+	 emits, and the size of what each stage left behind. Read from the compiler as it stands;
+	 nothing is compiled to show it."
+
+	<inspectorPresentationOrder: 10 title: 'Pipeline'>
+	^ PVFactRow
+		  tableOf: self pipelineRows
+		  nameColumn: 'Stage or fact'
+		  valueColumn: 'Value'
+		  in: aBuilder
+]
+
 { #category : 'compiling - stages' }
 PVKernelCompiler >> isCompute [
 	"A kernel is a compute kernel when one of its declared parameters is of a type only the
@@ -170,6 +200,45 @@ PVKernelCompiler >> method: aCompiledMethod [
 	method := aCompiledMethod
 ]
 
+{ #category : 'inspector' }
+PVKernelCompiler >> methodName [
+	"The method being compiled, as a reader names it: class and selector, or nothing when the
+	 compiler has not been given one."
+
+	^ method ifNil: [ nil ] ifNotNil: [
+		  method methodClass name , ' >> ' , method selector ]
+]
+
+{ #category : 'inspector' }
+PVKernelCompiler >> pipelineRows [
+	"The stages this compile ran and what they left behind. The stage classes are read from the
+	 syntax tree of decode, in the order it sends them, so a stage added or removed shows here
+	 by itself; the target is the selector compile dispatches on. Nothing is compiled to build
+	 the rows: a compiler that has not run shows its stages with no state beside them."
+
+	| rows position |
+	rows := OrderedCollection new.
+	position := 0.
+	self class stageClassNames do: [ :each |
+		position := position + 1.
+		rows add: (PVFactRow
+				 name: each
+				 value: 'stage ' , position printString , ' of decode') ].
+	rows add: (PVFactRow name: 'method' value: self methodName).
+	rows add:
+		(PVFactRow name: 'target' value: (annotation ifNotNil: [ self targetSelector ])).
+	rows add: (PVFactRow
+			 name: 'register operations'
+			 value: (regOps ifNotNil: [ :each | each size ])).
+	rows add: (PVFactRow
+			 name: 'inferred types'
+			 value: (typeMap ifNotNil: [ :each | each size ])).
+	rows add: (PVFactRow
+			 name: 'basic blocks'
+			 value: (blocks ifNotNil: [ :each | each size ])).
+	^ rows asArray
+]
+
 { #category : 'compiling - stages' }
 PVKernelCompiler >> recognizedNodeOr: aMessageText [
 	"The recogniser answers nil for a shape it does not know, and nil reaches the emitter as
@@ -182,8 +251,27 @@ PVKernelCompiler >> recognizedNodeOr: aMessageText [
 ]
 
 { #category : 'accessing' }
+PVKernelCompiler >> registerOperations [
+	"The register IR the stack simulator left, which every target emits from."
+
+	^ regOps
+]
+
+{ #category : 'accessing' }
 PVKernelCompiler >> selectorTable [
 	^ selectorTable
+]
+
+{ #category : 'compiling - stages' }
+PVKernelCompiler >> targetSelector [
+	"Which of the four targets emits for this method: the one place that choice is made, so
+	 compile and the Pipeline view name the same target. The annotation decides a shader, the
+	 declared parameters decide a compute kernel, and anything else is the generic kernel."
+
+	annotation isVertex ifTrue: [ ^ #compileVertexShader ].
+	annotation isFragment ifTrue: [ ^ #compileFragmentShader ].
+	self isCompute ifTrue: [ ^ #compileComputeKernel ].
+	^ #compileGenericKernel
 ]
 
 { #category : 'accessing' }

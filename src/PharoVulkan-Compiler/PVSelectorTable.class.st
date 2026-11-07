@@ -12,18 +12,46 @@ Class {
 	#tag : 'Selectors'
 }
 
+{ #category : 'constants' }
+PVSelectorTable class >> keySeparator [
+	"What a key puts between the selector and the receiver type. A selector carries colons of
+	 its own, so a key is split at the last one and not at the first."
+
+	^ $:
+]
+
 { #category : 'factory' }
 PVSelectorTable class >> standard [ ^ self new initializeStandardMappings; initializeVecMappings; initializeGLSLMappings; yourself
 ]
 
 { #category : 'lookup' }
 PVSelectorTable >> at: selector receiverType: recvType [
-	^ table at: selector , ':' , recvType asString ifAbsent: [ nil ]
+	^ table at: (self keyFor: selector receiverType: recvType) ifAbsent: [ nil ]
 ]
 
 { #category : 'private' }
 PVSelectorTable >> at: selector receiverType: recvType put: mapping [
-	table at: selector , ':' , recvType asString put: mapping
+	table at: (self keyFor: selector receiverType: recvType) put: mapping
+]
+
+{ #category : 'inspector' }
+PVSelectorTable >> dispatchRows [
+	"One row per mapping: the receiver type, the selector, the SPIR-V operation it becomes and
+	 the type of its result. The selector and the receiver type come from the table's own key
+	 inverse, so a change of key shape is a change in one method. Sorted by receiver type and
+	 then by selector, which is how the DSL's coverage of a type is read."
+
+	^ ((table associations collect: [ :each |
+		    | parts |
+		    parts := self selectorAndReceiverTypeOf: each key.
+		    Dictionary newFrom: {
+				    (#receiverType -> parts second).
+				    (#selector -> parts first).
+				    (#operation -> each value spirvOp asString).
+				    (#resultType -> each value resultTypeSymbol asString) } ])
+		   asSortedCollection: [ :a :b |
+		   (a at: #receiverType) , (a at: #selector)
+		   <= ((b at: #receiverType) , (b at: #selector)) ]) asArray
 ]
 
 { #category : 'initialization' }
@@ -198,6 +226,55 @@ PVSelectorTable >> initializeWorkItemMappings [
 	self at: 'barrier' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workgroupBarrier resultType: #void).
 	"gridWidth is dispatch geometry, not an invocation index: groupCountX times localSizeX."
 	self at: 'gridWidth' receiverType: #workItem put: (PVSelectorMapping spirvOp: #workItemGridWidth resultType: #u32)
+]
+
+{ #category : 'inspector' }
+PVSelectorTable >> inspectorDispatch: aBuilder [
+	"Every send this table maps to a SPIR-V operation. A kernel refused for 'No SPIR-V mapping
+	 for x on y' is read here: the row that would carry that send is the one missing."
+
+	<inspectorPresentationOrder: 10 title: 'Dispatch'>
+	^ aBuilder newTable
+		  addColumn: (SpStringTableColumn
+				   title: 'Receiver type'
+				   evaluated: [ :each | each at: #receiverType ]);
+		  addColumn: (SpStringTableColumn title: 'Selector' evaluated: [ :each |
+					   each at: #selector ]);
+		  addColumn: (SpStringTableColumn title: 'Operation' evaluated: [ :each |
+					   each at: #operation ]);
+		  addColumn: (SpStringTableColumn title: 'Result type' evaluated: [ :each |
+					   each at: #resultType ]);
+		  items: self dispatchRows;
+		  yourself
+]
+
+{ #category : 'private' }
+PVSelectorTable >> keyFor: aSelector receiverType: aReceiverType [
+	"The one place a mapping's key is built, so a lookup, a store and the Dispatch view cannot
+	 disagree about its shape."
+
+	^ aSelector , (String with: self class keySeparator)
+	  , aReceiverType asString
+]
+
+{ #category : 'private' }
+PVSelectorTable >> selectorAndReceiverTypeOf: aKey [
+	"The inverse of keyFor:receiverType:: the selector and the receiver type a key was built
+	 from. The split is at the last separator, because a keyword selector holds separators of
+	 its own."
+
+	| index |
+	index := aKey lastIndexOf: self class keySeparator.
+	^ {
+		  (aKey copyFrom: 1 to: index - 1).
+		  (aKey copyFrom: index + 1 to: aKey size) }
+]
+
+{ #category : 'accessing' }
+PVSelectorTable >> size [
+	"How many sends this table maps, which is what a reader counts the coverage of the DSL by."
+
+	^ table size
 ]
 
 { #category : 'accessing' }

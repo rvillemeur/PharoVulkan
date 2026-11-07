@@ -12,6 +12,38 @@ Class {
 }
 
 { #category : 'examples' }
+PVCompilerExamples class >> compilerOfTheClampKernel [
+	"One click: the compiler that turned the clamp kernel into SPIR-V, every stage of its decode
+	 already run. Open the Pipeline tab to read the stages in order, the target that emitted and
+	 how much each stage left behind."
+
+	<sampleInstance>
+	| compiler |
+	compiler := PVKernelCompiler new.
+	compiler method: (PVKernelExamples >> #clampNegatives:data:out:).
+	compiler compile.
+	^ compiler
+]
+
+{ #category : 'examples' }
+PVCompilerExamples class >> inferencerOfTheClampKernel [
+	"One click: the inferencer that typed the registers of the clamp kernel, seeded from the
+	 kernel's declared parameters. Open the Types tab to read the type of every register it
+	 reached."
+
+	<sampleInstance>
+	| method annotation registerOps inferencer |
+	method := PVKernelExamples >> #clampNegatives:data:out:.
+	annotation := PVTypeAnnotation fromMethod: method.
+	registerOps := PVStackSimulator
+		               simulate: (PVBytecodeDecoder decode: method)
+		               paramCount: annotation params size.
+	inferencer := PVTypeInferencer new annotation: annotation.
+	inferencer inferAll: registerOps selectorTable: PVSelectorTable standard.
+	^ inferencer
+]
+
+{ #category : 'examples' }
 PVCompilerExamples class >> mappingOfTheSubgroupSum [
 "One click: the mapping the standard dispatch table holds for subgroupSum sent to an f32.
  Its Emitting tab says which method of PVSPIRVEmitter emits it and whether that method is
@@ -73,6 +105,16 @@ PVCompilerExamples class >> simulationOfAClampConditionBlock [
 		  simulateBlock: node condBlock
 		  initialTempDefs: Dictionary new
 		  startingNextReg: 1
+]
+
+{ #category : 'examples' }
+PVCompilerExamples class >> standardSelectorTable [
+	"One click: the dispatch table the compiler builds for every kernel it decodes. Open the
+	 Dispatch tab to read every send the DSL maps, the SPIR-V operation it becomes and the type
+	 of its result."
+
+	<sampleInstance>
+	^ PVSelectorTable standard
 ]
 
 { #category : 'examples' }
