@@ -137,6 +137,17 @@ PVTypeAnnotation >> paramNamed: aSymbol [
 ]
 
 { #category : 'accessing' }
+PVTypeAnnotation >> paramTempDefs [
+	"The kernel's parameters occupy the first registers, in declaration order; temp 0 is
+	 the first parameter because a kernel method has no receiver on the GPU."
+
+	| defs |
+	defs := Dictionary new.
+	self params doWithIndex: [ :p :i | defs at: i - 1 put: i ].
+	^ defs
+]
+
+{ #category : 'accessing' }
 PVTypeAnnotation >> paramTypeFor: aSymbol [
 	^ (self paramNamed: aSymbol) type
 ]

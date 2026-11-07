@@ -1,9 +1,8 @@
 "
 I emit a SPIR-V module from the register operations a kernel method decodes to. Stage 8 of the compiler pipeline, and the only class that writes SPIR-V instructions for compiled Pharo code.
-
 I handle straight-line code, one ifTrue:ifFalse: (compileSelection:...), one whileTrue: (compileLoop:...), an outer loop holding an inner one (compileComputeKernelNestedLoop:...), and the vertex and fragment shader entry points.
-
-Every compile method is an instance method; my class side keeps the same selector as a one-line entry that builds me, fills typeMap and selectorTable, and sends it, so a caller needs no instance of its own. The other class-side methods are the constants a module carries -- buffer element types, strides, capabilities, the cooperative matrix order -- read by this project and by VectorGraphics-Vulkan, and pure functions over a simulation.
+Every compile method is an instance method, and takes neither a typeMap nor a selectorTable: both are slots of mine. My class side keeps the same selector as a short entry that builds me, fills the two slots and sends it, so a caller needs no instance of its own; on the compute path the typeMap is inferred from the per-block simulations, so the driver fills that slot as soon as it has them.
+The other class-side methods are the constants a module carries -- buffer element types, strides, capabilities, the cooperative matrix order -- read by this project and by VectorGraphics-Vulkan. A structured node answers its own block simulations (simulationsWith:selectorTable:), and PVBlockSimulation answers the phis and the merge stack over them.
 "
 Class {
 	#name : 'PVSPIRVEmitter',
@@ -148,112 +147,6 @@ PVSPIRVEmitter class >> computeDescriptorSet [
 	^ 0
 ]
 
-{ #category : 'compiling' }
-PVSPIRVEmitter class >> computeLoopSimulations: loopNode annotation: ann selectorTable: st [
-	"Simulate the four blocks of a compute loop with one shared register numbering, and
-	 infer the types over that numbering. The exit block inherits the preheader's stack
-	 residue, because the preheader may leave a value on the stack that the code after
-	 the loop pops."
-
-	| preheaderSim headerSim latchSim exitSim |
-	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: (self paramTempDefsFor: ann) startingNextReg: ann params size + 1.
-	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim tempDefs startingNextReg: preheaderSim nextReg.
-	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim tempDefs startingNextReg: headerSim nextReg.
-	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim tempDefs startingNextReg: latchSim nextReg initialStack: (preheaderSim stack).
-	^ Dictionary newFrom: {
-		  #preheader -> preheaderSim.
-		  #header -> headerSim.
-		  #latch -> latchSim.
-		  #exit -> exitSim.
-		  #typeMap -> (self inferTypesOver: { preheaderSim. headerSim. latchSim. exitSim } annotation: ann selectorTable: st) second }
-]
-
-{ #category : 'compiling - compute' }
-PVSPIRVEmitter class >> computeNestedLoopSimulations: nestedNode annotation: ann selectorTable: st [
-	"Simulate the seven blocks of a nested compute loop with one shared register
-	 numbering, and infer the types over that numbering. Every block inside a loop is
-	 simulated from the definitions that reach the loop's entry, not from the block before
-	 it: the registers the entry left are the ones the emitter redirects onto the phi
-	 results. The exit block inherits the preheader's stack residue, because the preheader
-	 may leave a value the code after the loop pops."
-
-	| preheaderSim outerHeaderSim innerPreSim innerHeaderSim innerBodySim innerMergeSim exitSim |
-	preheaderSim := PVBlockSimulator new
-		                simulateBlock: nestedNode preheaderBlock
-		                initialTempDefs: (self paramTempDefsFor: ann)
-		                startingNextReg: ann params size + 1.
-	outerHeaderSim := PVBlockSimulator new
-		                  simulateBlock: nestedNode headerBlock
-		                  initialTempDefs: preheaderSim tempDefs
-		                  startingNextReg: preheaderSim nextReg.
-	innerPreSim := PVBlockSimulator new
-		               simulateBlock: nestedNode innerPreheaderBlock
-		               initialTempDefs: preheaderSim tempDefs
-		               startingNextReg: outerHeaderSim nextReg.
-	innerHeaderSim := PVBlockSimulator new
-		                  simulateBlock: nestedNode innerHeaderBlock
-		                  initialTempDefs: innerPreSim tempDefs
-		                  startingNextReg: innerPreSim nextReg.
-	innerBodySim := PVBlockSimulator new
-		                simulateBlock: nestedNode innerBodyBlocks first
-		                initialTempDefs: innerPreSim tempDefs
-		                startingNextReg: innerHeaderSim nextReg.
-	innerMergeSim := PVBlockSimulator new
-		                 simulateBlock: nestedNode innerMergeBlock
-		                 initialTempDefs: innerPreSim tempDefs
-		                 startingNextReg: innerBodySim nextReg.
-	exitSim := PVBlockSimulator new
-		           simulateBlock: nestedNode exitBlock
-		           initialTempDefs: preheaderSim tempDefs
-		           startingNextReg: innerMergeSim nextReg
-		           initialStack: (preheaderSim stack).
-	^ Dictionary newFrom: {
-			  (#preheader -> preheaderSim).
-			  (#outerHeader -> outerHeaderSim).
-			  (#innerPreheader -> innerPreSim).
-			  (#innerHeader -> innerHeaderSim).
-			  (#innerBody -> innerBodySim).
-			  (#innerMerge -> innerMergeSim).
-			  (#exit -> exitSim).
-			  (#typeMap -> (self
-				    inferTypesOver: {
-						    preheaderSim.
-						    outerHeaderSim.
-						    innerPreSim.
-						    innerHeaderSim.
-						    innerBodySim.
-						    innerMergeSim.
-						    exitSim }
-				    annotation: ann
-				    selectorTable: st) second) }
-]
-
-{ #category : 'compiling' }
-PVSPIRVEmitter class >> computeSelectionSimulations: selNode annotation: ann selectorTable: st [
-	"Simulate the four blocks of a compute selection with one shared register numbering,
-	 and infer the types over that numbering. The phi register is the first register no
-	 block defined, and its type is the type of the value the arms produce, which the
-	 merge block then consumes."
-
-	| condSim trueSim falseSim mergeSim phiReg inference typeMap |
-	condSim := PVBlockSimulator new simulateBlock: selNode condBlock initialTempDefs: (self paramTempDefsFor: ann) startingNextReg: ann params size + 1.
-	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condSim tempDefs startingNextReg: condSim nextReg.
-	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condSim tempDefs startingNextReg: trueSim nextReg.
-	phiReg := falseSim nextReg.
-	mergeSim := PVBlockSimulator new simulateBlock: selNode mergeBlock initialTempDefs: condSim tempDefs startingNextReg: phiReg + 1 initialStack: (self selectionMergeStackFrom: condSim phiReg: phiReg).
-	inference := self inferTypesOver: { condSim. trueSim. falseSim } annotation: ann selectorTable: st.
-	typeMap := inference second.
-	typeMap at: phiReg put: (typeMap at: trueSim resultReg ifAbsent: [ typeMap at: falseSim resultReg ]).
-	inference first inferAll: mergeSim regOps selectorTable: st.
-	^ Dictionary newFrom: {
-		  #cond -> condSim.
-		  #true -> trueSim.
-		  #false -> falseSim.
-		  #merge -> mergeSim.
-		  #phiReg -> phiReg.
-		  #typeMap -> typeMap }
-]
-
 { #category : 'constants' }
 PVSPIRVEmitter class >> cooperativeMatrixCapability [
 	"CooperativeMatrixKHR = 6022. Read back out of a module spirv-as assembled, not recalled.
@@ -357,19 +250,6 @@ PVSPIRVEmitter class >> groupNonUniformCapability [
 	^ 61
 ]
 
-{ #category : 'compiling' }
-PVSPIRVEmitter class >> inferTypesOver: sims annotation: ann selectorTable: st [
-	"One PVTypeInferencer accumulates into a single typeMap across the blocks, so a
-	 register defined in one block keeps its type in the next. Answer the inferencer as
-	 well, because a caller may have to seed a phi type and then infer one block more."
-
-	| inferencer typeMap |
-	inferencer := PVTypeInferencer new initialize annotation: ann.
-	typeMap := nil.
-	sims do: [ :each | typeMap := inferencer inferAll: each regOps selectorTable: st ].
-	^ { inferencer. typeMap }
-]
-
 { #category : 'inspector' }
 PVSPIRVEmitter class >> inspectorBufferTypes: aBuilder [
 	<inspectorPresentationOrder: 10 title: 'Buffer types'>
@@ -414,63 +294,6 @@ PVSPIRVEmitter class >> inspectorCooperativeMatrixTypes: aBuilder [
 		  yourself
 ]
 
-{ #category : 'compiling' }
-PVSPIRVEmitter class >> loopPhisFrom: preheaderSim latch: latchSim [
-	"A loop-carried variable is one the latch leaves in a different register than the
-	 preheader did; that pair is exactly what the header phi joins. A variable both
-	 blocks leave in the same register is loop-invariant and needs no phi."
-
-	| indices initRegs latchRegs |
-	indices := OrderedCollection new.
-	initRegs := Dictionary new.
-	latchRegs := Dictionary new.
-	preheaderSim tempDefs keysAndValuesDo: [ :k :preReg |
-		| latchReg |
-		latchReg := latchSim tempDefs at: k ifAbsent: [ preReg ].
-		latchReg = preReg ifFalse: [
-			indices add: k.
-			initRegs at: k put: preReg.
-			latchRegs at: k put: latchReg ] ].
-	^ Dictionary newFrom: {
-		  #indices -> indices.
-		  #init -> initRegs.
-		  #latch -> latchRegs }
-]
-
-{ #category : 'compiling - compute' }
-PVSPIRVEmitter class >> nestedOuterPhisFrom: preheaderSim innerMerge: innerMergeSim innerPhis: innerPhis [
-	"A variable the inner loop carries is carried by the outer loop as well, even though the
-	 inner merge block leaves it in the register the outer body was entered with: inside the
-	 inner loop that register points at the inner phi, so the outer phi's latch operand
-	 resolves to it. Comparing registers alone misses that variable, and in a tiled kernel
-	 it is the accumulator. A variable the inner loop declares, on the other hand, does not
-	 exist before the outer loop and is carried by the inner loop only."
-
-	| phis |
-	phis := self loopPhisFrom: preheaderSim latch: innerMergeSim.
-	(innerPhis at: #indices) do: [ :k |
-		(((phis at: #indices) includes: k) not and: [
-			 preheaderSim tempDefs includesKey: k ]) ifTrue: [
-			(phis at: #indices) add: k.
-			(phis at: #init) at: k put: (preheaderSim tempDefs at: k).
-			(phis at: #latch)
-				at: k
-				put: (innerMergeSim tempDefs at: k ifAbsent: [
-						 preheaderSim tempDefs at: k ]) ] ].
-	^ phis
-]
-
-{ #category : 'compiling' }
-PVSPIRVEmitter class >> paramTempDefsFor: ann [
-	"The kernel's parameters occupy the first registers, in declaration order; temp 0 is
-	 the first parameter because a kernel method has no receiver on the GPU."
-
-	| defs |
-	defs := Dictionary new.
-	ann params doWithIndex: [ :p :i | defs at: i - 1 put: i ].
-	^ defs
-]
-
 { #category : 'constants' }
 PVSPIRVEmitter class >> scalarByteWidths [
 	"How many bytes one element of each scalar type occupies in a storage buffer."
@@ -479,20 +302,6 @@ PVSPIRVEmitter class >> scalarByteWidths [
 			  (#f32 -> 4).
 			  (#i32 -> 4).
 			  (#f16 -> 2) }
-]
-
-{ #category : 'compiling' }
-PVSPIRVEmitter class >> selectionMergeStackFrom: condSim phiReg: phiReg [
-	"What the merge block consumes is the value the two arms produce, so the phi register
-	 sits on top of its stack. Below it is whatever the condition block pushed before the
-	 selection, less the condition itself: the simulator never executes the jumpIf that
-	 pops it."
-
-	| stack |
-	stack := (condSim stack) asOrderedCollection.
-	stack isEmpty ifFalse: [ stack removeLast ].
-	stack addLast: phiReg.
-	^ stack
 ]
 
 { #category : 'constants' }
@@ -654,14 +463,9 @@ PVSPIRVEmitter >> compileComputeKernelLoop: loopNode annotation: ann [
 	self annotation: ann.
 	self module beShaderModule.
 	interfaces := self emitComputeInterfaces.
-	sims := self class
-		        computeLoopSimulations: loopNode
-		        annotation: ann
-		        selectorTable: selectorTable.
+	sims := loopNode simulationsWith: ann selectorTable: selectorTable.
 	self typeMap: (sims at: #typeMap).
-	phis := self class
-		        loopPhisFrom: (sims at: #preheader)
-		        latch: (sims at: #latch).
+	phis := (sims at: #preheader) loopPhisWithLatch: (sims at: #latch).
 	^ self
 		  finishComputeMain: (self emitComputeLoopFrom: sims phis: phis)
 		  interfaces: interfaces
@@ -677,17 +481,11 @@ PVSPIRVEmitter >> compileComputeKernelNestedLoop: nestedNode annotation: ann [
 	self annotation: ann.
 	self module beShaderModule.
 	interfaces := self emitComputeInterfaces.
-	sims := self class
-		        computeNestedLoopSimulations: nestedNode
-		        annotation: ann
-		        selectorTable: selectorTable.
+	sims := nestedNode simulationsWith: ann selectorTable: selectorTable.
 	self typeMap: (sims at: #typeMap).
-	innerPhis := self class
-		             loopPhisFrom: (sims at: #innerPreheader)
-		             latch: (sims at: #innerBody).
-	outerPhis := self class
-		             nestedOuterPhisFrom: (sims at: #preheader)
-		             innerMerge: (sims at: #innerMerge)
+	innerPhis := (sims at: #innerPreheader) loopPhisWithLatch: (sims at: #innerBody).
+	outerPhis := (sims at: #preheader)
+		             nestedOuterPhisWithInnerMerge: (sims at: #innerMerge)
 		             innerPhis: innerPhis.
 	^ self
 		  finishComputeMain: (self
@@ -706,10 +504,7 @@ PVSPIRVEmitter >> compileComputeKernelSelection: selNode annotation: ann [
 	self annotation: ann.
 	self module beShaderModule.
 	interfaces := self emitComputeInterfaces.
-	sims := self class
-		        computeSelectionSimulations: selNode
-		        annotation: ann
-		        selectorTable: selectorTable.
+	sims := selNode simulationsWith: ann selectorTable: selectorTable.
 	self typeMap: (sims at: #typeMap).
 	^ self
 		  finishComputeMain: (self emitComputeSelectionFrom: sims)

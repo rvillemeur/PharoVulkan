@@ -87,6 +87,49 @@ PVSelectionNode >> mergeBlock: b [
 	mergeBlock := b
 ]
 
+{ #category : 'simulating' }
+PVSelectionNode >> simulationsWith: ann selectorTable: st [
+	"Simulate my four blocks with one shared register numbering, and infer the types over
+	 that numbering. The phi register is the first register no block defined, and its type
+	 is the type of the value the arms produce, which the merge block then consumes."
+
+	| condSim trueSim falseSim mergeSim phiReg inference typeMap |
+	condSim := PVBlockSimulator new
+		           simulateBlock: self condBlock
+		           initialTempDefs: ann paramTempDefs
+		           startingNextReg: ann params size + 1.
+	trueSim := PVBlockSimulator new
+		           simulateBlock: self trueBlocks first
+		           initialTempDefs: condSim tempDefs
+		           startingNextReg: condSim nextReg.
+	falseSim := PVBlockSimulator new
+		            simulateBlock: self falseBlocks first
+		            initialTempDefs: condSim tempDefs
+		            startingNextReg: trueSim nextReg.
+	phiReg := falseSim nextReg.
+	mergeSim := PVBlockSimulator new
+		            simulateBlock: self mergeBlock
+		            initialTempDefs: condSim tempDefs
+		            startingNextReg: phiReg + 1
+		            initialStack: (condSim mergeStackWithPhiReg: phiReg).
+	inference := PVBlockSimulation
+		             typesOver: { condSim. trueSim. falseSim }
+		             annotation: ann
+		             selectorTable: st.
+	typeMap := inference second.
+	typeMap
+		at: phiReg
+		put: (typeMap at: trueSim resultReg ifAbsent: [ typeMap at: falseSim resultReg ]).
+	inference first inferAll: mergeSim regOps selectorTable: st.
+	^ Dictionary newFrom: {
+			  (#cond -> condSim).
+			  (#true -> trueSim).
+			  (#false -> falseSim).
+			  (#merge -> mergeSim).
+			  (#phiReg -> phiReg).
+			  (#typeMap -> typeMap) }
+]
+
 { #category : 'accessing' }
 PVSelectionNode >> trueBlocks [
 ^ trueBlocks

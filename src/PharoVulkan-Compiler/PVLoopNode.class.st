@@ -81,3 +81,42 @@ PVLoopNode >> preheaderBlock [
 PVLoopNode >> preheaderBlock: b [
 	preheaderBlock := b
 ]
+
+{ #category : 'simulating' }
+PVLoopNode >> simulationsWith: ann selectorTable: st [
+	"Simulate my four blocks with one shared register numbering, and infer the types over
+	 that numbering. The exit block inherits the preheader's stack residue, because the
+	 preheader may leave a value on the stack that the code after the loop pops."
+
+	| preheaderSim headerSim latchSim exitSim |
+	preheaderSim := PVBlockSimulator new
+		                simulateBlock: self preheaderBlock
+		                initialTempDefs: ann paramTempDefs
+		                startingNextReg: ann params size + 1.
+	headerSim := PVBlockSimulator new
+		             simulateBlock: self headerBlock
+		             initialTempDefs: preheaderSim tempDefs
+		             startingNextReg: preheaderSim nextReg.
+	latchSim := PVBlockSimulator new
+		            simulateBlock: self bodyBlocks first
+		            initialTempDefs: preheaderSim tempDefs
+		            startingNextReg: headerSim nextReg.
+	exitSim := PVBlockSimulator new
+		           simulateBlock: self exitBlock
+		           initialTempDefs: preheaderSim tempDefs
+		           startingNextReg: latchSim nextReg
+		           initialStack: preheaderSim stack.
+	^ Dictionary newFrom: {
+			  (#preheader -> preheaderSim).
+			  (#header -> headerSim).
+			  (#latch -> latchSim).
+			  (#exit -> exitSim).
+			  (#typeMap -> (PVBlockSimulation
+				    typesOver: {
+						    preheaderSim.
+						    headerSim.
+						    latchSim.
+						    exitSim }
+				    annotation: ann
+				    selectorTable: st) second) }
+]

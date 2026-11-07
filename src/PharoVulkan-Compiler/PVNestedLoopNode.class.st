@@ -175,3 +175,63 @@ PVNestedLoopNode >> roleRows [
 			ifFalse: [ rows add: (self roleRowNamed: slotName for: value) ] ].
 	^ rows
 ]
+
+{ #category : 'simulating' }
+PVNestedLoopNode >> simulationsWith: ann selectorTable: st [
+	"Simulate my seven blocks with one shared register numbering, and infer the types over
+	 that numbering. Every block inside a loop is simulated from the definitions that reach
+	 the loop's entry, not from the block before it: the registers the entry left are the
+	 ones the emitter redirects onto the phi results. The exit block inherits the
+	 preheader's stack residue, because the preheader may leave a value the code after the
+	 loop pops."
+
+	| preheaderSim outerHeaderSim innerPreSim innerHeaderSim innerBodySim innerMergeSim exitSim |
+	preheaderSim := PVBlockSimulator new
+		                simulateBlock: self preheaderBlock
+		                initialTempDefs: ann paramTempDefs
+		                startingNextReg: ann params size + 1.
+	outerHeaderSim := PVBlockSimulator new
+		                  simulateBlock: self headerBlock
+		                  initialTempDefs: preheaderSim tempDefs
+		                  startingNextReg: preheaderSim nextReg.
+	innerPreSim := PVBlockSimulator new
+		               simulateBlock: self innerPreheaderBlock
+		               initialTempDefs: preheaderSim tempDefs
+		               startingNextReg: outerHeaderSim nextReg.
+	innerHeaderSim := PVBlockSimulator new
+		                  simulateBlock: self innerHeaderBlock
+		                  initialTempDefs: innerPreSim tempDefs
+		                  startingNextReg: innerPreSim nextReg.
+	innerBodySim := PVBlockSimulator new
+		                simulateBlock: self innerBodyBlocks first
+		                initialTempDefs: innerPreSim tempDefs
+		                startingNextReg: innerHeaderSim nextReg.
+	innerMergeSim := PVBlockSimulator new
+		                 simulateBlock: self innerMergeBlock
+		                 initialTempDefs: innerPreSim tempDefs
+		                 startingNextReg: innerBodySim nextReg.
+	exitSim := PVBlockSimulator new
+		           simulateBlock: self exitBlock
+		           initialTempDefs: preheaderSim tempDefs
+		           startingNextReg: innerMergeSim nextReg
+		           initialStack: preheaderSim stack.
+	^ Dictionary newFrom: {
+			  (#preheader -> preheaderSim).
+			  (#outerHeader -> outerHeaderSim).
+			  (#innerPreheader -> innerPreSim).
+			  (#innerHeader -> innerHeaderSim).
+			  (#innerBody -> innerBodySim).
+			  (#innerMerge -> innerMergeSim).
+			  (#exit -> exitSim).
+			  (#typeMap -> (PVBlockSimulation
+				    typesOver: {
+						    preheaderSim.
+						    outerHeaderSim.
+						    innerPreSim.
+						    innerHeaderSim.
+						    innerBodySim.
+						    innerMergeSim.
+						    exitSim }
+				    annotation: ann
+				    selectorTable: st) second) }
+]

@@ -12,7 +12,8 @@ existing `OSSDL2BackendWindow` infrastructure.
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
 `PACKAGE-PLAN.md` are all done. The suite is 662 tests over twelve test classes and passes.
-`doc/REVIEW-PLAN.md` holds the architecture and code review, and says which of its points are done.
+`doc/REVIEW-PLAN.md` holds the architecture and code review; all twelve of its points are done, and
+each section records what was decided and how it was verified.
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
 

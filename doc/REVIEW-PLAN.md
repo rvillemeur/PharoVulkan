@@ -515,6 +515,59 @@ commit and the four device classes. Pass 3b second, one Move Method at a time wi
 after each, then the same gates. No test changes in either; if one has to change, the plan stops
 and says so.
 
+**Done, pass 3** (2026-11-07), and with it point 7 and the plan's whole order.
+
+Pass 3a, the clump. Twenty-six instance selectors shed `typeMap:`, `selectorTable:` or both;
+`RBRemoveParameterRefactoring` did seventeen of them and rewrote their senders, and the remaining
+nine were done by hand because the refactoring refuses a removal when another implementor still
+references the argument — `This argument is still referenced in at least one implementor!!` — and
+the class side implements the same selector as each driver. Those nine were recompiled under the
+short selector, their class-side entry rewritten, the old selector removed. The entries keep their
+own selectors, so the ten call sites outside the class did not change at all: the cascade the plan
+put in `PVKernelCompiler` was not needed, because the entry already fills both slots. The
+`#selectorTable` entry of the three emitting contexts is dropped, nothing reads it now, and
+`emitSelectionMergeIn:`, `prependLoopPhisIn:` and `prependNestedPhisIn:` read the slot where they
+read `sims at: #typeMap` and a `blockTypeMap` temporary.
+
+Two dead methods went with it: `emitCompositeConstruct:typeMap:block:` and
+`emitExtInst:op:typeMap:block:` had no sender and no textual reference, and hard-coded
+`PVSelectorTable standard` where the live pair asks the table it is given.
+
+One cost the plan did not foresee. The refactoring reformats every sender it rewrites, wrapping
+keyword sends one to a line, so `PVSPIRVEmitter.class.st` grew from 2477 lines to 2742 at the pass
+3a commit while the code shrank. The format is the one Pharo's own formatter produces, so it is
+left as it is.
+
+Pass 3b, the eight moves. All eight landed as the table says. The three node methods share the
+selector `simulationsWith:selectorTable:`, so each compute driver now asks its node rather than
+naming its shape, and `PVStructuredNode` needs no abstract declaration: it has exactly three
+subclasses and all three implement it. `PVBlockSimulation` grew from seven methods to twelve and
+its class comment now names the four pure functions it answers; `PVSPIRVEmitter`'s says the compile
+methods take neither map nor table, and no longer claims pure functions over a simulation on its
+class side. `mergeStackWithPhiReg:` renamed its temporary, which shadowed the `stack` slot.
+
+Measured after pass 3: `PVSPIRVEmitter` holds 132 methods, 95 instance and 37 class, against 142
+(97, 45) after pass 2. Class-side methods over ten lines fall from eleven to five, and the 57-line
+`computeNestedLoopSimulations:…` is not one of them any more. Critics on the class:
+`ReExcessiveMethodsRule`, six long methods, four high complexities, and `ReExcessiveArgumentsRule`
+on three class-side entry points — `compileKernel:typeMap:annotation:selectorTable:name:` and the
+two `compileShaderKernel…executionModel:` — which are the published interface `PVKernelCompiler`
+and `VectorGraphics-Vulkan` call, so their five arguments stay. `PVBlockSimulation`, `PVLoopNode`,
+`PVSelectionNode`, `PVNestedLoopNode` and `PVTypeAnnotation` are clean.
+
+Extract Class was diagnosed and rejected, and that stands: `module` and `regMap` are touched by
+every emitting group, so a per-theme emitter would be a facade over the same two objects. What
+`PVSPIRVEmitter` keeps is one responsibility done in many methods, which `ReExcessiveMethodsRule`
+will keep reporting.
+
+Verification, per pass: 184 of 184 green over the seven non-device classes, and no test changed in
+either pass. After the pass 3a commit the four device classes ran alone and forked — `VkCoreTest`
+68, `PVComputeTest` 63, `VkImageTest` 8, `PVGraphicsTest` 53, all green. One trap in that run: a
+forked device run must resume notifications, not catch them. `PVGraphicsTest` raises a
+`ProvideAnswerNotification` ("You need to restart your image for this changes to take effect"), and
+an `on: Exception do:` handler around the run treats it as a failure and abandons the suite;
+`on: Notification do: [ :e | e resume: nil ]` inside the error handler is what lets it finish.
+
 ### 8. Two families of classes with no common superclass
 
 - Three hand-built kernel builders each define their own `spirv` and
@@ -1017,6 +1070,9 @@ comments for no change to the repository and is not part of this point.
 ```
 1 → 2 → 3 → 4 → 6 → 5 → 9 → 8 → 12 → 11 → 10 → 7
 ```
+
+**All twelve points are done**, in this order, the last on 2026-11-07. Each point's own section
+records what was decided, what was built and how it was verified.
 
 The reasoning: get the suite green and the forbidden names gone first, because they are mechanical
 and safe and everything after depends on a trustworthy suite. Then the swallowed errors and the
