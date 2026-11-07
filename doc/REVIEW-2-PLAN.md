@@ -31,7 +31,7 @@ Every figure below was read from the image, not estimated.
   subclasses and declares four hooks, `PVDeviceRun` has four subclasses and declares four hooks.
 - No empty `on:do:` handler anywhere in the project.
 - No method source holds an LF; all of them use CR, as the project requires.
-- Every numeric literal that carries meaning lives in a named constant method, with four
+- Every numeric literal that carries meaning lives in a named constant method, with five
   exceptions, which are point 6 below.
 
 So the findings of this review are all at the level of the code, and the plan below is a code plan.
@@ -61,9 +61,10 @@ Three facts make this the first point of the plan:
 
 - `520` is written in the method. No class describes `VkPhysicalDeviceMemoryProperties`, so nothing
   derives that number and no test checks it. It happens to be right — `memoryTypeCount` (4) +
-  `memoryTypes[32]` (32 × 8) + `memoryHeapCount` (4) + four bytes of padding + `memoryHeaps[16]`
-  (16 × 16) = 520 — but the next person to touch it has nothing to check it against, and a size that
-  is too small is silent heap corruption rather than a failure.
+  `memoryTypes[32]` (32 × 8) + `memoryHeapCount` (4) + `memoryHeaps[16]` (16 × 16) = 520, with no
+  padding before the heap array because `memoryHeapCount` ends on a multiple of eight — but the next
+  person to touch it has nothing to check it against, and a size that is too small is silent heap
+  corruption rather than a failure.
 - The block goes into the `memoryProperties` slot, which three methods read
   (`memoryTypeCount`, `memoryPropertyFlagsOfType:`, `memoryHeapIndexOfType:`), and
   `VkPhysicalDevice` has no `destroy`. The 520 bytes are never given back.
@@ -71,8 +72,8 @@ Three facts make this the first point of the plan:
   stated rule about who frees it: `VkContext >> queuePriorityArrayOutsideObjectMemory` and
   `VkContext >> buildExtensionNameArray:`.
 
-**Refactoring: Extract Constant**, then give the owner a destroy path, then state the ownership rule
-where the code can hold it.
+**Refactoring: Extract Constant**, then release the block where it is read, then state the ownership
+rule where the code can hold it.
 
 Gain: high — this is a correctness point, not a tidiness one. Risk: medium, because a `free` sent at
 the wrong moment takes the image down, so the tests come first and the device classes are re-run
@@ -80,10 +81,19 @@ afterwards.
 
 **Decided:** the size becomes a class-side constant on `VkPhysicalDevice` that names the fields it
 adds up, with the arithmetic written out rather than the total. The failing test asserts the
-constant equals that sum and that it is what `fetchMemoryProperties` asks for. A second test
-asserts the block is released when the device is let go. The two `VkContext` sites get a comment
-naming their caller as the owner; they are not changed otherwise, because the caller frees them
-inside the same device-creation sequence.
+constant equals that sum and that every offset the three readers reach falls inside it. The two
+`VkContext` sites get a comment naming their caller as the owner; they are not changed otherwise,
+because the caller frees them inside the same device-creation sequence.
+
+**Decided while writing the fix, in place of the destroy path this point first proposed:**
+`fetchMemoryProperties` copies the block into object memory and frees it inside an `ensure:`, which
+is what the sibling `fetchSubgroupProperties` already does and documents ("The chain lives outside
+the image only for the duration of the query"). That removes the leak without giving
+`VkPhysicalDevice` a `destroy` of its own, and it removes the question of when such a destroy would
+be sent: a physical device is not created and so has no reverse-order teardown step. The three
+readers send `unsignedLongAt:`, which a `ByteArray` answers as an `ExternalAddress` does, so they
+are untouched. The second test asserts the slot holds a `ByteArray` of the named size and not an
+`ExternalAddress`, and that the table still reads.
 
 ## 2. Dead code: around thirty methods and nineteen slots used in one direction only
 
@@ -174,11 +184,14 @@ medium, depending on how many places build a decoration.
 Both are one-line corrections. Gain: small but real — the first is what tells a reader writing a
 fourth node what to implement.
 
-## 6. Four magic values left inline
+## 6. Five magic values left inline
 
 `SpvSerializer >> serializeModule:` writes `Array new: 256`, `PVOffscreenTarget >> swatchFor:`
 divides by `255`, `PVTriangleScene >> putFloat:into:at:` masks with `16rFF` four times and shifts
-by 8, 16 and 24, and `VkPhysicalDevice >> fetchMemoryProperties` holds the `520` of point 1.
+by 8, 16 and 24, `VkPhysicalDevice >> fetchMemoryProperties` holds the `520` of point 1, and its
+sibling `VkPhysicalDevice >> fetchQueueFamilyProperties` holds `propSize := 24`, the byte size of
+`VkQueueFamilyProperties`, in a temporary. The fifth site was found while fixing point 1 and belongs
+to the same class, so it is done with it.
 
 **Refactoring: Extract Constant.**
 

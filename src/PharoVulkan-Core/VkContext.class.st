@@ -201,7 +201,8 @@ VkContext >> buildDeviceQueueCreateInfo: familyIndex [
 { #category : 'private' }
 VkContext >> buildExtensionNameArray: aNameCollection [
 	"Answers nil for an empty list rather than a zero-length allocation, so the create info can
-	 hold a null pointer beside its count of none."
+	 hold a null pointer beside its count of none. The caller owns the array and every C string
+	 in it: freeExtensionNameArray:count: releases them."
 
 	| array stride |
 	aNameCollection isEmpty ifTrue: [ ^ nil ].
@@ -759,10 +760,11 @@ VkContext >> physicalDevice [
     ^ physicalDevice
 ]
 
-{ #category : 'initialization' }
+{ #category : 'private' }
 VkContext >> queuePriorityArrayOutsideObjectMemory [
 	"One float per queue asked for. This is an array of floats rather than a structure, so there
-	 is no field specification to read an offset from and the stride is the named one."
+	 is no field specification to read an offset from and the stride is the named one. The caller
+	 owns the block: freeDeviceQueueCreateInfo: releases it with the structure that points at it."
 
 	| priorities |
 	priorities := ExternalAddress allocate:

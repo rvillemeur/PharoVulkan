@@ -63,6 +63,48 @@ VkPhysicalDevice class >> extensionPropertiesSize [
     ^ 260
 ]
 
+{ #category : 'constants' }
+VkPhysicalDevice class >> maxMemoryHeaps [
+	"VK_MAX_MEMORY_HEAPS: the fixed length of the memoryHeaps array the driver fills in
+	 VkPhysicalDeviceMemoryProperties."
+
+	^ 16
+]
+
+{ #category : 'constants' }
+VkPhysicalDevice class >> maxMemoryTypes [
+	"VK_MAX_MEMORY_TYPES: the fixed length of the memoryTypes array the driver fills in
+	 VkPhysicalDeviceMemoryProperties. The array is sized by the specification, not by the
+	 number of types a given device reports."
+
+	^ 32
+]
+
+{ #category : 'constants' }
+VkPhysicalDevice class >> memoryHeapByteSize [
+	"VkMemoryHeap is a VkDeviceSize then a uint32, and the eight-byte alignment of that first
+	 field pads the structure back out to sixteen bytes."
+
+	^ 16
+]
+
+{ #category : 'constants' }
+VkPhysicalDevice class >> memoryPropertiesByteSize [
+	"The byte size of VkPhysicalDeviceMemoryProperties, which this project has no structure
+	 class for: memoryTypeCount, the memoryTypes array, memoryHeapCount, then the memoryHeaps
+	 array. memoryHeapCount ends on a multiple of eight, so nothing pads the heap array."
+
+	^ 4 + (self maxMemoryTypes * self memoryTypeByteSize) + 4
+	  + (self maxMemoryHeaps * self memoryHeapByteSize)
+]
+
+{ #category : 'constants' }
+VkPhysicalDevice class >> memoryTypeByteSize [
+	"VkMemoryType is two uint32: propertyFlags then heapIndex."
+
+	^ 8
+]
+
 { #category : 'factory' }
 VkPhysicalDevice class >> on: aHandle [
     ^ self new initializeWith: aHandle
@@ -146,35 +188,45 @@ VkPhysicalDevice >> fetchExtensionNames [
 
 { #category : 'initialization' }
 VkPhysicalDevice >> fetchMemoryProperties [
-    memoryProperties := ExternalAddress allocate: 520.
-    Vk getPhysicalDeviceMemoryProperties: handle memoryProperties: memoryProperties
+	"The table the driver writes lives outside object memory only for the duration of the query,
+	 so it is copied in before that memory is freed, the way fetchSubgroupProperties does. A
+	 physical device then owns no external memory and needs no destroy of its own."
+
+	| buf size |
+	size := self class memoryPropertiesByteSize.
+	buf := ExternalAddress allocate: size.
+	memoryProperties := [
+	                    Vk
+		                    getPhysicalDeviceMemoryProperties: handle
+		                    memoryProperties: buf.
+	                    buf structAt: 1 length: size ] ensure: [ buf free ]
 ]
 
-{ #category : 'accessing' }
+{ #category : 'initialization' }
 VkPhysicalDevice >> fetchQueueFamilyProperties [
+	"The stride of the table the driver writes is the byte size of the structure the bindings
+	 already declare, so it is asked of VkQueueFamilyProperties rather than written here."
 
 	| countBuf count propsBuf propSize |
-	propSize := 24.
+	propSize := VkQueueFamilyProperties byteSize.
 	countBuf := ExternalAddress allocate: 4.
 	queueFamilyProps := [
-		                    Vk
-			                    primGetQueueFamilyProperties: handle
-			                    count: countBuf
-			                    props: ExternalAddress null.
-		                    count := countBuf unsignedLongAt: 1.
-		                    propsBuf := ExternalAddress allocate:
-			                                count * propSize.
-		                    [
-			                    Vk
-				                    primGetQueueFamilyProperties: handle
-				                    count: countBuf
-				                    props: propsBuf.
-			                    (1 to: count) collect: [ :i |
-					                    | base |
-					                    base := i - 1 * propSize.
-					                    propsBuf unsignedLongAt: base + 1 ] ]
-			                    ensure: [ propsBuf free ] ] ensure: [
-		                    countBuf free ]
+	                   Vk
+		                   primGetQueueFamilyProperties: handle
+		                   count: countBuf
+		                   props: ExternalAddress null.
+	                   count := countBuf unsignedLongAt: 1.
+	                   propsBuf := ExternalAddress allocate: count * propSize.
+	                   [
+	                   Vk
+		                   primGetQueueFamilyProperties: handle
+		                   count: countBuf
+		                   props: propsBuf.
+	                   (1 to: count) collect: [ :i |
+		                   | base |
+		                   base := i - 1 * propSize.
+		                   propsBuf unsignedLongAt: base + 1 ] ] ensure: [
+		                   propsBuf free ] ] ensure: [ countBuf free ]
 ]
 
 { #category : 'private' }

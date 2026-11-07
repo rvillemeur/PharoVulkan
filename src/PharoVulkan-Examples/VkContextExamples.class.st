@@ -41,9 +41,10 @@ VkContextExamples class >> extensionsOfThisMachine [
 
 { #category : 'examples' }
 VkContextExamples class >> memoryTypesOfThisMachine [
-	"One click: the memory-type table of whatever device this image finds. The properties
-	 buffer is read once at construction and never freed by the context, which is why the
-	 example can hand back a device whose context has gone."
+	"One click: the memory-type table of whatever device this image finds. The properties table is
+	 copied into object memory when the physical device is built, so the device this answers still
+	 reads it after its context has been destroyed."
+
 	<sampleInstance>
 	| context |
 	context := VkContext computeContext.

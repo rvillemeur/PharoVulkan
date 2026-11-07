@@ -991,6 +991,45 @@ VkCoreTest >> testInstanceCreateInfoWithoutExtensionsAsksForNone [
 ]
 
 { #category : 'tests' }
+VkCoreTest >> testMemoryPropertiesAreCopiedIntoObjectMemory [
+	"The block the driver writes for vkGetPhysicalDeviceMemoryProperties lives outside object
+	 memory only for the duration of the query: fetchMemoryProperties copies it in and frees it,
+	 the way fetchSubgroupProperties does, so a physical device holds no external memory and needs
+	 no destroy of its own. Reading the table must still work afterwards."
+	| device kept |
+	device := ctx physicalDevice.
+	kept := device instVarNamed: 'memoryProperties'.
+	self deny: (kept isKindOf: ExternalAddress).
+	self assert: (kept isKindOf: ByteArray).
+	self assert: kept size equals: VkPhysicalDevice memoryPropertiesByteSize.
+	self assert: device memoryTypeCount > 0.
+	self assert: device memoryTypeCount <= VkPhysicalDevice maxMemoryTypes
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testMemoryPropertiesByteSizeIsTheSumOfTheFieldsItNames [
+	"VkPhysicalDeviceMemoryProperties has no structure class in this project, so the block
+	 fetchMemoryProperties asks the allocator for is sized by a constant of VkPhysicalDevice.
+	 That constant must add up the fields the specification names, and every offset the readers
+	 reach must fall inside it. memoryHeapCount ends on a multiple of eight, so the heap array
+	 that follows it needs no padding before it."
+
+	| size |
+	size := VkPhysicalDevice memoryPropertiesByteSize.
+	self assert: size equals: 520.
+	self assert: VkPhysicalDevice maxMemoryTypes equals: 32.
+	self assert: VkPhysicalDevice maxMemoryHeaps equals: 16.
+	self
+		assert: size
+		equals: 4 + (VkPhysicalDevice maxMemoryTypes * VkPhysicalDevice memoryTypeByteSize) + 4
+			+ (VkPhysicalDevice maxMemoryHeaps * VkPhysicalDevice memoryHeapByteSize).
+	self
+		assert:
+			9 + (VkPhysicalDevice maxMemoryTypes - 1 * VkPhysicalDevice memoryTypeByteSize) + 3
+		< size
+]
+
+{ #category : 'tests' }
 VkCoreTest >> testMemoryTypeRowsNameEveryTypeTheDriverReports [
 	"The Memory types view must cover the whole table and agree with the allocator: one
 	 row per type the driver reports, each row's flags and heap read from the device, and
@@ -1201,6 +1240,20 @@ VkCoreTest >> testQueueFamilyRulesHoldForEveryFamilyLayout [
 	self deny: none supportsGraphicsAndComputeOnOneQueue.
 	self assert: none findGraphicsQueueFamily isNil.
 	self assert: none findComputeQueueFamily isNil
+]
+
+{ #category : 'tests' }
+VkCoreTest >> testQueueFamilyStrideIsAskedOfTheBindingStructure [
+	"fetchQueueFamilyProperties walks the table the driver writes by a stride. That stride is the
+	 byte size of VkQueueFamilyProperties, which PharoVulkan-Bindings already declares, so the
+	 method must ask the structure for it rather than write the number. Writing it again would
+	 pass every test while silently misreading the table the day a field is added."
+
+	| method |
+	method := VkPhysicalDevice >> #fetchQueueFamilyProperties.
+	self assert: VkQueueFamilyProperties byteSize equals: 24.
+	self assert: (method literals includes: VkQueueFamilyProperties binding).
+	self deny: (method literals includes: VkQueueFamilyProperties byteSize)
 ]
 
 { #category : 'tests' }
