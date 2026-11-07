@@ -302,6 +302,15 @@ normalises both to LF on disk, so nothing is visible in `src/`, and the inconsis
 Gain: consistency with the project's own stated rule, nothing more. Risk: none. It is last but one
 for that reason.
 
+**Done.** All 74 comments are CR-only in the image, rewritten by replacing CRLF with CR and then any
+remaining LF with CR, so a comment that already mixed both is not doubled.
+`PVArchitectureTest >> testEveryClassCommentOfThisProjectIsCrOnly` is the gate: it reads every class
+defined by a package of this project, fails naming each class whose comment holds an LF, and denies
+an empty scan so a mistyped query cannot pass in silence. It failed before the rewrite and passes
+after. Nothing is visible in `src/`, because Tonel writes both line endings as LF — which is exactly
+why the check lives in the image. The four aggregate test classes are green at 42, and the SPIR-V,
+compiler and validator classes at 161. No new class and no new behaviour, so no example and no view.
+
 ## What this plan deliberately does not do
 
 - **No Extract Class on `PVSPIRVEmitter`.** It was diagnosed and rejected on evidence at point 7 of

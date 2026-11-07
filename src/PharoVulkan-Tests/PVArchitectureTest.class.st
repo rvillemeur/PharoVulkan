@@ -273,6 +273,26 @@ PVArchitectureTest >> testEveryAllowedDependencyNamesAPackageOfThisProject [
 	self assert: strays asSortedCollection asArray equals: #(  )
 ]
 
+{ #category : 'tests - conventions' }
+PVArchitectureTest >> testEveryClassCommentOfThisProjectIsCrOnly [
+	"CLAUDE.md forbids LF in Pharo source, and every method source of the project obeys. A
+	 class comment is source too, so a comment holding an LF breaks the same rule — invisibly,
+	 because Tonel writes both line endings as LF on disk. The check is therefore in the image
+	 and nowhere else."
+
+	| commented offenders |
+	commented := OrderedCollection new.
+	offenders := OrderedCollection new.
+	self class projectPackageNames do: [ :each |
+		(PackageOrganizer default packageNamed: each) definedClasses do: [ :cls |
+			cls comment ifNotNil: [ :text |
+				commented add: cls name.
+				(text includes: Character lf) ifTrue: [ offenders add: cls name asString ] ] ] ].
+	"A mistyped query would leave nothing to scan and pass in silence."
+	self deny: commented isEmpty.
+	self assertEmpty: offenders asSortedCollection asArray
+]
+
 { #category : 'tests - declaring' }
 PVArchitectureTest >> testEveryPackageOfThisProjectHasADeclaredAllowedSet [
 	"A package added tomorrow goes unscanned until it appears in the table, so the table is
