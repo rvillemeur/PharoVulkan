@@ -81,6 +81,15 @@ PVStructuredNode >> refuseFor: aTargetName [
 		  'Unrecognized control flow node: ' , self class name , ' in a ' , aTargetName
 ]
 
+{ #category : 'simulating' }
+PVStructuredNode >> simulationsWith: aStackSimulator selectorTable: aSelectorTable [
+	"The stack simulations this node's blocks need, in the order the emitter reads them. Each
+	 kind of node knows which of its blocks the register IR is built for, which is why the
+	 superclass asks rather than answers."
+
+	^ self subclassResponsibility
+]
+
 { #category : 'emitting' }
 PVStructuredNode >> targetRows [
 	"Which targets emit this shape, asked of the class: a subclass that overrides the

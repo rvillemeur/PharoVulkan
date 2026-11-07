@@ -81,7 +81,7 @@ SpvCooperativeMatrixType >> inspectorInstruction: aBuilder [
 		  in: aBuilder
 ]
 
-{ #category : 'abstract' }
+{ #category : 'encoding' }
 SpvCooperativeMatrixType >> instruction [
 	"Scope, rows, columns and use are ids of unsigned constants rather than literals, so the
 	 module declares each of them like any other constant and the serialiser emits them
@@ -105,7 +105,7 @@ SpvCooperativeMatrixType >> instructionRows [
 		  PVFactRow name: index value: operand ]
 ]
 
-{ #category : 'abstract' }
+{ #category : 'accessing' }
 SpvCooperativeMatrixType >> key [
 	"The component type and the shape together: A, B and the accumulator are different types
 	 even when they share a component type, because their use differs."

@@ -29,6 +29,6 @@ SpvRuntimeArrayType >> instruction [
         operands: { elementType id }
 ]
 
-{ #category : 'abstract' }
+{ #category : 'accessing' }
 SpvRuntimeArrayType >> key [ ^ Array with: #runtimeArray with: elementType id
 ]

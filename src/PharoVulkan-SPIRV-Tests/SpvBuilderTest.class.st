@@ -411,6 +411,30 @@ SpvBuilderTest >> testEveryClassOfTheSpirvPackageAnswersItsOwnBinding [
 		self assert: each binding value identicalTo: each ]
 ]
 
+{ #category : 'tests - package' }
+SpvBuilderTest >> testEveryTypeClassifiesTheHooksOfItsSuperclassWhereTheSuperclassDoes [
+	"The browser groups the type hierarchy by protocol, and Renraku refuses an override
+	 classified away from the method it overrides. The hooks are read from SpvType rather than
+	 named here, so a third hook declared later is covered the moment it is written, and each one
+	 is held to a single protocol across the declaration and every implementation."
+
+	| hooks |
+	hooks := SpvType methods
+		         select: [ :each |
+			         each messages includes: #subclassResponsibility ]
+		         thenCollect: [ :each | each selector ].
+	self assert: hooks size >= 2.
+	hooks do: [ :selector |
+		| protocols |
+		protocols := ((SpvType withAllSubclasses select: [ :each |
+			               each includesSelector: selector ]) collect: [ :each |
+			              (each >> selector) protocolName ]) asSet.
+		self
+			assert: protocols size = 1
+			description: selector printString , ' is classified in '
+				, protocols asSortedCollection asArray printString ]
+]
+
 { #category : 'tests' }
 SpvBuilderTest >> testFunctionVariableIsDeclaredInTheFirstBlockWhateverBlockAsksForIt [
 	"SPIR-V asks that every OpVariable of a function stand in its first block, and a

@@ -21,7 +21,7 @@ SpvStructType >> instruction [
         operands: (memberTypes collect: [:t | t id]) asArray
 ]
 
-{ #category : 'abstract' }
+{ #category : 'accessing' }
 SpvStructType >> key [ ^ Array with: #struct with: (memberTypes collect: [:t | t id])
 ]
 

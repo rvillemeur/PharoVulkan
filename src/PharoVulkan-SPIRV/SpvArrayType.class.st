@@ -40,7 +40,7 @@ SpvArrayType >> instruction [
 				  (module constantPool constantUInt32: length) }
 ]
 
-{ #category : 'abstract' }
+{ #category : 'accessing' }
 SpvArrayType >> key [
 	^ Array with: #array with: elementType id with: length
 ]

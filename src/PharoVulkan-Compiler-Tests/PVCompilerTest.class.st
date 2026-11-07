@@ -732,6 +732,28 @@ PVCompilerTest >> testEmitSendNamesNoSpirvOperationOfItsOwn [
 	self assert: (method messages includes: #emitOn:op:block:)
 ]
 
+{ #category : 'tests - nodes' }
+PVCompilerTest >> testEveryHookTheStructuredNodesShareIsDeclaredByTheirSuperclass [
+	"A reader writing a fourth structured node finds what to implement on PVStructuredNode. A
+	 selector every subclass implements while the superclass declares none is a hook nobody
+	 announced, which is what Renraku reports and what this holds to: the set is read from the
+	 classes themselves, so a hook added to the three later is covered the moment it is written."
+
+	| shared |
+	shared := PVStructuredNode subclasses
+		          inject: PVStructuredNode subclasses first selectors asSet
+		          into: [ :all :each | all intersection: each selectors asSet ].
+	shared := shared reject: [ :each |
+		          PVStructuredNode includesSelector: each ].
+	self
+		assert: shared isEmpty
+		description: 'these hooks the nodes share are declared by none: '
+			, shared asSortedCollection asArray printString.
+	self assert:
+		((PVStructuredNode >> #simulationsWith:selectorTable:) messages includes:
+			 #subclassResponsibility)
+]
+
 { #category : 'tests - dsl surface' }
 PVCompilerTest >> testEveryMappedSelectorThisProjectAddsToABaseClassStaysInsideItsOwnLayer [
 	"The selector table is the DSL surface: a kernel writes clamp:to: or coopMatLoad:, and the

@@ -25,7 +25,7 @@ SpvFunctionType >> instruction [
         operands: ops asArray
 ]
 
-{ #category : 'abstract' }
+{ #category : 'accessing' }
 SpvFunctionType >> key [
     ^ Array with: #function with: returnType id with: (paramTypes collect: [:t | t id])
 ]

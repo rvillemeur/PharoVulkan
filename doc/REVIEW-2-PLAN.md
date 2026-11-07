@@ -223,6 +223,26 @@ so that helper now selects on `each opcode = SpvOpcode opDecorate` and reads `de
 Both are one-line corrections. Gain: small but real — the first is what tells a reader writing a
 fourth node what to implement.
 
+**Done.** `PVStructuredNode >> simulationsWith:selectorTable:` now declares the hook its three
+subclasses implement, with a comment saying why the superclass asks rather than answers. The
+protocol gap was wider than the review saw: `SpvType` classifies its two hooks in `abstract`,
+`SpvMatrixType` kept `instruction` in `emitting` and `SpvCooperativeMatrixType` kept it in
+`abstract`, while the other ten implementations sat in `encoding`, so Renraku reported an
+inconsistent classification on all twelve of them — moving `SpvMatrixType` alone would have left
+eleven. `instruction` is now `encoding` in the declaration and in all twelve implementations, and
+the second hook, `key`, is `accessing` in all thirteen places, which the user chose over keeping
+concrete implementations in a protocol called `abstract`. The `abstract` protocol is gone from the
+hierarchy and critics are clean on every class of it.
+
+Two gates, both reading the classes rather than a list, so a hook or a node written later is
+covered the moment it is written: `PVCompilerTest >>
+testEveryHookTheStructuredNodesShareIsDeclaredByTheirSuperclass` holds the selectors all three
+nodes implement to being declared by the superclass, and `SpvBuilderTest >>
+testEveryTypeClassifiesTheHooksOfItsSuperclassWhereTheSuperclassDoes` holds each hook `SpvType`
+declares to one protocol across the declaration and every implementation. No new class and no new
+behaviour, so no example and no view: both corrections are a declaration and a classification.
+487 tests in the non-device suite, all green.
+
 ## 6. Five magic values left inline
 
 `SpvSerializer >> serializeModule:` writes `Array new: 256`, `PVOffscreenTarget >> swatchFor:`

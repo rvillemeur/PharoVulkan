@@ -23,11 +23,11 @@ SpvType >> id [     ^ id
 SpvType >> id: x [  id := x
 ]
 
-{ #category : 'abstract' }
+{ #category : 'encoding' }
 SpvType >> instruction [ ^ self subclassResponsibility
 ]
 
-{ #category : 'abstract' }
+{ #category : 'accessing' }
 SpvType >> key [
 
 	^ self subclassResponsibility

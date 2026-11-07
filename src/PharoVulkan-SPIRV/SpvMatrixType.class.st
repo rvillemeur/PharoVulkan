@@ -25,7 +25,7 @@ SpvMatrixType >> columns [ ^ columns
 SpvMatrixType >> columns: x [ columns := x
 ]
 
-{ #category : 'emitting' }
+{ #category : 'encoding' }
 SpvMatrixType >> instruction [
     ^ SpvInstruction
         opcode: SpvOpcode opTypeMatrix
