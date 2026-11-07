@@ -44,6 +44,27 @@ SpvSerializer class >> initialWordCapacity [
 ^ 256
 ]
 
+{ #category : 'constants' }
+SpvSerializer class >> sectionSelectorPrefix [
+	"What every section method of a module is named for, which is how serializeModule: is read
+	 for its sections."
+
+	^ 'emit'
+]
+
+{ #category : 'reflection' }
+SpvSerializer class >> sectionSelectors [
+	"The sections of a module, in the order serializeModule: sends them. Read from that
+	 method's own syntax tree rather than listed again, so a section added, removed or moved
+	 cannot leave the Sections view behind."
+
+	^ ((self >> #serializeModule:) ast body statements select: [ :each |
+		   each isMessage and: [
+			   each receiver isSelfVariable and: [
+				   each selector beginsWith: self sectionSelectorPrefix ] ] ]) collect: [ :each |
+		  each selector ]
+]
+
 { #category : 'api' }
 SpvSerializer class >> serialize: aModule [
     ^ self new serializeModule: aModule
@@ -207,10 +228,43 @@ SpvSerializer >> encodeString: aString [
     ^ result
 ]
 
+{ #category : 'inspector' }
+SpvSerializer >> inspectorSections: aBuilder [
+	"The sections of the module this serializer wrote, in the order SPIR-V asks for them, with
+	 the words each one contributed. A module spirv-val refuses is read here first: a section
+	 of zero words says what the module never declared."
+
+	<inspectorPresentationOrder: 10 title: 'Sections'>
+	^ PVFactRow
+		  tableOf: self sectionRows
+		  nameColumn: 'Section'
+		  valueColumn: 'Words'
+		  in: aBuilder
+]
+
+{ #category : 'inspector' }
+SpvSerializer >> sectionRows [
+	"One row per section of the module, naming the words that section wrote. The counts are
+	 measured by replaying the sections on a serializer of this class's own making, so reading a
+	 serializer never writes into the one being read. A serializer that has serialized nothing
+	 has no sections to show."
+
+	| replay rows |
+	module ifNil: [ ^ #(  ) ].
+	replay := self class new.
+	replay startOn: module.
+	rows := OrderedCollection new.
+	self class sectionSelectors do: [ :each |
+		| before |
+		before := replay wordCount.
+		replay perform: each.
+		rows add: (PVFactRow name: each value: replay wordCount - before) ].
+	^ rows asArray
+]
+
 { #category : 'api' }
 SpvSerializer >> serializeModule: aSpvModule [
-	module := aSpvModule.
-	words := WriteStream on: (Array new: self class initialWordCapacity).
+	self startOn: aSpvModule.
 	self emitHeader.
 	self emitCapabilities.
 	self emitExtensions.
@@ -222,6 +276,24 @@ SpvSerializer >> serializeModule: aSpvModule [
 	self emitTypesConstantsGlobals.
 	self emitFunctions.
 	^ self wordsToBytes
+]
+
+{ #category : 'private' }
+SpvSerializer >> startOn: aSpvModule [
+	"The one place a serializer is readied for a module: the module it writes and the word
+	 stream it writes into. serializeModule: sends it before the first section, and the
+	 Sections view sends it to a serializer of its own, so the two cannot disagree about what
+	 a section starts from."
+
+	module := aSpvModule.
+	words := WriteStream on: (Array new: self class initialWordCapacity)
+]
+
+{ #category : 'accessing' }
+SpvSerializer >> wordCount [
+	"How many words have been written so far. A serializer that has not started answers none."
+
+	^ words ifNil: [ 0 ] ifNotNil: [ words position ]
 ]
 
 { #category : 'private' }

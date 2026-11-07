@@ -694,21 +694,93 @@ SpvBuilderTest >> testTheModuleKeepsAnAnnotationForEveryDecorationItIsGiven [
 				SpvOpcode opMemberDecorate }
 ]
 
-{ #category : 'tests - module' }
+{ #category : 'tests - inspecting' }
+SpvBuilderTest >> testTheSectionViewNamesEverySectionTheSerializerEmitsAndTheWordsItWrote [
+	"The Sections view of a serializer is read while debugging a module that spirv-val refuses,
+	 so it must name the sections in the order the serializer really sends them and say how many
+	 words each one wrote. Both facts are asked of the code: the order from the AST of
+	 serializeModule:, the counts from a replay on a serializer of its own."
+
+	| serializer sent rows |
+	serializer := SpvSerializer new.
+	serializer serializeModule:
+		SpvBuilderExamples structuredControlFlowBuilder module.
+	sent := ((SpvSerializer >> #serializeModule:) ast body statements select: [
+		         :each |
+		         each isMessage and: [
+			         each receiver isSelfVariable and: [
+				         each selector beginsWith: 'emit' ] ] ]) collect: [ :each |
+		        each selector asString ].
+	rows := serializer sectionRows.
+	self
+		assert: (rows collect: [ :each | each name ]) asArray
+		equals: sent asArray.
+	self
+		assert: ((rows inject: 0 into: [ :sum :each | sum + each value asInteger ])
+			 * 4)
+		equals: (SpvSerializer serialize:
+				 SpvBuilderExamples structuredControlFlowBuilder module) size
+]
+
+{ #category : 'tests - inspecting' }
+SpvBuilderTest >> testTheSectionViewWritesNothingIntoTheSerializerItReads [
+	"A view must not change the object it shows. The sections are measured on a serializer of
+	 the view's own making, so the words of the inspected serializer stand still and its bytes
+	 are the same before and after a reader opens the tab."
+
+	| serializer before view |
+	serializer := SpvSerializerExamples serializerOfTheStructuredControlFlowModule.
+	before := serializer wordCount.
+	view := serializer inspectorSections: SpPresenter new.
+	self assert: serializer wordCount equals: before.
+	self
+		assert: (view items inject: 0 into: [ :sum :each | sum + each value asInteger ])
+		equals: before.
+	self assert: (SpvSerializer new serializeModule: SpvBuilderExamples structuredControlFlowBuilder module) size
+		equals: before * 4
+]
+
+{ #category : 'tests - serializing' }
 SpvBuilderTest >> testTheSerializerNamesTheCapacityItsWordStreamStartsAt [
 	"The capacity the word stream starts at is a constant, not a number written inline: the
 	 stream grows on its own, so the number is only a first guess at a module's size and says so
-	 where it is named."
+	 where it is named. Which method readies the stream is the serializer's own business, so the
+	 class is asked rather than one selector of it."
 
-	| capacity |
+	| capacity readers |
 	capacity := SpvSerializer initialWordCapacity.
 	self assert: capacity isInteger.
 	self assert: capacity > 0.
-	self assert:
-		((SpvSerializer >> #serializeModule:) messages includes:
-			 #initialWordCapacity).
-	self deny:
-		((SpvSerializer >> #serializeModule:) literals includes: capacity)
+	readers := SpvSerializer methods select: [ :each |
+		           each messages includes: #initialWordCapacity ].
+	self deny: readers isEmpty.
+	self deny: (SpvSerializer methods anySatisfy: [ :each |
+			 each literals includes: capacity ])
+]
+
+{ #category : 'tests - inspecting' }
+SpvBuilderTest >> testTheValidatorViewNamesTheToolItRunsAndWhatItSignals [
+	"A validator carries no state, so what a reader opens it for is the contract: the executable
+	 it runs, the file it writes the bytes into, the exit code it accepts and the exception it
+	 raises. The exception is read from the syntax tree of validate: rather than named twice, and
+	 the rest from constants, so nothing in the tab can disagree with the code."
+
+	| view valueOf |
+	view := SpvValidator new inspectorValidator: SpPresenter new.
+	valueOf := [ :name |
+	            (view items detect: [ :each | each name = name ]) value ].
+	self assert: (valueOf value: 'executable') equals: SpvValidator spirvValPath.
+	self
+		assert: (valueOf value: 'signals')
+		equals: SpvValidationError name asString.
+	self
+		assert: (valueOf value: 'accepted exit code')
+		equals: SpvValidator successExitCode printString.
+	self
+		assert: ((valueOf value: 'temporary file') includesSubstring:
+				 SpvValidator spirvFileExtension).
+	self deny: (SpvValidator methods anySatisfy: [ :each |
+			 each literals includes: SpvValidator successExitCode ])
 ]
 
 { #category : 'tests' }
