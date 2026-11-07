@@ -111,7 +111,7 @@ BaselineOfPharoVulkan >> baseline: spec [
 				spec requires:
 					#( 'PharoVulkan-Graphics' 'PharoVulkan-Bindings' 'PharoVulkan-Core'
 					   'PharoVulkan-Compute' 'PharoVulkan-Compiler'
-					   'PharoVulkan-Examples' ) ];
+					   'PharoVulkan-Examples' 'PharoVulkan-Inspector' ) ];
 			package: 'PharoVulkan-Tests'
 			with: [
 				spec requires:

@@ -11,9 +11,12 @@ existing `OSSDL2BackendWindow` infrastructure.
 ## Current state
 
 Phases 1 to 7, the graphics items G-0 to G-6, `DEFECTS-PLAN.md`, `LAYOUT-PLAN.md` and
-`PACKAGE-PLAN.md` are all done. The suite is 662 tests over twelve test classes and passes.
-`doc/REVIEW-PLAN.md` holds the architecture and code review; all twelve of its points are done, and
-each section records what was decided and how it was verified.
+`PACKAGE-PLAN.md` are all done. The suite is 700 tests over twelve test classes and passes.
+`doc/REVIEW-PLAN.md` holds the first architecture and code review; all twelve of its points are
+done, and each section records what was decided and how it was verified. `doc/REVIEW-2-PLAN.md`
+holds the second review, run after the package split: all eight of its points are done and recorded
+the same way.
+
 `prompt.md` holds the original phase specs; `PACKAGE-PLAN.md` holds the package split and the
 rules it set.
 
@@ -24,25 +27,25 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 
 | Package | Classes | Purpose |
 |---|---|---|
-| `PharoVulkan-Bindings` | 144 | Generated Vulkan uFFI bindings: commands, structures, handles, the named constant classes (tag `Constants`), `VkResult` and `VkError` |
+| `PharoVulkan-Bindings` | 145 | Generated Vulkan uFFI bindings: commands, structures, handles, the named constant classes (tag `Constants`), `VkResult` and `VkError` |
 | `PharoVulkan-SPIRV` | 43 | SPIR-V binary builder: module, builder, types, constant pool, serialiser, validator, `PVTypeError` |
-| `PharoVulkan-Compiler` | 24 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
-| `PharoVulkan-Core` | 17 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
-| `PharoVulkan-Compute` | 18 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks, and the two abstract superclasses of the hand-built kernels (`PVSpirvKernel`) and of the runs that allocate their buffers around a dispatch (`PVDeviceRun`) |
-| `PharoVulkan-Graphics` | 17 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
-| `PharoVulkan-Generator` | 12 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes. Dev time only, outside `default` |
-| `PharoVulkan-Examples` | 20 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples the inspector views and the tests read |
+| `PharoVulkan-Compiler` | 25 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
+| `PharoVulkan-Core` | 18 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
+| `PharoVulkan-Compute` | 19 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks, and the two abstract superclasses of the hand-built kernels (`PVSpirvKernel`) and of the runs that allocate their buffers around a dispatch (`PVDeviceRun`) |
+| `PharoVulkan-Graphics` | 18 | Graphics path: surface, swapchain, render pass, framebuffer, graphics pipeline, offscreen targets, scenes, and the SDL2 integration (tag `SDL2`) |
+| `PharoVulkan-Generator` | 13 | Reads `vk.xml` and `spirv.core.grammar.json` and emits binding classes. Dev time only, outside `default` |
+| `PharoVulkan-Examples` | 23 | One `<Subject>Examples` class per subject, holding the `<sampleInstance>` examples the inspector views and the tests read |
 | `PharoVulkan-Inspector` | 1 | `PVFactRow`, one line of the two-column fact table every inspector view of this project shows, and the one declaration of that table. Depends on nothing, so every other package may require it |
 
 | Test package | Test classes | Fixtures |
 |---|---|---|
 | `PharoVulkan-Bindings-Tests` | `VkBindingsTest` (286) | — |
-| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (24) | — |
-| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (86), `PVSpirvValidatorTest` (33) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
-| `PharoVulkan-Core-Tests` | `VkCoreTest` (68) | `PVQueueFamilyStub` |
+| `PharoVulkan-SPIRV-Tests` | `SpvBuilderTest` (37) | — |
+| `PharoVulkan-Compiler-Tests` | `PVCompilerTest` (98), `PVSpirvValidatorTest` (33) | `PVCfgShapeFixture`, `PVMissingToolValidatorStub` |
+| `PharoVulkan-Core-Tests` | `VkCoreTest` (72) | `PVQueueFamilyStub` |
 | `PharoVulkan-Compute-Tests` | `PVComputeTest` (63) | `PVNoSubgroupArithmeticStub` |
-| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (53), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
-| `PharoVulkan-Tests` | `PVArchitectureTest` (22), `PVDocumentationTest` (7), `PVExamplesTest` (7), `PVFactRowTest` (5) | `PVNestedBlockReferenceFixture` |
+| `PharoVulkan-Graphics-Tests` | `PVGraphicsTest` (61), `VkImageTest` (8) | `PVFailingTriangleSceneStub`, `PVRecordingContextStub` |
+| `PharoVulkan-Tests` | `PVArchitectureTest` (23), `PVDocumentationTest` (7), `PVExamplesTest` (7), `PVFactRowTest` (5) | `PVNestedBlockReferenceFixture` |
 
 A test package is named for the package it covers and ends in `-Tests`, which is what Pharo's
 tools and Renraku's `ReTestClassNotInPackageWithTestEndingNameRule` expect. Its `Tests` tag holds
@@ -51,12 +54,13 @@ test classes and its `Fixtures` tag holds the stubs those tests build.
 ### Which package may depend on which
 
 This file does not say. `PVArchitectureTest class >> allowedDependencies` does, with one entry per
-package, and twenty-two tests hold both the code and the baseline to it: sixteen read each package's
-own methods — `package methods`, so extension methods on base classes are read too — four check
-the table against the organiser, against what the code really references and against
-`BaselineOfPharoVulkan`, one proves the scan finds a reference planted inside three nested
-blocks, and one holds every method to naming the capability and the memory models it passes to
-`addCapability:` and `setAddressingModel:memoryModel:` rather than writing their numbers.
+package, and twenty-three tests hold both the code and the baseline to it: sixteen read each
+package's own methods — `package methods`, so extension methods on base classes are read too —
+four check the table against the organiser, against what the code really references and against
+`BaselineOfPharoVulkan`, one proves the scan finds a reference planted inside three nested blocks,
+one holds every class comment of the project to CR-only line endings, and one holds every method to
+naming the capability and the memory models it passes to `addCapability:` and
+`setAddressingModel:memoryModel:` rather than writing their numbers.
 `PVDocumentationTest` holds `doc/architecture.md` to the image and `PVExamplesTest` holds the
 inspector views and the `<sampleInstance>` examples to their shape; both skip in an image with no
 checkout. Adding a dependency means stating it in the table and in the baseline, in the commit that

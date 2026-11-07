@@ -2,6 +2,8 @@
 Examples of every structure a pipeline is created from: the compute request and the graphics request, the shader stages, and each piece of fixed-function state the graphics pipeline of this project names — vertex input, input assembly, viewport, rasterization, multisample, colour blend and dynamic state — together with the vertex binding and attribute, the viewport and the scissor the triangle is drawn through.
 
 The graphics request example owns the nested states it points at and frees them before it answers, so a click leaves nothing allocated. The others are built in object memory with their pointers null. Reading them in the order the graphics request names them shows the whole tree the driver is handed.
+
+graphicsPipelineOfTheOffscreenTriangleOnThisMachine is the one example here that needs a device: it hands back the pipeline the offscreen triangle was drawn with, released, which is the subject of VkGraphicsPipeline's own tab.
 "
 Class {
 	#name : 'VkPipelineExamples',
@@ -62,6 +64,26 @@ VkPipelineExamples class >> dynamicStateOfTheRectanglesThisProjectSetsWhileRecor
 	^ [
 	  VkGraphicsPipeline freeDynamicStatesOf: state.
 	  state copyIntoObjectMemory ] ensure: [ state getHandle free ]
+]
+
+{ #category : 'examples' }
+VkPipelineExamples class >> graphicsPipelineOfTheOffscreenTriangleOnThisMachine [
+	<sampleInstance>
+	"One click: the graphics pipeline the triangle is drawn with, built on whatever device this
+	 machine offers and handed back once the scene has released it. No window is opened: the
+	 offscreen scene needs a device and nothing else. destroy nils the handle and the layout, and
+	 every other row of the Pipeline tab is the fixed state this project creates a pipeline with,
+	 so the tab reads the same here as it does on a live one."
+
+	| context pipeline |
+	context := VkContext offscreenGraphicsContext.
+	^ [ | scene |
+	  scene := PVOffscreenTriangleScene
+		           on: context
+		           extent: PVOffscreenTriangleScene exampleExtent.
+	  pipeline := scene pipeline.
+	  scene destroy.
+	  pipeline ] ensure: [ context destroy ]
 ]
 
 { #category : 'examples' }

@@ -3,10 +3,7 @@ Examples of the offscreen graphics path run end to end on this machine: the clea
 
 Each builds a context, renders, reads the pixels back and destroys everything it created before answering, so what it hands back is the result rather than live driver objects. They need a Vulkan driver but no window. The scene classes keep renderTriangle themselves, because doc/glsl-api-tutorial.md documents it as the method a user writes on their own scene.
 
-openRenderTriangle and openGlslRenderTriangle are the two that do open a window and drive the
-GPU, one per scene class. Each is a single send of renderTriangle: the scene classes keep that
-method, so the examples hold no second copy of the lifecycle. Run those two alone, against a
-committed checkout.
+The four examples named open... do open a window and drive the GPU: openRenderTriangle and openGlslRenderTriangle, one per scene class, and openWindowSurface and openWindowSwapchain, which hand back one object of the chain the window run built. All four go through PVHelloTriangleScene class >> renderTriangleWith:, so no example holds a second copy of the lifecycle, and all four answer their object after the teardown. Run those four alone, against a committed checkout.
 "
 Class {
 	#name : 'PVSceneExamples',
@@ -55,6 +52,30 @@ PVSceneExamples class >> openRenderTriangle [
 
 	<sampleInstance>
 	^ PVHelloTriangleScene renderTriangle
+]
+
+{ #category : 'examples' }
+PVSceneExamples class >> openWindowSurface [
+	"One click: the presentation surface of a real window, handed back once the window run has
+	 released it. destroy nils the handle, so the Surface tab then shows the destroyed state and
+	 the format this project renders in and asks the driver nothing — which is the state a reader
+	 of this object is in after any window run. The rows that query the driver need a live
+	 surface, and PVGraphicsTest reads them inside the run. It opens a window and drives the GPU,
+	 so run it alone."
+
+	<sampleInstance>
+	^ PVHelloTriangleScene renderTriangleWith: [ :scene | scene surface ]
+]
+
+{ #category : 'examples' }
+PVSceneExamples class >> openWindowSwapchain [
+	"One click: the swapchain of a real window, handed back once the window run has released it.
+	 destroy keeps the format, the extent and the image count the driver gave and drops the
+	 handle and the image views, so the Swapchain tab shows what this machine presented in and
+	 the destroyed state. It opens a window and drives the GPU, so run it alone."
+
+	<sampleInstance>
+	^ PVHelloTriangleScene renderTriangleWith: [ :scene | scene swapchain ]
 ]
 
 { #category : 'examples' }

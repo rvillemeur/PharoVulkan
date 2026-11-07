@@ -331,6 +331,11 @@ PVTriangleScene >> lifecycleReport [
 			   ifNotNil: [ self class liveLabel ]) ]
 ]
 
+{ #category : 'accessing' }
+PVTriangleScene >> pipeline [
+	^ pipeline
+]
+
 { #category : 'private' }
 PVTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
 	"One IEEE 32-bit float in the order the device reads it. ByteArray writes the word itself,

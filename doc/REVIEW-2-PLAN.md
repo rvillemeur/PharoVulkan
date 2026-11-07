@@ -294,6 +294,56 @@ reader actually inspects them: `SpvSerializer`, `SpvValidator`, `PVKernelCompile
 takes the presenter builder, never mutates the inspected object, and asks the real rule rather than
 restating it. The generator keeps none: it is dev-time code that no one inspects.
 
+**Done.** All eight views exist, each a keyword selector taking the presenter builder:
+`SpvSerializer >> inspectorSections:`, `SpvValidator >> inspectorValidator:`,
+`PVKernelCompiler >> inspectorPipeline:`, `PVTypeInferencer >> inspectorTypes:`,
+`PVSelectorTable >> inspectorDispatch:`, `VkSurface >> inspectorSurface:`,
+`VkSwapchain >> inspectorSwapchain:`, `VkGraphicsPipeline >> inspectorPipeline:`. Seven build the
+project's two-column fact table through `PVFactRow class >> tableOf:nameColumn:valueColumn:in:`; the
+Dispatch view needs four columns and builds its table directly.
+
+Each asks the real rule rather than restating it. The serializer reads its sections from the syntax
+tree of `serializeModule:`, in the order that method sends them, and counts the words each one wrote
+by replaying them on a serializer of its own making — so reading a serializer never writes into the
+one being read. The validator reads the exception it signals from the syntax tree of `validate:`,
+and runs no process to show its contract. The compiler reads the four decode stages from the syntax
+tree of `decode` and names its target through `targetSelector`, the one place that choice is made.
+The selector table inverts its own keys, so a change of key shape is a change in one method. The
+pipeline reads its shader stages from the syntax tree of
+`shaderStagesForVertexModule:fragmentModule:` and its dynamic states through `VkDynamicState
+nameForValue:`.
+
+The three driver objects show their state without ever querying a released handle. `destroy` nils a
+handle, and a query through a nil handle is a segfault, so each view asks the driver only while the
+object is live and falls back to what the object still remembers: the swapchain keeps its format,
+extent and image count after `destroy`, the pipeline's nine rows are fixed state read from the class
+side, and only the two handle rows change. The shared vocabulary for the two states — `live` and
+`destroyed` — is `PVFactRow class >> liveLabel` and `destroyedLabel`, moved there as soon as the
+second class needed it.
+
+Six new tests cover the views in `PVGraphicsTest`: three pure ones on objects with no handle, two
+that open a real window through `windowSceneDo:` and name what this machine's driver offers, and one
+on the offscreen pipeline. Each driver test keeps the sub-object in an outer temporary, because the
+scene nils its own slot at teardown, and asserts the destroyed state outside the block. Naming
+`PVFactRow` from a graphics test is a new package edge, declared in
+`PVArchitectureTest class >> allowedDependencies` and in `BaselineOfPharoVulkan`, in this same
+commit.
+
+Two one-click examples hand a reader the window-bound objects: `PVSceneExamples class >>
+openWindowSurface` and `openWindowSwapchain`. Neither can answer a live object — that would leak a
+`VkInstance` and an SDL window and segfault the next run — so both answer it after teardown, and the
+live rows are what the two window tests cover. They send `PVHelloTriangleScene class >>
+renderTriangleWith:`, extracted so the window lifecycle is written once and registered in
+`PVExamplesTest class >> selectorsThatOpenAWindow`, which keeps the naming gate honest in both
+directions. `VkPipelineExamples class >> graphicsPipelineOfTheOffscreenTriangleOnThisMachine` does
+the same for the pipeline with no window.
+
+The gate now holds 102 views, 129 examples and 21 holders as floors, and exactly four examples that
+open a window. The project is 700 test selectors over twelve test classes. Every non-device suite is
+green: `PVArchitectureTest` 23, `PVExamplesTest` 7, `PVDocumentationTest` 7, `PVFactRowTest` 5,
+`SpvBuilderTest` 37, `PVCompilerTest` 98, `PVSpirvValidatorTest` 33, `VkBindingsTest` 286. Critics
+are clean on every class touched. The four device classes are run alone and forked after the commit.
+
 ## 8. Seventy-four class comments hold LF in the image
 
 Of 327 classes, 74 have a comment containing an LF, while every method source is CR-only. Tonel

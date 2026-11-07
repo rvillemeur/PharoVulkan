@@ -8,6 +8,8 @@ The class side also owns the shader stages: shaderStagesForVertexModule:fragment
 Every other structure in the tree is declared as well, one builder per state: inputAssemblyState, viewportState, rasterizationState, multisampleState, colorBlendState — which owns a run of VkPipelineColorBlendAttachmentState — and dynamicState, which owns a run of the enumerations in dynamicStatesSetWhileRecording. Each builder writes only what carries meaning, because externalInstance hands back a zeroed block. requestForStages:vertexInput:layout:renderPass: builds the VkGraphicsPipelineCreateInfo that names them all: the stage run and the vertex input state are passed in, since a module and a vertex layout are needed to build them, and the six states that need neither are built and owned by the request. freeRequest: gives the nested states back and then the request's own store, and handleForRequest:on: is the only caller of vkCreateGraphicsPipelines — its out parameter is a run of one handle rather than a structure, which is the one block here still read at an offset, along with the run of dynamic state enumerations, whose elements are plain words and so have a named stride instead of a layout.
 
 The viewport and the scissor are dynamic, so the extent passed to createDevice:... is not read when the pipeline is built: PVTriangleScene sets both while recording.
+
+pipelineStateRows is what the Pipeline tab reads. The driver answers nothing about a pipeline it has built, so every row but the two handles is read from the class side: stageNames takes the stages from the syntax tree of the method that fills the stage run, the dynamic states come from the run they are written into, and the stride comes from the binding description rather than from the sum behind it. The tab therefore reads the same for a destroyed pipeline as for a live one, apart from the two rows that say so.
 "
 Class {
 	#name : 'VkGraphicsPipeline',
@@ -344,6 +346,14 @@ VkGraphicsPipeline class >> requestForStages: someStages vertexInput: aVertexInp
 		  yourself
 ]
 
+{ #category : 'constants' }
+VkGraphicsPipeline class >> rowValueSeparator [
+	"What a row holding several names puts between them. Named here because the Pipeline tab
+	 shows the stages and the dynamic states as one row each."
+
+	^ ', '
+]
+
 { #category : 'request' }
 VkGraphicsPipeline class >> runOf: someDescriptions [
 	"One contiguous run outside object memory holding the given descriptions at their declared
@@ -398,6 +408,18 @@ VkGraphicsPipeline class >> shaderStagesPerPipeline [
 	 build it from."
 
 	^ 2
+]
+
+{ #category : 'reflection' }
+VkGraphicsPipeline class >> stageNames [
+	"The stages a pipeline of this project is created with, named as the constant class names
+	 them and read from the syntax tree of the method that fills the stage run. Listing them
+	 again would let the Pipeline tab outlive a stage the code stopped asking for."
+
+	^ (((self class >> #shaderStagesForVertexModule:fragmentModule:) ast allChildren
+		    select: [ :each |
+			    each isMessage and: [ each receiver isVariable and: [ each receiver name = VkShaderStage name ] ] ])
+		   collect: [ :each | each selector asString ]) asArray
 ]
 
 { #category : 'request' }
@@ -552,7 +574,75 @@ VkGraphicsPipeline >> initializeDevice: aVkDevice renderPass: aRenderPass vertex
 		          self class freeShaderStages: stages ]
 ]
 
+{ #category : 'inspector' }
+VkGraphicsPipeline >> inspectorPipeline: aBuilder [
+	"The state this pipeline was created with and whether it and its layout are still held.
+	 The rows come from pipelineStateRows, which only reads and asks the driver nothing, so a
+	 destroyed pipeline is safe to open."
+
+	<inspectorPresentationOrder: 10 title: 'Pipeline'>
+	^ PVFactRow
+		  tableOf: self pipelineStateRows
+		  nameColumn: 'Pipeline'
+		  valueColumn: 'Value'
+		  in: aBuilder
+]
+
 { #category : 'accessing' }
 VkGraphicsPipeline >> layout [
     ^ layout
+]
+
+{ #category : 'accessing' }
+VkGraphicsPipeline >> layoutStateLabel [
+	"Whether the pipeline layout it was created with is still held. The layout is destroyed
+	 with the pipeline and is the one object of the tree this class owns outright, so a live
+	 pipeline with no layout would be a leak this row shows."
+
+	^ layout
+		  ifNil: [ PVFactRow destroyedLabel ]
+		  ifNotNil: [ PVFactRow liveLabel ]
+]
+
+{ #category : 'reporting' }
+VkGraphicsPipeline >> pipelineStateRows [
+	"What a reader can ask of a graphics pipeline. The driver answers nothing about a pipeline it
+	 has built, so every row but the two handles is the state this project creates one with, read
+	 from the class's own builders and constants: the stages from the method that fills the stage
+	 run, the dynamic states from the run they are written into, the stride from the binding
+	 description rather than from the sum behind it. Only reads, and the rows hold whether the
+	 pipeline is live or destroyed, which is what makes the tab worth opening afterwards."
+
+	^ {
+		  (PVFactRow name: 'pipeline' value: self stateLabel).
+		  (PVFactRow name: 'layout' value: self layoutStateLabel).
+		  (PVFactRow
+			   name: 'shader stages'
+			   value: (self class rowValueSeparator join: self class stageNames)).
+		  (PVFactRow
+			   name: 'set while recording'
+			   value: (self class rowValueSeparator join:
+					    (self class dynamicStatesSetWhileRecording collect: [ :each |
+						     (VkDynamicState nameForValue: each) asString ]))).
+		  (PVFactRow name: 'viewports' value: self class viewportsPerPipeline).
+		  (PVFactRow name: 'scissors' value: self class scissorsPerPipeline).
+		  (PVFactRow
+			   name: 'subpass drawn in'
+			   value: self class subpassThisPipelineDrawsIn).
+		  (PVFactRow
+			   name: 'vertex stride'
+			   value: self class vertexBindingDescriptions first stride).
+		  (PVFactRow
+			   name: 'vertex attributes'
+			   value: self class vertexAttributeDescriptions size) }
+]
+
+{ #category : 'accessing' }
+VkGraphicsPipeline >> stateLabel [
+	"Whether the driver still knows this pipeline. destroy nils the handle, and the fixed
+	 state the tab shows beside it holds either way."
+
+	^ handle
+		  ifNil: [ PVFactRow destroyedLabel ]
+		  ifNotNil: [ PVFactRow liveLabel ]
 ]

@@ -65,7 +65,7 @@ PVArchitectureTest class >> allowedDependencies [
 			   'PharoVulkan-Examples' 'PharoVulkan-SPIRV' ).
 		  'PharoVulkan-Graphics-Tests' -> #( 'PharoVulkan-Bindings' 'PharoVulkan-Compiler'
 			   'PharoVulkan-Compute' 'PharoVulkan-Core' 'PharoVulkan-Examples'
-			   'PharoVulkan-Graphics' ).
+			   'PharoVulkan-Graphics' 'PharoVulkan-Inspector' ).
 		  "The aggregate package holds this test and its fixtures. Its edges are the class the
 		   planted fixture names and the inspector row, which belongs to no layer and so is
 		   covered here rather than in a test package of its own."

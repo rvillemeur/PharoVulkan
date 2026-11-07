@@ -5,8 +5,8 @@ object. Every <sampleInstance> must live in PharoVulkan-Examples, be a class-sid
 argument so the browser runs it with one click, and sit on a holder with a class comment named
 for a class the image holds.
 
-No gate here runs an example. Thirty-two of them name the machine in their selector and need a
-Vulkan driver, and two open a window, so a gate that ran examples would make this suite report
+No gate here runs an example. Many of them name the machine in their selector and need a
+Vulkan driver, and four open a window, so a gate that ran examples would make this suite report
 the machine it runs on rather than the code. An example that opens a window is named open... ,
 and the gate below holds the naming both ways so that the ones no gate may run stay recognisable.
 "
@@ -58,12 +58,13 @@ PVExamplesTest class >> inspectorExamples: aBuilder [
 { #category : 'constants' }
 PVExamplesTest class >> selectorsThatOpenAWindow [
 	"The sends that put a window on screen. renderTriangle builds an SDL2 window and drives the
-	 swapchain; open and openInWindow are Spec''s own. Declared here because no predicate of the
-	 image answers ''does this open a window'', and read by the gate in both directions, so an
-	 example that opens one and is misnamed fails, and a name that promises one and opens none
-	 fails too."
+	 swapchain, and renderTriangleWith: is the lifecycle it shares with the examples that hand
+	 back one object of the chain; open and openInWindow are Spec''s own. Declared here because
+	 no predicate of the image answers ''does this open a window'', and read by the gate in both
+	 directions, so an example that opens one and is misnamed fails, and a name that promises one
+	 and opens none fails too."
 
-	^ #( #renderTriangle #open #openInWindow #openModal )
+	^ #( #renderTriangle #renderTriangleWith: #open #openInWindow #openModal )
 ]
 
 { #category : 'private - examples' }
@@ -245,9 +246,9 @@ PVExamplesTest >> testTheGateSeesTheViewsAndTheExamplesOfThisProject [
 		         count + (package methods count: [ :method |
 			          method hasPragmaNamed: #inspectorPresentationOrder:title: ]) ].
 	self assert: views >= 74.
-	self assert: self allExampleMethods size >= 118.
-	self assert: self exampleHolders size >= 19.
-	self assert: self windowExampleMethods size equals: 2.
+	self assert: self allExampleMethods size >= 129.
+	self assert: self exampleHolders size >= 21.
+	self assert: self windowExampleMethods size equals: 4.
 	self assert: (self windowExampleMethods allSatisfy: [ :each |
 			 (self exampleHolders includes: each methodClass instanceSide)
 				 and: [ each hasPragmaNamed: #sampleInstance ] ]).

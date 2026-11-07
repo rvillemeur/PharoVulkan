@@ -1277,6 +1277,211 @@ PVGraphicsTest >> testTheCoveragePopulationsAreNotEmpty [
 	self deny: self class projectClasses isEmpty
 ]
 
+{ #category : 'tests - views' }
+PVGraphicsTest >> testThePipelineViewNamesTheFixedStateEveryPipelineOfThisProjectIsCreatedWith [
+	"A pipeline is opaque once the driver holds it, so what a reader opens it for is the state it
+	 was created with. Every row but the two handles is read from this class's own builders and
+	 constants — the stages from the syntax tree of the method that fills the stage run — so the
+	 tab cannot name a state the code stopped asking for. A pipeline with no handle shows that
+	 same fixed state, which is what makes the tab worth opening after destroy."
+
+	| view valueOf |
+	view := VkGraphicsPipeline new inspectorPipeline: SpPresenter new.
+	valueOf := [ :name |
+	           (view items detect: [ :each | each name = name ]) value ].
+	self assert: (valueOf value: 'pipeline') equals: PVFactRow destroyedLabel.
+	self assert: (valueOf value: 'layout') equals: PVFactRow destroyedLabel.
+	self
+		assert: VkGraphicsPipeline stageNames size
+		equals: VkGraphicsPipeline shaderStagesPerPipeline.
+	self
+		assert: (valueOf value: 'shader stages')
+		equals: (VkGraphicsPipeline rowValueSeparator join:
+				 VkGraphicsPipeline stageNames).
+	self
+		assert: (valueOf value: 'set while recording')
+		equals: (VkGraphicsPipeline rowValueSeparator join:
+				 (VkGraphicsPipeline dynamicStatesSetWhileRecording collect: [ :each |
+					  (VkDynamicState nameForValue: each) asString ])).
+	self
+		assert: (valueOf value: 'viewports')
+		equals: VkGraphicsPipeline viewportsPerPipeline printString.
+	self
+		assert: (valueOf value: 'scissors')
+		equals: VkGraphicsPipeline scissorsPerPipeline printString.
+	self
+		assert: (valueOf value: 'subpass drawn in')
+		equals: VkGraphicsPipeline subpassThisPipelineDrawsIn printString.
+	self
+		assert: (valueOf value: 'vertex stride')
+		equals: VkGraphicsPipeline vertexBindingDescriptions first stride printString.
+	self
+		assert: (valueOf value: 'vertex attributes')
+		equals: VkGraphicsPipeline vertexAttributeDescriptions size printString
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testThePipelineViewOfTheOffscreenTriangleIsLiveOnThisMachineAndDestroyedAfterwards [
+	"A real pipeline exercises the two rows the fixed state does not cover: the pipeline handle
+	 and the layout it owns. The offscreen scene builds one with no window, and the pipeline
+	 object is kept past the teardown — the scene nils its slot — so the same view then says
+	 destroyed on both while every other row reads as it did."
+
+	| pipeline rowsOf live destroyed |
+	pipeline := nil.
+	live := nil.
+	rowsOf := [ :aPipeline |
+	          ((aPipeline inspectorPipeline: SpPresenter new) items collect: [
+		           :each | each name -> each value ]) asArray ].
+	self renderedOffscreenTriangleDo: [ :scene |
+		pipeline := scene pipeline.
+		live := rowsOf value: pipeline ].
+	destroyed := rowsOf value: pipeline.
+	self
+		assert: (live detect: [ :each | each key = 'pipeline' ]) value
+		equals: PVFactRow liveLabel.
+	self
+		assert: (live detect: [ :each | each key = 'layout' ]) value
+		equals: PVFactRow liveLabel.
+	#( 'pipeline' 'layout' ) do: [ :each |
+		self
+			assert: (destroyed detect: [ :row | row key = each ]) value
+			equals: PVFactRow destroyedLabel ].
+	self
+		assert: (destroyed reject: [ :each |
+				 #( 'pipeline' 'layout' ) includes: each key ])
+		equals: (live reject: [ :each |
+				 #( 'pipeline' 'layout' ) includes: each key ])
+]
+
+{ #category : 'tests - window' }
+PVGraphicsTest >> testTheSurfaceViewNamesWhatTheDriverOffersForThisWindowOnThisMachine [
+	"What only a real surface can exercise: the rows that query the driver. They must agree with
+	 what the surface itself answers, the state must be the live one, and reading the view twice
+	 must answer the same rows, which is what says the queries free their blocks and leave the
+	 surface alone. The surface object is kept past the teardown — the scene nils its slot — so
+	 the same view on the same object then reports the destroyed state."
+
+	| surface rowsOf |
+	surface := nil.
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	rowsOf := [ :aSurface |
+	          ((aSurface inspectorSurface: SpPresenter new) items collect: [ :each |
+		           each name -> each value ]) asArray ].
+	self windowSceneDo: [ :aScene :backendWindow |
+		| rows valueOf capabilities |
+		surface := aScene surface.
+		rows := rowsOf value: surface.
+		self assert: rows equals: (rowsOf value: surface).
+		valueOf := [ :name | (rows detect: [ :each | each key = name ]) value ].
+		capabilities := surface capabilities.
+		self assert: (valueOf value: 'surface') equals: PVFactRow liveLabel.
+		self
+			assert: (valueOf value: 'formats offered')
+			equals: surface formats size printString.
+		self
+			assert: (valueOf value: 'preferred format')
+			equals: (surface preferredFormat formatRows at: #formatName).
+		self
+			assert: (valueOf value: 'images the swapchain asks for')
+			equals: capabilities swapchainImageCount printString.
+		self
+			assert: (valueOf value: 'current extent')
+			equals: (capabilities surfaceRows at: #currentExtent) printString ].
+	self
+		assert:
+		((rowsOf value: surface) detect: [ :each | each key = 'surface' ]) value
+		equals: PVFactRow destroyedLabel
+]
+
+{ #category : 'tests - views' }
+PVGraphicsTest >> testTheSurfaceViewOpensOnASurfaceWithNoHandleAndAsksTheDriverNothing [
+	"A destroyed surface is what a reader opens after a window run, and the only surface a
+	 machine with no display can build at all. The view must still name the state and the
+	 format this project renders in, and it must ask the driver nothing: a query through a
+	 nil handle is a segmentation fault rather than a failing test, so the rows that need the
+	 driver are absent instead of empty."
+
+	| view valueOf names |
+	view := VkSurface new inspectorSurface: SpPresenter new.
+	names := view items collect: [ :each | each name ].
+	valueOf := [ :name |
+	           (view items detect: [ :each | each name = name ]) value ].
+	self assert: (valueOf value: 'surface') equals: PVFactRow destroyedLabel.
+	self
+		assert: (valueOf value: 'format this project renders in')
+		equals: (VkFormat nameForValue: VkSurface formatRenderedIn) asString.
+	self deny: (names includes: 'formats offered').
+	self deny: (names includes: 'preferred format')
+]
+
+{ #category : 'tests - window' }
+PVGraphicsTest >> testTheSwapchainViewNamesWhatTheDriverGaveThisWindowOnThisMachine [
+	"What only a real swapchain can exercise: the rows for what the driver handed back. They must
+	 agree with the swapchain's own accessors and with the scene's report of it, and reading the
+	 view must leave the swapchain alone. The swapchain object is kept past the teardown — the
+	 scene nils its slot — so the same view then shows the destroyed state with the format, the
+	 extent and the image count it kept, and no row for the views it dropped."
+
+	| swapchain rowsOf rows |
+	swapchain := nil.
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	rowsOf := [ :aSwapchain |
+	          ((aSwapchain inspectorSwapchain: SpPresenter new) items collect: [
+		           :each | each name -> each value ]) asArray ].
+	self windowSceneDo: [ :aScene :backendWindow |
+		| valueOf |
+		swapchain := aScene swapchain.
+		rows := rowsOf value: swapchain.
+		self assert: rows equals: (rowsOf value: swapchain).
+		valueOf := [ :name | (rows detect: [ :each | each key = name ]) value ].
+		self assert: (valueOf value: 'swapchain') equals: PVFactRow liveLabel.
+		self
+			assert: (valueOf value: 'format')
+			equals: aScene swapchainFormatName.
+		self assert: (valueOf value: 'extent') equals: swapchain extent printString.
+		self
+			assert: (valueOf value: 'images')
+			equals: swapchain imageCount printString.
+		self
+			assert: (valueOf value: 'image views')
+			equals: swapchain imageViews size printString ].
+	rows := rowsOf value: swapchain.
+	self
+		assert: (rows detect: [ :each | each key = 'swapchain' ]) value
+		equals: PVFactRow destroyedLabel.
+	self assert: (rows anySatisfy: [ :each | each key = 'format' ]).
+	self assert: (rows anySatisfy: [ :each | each key = 'images' ]).
+	self deny: (rows anySatisfy: [ :each | each key = 'image views' ])
+]
+
+{ #category : 'tests - views' }
+PVGraphicsTest >> testTheSwapchainViewOpensOnASwapchainThatWasNeverCreated [
+	"A swapchain needs a surface, so a machine with no display can only build one that was never
+	 created. The view must still name the state and the two rules creation follows — the present
+	 mode and how many images are asked for beyond the surface minimum — and must leave out the
+	 rows whose slot is empty rather than show a row with nothing in it."
+
+	| view valueOf names |
+	view := VkSwapchain new inspectorSwapchain: SpPresenter new.
+	names := view items collect: [ :each | each name ].
+	valueOf := [ :name |
+	           (view items detect: [ :each | each name = name ]) value ].
+	self assert: (valueOf value: 'swapchain') equals: PVFactRow destroyedLabel.
+	self
+		assert: (valueOf value: 'present mode')
+		equals: (VkSwapchain presentModeNameFor: VkRenderConfig presentModeFifo).
+	self
+		assert: (valueOf value: 'images asked for beyond the surface minimum')
+		equals: VkSwapchain imagesBeyondMinimum printString.
+	self deny: (names includes: 'format').
+	self deny: (names includes: 'extent').
+	self deny: (names includes: 'images').
+	self deny: (names includes: 'image views')
+]
+
 { #category : 'tests' }
 PVGraphicsTest >> testTheUnboundedAcquireIsTheBoundedAcquireWithTheUnboundedTimeout [
 	"An acquire is a plain uFFI call, so a wait inside it blocks the whole virtual machine and

@@ -1,5 +1,7 @@
 "
 Vulkan presentation surface. Creates a VkSurfaceKHR via SDL_Vulkan_CreateSurface and answers what the driver reports for it. Key methods: fromWindow:instance:physicalDevice:, supportsPresentation:, capabilities, formats, preferredFormat. Both structures the driver fills are declared — VkSurfaceCapabilitiesKHR and VkSurfaceFormatKHR — so the answers are read through generated accessors and come back as copies in object memory; the blocks the driver wrote are freed here. formatPreferredFrom: is the choice of format and colour space the swapchain is created with, kept on the class side so it can be tested without a display.
+
+presentationRows is what the Surface tab reads. Its first rows hold for any surface; the rows that query the driver are built only while the handle is live, because destroy nils it and a query through a nil handle is a segmentation fault rather than an error.
 "
 Class {
 	#name : 'VkSurface',
@@ -134,6 +136,20 @@ VkSurface >> initializeWithWindow: aWindow instance: aVkInstance physicalDevice:
     handle := aWindow createVulkanSurface: aVkInstance
 ]
 
+{ #category : 'inspector' }
+VkSurface >> inspectorSurface: aBuilder [
+	"What this surface is and what the driver reports for it. The rows come from
+	 presentationRows, which only reads: opening a surface creates no Vulkan object and frees
+	 every block it allocates to ask."
+
+	<inspectorPresentationOrder: 10 title: 'Surface'>
+	^ PVFactRow
+		  tableOf: self presentationRows
+		  nameColumn: 'Surface'
+		  valueColumn: 'Value'
+		  in: aBuilder
+]
+
 { #category : 'accessing' }
 VkSurface >> physicalDevice [
     ^ physicalDevice
@@ -145,6 +161,55 @@ VkSurface >> preferredFormat [
 	 surface offers it, the first one offered otherwise."
 
 	^ self class formatPreferredFrom: self formats
+]
+
+{ #category : 'reporting' }
+VkSurface >> presentationRows [
+	"What a reader can ask of this surface. The state comes first, because every row under it
+	 needs a live handle: the driver is asked nothing through a nil one, so a destroyed surface
+	 shows the state and the preference and stops there. The pairs the driver offers are fetched
+	 once and the preferred one is picked from them by this class's own rule, and the limits come
+	 from the capabilities' own rows, so neither the choice nor the image count is restated here."
+
+	| rows offered chosen capabilities |
+	rows := OrderedCollection new
+		        add: (PVFactRow name: 'surface' value: self stateLabel);
+		        add: (PVFactRow
+				         name: 'format this project renders in'
+				         value: (VkFormat nameForValue: self class formatRenderedIn));
+		        yourself.
+	handle ifNil: [ ^ rows asArray ].
+	offered := self formats.
+	chosen := self class formatPreferredFrom: offered.
+	rows add: (PVFactRow name: 'formats offered' value: offered size).
+	chosen ifNotNil: [
+		| pair |
+		pair := chosen formatRows.
+		rows
+			add: (PVFactRow name: 'preferred format' value: (pair at: #formatName));
+			add: (PVFactRow
+					 name: 'preferred colour space'
+					 value: (pair at: #colorSpaceName)) ].
+	capabilities := self capabilities surfaceRows.
+	rows
+		add: (PVFactRow
+				 name: 'current extent'
+				 value: (capabilities at: #currentExtent));
+		add: (PVFactRow
+				 name: 'images the swapchain asks for'
+				 value: (capabilities at: #swapchainImageCount)).
+	^ rows asArray
+]
+
+{ #category : 'as yet unclassified' }
+VkSurface >> stateLabel [
+	"Whether the driver can still be asked about this surface. Every row of the report below
+	 the state needs a live handle, and destroy leaves nil behind, so this is what decides
+	 which of them can be built."
+
+	^ handle
+		  ifNil: [ PVFactRow destroyedLabel ]
+		  ifNotNil: [ PVFactRow liveLabel ]
 ]
 
 { #category : 'querying' }

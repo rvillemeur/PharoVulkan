@@ -12,6 +12,23 @@ Class {
 	#package : 'PharoVulkan-Inspector'
 }
 
+{ #category : 'constants' }
+PVFactRow class >> destroyedLabel [
+	"What a fact table says of a handle its subject has released. Both words live here, with
+	 the row class, because a reader compares the tabs of a chain of Vulkan objects and two
+	 vocabularies for the same state would read as two different states."
+
+	^ 'destroyed'
+]
+
+{ #category : 'constants' }
+PVFactRow class >> liveLabel [
+	"What a fact table says of a handle the driver still knows. The rows that query the
+	 driver are built only for this state."
+
+	^ 'live'
+]
+
 { #category : 'instance creation' }
 PVFactRow class >> name: aName value: aValue [
 	"Both arguments are converted here, so that a view can pass a number, a boolean or nil

@@ -111,16 +111,28 @@ PVHelloTriangleScene class >> prepare: aVkContext backendWindow: aBackendWindow 
 
 { #category : 'examples' }
 PVHelloTriangleScene class >> renderTriangle [
-	"Open a window, render exampleFrameCount frames, then tear everything down.
-	 Every acquired resource is released by an ensure: block, in reverse order of
-	 creation: scene, then context, then window, then the OSWindow driver. A raise
-	 or a user interrupt mid-loop must not leave a live VkInstance, an SDL window
-	 still registered with the driver, or the driver itself swapped out — with the
-	 validation layers off, that state resurfaces as a segfault on the next run.
+	"Open a window, render exampleFrameCount frames, then tear everything down and answer the
+	 scene, which is what a reader opens to see what the run left behind. The lifecycle itself is
+	 renderTriangleWith:, so the examples that hand back one object of the chain share it.
 
-	 It stays here, outside PharoVulkan-Examples, because doc/glsl-api-tutorial.md
-	 documents it as the method a user writes on their own scene. The one-click
-	 example is PVSceneExamples class >> openRenderTriangle, and it sends this."
+	 It stays here, outside PharoVulkan-Examples, because doc/glsl-api-tutorial.md documents it
+	 as the method a user writes on their own scene. The one-click example is
+	 PVSceneExamples class >> openRenderTriangle, and it sends this."
+
+	^ self renderTriangleWith: [ :scene | scene ]
+]
+
+{ #category : 'examples' }
+PVHelloTriangleScene class >> renderTriangleWith: aBlock [
+	"The window lifecycle of renderTriangle, with one hook: the block is evaluated with the live
+	 scene after the frames are drawn and before anything is released, and whatever it answers is
+	 answered here once the teardown has run. renderTriangle is this method with the identity
+	 block, and the examples that hand back one object of the chain — the surface, the swapchain —
+	 send this, so no example holds a second copy of the lifecycle. Every acquired resource is
+	 still released by its own ensure: block in reverse order of creation: scene, then context,
+	 then window, then the OSWindow driver. A raise or a user interrupt mid-loop must not leave a
+	 live VkInstance, an SDL window still registered with the driver, or the driver itself swapped
+	 out — with the validation layers off, that state resurfaces as a segfault on the next run."
 
 	| attrs |
 	attrs := PVWindowAttributes newVulkan.
@@ -137,9 +149,9 @@ PVHelloTriangleScene class >> renderTriangle [
 			         backendWin requiredInstanceExtensions.
 		  [ | scene |
 		  scene := self prepare: ctx backendWindow: backendWin.
-		  [ 1 to: self exampleFrameCount do: [ :i | scene renderFrame ] ]
-			  ensure: [ scene destroy ].
-		  scene ] ensure: [ ctx destroy ] ] ensure: [ win destroy ] ]
+		  [ 1 to: self exampleFrameCount do: [ :i | scene renderFrame ].
+		  aBlock value: scene ] ensure: [ scene destroy ] ] ensure: [ ctx destroy ] ]
+			  ensure: [ win destroy ] ]
 ]
 
 { #category : 'reporting' }
@@ -288,12 +300,14 @@ PVHelloTriangleScene >> surface [
 PVHelloTriangleScene >> swapchain [ ^ swapchain
 ]
 
-{ #category : 'reporting' }
+{ #category : 'as yet unclassified' }
 PVHelloTriangleScene >> swapchainFormatName [
-	"The surface format by name. Falls back to the number, because the driver may answer a
-	 format this binding's enumeration does not cover and a report must not fail on that."
+	"The surface format by name, asked of the swapchain, which is the object that holds the
+	 format and the fallback to the number for a format this binding's enumeration does not
+	 cover. Kept here because swapchainReport names this row, and delegating means the scene's
+	 report and the swapchain's own tab cannot name one format two ways."
 
-	^ (VkFormat nameForValue: swapchain format) ifNil: [ swapchain format printString ]
+	^ swapchain formatName
 ]
 
 { #category : 'reporting' }

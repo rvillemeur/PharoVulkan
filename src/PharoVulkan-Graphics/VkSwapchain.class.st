@@ -4,6 +4,8 @@ Vulkan swapchain. Holds the queue of presentable images for a surface, creates o
 Creation asks the surface what it allows and what it offers rather than assuming either: imageCountFor: is how many images it requests, one more than the surface demands, held down to what it allows, with a maximum of zero read as no maximum; the format and colour space are the pair VkSurface class >> formatPreferredFrom: chose. createInfoForSurface:format:capabilities:extent: builds the declared VkSwapchainCreateInfoKHR from those answers, and handleForCreateInfo:on: is the only sender of vkCreateSwapchainKHR, so there is one place where a swapchain comes into being. imagesFromDriver enumerates the images the driver actually gave back, which may be more than were asked for, and the count the swapchain reports is that number.
 
 Presentation is the mirror of that: presentInfoForSwapchain:imageIndex:waitSemaphore: builds the declared VkPresentInfoKHR together with the three runs of one entry it points at, and freePresentInfo: gives all four blocks back. What is left outside a declared structure are the blocks that are runs rather than structures — the out parameter a creation answers through, the index an acquire is given, the count and run of image handles, and those three present runs — each allocated by a named width.
+
+presentationRows is what the Swapchain tab reads, and formatName is where the format is named, which the scene's own report delegates to. destroy keeps the format, the extent and the image count and drops the handle, the images and their views, so the tab of a torn-down swapchain still says what the driver gave it.
 "
 Class {
 	#name : 'VkSwapchain',
@@ -310,6 +312,19 @@ VkSwapchain >> format [
 ]
 
 { #category : 'accessing' }
+VkSwapchain >> formatName [
+	"The name of the format this swapchain's images were created with. Falls back to the number,
+	 because the driver may answer a format no constant class of this project names, and answers
+	 nothing for a swapchain that was never created. The scene's own report delegates here, so
+	 the swapchain and the scene cannot name one format two ways."
+
+	format ifNil: [ ^ nil ].
+	^ (VkFormat nameForValue: format)
+		  ifNil: [ format printString ]
+		  ifNotNil: [ :each | each asString ]
+]
+
+{ #category : 'accessing' }
 VkSwapchain >> handle [
     ^ handle
 ]
@@ -388,6 +403,20 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
 	self createImageViews
 ]
 
+{ #category : 'inspector' }
+VkSwapchain >> inspectorSwapchain: aBuilder [
+	"What the driver gave this swapchain and the rules it was created under. The rows come from
+	 presentationRows, which only reads: opening a swapchain asks the driver nothing, so a
+	 torn-down one is safe to read."
+
+	<inspectorPresentationOrder: 10 title: 'Swapchain'>
+	^ PVFactRow
+		  tableOf: self presentationRows
+		  nameColumn: 'Swapchain'
+		  valueColumn: 'Value'
+		  in: aBuilder
+]
+
 { #category : 'rendering' }
 VkSwapchain >> present: imageIndex queue: aVkQueue waitSemaphore: semaphore [
 	"Hands one image of this swapchain to the presentation engine, once the rendering into it
@@ -420,4 +449,41 @@ VkSwapchain >> presentModeName [
 	 the request's own report needs it too and one copy of it cannot drift from the other."
 
 	^ self class presentModeNameFor: self presentMode
+]
+
+{ #category : 'reporting' }
+VkSwapchain >> presentationRows [
+	"What a reader can ask of this swapchain. The state and the two rules creation follows hold
+	 for any swapchain, created or not: the present mode is read from the render configuration
+	 and the extra image count from this class's own rule, so neither is restated here. destroy
+	 keeps the format, the extent and the image count and drops the handle, the images and their
+	 views, so a torn-down swapchain still says what the driver gave it while the rows for what
+	 it no longer holds are left out rather than shown empty."
+
+	| rows |
+	rows := OrderedCollection new
+		        add: (PVFactRow name: 'swapchain' value: self stateLabel);
+		        add: (PVFactRow name: 'present mode' value: self presentModeName);
+		        add: (PVFactRow
+				         name: 'images asked for beyond the surface minimum'
+				         value: self class imagesBeyondMinimum);
+		        yourself.
+	format ifNotNil: [
+		rows add: (PVFactRow name: 'format' value: self formatName) ].
+	extent ifNotNil: [ rows add: (PVFactRow name: 'extent' value: extent) ].
+	imageCount ifNotNil: [
+		rows add: (PVFactRow name: 'images' value: imageCount) ].
+	imageViews ifNotNil: [
+		rows add: (PVFactRow name: 'image views' value: imageViews size) ].
+	^ rows asArray
+]
+
+{ #category : 'accessing' }
+VkSwapchain >> stateLabel [
+	"Whether the driver can still be asked about this swapchain. destroy nils the handle, and
+	 the rows for the images and their views go with it."
+
+	^ handle
+		  ifNil: [ PVFactRow destroyedLabel ]
+		  ifNotNil: [ PVFactRow liveLabel ]
 ]
