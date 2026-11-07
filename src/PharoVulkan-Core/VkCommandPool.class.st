@@ -54,11 +54,6 @@ VkCommandPool class >> handleForCreateInfo: aCreateInfo on: aDevice [
 	  VkCommandPool_H fromHandle: (out pointerAt: 1) ] ensure: [ out free ]
 ]
 
-{ #category : 'factory' }
-VkCommandPool class >> on: aHandle device: aDevice queueFamilyIndex: idx [
-    ^ self new initializeWith: aHandle device: aDevice queueFamilyIndex: idx
-]
-
 { #category : 'instance creation' }
 VkCommandPool class >> on: aDevice queueFamilyIndex: idx [
 	"The one place a command pool is created. Every pool here asks for the reset flag, so one

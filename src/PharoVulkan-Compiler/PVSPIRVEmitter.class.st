@@ -1101,51 +1101,6 @@ blk addInstruction: (SpvInstruction opcode: SpvOpcode opStore operands: { elemPt
 regMap at: op result put: elemPtrId
 ]
 
-{ #category : 'emitting structured' }
-PVSPIRVEmitter >> emitBytecodeBlock: blk block: spvBlk [
-
-	| lastResultReg |
-	lastResultReg := nil.
-	blk ops do: [ :op |
-			(#( #jump #jumpIf #returnTop #returnSelf ) includes: op opcode)
-				ifFalse: [ "Stack ops: simulate and emit"
-						| simResult |
-						simResult := PVBlockSimulator
-							             simulate: blk
-							             initialTempDefs: regMap
-							             annotation: annotation
-							             selectorTable: selectorTable.
-						"Emit regOps from simResult"
-						simResult regOps do: [ :regOp |
-							self emitRegOp: regOp block: spvBlk ].
-						"Update regMap from simulation"
-						simResult tempDefs keysAndValuesDo: [ :k :v |
-							regMap at: k put: v ].
-						lastResultReg := simResult resultReg.
-						^ lastResultReg ] ].
-	^ lastResultReg
-]
-
-{ #category : 'emitting structured' }
-PVSPIRVEmitter >> emitBytecodeBlock: blk initialTempDefs: initDefs block: spvBlk [
-
-	| simResult regOps finalDefs resultReg |
-	simResult := PVBlockSimulator
-		             simulate: blk
-		             initialTempDefs: initDefs
-		             annotation: annotation
-		             selectorTable: selectorTable.
-	regOps := simResult regOps.
-	finalDefs := simResult tempDefs.
-	resultReg := simResult resultReg.
-	regOps do: [ :op | self emitRegOp: op block: spvBlk ].
-	"Seed regMap with newly defined temps for downstream blocks"
-	finalDefs keysAndValuesDo: [ :tempIdx :absReg |
-		(regMap includesKey: absReg) ifFalse: [
-			regMap at: absReg put: absReg ] ].
-	^ resultReg
-]
-
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> emitComponent: compIdx ofVariable: varId op: op block: blk [
 	"One component of a three-component built-in vector: load the whole vector, then extract.
@@ -1847,65 +1802,6 @@ PVSPIRVEmitter >> emitRegOps: regOpList block: spvBlk [
 				self emitRegOp: op block: spvBlk ] ]
 ]
 
-{ #category : 'emitting structured' }
-PVSPIRVEmitter >> emitSelection: selNode function: spvFunc condReg: condReg [
-
-	| trueBlk falseBlk mergeBlk trueSpvBlk falseSpvBlk mergeSpvBlk condId trueVal falseVal phiId phiType condSpvBlk |
-	trueBlk := selNode trueBlocks first.
-	falseBlk := selNode falseBlocks first.
-	mergeBlk := selNode mergeBlock.
-	trueSpvBlk := spvFunc addBlock.
-	falseSpvBlk := spvFunc addBlock.
-	mergeSpvBlk := spvFunc addBlock.
-	condId := self spvIdFor: condReg.
-	"Terminate cond block with OpSelectionMerge + OpBranchConditional"
-	condSpvBlk := spvFunc blocks at: spvFunc blocks size - 3.
-	condSpvBlk addInstruction: (SpvInstruction
-			 opcode: SpvOpcode opSelectionMerge
-			 resultType: nil
-			 resultId: nil
-			 operands: {
-					 mergeSpvBlk id.
-					 SpvSelectionControl none }).
-	condSpvBlk terminate: (SpvInstruction
-			 opcode: SpvOpcode opBranchConditional
-			 resultType: nil
-			 resultId: nil
-			 operands: {
-					 condId.
-					 trueSpvBlk id.
-					 falseSpvBlk id }).
-	trueVal := self emitBytecodeBlock: trueBlk block: trueSpvBlk.
-	trueSpvBlk isTerminated ifFalse: [
-			trueSpvBlk terminate: (SpvInstruction
-					 opcode: SpvOpcode opBranch
-					 resultType: nil
-					 resultId: nil
-					 operands: { mergeSpvBlk id }) ].
-	falseVal := self emitBytecodeBlock: falseBlk block: falseSpvBlk.
-	falseSpvBlk isTerminated ifFalse: [
-			falseSpvBlk terminate: (SpvInstruction
-					 opcode: SpvOpcode opBranch
-					 resultType: nil
-					 resultId: nil
-					 operands: { mergeSpvBlk id }) ].
-	(trueVal notNil and: [ falseVal notNil ]) ifTrue: [
-			phiType := typeMap at: trueVal ifAbsent: [ nil ].
-			phiType ifNotNil: [
-					phiId := module newId.
-					mergeSpvBlk addInstruction: (SpvInstruction
-							 opcode: SpvOpcode opPhi
-							 resultType: (self spvTypeFor: phiType) id
-							 resultId: phiId
-							 operands: {
-									 trueVal.
-									 trueSpvBlk id.
-									 falseVal.
-									 falseSpvBlk id }).
-					^ phiId ] ].
-	^ nil
-]
-
 { #category : 'compiling' }
 PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey valueKey: valueKey in: ctx [
 	"One arm of the selection: its own work, then the branch to the merge block. The id of
@@ -2297,10 +2193,6 @@ PVSPIRVEmitter >> initialize [
 ]
 
 { #category : 'accessing' }
-PVSPIRVEmitter >> isVoidMain [ ^ isVoidMain
-]
-
-{ #category : 'accessing' }
 PVSPIRVEmitter >> isVoidMain: x [ isVoidMain := x
 ]
 
@@ -2328,10 +2220,6 @@ PVSPIRVEmitter >> opcodeFor: spirvOpSymbol [
 
 { #category : 'accessing' }
 PVSPIRVEmitter >> outputVarIds [ ^ outputVarIds
-]
-
-{ #category : 'accessing' }
-PVSPIRVEmitter >> outputVarIds: x [ outputVarIds := x
 ]
 
 { #category : 'emitting - cooperative matrix' }

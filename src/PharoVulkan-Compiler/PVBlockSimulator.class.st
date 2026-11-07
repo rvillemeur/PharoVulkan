@@ -13,11 +13,6 @@ Class {
 	#tag : 'Registers'
 }
 
-{ #category : 'simulating' }
-PVBlockSimulator class >> simulate: aBlock initialTempDefs: defs annotation: ann selectorTable: st [
-	^ self new annotation: ann; selectorTable: st; simulateBlock: aBlock initialTempDefs: defs
-]
-
 { #category : 'accessing' }
 PVBlockSimulator >> annotation: ann [
 	annotation := ann
@@ -26,21 +21,6 @@ PVBlockSimulator >> annotation: ann [
 { #category : 'accessing' }
 PVBlockSimulator >> selectorTable: st [
 	selectorTable := st
-]
-
-{ #category : 'simulating' }
-PVBlockSimulator >> simulateBlock: aBlock initialTempDefs: tempDefs [
-	| sim term |
-	sim := PVStackSimulator new initialize.
-	tempDefs keysAndValuesDo: [ :k :v | sim tempDefs at: k put: v ].
-	aBlock ops do: [ :op |
-		(#(#jump #jumpIf #returnTop #returnSelf) includes: op opcode) ifFalse: [
-			sim simulateOp: op ] ].
-	"For jumpIf: condition is top of stack before jump"
-	term := aBlock terminator.
-	(term notNil and: [ term opcode = #returnTop ]) ifTrue: [
-		sim simulateOp: term ].
-	^ PVBlockSimulation ofSimulator: sim
 ]
 
 { #category : 'simulating' }

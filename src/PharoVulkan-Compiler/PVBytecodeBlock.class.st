@@ -36,14 +36,6 @@ PVBytecodeBlock >> initialize [
 ]
 
 { #category : 'testing' }
-PVBytecodeBlock >> isBackEdge [
-	| t |
-	t := self terminator.
-	(t notNil and: [ t opcode = #jump ]) ifFalse: [ ^ false ].
-	^ t operands first < startPc
-]
-
-{ #category : 'testing' }
 PVBytecodeBlock >> isFallThrough [
 	^ self terminator isNil
 ]
@@ -54,11 +46,6 @@ PVBytecodeBlock >> ops [
 ]
 
 { #category : 'accessing' }
-PVBytecodeBlock >> ops: c [
-	ops := c
-]
-
-{ #category : 'accessing' }
 PVBytecodeBlock >> predecessors [
 ^ predecessors
 ]
@@ -66,11 +53,6 @@ PVBytecodeBlock >> predecessors [
 { #category : 'accessing' }
 PVBytecodeBlock >> predecessors: c [
 	predecessors := c
-]
-
-{ #category : 'accessing' }
-PVBytecodeBlock >> startPc [
-^ startPc
 ]
 
 { #category : 'accessing' }

@@ -14,10 +14,6 @@ Class {
 }
 
 { #category : 'accessing' }
-SpvPointerType >> baseType [        ^ baseType
-]
-
-{ #category : 'accessing' }
 SpvPointerType >> baseType: t [     baseType := t
 ]
 
@@ -32,10 +28,6 @@ SpvPointerType >> instruction [
 
 { #category : 'abstract' }
 SpvPointerType >> key [ ^ Array with: #pointer with: storageClass with: baseType id
-]
-
-{ #category : 'accessing' }
-SpvPointerType >> storageClass [    ^ storageClass
 ]
 
 { #category : 'accessing' }

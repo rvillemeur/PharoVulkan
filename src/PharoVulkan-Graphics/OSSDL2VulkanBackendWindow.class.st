@@ -47,11 +47,6 @@ OSSDL2VulkanBackendWindow >> requiredInstanceExtensions [
 			  ensure: [ names free ] ] ensure: [ pCount free ]
 ]
 
-{ #category : 'accessing' }
-OSSDL2VulkanBackendWindow >> sdl2WindowHandle [
-    ^ sdl2Window
-]
-
 { #category : 'surface' }
 OSSDL2VulkanBackendWindow >> vulkanDrawableExtent [
 

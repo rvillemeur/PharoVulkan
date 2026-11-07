@@ -289,12 +289,6 @@ SpvBuilder >> emitReturn [
 ]
 
 { #category : 'instructions' }
-SpvBuilder >> emitReturnValue: valueId [
-    currentBlock terminate: (SpvInstruction
-        opcode: SpvOpcode opReturnValue operands: { valueId })
-]
-
-{ #category : 'instructions' }
 SpvBuilder >> emitSelect: aConditionId ifTrue: aTrueId ifFalse: aFalseId type: aType [
 	"OpSelect: both values are computed and one is kept, so the block does not divide and no
 	 merge is declared. A kernel whose invocations must stay together uses this where Pharo

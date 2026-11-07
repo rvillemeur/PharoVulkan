@@ -60,11 +60,6 @@ PVBytecodeOp >> printOn: aStream [
 ]
 
 { #category : 'accessing' }
-PVBytecodeOp >> stackEffect [
-^ stackEffect
-]
-
-{ #category : 'accessing' }
 PVBytecodeOp >> stackEffect: anInteger [
 	stackEffect := anInteger
 ]

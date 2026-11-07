@@ -21,11 +21,6 @@ SpvGrammarParser >> instructions [
     ^ instructions
 ]
 
-{ #category : 'accessing' }
-SpvGrammarParser >> operandKinds [
-    ^ operandKinds
-]
-
 { #category : 'parsing' }
 SpvGrammarParser >> parseFile: aFilePath [
     "Load and parse the SPIR-V grammar JSON file at aFilePath."

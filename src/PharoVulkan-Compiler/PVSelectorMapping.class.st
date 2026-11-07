@@ -20,11 +20,6 @@ PVSelectorMapping class >> spirvOp: op resultType: rt [
 ]
 
 { #category : 'accessing' }
-PVSelectorMapping >> isSpecialForm [
-^ isSpecialForm
-]
-
-{ #category : 'accessing' }
 PVSelectorMapping >> isSpecialForm: aBoolean [
 	isSpecialForm := aBoolean
 ]

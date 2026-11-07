@@ -14,10 +14,6 @@ Class {
 }
 
 { #category : 'accessing' }
-SpvMatrixType >> columnType [ ^ columnType
-]
-
-{ #category : 'accessing' }
 SpvMatrixType >> columnType: x [ columnType := x
 ]
 

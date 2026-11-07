@@ -331,10 +331,6 @@ PVTriangleScene >> lifecycleReport [
 			   ifNotNil: [ self class liveLabel ]) ]
 ]
 
-{ #category : 'accessing' }
-PVTriangleScene >> pipeline [ ^ pipeline
-]
-
 { #category : 'private' }
 PVTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
 

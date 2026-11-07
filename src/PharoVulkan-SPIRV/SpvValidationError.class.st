@@ -20,9 +20,5 @@ SpvValidationError >> messageText [
 ]
 
 { #category : 'accessing' }
-SpvValidationError >> validatorOutput [   ^ validatorOutput
-]
-
-{ #category : 'accessing' }
 SpvValidationError >> validatorOutput: s [ validatorOutput := s
 ]

@@ -19,18 +19,8 @@ PVStructuredCFGRecognizer class >> recognizeFrom: aBlockArray [
 ]
 
 { #category : 'accessing' }
-PVStructuredCFGRecognizer >> blockMap [
-^ blockMap
-]
-
-{ #category : 'accessing' }
 PVStructuredCFGRecognizer >> blocks [
 ^ blocks
-]
-
-{ #category : 'accessing' }
-PVStructuredCFGRecognizer >> blocks: c [
-	blocks := c
 ]
 
 { #category : 'recognizing' }

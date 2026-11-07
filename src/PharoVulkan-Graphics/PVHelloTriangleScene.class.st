@@ -279,10 +279,6 @@ PVHelloTriangleScene >> renderFrame [
 	^ imageIndex
 ]
 
-{ #category : 'see class side' }
-PVHelloTriangleScene >> seeClassSide [
-]
-
 { #category : 'accessing' }
 PVHelloTriangleScene >> surface [
 	^ surface

@@ -47,10 +47,6 @@ SpvGlobalVariable >> instruction [
 ]
 
 { #category : 'accessing' }
-SpvGlobalVariable >> storageClass [  ^ storageClass
-]
-
-{ #category : 'accessing' }
 SpvGlobalVariable >> storageClass: s [ storageClass := s
 ]
 

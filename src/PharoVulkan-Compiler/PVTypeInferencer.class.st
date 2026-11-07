@@ -13,11 +13,6 @@ Class {
 	#tag : 'Pipeline'
 }
 
-{ #category : 'instance creation' }
-PVTypeInferencer class >> annotation: ann inferAll: regOps selectorTable: st [
-	^ self new annotation: ann; inferAll: regOps selectorTable: st; yourself
-]
-
 { #category : 'accessing' }
 PVTypeInferencer >> annotation [
 ^ annotation

@@ -21,11 +21,6 @@ PVSelectorTable >> at: selector receiverType: recvType [
 	^ table at: selector , ':' , recvType asString ifAbsent: [ nil ]
 ]
 
-{ #category : 'lookup' }
-PVSelectorTable >> at: selector receiverType: recvType ifAbsent: aBlock [
-    ^ table at: selector , ':' , recvType asString ifAbsent: aBlock
-]
-
 { #category : 'private' }
 PVSelectorTable >> at: selector receiverType: recvType put: mapping [
 	table at: selector , ':' , recvType asString put: mapping

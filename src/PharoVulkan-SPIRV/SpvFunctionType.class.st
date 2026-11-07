@@ -31,10 +31,6 @@ SpvFunctionType >> key [
 ]
 
 { #category : 'accessing' }
-SpvFunctionType >> paramTypes [      ^ paramTypes
-]
-
-{ #category : 'accessing' }
 SpvFunctionType >> paramTypes: a [   paramTypes := a
 ]
 

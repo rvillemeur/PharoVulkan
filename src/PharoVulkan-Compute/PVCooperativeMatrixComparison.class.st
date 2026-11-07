@@ -58,11 +58,6 @@ PVCooperativeMatrixComparison class >> rightAtRow: aRow col: aColumn [
 ]
 
 { #category : 'accessing' }
-PVCooperativeMatrixComparison >> compiledMilliseconds [
-	^ compiledMilliseconds
-]
-
-{ #category : 'accessing' }
 PVCooperativeMatrixComparison >> compiledResult [
 	^ compiledResult
 ]
@@ -105,11 +100,6 @@ PVCooperativeMatrixComparison >> flatMatrixWith: aBlock [
 				at: row * order + column + 1
 				put: (aBlock value: row value: column) ] ].
 	^ matrix
-]
-
-{ #category : 'accessing' }
-PVCooperativeMatrixComparison >> handBuiltMilliseconds [
-	^ handBuiltMilliseconds
 ]
 
 { #category : 'accessing' }

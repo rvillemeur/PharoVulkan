@@ -18,21 +18,6 @@ Class {
 }
 
 { #category : 'accessing' }
-VkMemberDescriptor >> arrayLen [
-    ^ arrayLen
-]
-
-{ #category : 'accessing' }
-VkMemberDescriptor >> arrayLen: aValue [
-    arrayLen := aValue
-]
-
-{ #category : 'accessing' }
-VkMemberDescriptor >> isConst [
-    ^ isConst
-]
-
-{ #category : 'accessing' }
 VkMemberDescriptor >> isConst: aValue [
     isConst := aValue
 ]

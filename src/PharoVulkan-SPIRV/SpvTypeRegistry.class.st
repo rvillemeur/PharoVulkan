@@ -146,11 +146,6 @@ SpvTypeRegistry >> structType: aMemberTypeArray [
         self register: (SpvStructType new memberTypes: aMemberTypeArray; yourself) ]
 ]
 
-{ #category : 'private' }
-SpvTypeRegistry >> typeForKey: aKey ifAbsent: aBlock [
-    ^ types at: aKey ifAbsent: aBlock
-]
-
 { #category : 'type-factories' }
 SpvTypeRegistry >> vectorType: aComponentType count: n [
     | key |

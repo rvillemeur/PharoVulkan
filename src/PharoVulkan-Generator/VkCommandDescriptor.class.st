@@ -19,11 +19,6 @@ Class {
 }
 
 { #category : 'accessing' }
-VkCommandDescriptor >> errorCodes [
-    ^ errorCodes
-]
-
-{ #category : 'accessing' }
 VkCommandDescriptor >> errorCodes: aValue [
     errorCodes := aValue
 ]
@@ -56,11 +51,6 @@ VkCommandDescriptor >> returnType [
 { #category : 'accessing' }
 VkCommandDescriptor >> returnType: aValue [
     returnType := aValue
-]
-
-{ #category : 'accessing' }
-VkCommandDescriptor >> successCodes [
-    ^ successCodes
 ]
 
 { #category : 'accessing' }

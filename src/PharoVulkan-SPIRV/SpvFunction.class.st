@@ -58,19 +58,6 @@ SpvFunction >> addBlockWithId: anId [
 	^ block
 ]
 
-{ #category : 'building' }
-SpvFunction >> addParameter: aType [
-    "Append a function parameter of aType. Returns the parameter result id."
-    | pid |
-    pid := module newId.
-    parameters add: (SpvInstruction
-        opcode: SpvOpcode opFunctionParameter
-        resultType: aType id
-        resultId: pid
-        operands: #()).
-    ^ pid
-]
-
 { #category : 'accessing' }
 SpvFunction >> blocks [          ^ blocks
 ]

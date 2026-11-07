@@ -26,9 +26,5 @@ SpvStructType >> key [ ^ Array with: #struct with: (memberTypes collect: [:t | t
 ]
 
 { #category : 'accessing' }
-SpvStructType >> memberTypes [     ^ memberTypes
-]
-
-{ #category : 'accessing' }
 SpvStructType >> memberTypes: a [  memberTypes := a
 ]

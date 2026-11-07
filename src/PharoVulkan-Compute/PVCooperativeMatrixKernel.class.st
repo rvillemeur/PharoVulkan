@@ -72,11 +72,6 @@ PVCooperativeMatrixKernel class >> floatBitWidths [
 ]
 
 { #category : 'constants' }
-PVCooperativeMatrixKernel class >> leftBinding [
-	^ 0
-]
-
-{ #category : 'constants' }
 PVCooperativeMatrixKernel class >> localSize [
 	"One subgroup, which on lavapipe is eight invocations wide. A cooperative matrix is held
 	 across the whole scope, so a workgroup wider than one subgroup would hold a second,
@@ -110,11 +105,6 @@ PVCooperativeMatrixKernel class >> moduleHeaderWordCount [
 { #category : 'constants' }
 PVCooperativeMatrixKernel class >> outputBinding [
 	^ 2
-]
-
-{ #category : 'constants' }
-PVCooperativeMatrixKernel class >> rightBinding [
-	^ 1
 ]
 
 { #category : 'constants' }

@@ -132,11 +132,6 @@ PVTypeAnnotation >> outputs: x [ outputs := x
 ]
 
 { #category : 'accessing' }
-PVTypeAnnotation >> paramNamed: aSymbol [
-	^ params detect: [ :p | p name = aSymbol ]
-]
-
-{ #category : 'accessing' }
 PVTypeAnnotation >> paramTempDefs [
 	"The kernel's parameters occupy the first registers, in declaration order; temp 0 is
 	 the first parameter because a kernel method has no receiver on the GPU."
@@ -148,11 +143,6 @@ PVTypeAnnotation >> paramTempDefs [
 ]
 
 { #category : 'accessing' }
-PVTypeAnnotation >> paramTypeFor: aSymbol [
-	^ (self paramNamed: aSymbol) type
-]
-
-{ #category : 'accessing' }
 PVTypeAnnotation >> params [
 ^ params
 ]
@@ -160,10 +150,6 @@ PVTypeAnnotation >> params [
 { #category : 'accessing' }
 PVTypeAnnotation >> params: aCollection [
 	params := aCollection
-]
-
-{ #category : 'accessing' }
-PVTypeAnnotation >> shaderKind [ ^ shaderKind
 ]
 
 { #category : 'accessing' }
