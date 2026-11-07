@@ -64,33 +64,30 @@ PVSPIRVEmitter class >> capabilitiesDeclaredFor: aBufferTypeSymbol [
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileComputeKernel: regOps annotation: ann typeMap: aTypeMap selectorTable: st [
 	^ self new
-		  typeMap: aTypeMap;
-		  selectorTable: st;
-		  compileComputeKernel: regOps
-		  annotation: ann
-		  typeMap: aTypeMap
-		  selectorTable: st
+			typeMap: aTypeMap;
+			selectorTable: st;
+			compileComputeKernel: regOps annotation: ann
 ]
 
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileComputeKernelLoop: loopNode annotation: ann selectorTable: st [
 	^ self new
-		  selectorTable: st;
-		  compileComputeKernelLoop: loopNode annotation: ann selectorTable: st
+			selectorTable: st;
+			compileComputeKernelLoop: loopNode annotation: ann
 ]
 
 { #category : 'compiling - compute' }
 PVSPIRVEmitter class >> compileComputeKernelNestedLoop: nestedNode annotation: ann selectorTable: st [
 	^ self new
-		  selectorTable: st;
-		  compileComputeKernelNestedLoop: nestedNode annotation: ann selectorTable: st
+			selectorTable: st;
+			compileComputeKernelNestedLoop: nestedNode annotation: ann
 ]
 
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileComputeKernelSelection: selNode annotation: ann selectorTable: st [
 	^ self new
-		  selectorTable: st;
-		  compileComputeKernelSelection: selNode annotation: ann selectorTable: st
+			selectorTable: st;
+			compileComputeKernelSelection: selNode annotation: ann
 ]
 
 { #category : 'compiling' }
@@ -102,55 +99,41 @@ PVSPIRVEmitter class >> compileFragmentShader: regOps annotation: ann typeMap: a
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileKernel: regOps typeMap: aTypeMap annotation: ann selectorTable: st name: funcName [
 	^ self new
-		  typeMap: aTypeMap;
-		  selectorTable: st;
-		  compileKernel: regOps typeMap: aTypeMap annotation: ann selectorTable: st name: funcName
+			typeMap: aTypeMap;
+			selectorTable: st;
+			compileKernel: regOps annotation: ann name: funcName
 ]
 
 { #category : 'compilation' }
 PVSPIRVEmitter class >> compileLoop: loopNode annotation: ann typeMap: aTypeMap selectorTable: st [
 	^ self new
-		  typeMap: aTypeMap;
-		  selectorTable: st;
-		  compileLoop: loopNode
-		  annotation: ann
-		  typeMap: aTypeMap
-		  selectorTable: st
+			typeMap: aTypeMap;
+			selectorTable: st;
+			compileLoop: loopNode annotation: ann
 ]
 
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileSelection: selNode annotation: ann typeMap: aTypeMap selectorTable: st [
 	^ self new
-		  typeMap: aTypeMap;
-		  selectorTable: st;
-		  compileSelection: selNode
-		  annotation: ann
-		  typeMap: aTypeMap
-		  selectorTable: st
+			typeMap: aTypeMap;
+			selectorTable: st;
+			compileSelection: selNode annotation: ann
 ]
 
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileShaderKernel: regOps annotation: ann typeMap: aTypeMap selectorTable: st executionModel: execModel [
 	^ self new
-		  typeMap: aTypeMap;
-		  selectorTable: st;
-		  compileShaderKernel: regOps
-		  annotation: ann
-		  typeMap: aTypeMap
-		  selectorTable: st
-		  executionModel: execModel
+			typeMap: aTypeMap;
+			selectorTable: st;
+			compileShaderKernel: regOps annotation: ann executionModel: execModel
 ]
 
 { #category : 'compiling' }
 PVSPIRVEmitter class >> compileShaderKernelSelection: selNode annotation: ann typeMap: aTypeMap selectorTable: st executionModel: execModel [
 	^ self new
-		  typeMap: aTypeMap;
-		  selectorTable: st;
-		  compileShaderKernelSelection: selNode
-		  annotation: ann
-		  typeMap: aTypeMap
-		  selectorTable: st
-		  executionModel: execModel
+			typeMap: aTypeMap;
+			selectorTable: st;
+			compileShaderKernelSelection: selNode annotation: ann executionModel: execModel
 ]
 
 { #category : 'compiling' }
@@ -640,7 +623,7 @@ PVSPIRVEmitter >> captureLatchIdsFor: aLoopLevel [
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> compileComputeKernel: regOps annotation: ann typeMap: aTypeMap selectorTable: st [
+PVSPIRVEmitter >> compileComputeKernel: regOps annotation: ann [
 	"A straight-line compute kernel: one basic block between the interface prologue and
 	 OpReturn. Kernels holding control flow go through compileComputeKernelLoop: or
 	 compileComputeKernelSelection:."
@@ -652,17 +635,17 @@ PVSPIRVEmitter >> compileComputeKernel: regOps annotation: ann typeMap: aTypeMap
 	interfaces := self emitComputeInterfaces.
 	spvFunc := self newComputeMainFunction.
 	blk := spvFunc addBlock.
-	regOps do: [ :op |
-		self emitRegOp: op typeMap: aTypeMap selectorTable: st block: blk ].
+	regOps do: [ :op | self emitRegOp: op block: blk ].
 	blk isTerminated ifFalse: [
-		blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
+			blk terminate:
+				(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ].
 	^ self finishComputeMain: spvFunc interfaces: interfaces
 ]
 
-{ #category : 'compiling' }
-PVSPIRVEmitter >> compileComputeKernelLoop: loopNode annotation: ann selectorTable: st [
+{ #category : 'compiling - compute' }
+PVSPIRVEmitter >> compileComputeKernelLoop: loopNode annotation: ann [
 	"A compute entry point whose body is one whileTrue:. Unlike the other compile methods
-	 this one takes no typeMap: the types have to be inferred over the register numbering
+	 this one is given no typeMap: the types have to be inferred over the register numbering
 	 the per-block simulations produce, which is not the numbering the whole-method
 	 simulation produces. Passing the whole-method map in was what made a compute kernel
 	 with a selection raise No mapping for at:put:."
@@ -674,20 +657,20 @@ PVSPIRVEmitter >> compileComputeKernelLoop: loopNode annotation: ann selectorTab
 	sims := self class
 		        computeLoopSimulations: loopNode
 		        annotation: ann
-		        selectorTable: st.
+		        selectorTable: selectorTable.
+	self typeMap: (sims at: #typeMap).
 	phis := self class
 		        loopPhisFrom: (sims at: #preheader)
 		        latch: (sims at: #latch).
 	^ self
-		  finishComputeMain:
-			  (self emitComputeLoopFrom: sims phis: phis selectorTable: st)
+		  finishComputeMain: (self emitComputeLoopFrom: sims phis: phis)
 		  interfaces: interfaces
 ]
 
 { #category : 'compiling - compute' }
-PVSPIRVEmitter >> compileComputeKernelNestedLoop: nestedNode annotation: ann selectorTable: st [
+PVSPIRVEmitter >> compileComputeKernelNestedLoop: nestedNode annotation: ann [
 	"A compute entry point whose body is an outer loop holding an inner loop. Like the
-	 single-loop entry point this takes no typeMap: the types have to be inferred over the
+	 single-loop entry point this is given no typeMap: the types have to be inferred over the
 	 register numbering the per-block simulations produce."
 
 	| interfaces sims innerPhis outerPhis |
@@ -697,7 +680,8 @@ PVSPIRVEmitter >> compileComputeKernelNestedLoop: nestedNode annotation: ann sel
 	sims := self class
 		        computeNestedLoopSimulations: nestedNode
 		        annotation: ann
-		        selectorTable: st.
+		        selectorTable: selectorTable.
+	self typeMap: (sims at: #typeMap).
 	innerPhis := self class
 		             loopPhisFrom: (sims at: #innerPreheader)
 		             latch: (sims at: #innerBody).
@@ -709,14 +693,13 @@ PVSPIRVEmitter >> compileComputeKernelNestedLoop: nestedNode annotation: ann sel
 		  finishComputeMain: (self
 				   emitComputeNestedLoopFrom: sims
 				   outerPhis: outerPhis
-				   innerPhis: innerPhis
-				   selectorTable: st)
+				   innerPhis: innerPhis)
 		  interfaces: interfaces
 ]
 
-{ #category : 'compiling' }
-PVSPIRVEmitter >> compileComputeKernelSelection: selNode annotation: ann selectorTable: st [
-	"A compute entry point whose body is one ifTrue:ifFalse:. Takes no typeMap for the
+{ #category : 'compiling - compute' }
+PVSPIRVEmitter >> compileComputeKernelSelection: selNode annotation: ann [
+	"A compute entry point whose body is one ifTrue:ifFalse:. Is given no typeMap for the
 	 reason given in compileComputeKernelLoop:."
 
 	| interfaces sims |
@@ -726,150 +709,264 @@ PVSPIRVEmitter >> compileComputeKernelSelection: selNode annotation: ann selecto
 	sims := self class
 		        computeSelectionSimulations: selNode
 		        annotation: ann
-		        selectorTable: st.
+		        selectorTable: selectorTable.
+	self typeMap: (sims at: #typeMap).
 	^ self
-		  finishComputeMain: (self emitComputeSelectionFrom: sims selectorTable: st)
+		  finishComputeMain: (self emitComputeSelectionFrom: sims)
 		  interfaces: interfaces
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> compileKernel: regOps typeMap: aTypeMap annotation: ann selectorTable: st name: funcName [
+PVSPIRVEmitter >> compileKernel: regOps annotation: ann name: funcName [
+
 	self annotation: ann.
 	self module beShaderModule.
-	self emitKernelFunction: regOps typeMap: aTypeMap selectorTable: st name: funcName.
+	self emitKernelFunction: regOps name: funcName.
 	^ self module serialize
 ]
 
 { #category : 'compilation' }
-PVSPIRVEmitter >> compileLoop: loopNode annotation: ann typeMap: aTypeMap selectorTable: st [
+PVSPIRVEmitter >> compileLoop: loopNode annotation: ann [
+
 	| mod paramTempDefs preheaderSim headerSim latchSim exitSim phiVarIndices preInitRegs latchResultRegs phiInitSpvIds phiLatchSpvIds phiSpvIds funcType paramTypes retType spvFunc preBlk hdrBlk latchBlk exitBlk condSpvId retSpvId phiType |
 	self annotation: ann.
 	mod := self module.
 	mod beShaderModule.
 	paramTempDefs := Dictionary new.
 	ann params doWithIndex: [ :p :i |
-		| pId |
-		pId := mod newId.
-		self regMap at: i put: pId.
-		paramTempDefs at: i - 1 put: i.
-		aTypeMap at: i put: p type ].
-	preheaderSim := PVBlockSimulator new simulateBlock: loopNode preheaderBlock initialTempDefs: paramTempDefs startingNextReg: ann params size + 1.
-	headerSim := PVBlockSimulator new simulateBlock: loopNode headerBlock initialTempDefs: preheaderSim tempDefs startingNextReg: preheaderSim nextReg.
-	latchSim := PVBlockSimulator new simulateBlock: loopNode bodyBlocks first initialTempDefs: preheaderSim tempDefs startingNextReg: headerSim nextReg.
-	exitSim := PVBlockSimulator new simulateBlock: loopNode exitBlock initialTempDefs: preheaderSim tempDefs startingNextReg: latchSim nextReg initialStack: (preheaderSim stack).
+			| pId |
+			pId := mod newId.
+			self regMap at: i put: pId.
+			paramTempDefs at: i - 1 put: i.
+			typeMap at: i put: p type ].
+	preheaderSim := PVBlockSimulator new
+		                simulateBlock: loopNode preheaderBlock
+		                initialTempDefs: paramTempDefs
+		                startingNextReg: ann params size + 1.
+	headerSim := PVBlockSimulator new
+		             simulateBlock: loopNode headerBlock
+		             initialTempDefs: preheaderSim tempDefs
+		             startingNextReg: preheaderSim nextReg.
+	latchSim := PVBlockSimulator new
+		            simulateBlock: loopNode bodyBlocks first
+		            initialTempDefs: preheaderSim tempDefs
+		            startingNextReg: headerSim nextReg.
+	exitSim := PVBlockSimulator new
+		           simulateBlock: loopNode exitBlock
+		           initialTempDefs: preheaderSim tempDefs
+		           startingNextReg: latchSim nextReg
+		           initialStack: preheaderSim stack.
 	phiVarIndices := OrderedCollection new.
 	preInitRegs := Dictionary new.
 	latchResultRegs := Dictionary new.
 	preheaderSim tempDefs keysAndValuesDo: [ :k :preReg |
-		| latchReg |
-		latchReg := latchSim tempDefs at: k ifAbsent: [ preReg ].
-		latchReg ~= preReg ifTrue: [
-			phiVarIndices add: k.
-			preInitRegs at: k put: preReg.
-			latchResultRegs at: k put: latchReg ] ].
-	phiVarIndices do: [ :k | aTypeMap at: (preInitRegs at: k) put: ann params first type ].
+			| latchReg |
+			latchReg := latchSim tempDefs at: k ifAbsent: [ preReg ].
+			latchReg ~= preReg ifTrue: [
+					phiVarIndices add: k.
+					preInitRegs at: k put: preReg.
+					latchResultRegs at: k put: latchReg ] ].
+	phiVarIndices do: [ :k |
+		typeMap at: (preInitRegs at: k) put: ann params first type ].
 	retType := self spvTypeFor: ann params first type.
 	paramTypes := ann params collect: [ :p | self spvTypeFor: p type ].
-	funcType := mod typeRegistry functionType: retType paramTypes: paramTypes asArray.
-	spvFunc := SpvFunction new id: mod newId; returnType: retType; functionType: funcType; module: mod; initialize; yourself.
+	funcType := mod typeRegistry
+		            functionType: retType
+		            paramTypes: paramTypes asArray.
+	spvFunc := SpvFunction new
+		           id: mod newId;
+		           returnType: retType;
+		           functionType: funcType;
+		           module: mod;
+		           initialize;
+		           yourself.
 	ann params doWithIndex: [ :p :i |
-		spvFunc parameters add: (SpvInstruction opcode: SpvOpcode opFunctionParameter resultType: (self spvTypeFor: p type) id resultId: (self regMap at: i) operands: #()) ].
+			spvFunc parameters add: (SpvInstruction
+					 opcode: SpvOpcode opFunctionParameter
+					 resultType: (self spvTypeFor: p type) id
+					 resultId: (self regMap at: i)
+					 operands: #(  )) ].
 	preBlk := spvFunc addBlock.
 	hdrBlk := spvFunc addBlock.
 	latchBlk := spvFunc addBlock.
 	exitBlk := spvFunc addBlock.
-	self emitRegOps: preheaderSim regOps typeMap: aTypeMap selectorTable: st block: preBlk.
+	self emitRegOps: preheaderSim regOps block: preBlk.
 	phiInitSpvIds := Dictionary new.
-	phiVarIndices do: [ :k | phiInitSpvIds at: k put: (self spvIdFor: (preInitRegs at: k)) ].
-	preBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { hdrBlk id }).
+	phiVarIndices do: [ :k |
+		phiInitSpvIds at: k put: (self spvIdFor: (preInitRegs at: k)) ].
+	preBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { hdrBlk id }).
 	phiSpvIds := Dictionary new.
 	phiVarIndices do: [ :k |
-		| phiId |
-		phiId := mod newId.
-		phiSpvIds at: k put: phiId.
-		self regMap at: (preInitRegs at: k) put: phiId ].
-	self emitRegOps: headerSim regOps typeMap: aTypeMap selectorTable: st block: hdrBlk.
+			| phiId |
+			phiId := mod newId.
+			phiSpvIds at: k put: phiId.
+			self regMap at: (preInitRegs at: k) put: phiId ].
+	self emitRegOps: headerSim regOps block: hdrBlk.
 	condSpvId := self spvIdFor: headerSim resultReg.
-	hdrBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoopMerge resultType: nil resultId: nil operands: { exitBlk id. latchBlk id. SpvLoopControl none }).
-	hdrBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. latchBlk id. exitBlk id }).
-	self emitRegOps: latchSim regOps typeMap: aTypeMap selectorTable: st block: latchBlk.
+	hdrBlk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opLoopMerge
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 exitBlk id.
+					 latchBlk id.
+					 SpvLoopControl none }).
+	hdrBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranchConditional
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 condSpvId.
+					 latchBlk id.
+					 exitBlk id }).
+	self emitRegOps: latchSim regOps block: latchBlk.
 	phiLatchSpvIds := Dictionary new.
-	phiVarIndices do: [ :k | phiLatchSpvIds at: k put: (self spvIdFor: (latchResultRegs at: k)) ].
-	latchBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { hdrBlk id }).
+	phiVarIndices do: [ :k |
+		phiLatchSpvIds at: k put: (self spvIdFor: (latchResultRegs at: k)) ].
+	latchBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { hdrBlk id }).
 	phiType := self spvTypeFor: ann params first type.
 	phiVarIndices do: [ :k |
-		hdrBlk prependInstruction: (SpvInstruction opcode: SpvOpcode opPhi resultType: phiType id resultId: (phiSpvIds at: k) operands: { (phiInitSpvIds at: k). preBlk id. (phiLatchSpvIds at: k). latchBlk id }) ].
-	self emitRegOps: exitSim regOps typeMap: aTypeMap selectorTable: st block: exitBlk.
+			hdrBlk prependInstruction: (SpvInstruction
+					 opcode: SpvOpcode opPhi
+					 resultType: phiType id
+					 resultId: (phiSpvIds at: k)
+					 operands: {
+							 (phiInitSpvIds at: k).
+							 preBlk id.
+							 (phiLatchSpvIds at: k).
+							 latchBlk id }) ].
+	self emitRegOps: exitSim regOps block: exitBlk.
 	retSpvId := self spvIdFor: exitSim resultReg.
-	exitBlk terminate: (SpvInstruction opcode: SpvOpcode opReturnValue resultType: nil resultId: nil operands: { retSpvId }).
+	exitBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opReturnValue
+			 resultType: nil
+			 resultId: nil
+			 operands: { retSpvId }).
 	mod addFunction: spvFunc.
 	^ mod serialize
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> compileSelection: selNode annotation: ann typeMap: aTypeMap selectorTable: st [
+PVSPIRVEmitter >> compileSelection: selNode annotation: ann [
+
 	| mod paramTempDefs condSim condRegOps condNextReg condReg condRegMapSave trueSim trueRegOps trueResultReg trueResultSpvId falseSim falseRegOps falseResultSpvId funcType paramTypes retType spvFunc entryBlk trueBlkSpv falseBlkSpv mergeBlkSpv condSpvId phiId phiType |
 	self annotation: ann.
 	mod := self module.
 	mod beShaderModule.
 	paramTempDefs := Dictionary new.
 	ann params doWithIndex: [ :p :i |
-		| pId pType |
-		pType := self spvTypeFor: p type.
-		pId := mod newId.
-		self regMap at: i put: pId.
-		paramTempDefs at: i - 1 put: i.
-		aTypeMap at: i put: p type ].
-	condSim := PVBlockSimulator new simulateBlock: selNode condBlock
-		initialTempDefs: paramTempDefs startingNextReg: ann params size.
+			| pId pType |
+			pType := self spvTypeFor: p type.
+			pId := mod newId.
+			self regMap at: i put: pId.
+			paramTempDefs at: i - 1 put: i.
+			typeMap at: i put: p type ].
+	condSim := PVBlockSimulator new
+		           simulateBlock: selNode condBlock
+		           initialTempDefs: paramTempDefs
+		           startingNextReg: ann params size.
 	condRegOps := condSim regOps.
 	condNextReg := condSim nextReg.
 	condReg := condSim resultReg.
-	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first
-		initialTempDefs: condSim tempDefs startingNextReg: condNextReg.
+	trueSim := PVBlockSimulator new
+		           simulateBlock: selNode trueBlocks first
+		           initialTempDefs: condSim tempDefs
+		           startingNextReg: condNextReg.
 	trueRegOps := trueSim regOps.
-	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first
-		initialTempDefs: condSim tempDefs startingNextReg: condNextReg.
+	falseSim := PVBlockSimulator new
+		            simulateBlock: selNode falseBlocks first
+		            initialTempDefs: condSim tempDefs
+		            startingNextReg: condNextReg.
 	falseRegOps := falseSim regOps.
 	retType := self spvTypeFor: ann params first type.
 	paramTypes := ann params collect: [ :p | self spvTypeFor: p type ].
-	funcType := mod typeRegistry functionType: retType paramTypes: paramTypes asArray.
-	spvFunc := SpvFunction new id: mod newId; returnType: retType; functionType: funcType; module: mod; initialize; yourself.
+	funcType := mod typeRegistry
+		            functionType: retType
+		            paramTypes: paramTypes asArray.
+	spvFunc := SpvFunction new
+		           id: mod newId;
+		           returnType: retType;
+		           functionType: funcType;
+		           module: mod;
+		           initialize;
+		           yourself.
 	ann params doWithIndex: [ :p :i |
-		spvFunc parameters add: (SpvInstruction opcode: SpvOpcode opFunctionParameter
-			resultType: (self spvTypeFor: p type) id resultId: (self regMap at: i) operands: #()) ].
+			spvFunc parameters add: (SpvInstruction
+					 opcode: SpvOpcode opFunctionParameter
+					 resultType: (self spvTypeFor: p type) id
+					 resultId: (self regMap at: i)
+					 operands: #(  )) ].
 	entryBlk := spvFunc addBlock.
 	trueBlkSpv := spvFunc addBlock.
 	falseBlkSpv := spvFunc addBlock.
 	mergeBlkSpv := spvFunc addBlock.
-	self emitRegOps: condRegOps typeMap: aTypeMap selectorTable: st block: entryBlk.
+	self emitRegOps: condRegOps block: entryBlk.
 	condSpvId := self spvIdFor: condReg.
-	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge
-		resultType: nil resultId: nil operands: { mergeBlkSpv id. SpvSelectionControl none }).
-	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional
-		resultType: nil resultId: nil operands: { condSpvId. trueBlkSpv id. falseBlkSpv id }).
+	entryBlk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opSelectionMerge
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 mergeBlkSpv id.
+					 SpvSelectionControl none }).
+	entryBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranchConditional
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 condSpvId.
+					 trueBlkSpv id.
+					 falseBlkSpv id }).
 	condRegMapSave := self regMap copy.
-	self emitRegOps: trueRegOps typeMap: aTypeMap selectorTable: st block: trueBlkSpv.
+	self emitRegOps: trueRegOps block: trueBlkSpv.
 	trueResultReg := trueSim resultReg.
 	trueResultSpvId := self spvIdFor: trueResultReg.
-	trueBlkSpv terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeBlkSpv id }).
+	trueBlkSpv terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { mergeBlkSpv id }).
 	self regMap: condRegMapSave copy.
-	self emitRegOps: falseRegOps typeMap: aTypeMap selectorTable: st block: falseBlkSpv.
+	self emitRegOps: falseRegOps block: falseBlkSpv.
 	falseResultSpvId := self spvIdFor: falseSim resultReg.
-	falseBlkSpv terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeBlkSpv id }).
-	phiType := aTypeMap at: (trueSim resultReg) ifAbsent: [ ann params first type ].
+	falseBlkSpv terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranch
+			 resultType: nil
+			 resultId: nil
+			 operands: { mergeBlkSpv id }).
+	phiType := typeMap
+		           at: trueSim resultReg
+		           ifAbsent: [ ann params first type ].
 	phiId := mod newId.
-	mergeBlkSpv addInstruction: (SpvInstruction opcode: SpvOpcode opPhi
-		resultType: (self spvTypeFor: phiType) id resultId: phiId
-		operands: { trueResultSpvId. trueBlkSpv id. falseResultSpvId. falseBlkSpv id }).
-	mergeBlkSpv terminate: (SpvInstruction opcode: SpvOpcode opReturnValue
-		resultType: nil resultId: nil operands: { phiId }).
+	mergeBlkSpv addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opPhi
+			 resultType: (self spvTypeFor: phiType) id
+			 resultId: phiId
+			 operands: {
+					 trueResultSpvId.
+					 trueBlkSpv id.
+					 falseResultSpvId.
+					 falseBlkSpv id }).
+	mergeBlkSpv terminate: (SpvInstruction
+			 opcode: SpvOpcode opReturnValue
+			 resultType: nil
+			 resultId: nil
+			 operands: { phiId }).
 	mod addFunction: spvFunc.
 	^ mod serialize
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> compileShaderKernel: regOps annotation: ann typeMap: aTypeMap selectorTable: st executionModel: execModel [
+PVSPIRVEmitter >> compileShaderKernel: regOps annotation: ann executionModel: execModel [
+
 	| mod voidT voidFnT spvFunc blk interfaces location |
 	self annotation: ann.
 	mod := self module.
@@ -877,48 +974,91 @@ PVSPIRVEmitter >> compileShaderKernel: regOps annotation: ann typeMap: aTypeMap 
 	interfaces := OrderedCollection new.
 	location := 0.
 	ann params doWithIndex: [ :p :i |
-		| pType pPtrT gVar |
-		pType := self spvTypeFor: p type.
-		pPtrT := mod typeRegistry pointerType: SpvStorageClass input type: pType.
-		gVar := SpvGlobalVariable new id: mod newId; type: pPtrT; storageClass: SpvStorageClass input; yourself.
-		mod addGlobalVariable: gVar.
-		interfaces add: gVar.
-		mod addDecoration: gVar id decoration: SpvDecoration location literals: { location }.
-		location := location + 1.
-		self regMap at: i put: gVar id ].
+			| pType pPtrT gVar |
+			pType := self spvTypeFor: p type.
+			pPtrT := mod typeRegistry
+				         pointerType: SpvStorageClass input
+				         type: pType.
+			gVar := SpvGlobalVariable new
+				        id: mod newId;
+				        type: pPtrT;
+				        storageClass: SpvStorageClass input;
+				        yourself.
+			mod addGlobalVariable: gVar.
+			interfaces add: gVar.
+			mod
+				addDecoration: gVar id
+				decoration: SpvDecoration location
+				literals: { location }.
+			location := location + 1.
+			self regMap at: i put: gVar id ].
 	ann outputs do: [ :o |
-		| oType oPtrT oVar |
-		oType := self spvTypeFor: o type.
-		oPtrT := mod typeRegistry pointerType: SpvStorageClass output type: oType.
-		oVar := SpvGlobalVariable new id: mod newId; type: oPtrT; storageClass: SpvStorageClass output; yourself.
-		mod addGlobalVariable: oVar.
-		interfaces add: oVar.
-		o builtIn notNil
-			ifTrue: [ mod addDecoration: oVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn perform: o builtIn } ]
-			ifFalse: [ mod addDecoration: oVar id decoration: SpvDecoration location literals: { o location } ].
-		self outputVarIds add: oVar id ].
+			| oType oPtrT oVar |
+			oType := self spvTypeFor: o type.
+			oPtrT := mod typeRegistry
+				         pointerType: SpvStorageClass output
+				         type: oType.
+			oVar := SpvGlobalVariable new
+				        id: mod newId;
+				        type: oPtrT;
+				        storageClass: SpvStorageClass output;
+				        yourself.
+			mod addGlobalVariable: oVar.
+			interfaces add: oVar.
+			o builtIn notNil
+				ifTrue: [
+						mod
+							addDecoration: oVar id
+							decoration: SpvDecoration builtIn
+							literals: { (SpvBuiltIn perform: o builtIn) } ]
+				ifFalse: [
+						mod
+							addDecoration: oVar id
+							decoration: SpvDecoration location
+							literals: { o location } ].
+			self outputVarIds add: oVar id ].
 	voidT := mod typeRegistry voidType.
-	voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
-	spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+	voidFnT := mod typeRegistry functionType: voidT paramTypes: #(  ).
+	spvFunc := SpvFunction new
+		           id: mod newId;
+		           returnType: voidT;
+		           functionType: voidFnT;
+		           module: mod;
+		           initialize;
+		           yourself.
 	blk := spvFunc addBlock.
 	self isVoidMain: true.
 	ann params doWithIndex: [ :p :i |
-		| pType loadId |
-		pType := self spvTypeFor: p type.
-		loadId := mod newId.
-		blk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { self regMap at: i }).
-		self regMap at: i put: loadId ].
-	regOps do: [ :op | self emitRegOp: op typeMap: aTypeMap selectorTable: st block: blk ].
-	blk isTerminated ifFalse: [ blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
+			| pType loadId |
+			pType := self spvTypeFor: p type.
+			loadId := mod newId.
+			blk addInstruction: (SpvInstruction
+					 opcode: SpvOpcode opLoad
+					 resultType: pType id
+					 resultId: loadId
+					 operands: { (self regMap at: i) }).
+			self regMap at: i put: loadId ].
+	regOps do: [ :op | self emitRegOp: op block: blk ].
+	blk isTerminated ifFalse: [
+			blk terminate:
+				(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ].
 	mod addFunction: spvFunc.
-	mod addEntryPoint: spvFunc executionModel: execModel name: 'main' interfaces: interfaces asArray.
+	mod
+		addEntryPoint: spvFunc
+		executionModel: execModel
+		name: 'main'
+		interfaces: interfaces asArray.
 	execModel = SpvExecutionModel fragment ifTrue: [
-		mod addExecutionMode: spvFunc mode: SpvExecutionMode originUpperLeft literals: #() ].
+			mod
+				addExecutionMode: spvFunc
+				mode: SpvExecutionMode originUpperLeft
+				literals: #(  ) ].
 	^ mod serialize
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> compileShaderKernelSelection: selNode annotation: ann typeMap: aTypeMap selectorTable: st executionModel: execModel [
+PVSPIRVEmitter >> compileShaderKernelSelection: selNode annotation: ann executionModel: execModel [
+
 	| mod voidT voidFnT spvFunc entryBlk interfaces location paramTempDefs condSim condRegOps condTempDefs condReg condNextReg trueSim trueRegOps falseSim falseRegOps trueSpvBlk falseSpvBlk mergeSpvBlk condSpvId condRegMapSave |
 	self annotation: ann.
 	mod := self module.
@@ -927,65 +1067,138 @@ PVSPIRVEmitter >> compileShaderKernelSelection: selNode annotation: ann typeMap:
 	location := 0.
 	paramTempDefs := Dictionary new.
 	ann params doWithIndex: [ :p :i |
-		| pType pPtrT gVar |
-		pType := self spvTypeFor: p type.
-		pPtrT := mod typeRegistry pointerType: SpvStorageClass input type: pType.
-		gVar := SpvGlobalVariable new id: mod newId; type: pPtrT; storageClass: SpvStorageClass input; yourself.
-		mod addGlobalVariable: gVar.
-		interfaces add: gVar.
-		mod addDecoration: gVar id decoration: SpvDecoration location literals: { location }.
-		location := location + 1.
-		self regMap at: i put: gVar id.
-		paramTempDefs at: i - 1 put: i ].
+			| pType pPtrT gVar |
+			pType := self spvTypeFor: p type.
+			pPtrT := mod typeRegistry
+				         pointerType: SpvStorageClass input
+				         type: pType.
+			gVar := SpvGlobalVariable new
+				        id: mod newId;
+				        type: pPtrT;
+				        storageClass: SpvStorageClass input;
+				        yourself.
+			mod addGlobalVariable: gVar.
+			interfaces add: gVar.
+			mod
+				addDecoration: gVar id
+				decoration: SpvDecoration location
+				literals: { location }.
+			location := location + 1.
+			self regMap at: i put: gVar id.
+			paramTempDefs at: i - 1 put: i ].
 	ann outputs do: [ :o |
-		| oType oPtrT oVar |
-		oType := self spvTypeFor: o type.
-		oPtrT := mod typeRegistry pointerType: SpvStorageClass output type: oType.
-		oVar := SpvGlobalVariable new id: mod newId; type: oPtrT; storageClass: SpvStorageClass output; yourself.
-		mod addGlobalVariable: oVar.
-		interfaces add: oVar.
-		o builtIn notNil
-			ifTrue: [ mod addDecoration: oVar id decoration: SpvDecoration builtIn literals: { SpvBuiltIn perform: o builtIn } ]
-			ifFalse: [ mod addDecoration: oVar id decoration: SpvDecoration location literals: { o location } ].
-		self outputVarIds add: oVar id ].
+			| oType oPtrT oVar |
+			oType := self spvTypeFor: o type.
+			oPtrT := mod typeRegistry
+				         pointerType: SpvStorageClass output
+				         type: oType.
+			oVar := SpvGlobalVariable new
+				        id: mod newId;
+				        type: oPtrT;
+				        storageClass: SpvStorageClass output;
+				        yourself.
+			mod addGlobalVariable: oVar.
+			interfaces add: oVar.
+			o builtIn notNil
+				ifTrue: [
+						mod
+							addDecoration: oVar id
+							decoration: SpvDecoration builtIn
+							literals: { (SpvBuiltIn perform: o builtIn) } ]
+				ifFalse: [
+						mod
+							addDecoration: oVar id
+							decoration: SpvDecoration location
+							literals: { o location } ].
+			self outputVarIds add: oVar id ].
 	voidT := mod typeRegistry voidType.
-	voidFnT := mod typeRegistry functionType: voidT paramTypes: #().
-	spvFunc := SpvFunction new id: mod newId; returnType: voidT; functionType: voidFnT; module: mod; initialize; yourself.
+	voidFnT := mod typeRegistry functionType: voidT paramTypes: #(  ).
+	spvFunc := SpvFunction new
+		           id: mod newId;
+		           returnType: voidT;
+		           functionType: voidFnT;
+		           module: mod;
+		           initialize;
+		           yourself.
 	entryBlk := spvFunc addBlock.
 	self isVoidMain: true.
 	ann params doWithIndex: [ :p :i |
-		| pType loadId |
-		pType := self spvTypeFor: p type.
-		loadId := mod newId.
-		entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opLoad resultType: pType id resultId: loadId operands: { self regMap at: i }).
-		self regMap at: i put: loadId ].
-	condSim := PVBlockSimulator new simulateBlock: selNode condBlock initialTempDefs: paramTempDefs startingNextReg: ann params size.
+			| pType loadId |
+			pType := self spvTypeFor: p type.
+			loadId := mod newId.
+			entryBlk addInstruction: (SpvInstruction
+					 opcode: SpvOpcode opLoad
+					 resultType: pType id
+					 resultId: loadId
+					 operands: { (self regMap at: i) }).
+			self regMap at: i put: loadId ].
+	condSim := PVBlockSimulator new
+		           simulateBlock: selNode condBlock
+		           initialTempDefs: paramTempDefs
+		           startingNextReg: ann params size.
 	condRegOps := condSim regOps.
 	condTempDefs := condSim tempDefs.
 	condReg := condSim resultReg.
 	condNextReg := condSim nextReg.
-	condRegOps do: [ :op | self emitRegOp: op typeMap: aTypeMap selectorTable: st block: entryBlk ].
+	condRegOps do: [ :op | self emitRegOp: op block: entryBlk ].
 	condSpvId := self spvIdFor: condReg.
 	trueSpvBlk := spvFunc addBlock.
 	falseSpvBlk := spvFunc addBlock.
 	mergeSpvBlk := spvFunc addBlock.
-	entryBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge resultType: nil resultId: nil operands: { mergeSpvBlk id. SpvSelectionControl none }).
-	entryBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional resultType: nil resultId: nil operands: { condSpvId. trueSpvBlk id. falseSpvBlk id }).
-	trueSim := PVBlockSimulator new simulateBlock: selNode trueBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
+	entryBlk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opSelectionMerge
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 mergeSpvBlk id.
+					 SpvSelectionControl none }).
+	entryBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranchConditional
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 condSpvId.
+					 trueSpvBlk id.
+					 falseSpvBlk id }).
+	trueSim := PVBlockSimulator new
+		           simulateBlock: selNode trueBlocks first
+		           initialTempDefs: condTempDefs
+		           startingNextReg: condNextReg.
 	trueRegOps := trueSim regOps.
 	condRegMapSave := self regMap copy.
-	trueRegOps do: [ :op | self emitRegOp: op typeMap: aTypeMap selectorTable: st block: trueSpvBlk ].
-	trueSpvBlk isTerminated ifFalse: [ trueSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
+	trueRegOps do: [ :op | self emitRegOp: op block: trueSpvBlk ].
+	trueSpvBlk isTerminated ifFalse: [
+			trueSpvBlk terminate: (SpvInstruction
+					 opcode: SpvOpcode opBranch
+					 resultType: nil
+					 resultId: nil
+					 operands: { mergeSpvBlk id }) ].
 	self regMap: condRegMapSave copy.
-	falseSim := PVBlockSimulator new simulateBlock: selNode falseBlocks first initialTempDefs: condTempDefs startingNextReg: condNextReg.
+	falseSim := PVBlockSimulator new
+		            simulateBlock: selNode falseBlocks first
+		            initialTempDefs: condTempDefs
+		            startingNextReg: condNextReg.
 	falseRegOps := falseSim regOps.
-	falseRegOps do: [ :op | self emitRegOp: op typeMap: aTypeMap selectorTable: st block: falseSpvBlk ].
-	falseSpvBlk isTerminated ifFalse: [ falseSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
-	mergeSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()).
+	falseRegOps do: [ :op | self emitRegOp: op block: falseSpvBlk ].
+	falseSpvBlk isTerminated ifFalse: [
+			falseSpvBlk terminate: (SpvInstruction
+					 opcode: SpvOpcode opBranch
+					 resultType: nil
+					 resultId: nil
+					 operands: { mergeSpvBlk id }) ].
+	mergeSpvBlk terminate:
+		(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )).
 	mod addFunction: spvFunc.
-	mod addEntryPoint: spvFunc executionModel: execModel name: 'main' interfaces: interfaces asArray.
+	mod
+		addEntryPoint: spvFunc
+		executionModel: execModel
+		name: 'main'
+		interfaces: interfaces asArray.
 	execModel = SpvExecutionModel fragment ifTrue: [
-		mod addExecutionMode: spvFunc mode: SpvExecutionMode originUpperLeft literals: #() ].
+			mod
+				addExecutionMode: spvFunc
+				mode: SpvExecutionMode originUpperLeft
+				literals: #(  ) ].
 	^ mod serialize
 ]
 
@@ -1050,11 +1263,11 @@ PVSPIRVEmitter >> declareSharedCapabilitiesFor: aSharedTypeSymbol [
 ]
 
 { #category : 'emitting compute' }
-PVSPIRVEmitter >> emitBufferLoad: op typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitBufferLoad: op block: blk [
 | bufVarId idxId recvType elemType ptrType elemPtrId loadId u32Zero |
 bufVarId := self spvIdFor: op inputs first.
 idxId := self spvIdFor: op inputs second.
-recvType := aTypeMap at: op inputs first.
+recvType := typeMap at: op inputs first.
 elemType := self bufferElementTypeFor: recvType.
 ptrType := module typeRegistry pointerType: 12 type: elemType.
 u32Zero := module constantPool constantUInt32: 0.
@@ -1074,12 +1287,12 @@ blk addInstruction: (SpvInstruction
 ]
 
 { #category : 'emitting compute' }
-PVSPIRVEmitter >> emitBufferStore: op typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitBufferStore: op block: blk [
 | bufVarId idxId valId recvType elemType ptrType elemPtrId u32Zero |
 bufVarId := self spvIdFor: op inputs first.
 idxId := self spvIdFor: op inputs second.
 valId := self spvIdFor: op inputs third.
-recvType := aTypeMap at: op inputs first.
+recvType := typeMap at: op inputs first.
 elemType := self bufferElementTypeFor: recvType.
 ptrType := module typeRegistry pointerType: 12 type: elemType.
 u32Zero := module constantPool constantUInt32: 0.
@@ -1094,36 +1307,48 @@ regMap at: op result put: elemPtrId
 ]
 
 { #category : 'emitting structured' }
-PVSPIRVEmitter >> emitBytecodeBlock: blk initialTempDefs: initDefs typeMap: aTypeMap selectorTable: st block: spvBlk [
-	| simResult regOps finalDefs resultReg |
-	simResult := PVBlockSimulator simulate: blk initialTempDefs: initDefs annotation: annotation selectorTable: st.
-	regOps := simResult regOps.
-	finalDefs := simResult tempDefs.
-	resultReg := simResult resultReg.
-	regOps do: [ :op | self emitRegOp: op typeMap: aTypeMap selectorTable: st block: spvBlk ].
-	"Seed regMap with newly defined temps for downstream blocks"
-	finalDefs keysAndValuesDo: [ :tempIdx :absReg |
-		(regMap includesKey: absReg) ifFalse: [ regMap at: absReg put: absReg ] ].
-	^ resultReg
-]
+PVSPIRVEmitter >> emitBytecodeBlock: blk block: spvBlk [
 
-{ #category : 'emitting structured' }
-PVSPIRVEmitter >> emitBytecodeBlock: blk typeMap: aTypeMap selectorTable: st block: spvBlk [
 	| lastResultReg |
 	lastResultReg := nil.
 	blk ops do: [ :op |
-		(#(#jump #jumpIf #returnTop #returnSelf) includes: op opcode) ifFalse: [
-			"Stack ops: simulate and emit"
-			| simResult |
-			simResult := PVBlockSimulator simulate: blk initialTempDefs: regMap annotation: annotation selectorTable: st.
-			"Emit regOps from simResult"
-			(simResult regOps) do: [ :regOp |
-				self emitRegOp: regOp typeMap: aTypeMap selectorTable: st block: spvBlk ].
-			"Update regMap from simulation"
-			(simResult tempDefs) keysAndValuesDo: [ :k :v | regMap at: k put: v ].
-			lastResultReg := simResult resultReg.
-			^ lastResultReg ] ].
+			(#( #jump #jumpIf #returnTop #returnSelf ) includes: op opcode)
+				ifFalse: [ "Stack ops: simulate and emit"
+						| simResult |
+						simResult := PVBlockSimulator
+							             simulate: blk
+							             initialTempDefs: regMap
+							             annotation: annotation
+							             selectorTable: selectorTable.
+						"Emit regOps from simResult"
+						simResult regOps do: [ :regOp |
+							self emitRegOp: regOp block: spvBlk ].
+						"Update regMap from simulation"
+						simResult tempDefs keysAndValuesDo: [ :k :v |
+							regMap at: k put: v ].
+						lastResultReg := simResult resultReg.
+						^ lastResultReg ] ].
 	^ lastResultReg
+]
+
+{ #category : 'emitting structured' }
+PVSPIRVEmitter >> emitBytecodeBlock: blk initialTempDefs: initDefs block: spvBlk [
+
+	| simResult regOps finalDefs resultReg |
+	simResult := PVBlockSimulator
+		             simulate: blk
+		             initialTempDefs: initDefs
+		             annotation: annotation
+		             selectorTable: selectorTable.
+	regOps := simResult regOps.
+	finalDefs := simResult tempDefs.
+	resultReg := simResult resultReg.
+	regOps do: [ :op | self emitRegOp: op block: spvBlk ].
+	"Seed regMap with newly defined temps for downstream blocks"
+	finalDefs keysAndValuesDo: [ :tempIdx :absReg |
+		(regMap includesKey: absReg) ifFalse: [
+			regMap at: absReg put: absReg ] ].
+	^ resultReg
 ]
 
 { #category : 'emitting compute' }
@@ -1150,24 +1375,9 @@ PVSPIRVEmitter >> emitComponent: compIdx ofVariable: varId op: op block: blk [
 ]
 
 { #category : 'emit' }
-PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitCompositeConstruct: op block: blk [
     | mapping resultType resultTypeId resultId |
-    mapping := (PVSelectorTable standard) at: op literal receiverType: (aTypeMap at: op inputs first).
-    resultType := self spvTypeFor: mapping resultTypeSymbol.
-    resultTypeId := resultType id.
-    resultId := module newId.
-    regMap at: op result put: resultId.
-    blk addInstruction: (SpvInstruction
-        opcode: SpvOpcode opCompositeConstruct
-        resultType: resultTypeId
-        resultId: resultId
-        operands: (op inputs collect: [:r | self spvIdFor: r]))
-]
-
-{ #category : 'emit' }
-PVSPIRVEmitter >> emitCompositeConstruct: op typeMap: aTypeMap selectorTable: st block: blk [
-    | mapping resultType resultTypeId resultId |
-    mapping := st at: op literal receiverType: (aTypeMap at: op inputs first).
+    mapping := selectorTable at: op literal receiverType: (typeMap at: op inputs first).
     resultType := self spvTypeFor: mapping resultTypeSymbol.
     resultTypeId := resultType id.
     resultId := module newId.
@@ -1210,7 +1420,7 @@ PVSPIRVEmitter >> emitComputeInterfaces [
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> emitComputeLoopFrom: sims phis: phis selectorTable: st [
+PVSPIRVEmitter >> emitComputeLoopFrom: sims phis: phis [
 	"Build the four blocks of a compute loop and answer the function holding them. The
 	 context dictionary carries what every step needs — the simulations, the phi pairs and
 	 the four blocks — because the steps have to agree on all of it."
@@ -1220,7 +1430,6 @@ PVSPIRVEmitter >> emitComputeLoopFrom: sims phis: phis selectorTable: st [
 	ctx := Dictionary newFrom: {
 			       (#sims -> sims).
 			       (#phis -> phis).
-			       (#selectorTable -> st).
 			       (#preBlock -> spvFunc addBlock).
 			       (#headerBlock -> spvFunc addBlock).
 			       (#latchBlock -> spvFunc addBlock).
@@ -1234,7 +1443,7 @@ PVSPIRVEmitter >> emitComputeLoopFrom: sims phis: phis selectorTable: st [
 ]
 
 { #category : 'emitting - compute' }
-PVSPIRVEmitter >> emitComputeNestedLoopFrom: sims outerPhis: outerPhis innerPhis: innerPhis selectorTable: st [
+PVSPIRVEmitter >> emitComputeNestedLoopFrom: sims outerPhis: outerPhis innerPhis: innerPhis [
 	"Build the eight blocks of a nested compute loop and answer the function holding them.
 	 There is one block more than the graph has, because the outer loop's continue target
 	 cannot be the inner loop's merge block."
@@ -1245,7 +1454,6 @@ PVSPIRVEmitter >> emitComputeNestedLoopFrom: sims outerPhis: outerPhis innerPhis
 			       (#sims -> sims).
 			       (#outer -> (Dictionary newFrom: { (#phis -> outerPhis) })).
 			       (#inner -> (Dictionary newFrom: { (#phis -> innerPhis) })).
-			       (#selectorTable -> st).
 			       (#preBlock -> spvFunc addBlock).
 			       (#outerHeaderBlock -> spvFunc addBlock).
 			       (#innerPreBlock -> spvFunc addBlock).
@@ -1267,14 +1475,13 @@ PVSPIRVEmitter >> emitComputeNestedLoopFrom: sims outerPhis: outerPhis innerPhis
 ]
 
 { #category : 'compiling' }
-PVSPIRVEmitter >> emitComputeSelectionFrom: sims selectorTable: st [
+PVSPIRVEmitter >> emitComputeSelectionFrom: sims [
 	"Build the four blocks of a compute selection and answer the function holding them."
 
 	| spvFunc ctx |
 	spvFunc := self newComputeMainFunction.
 	ctx := Dictionary newFrom: {
 			       (#sims -> sims).
-			       (#selectorTable -> st).
 			       (#entryBlock -> spvFunc addBlock).
 			       (#trueBlock -> spvFunc addBlock).
 			       (#falseBlock -> spvFunc addBlock).
@@ -1286,7 +1493,7 @@ PVSPIRVEmitter >> emitComputeSelectionFrom: sims selectorTable: st [
 ]
 
 { #category : 'emitting - cooperative matrix' }
-PVSPIRVEmitter >> emitCooperativeMatrixLoad: op resultTypeSymbol: aTypeSymbol typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitCooperativeMatrixLoad: op resultTypeSymbol: aTypeSymbol block: blk [
 	"coopMatLoad: answers the matrix that starts at the element its argument names. The
 	 role comes from the buffer's own type, so the load knows which of the three matrix
 	 types it is building."
@@ -1295,7 +1502,7 @@ PVSPIRVEmitter >> emitCooperativeMatrixLoad: op resultTypeSymbol: aTypeSymbol ty
 	self declareCooperativeMatrixCapabilities.
 	pointerId := self
 		             pointerInto: (self spvIdFor: op inputs first)
-		             ofType: (aTypeMap at: op inputs first)
+		             ofType: (typeMap at: op inputs first)
 		             at: (self spvIdFor: op inputs second)
 		             block: blk.
 	regMap
@@ -1328,7 +1535,7 @@ PVSPIRVEmitter >> emitCooperativeMatrixMulAdd: op resultTypeSymbol: aTypeSymbol 
 ]
 
 { #category : 'emitting - cooperative matrix' }
-PVSPIRVEmitter >> emitCooperativeMatrixStore: op typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitCooperativeMatrixStore: op block: blk [
 	"coopMatStore: writes its argument into the receiver's buffer, at element zero. The
 	 register of the store answers the pointer it wrote through, as the buffer store does."
 
@@ -1336,7 +1543,7 @@ PVSPIRVEmitter >> emitCooperativeMatrixStore: op typeMap: aTypeMap block: blk [
 	self declareCooperativeMatrixCapabilities.
 	pointerId := self
 		             pointerInto: (self spvIdFor: op inputs first)
-		             ofType: (aTypeMap at: op inputs first)
+		             ofType: (typeMap at: op inputs first)
 		             at: (module constantPool constantUInt32:
 					              self class cooperativeMatrixStoreElementIndex)
 		             block: blk.
@@ -1348,26 +1555,10 @@ PVSPIRVEmitter >> emitCooperativeMatrixStore: op typeMap: aTypeMap block: blk [
 	regMap at: op result put: pointerId
 ]
 
-{ #category : 'emit' }
-PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: aTypeMap block: blk [
-    | mapping resultType resultTypeId resultId setId |
-    mapping := (PVSelectorTable standard) at: op literal receiverType: (aTypeMap at: op inputs first).
-    resultType := self spvTypeFor: mapping resultTypeSymbol.
-    resultTypeId := resultType id.
-    resultId := module newId.
-    setId := self ensureGlslExtInstSet.
-    regMap at: op result put: resultId.
-    blk addInstruction: (SpvInstruction
-        opcode: SpvOpcode opExtInst
-        resultType: resultTypeId
-        resultId: resultId
-        operands: ({ setId. glslOp } , (op inputs collect: [:r | self spvIdFor: r])))
-]
-
 { #category : 'private' }
-PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: aTypeMap selectorTable: st block: blk [
+PVSPIRVEmitter >> emitExtInst: glslOp op: op block: blk [
 	| mapping resultType resultTypeId resultId setId operandIds |
-	mapping := st at: op literal receiverType: (aTypeMap at: op inputs first).
+	mapping := selectorTable at: op literal receiverType: (typeMap at: op inputs first).
 	resultType := self spvTypeFor: mapping resultTypeSymbol.
 	resultTypeId := resultType id.
 	resultId := module newId.
@@ -1375,7 +1566,7 @@ PVSPIRVEmitter >> emitExtInst: glslOp op: op typeMap: aTypeMap selectorTable: st
 	regMap at: op result put: resultId.
 	operandIds := op inputs collect: [:r |
 		| inputType |
-		inputType := aTypeMap at: r ifAbsent: [nil].
+		inputType := typeMap at: r ifAbsent: [nil].
 		(inputType notNil
 			and: [inputType ~= mapping resultTypeSymbol
 			and: [#(#vec2 #vec3 #vec4) includes: mapping resultTypeSymbol]])
@@ -1419,44 +1610,48 @@ PVSPIRVEmitter >> emitGridWidth: op block: blk [
 ]
 
 { #category : 'emitting' }
-PVSPIRVEmitter >> emitKernelFunction: regOps typeMap: aTypeMap selectorTable: st name: funcName [
+PVSPIRVEmitter >> emitKernelFunction: regOps name: funcName [
+
 	| paramTypes retTypeSymbol retType funcType spvFunc blk |
 	"Determine return type from the return op"
 	retTypeSymbol := #void.
 	regOps do: [ :op |
-		op opcode = #return ifTrue: [
-			retTypeSymbol := aTypeMap at: op inputs first ifAbsent: [ #void ] ] ].
+			op opcode = #return ifTrue: [
+				retTypeSymbol := typeMap at: op inputs first ifAbsent: [ #void ] ] ].
 	retType := self spvTypeFor: retTypeSymbol.
 	"Param types from annotation"
-	paramTypes := annotation params collect: [ :p | self spvTypeFor: p type ].
-	funcType := module typeRegistry functionType: retType paramTypes: paramTypes asArray.
+	paramTypes := annotation params collect: [ :p |
+		              self spvTypeFor: p type ].
+	funcType := module typeRegistry
+		            functionType: retType
+		            paramTypes: paramTypes asArray.
 	"Create function"
 	spvFunc := SpvFunction new
-		id: module newId;
-		returnType: retType;
-		functionType: funcType;
-		module: module;
-		initialize;
-		yourself.
+		           id: module newId;
+		           returnType: retType;
+		           functionType: funcType;
+		           module: module;
+		           initialize;
+		           yourself.
 	"Emit parameters — seed regMap with param SpvIds (reg 1..n)"
 	annotation params doWithIndex: [ :p :i |
-		| pId pInstr |
+			| pId pInstr |
 			pId := module newId.
-		pInstr := SpvInstruction
-			opcode: SpvOpcode opFunctionParameter
-			resultType: (self spvTypeFor: p type) id
-			resultId: pId
-			operands: #().
-		spvFunc parameters add: pInstr.
-		regMap at: i put: pId ].
+			pInstr := SpvInstruction
+				          opcode: SpvOpcode opFunctionParameter
+				          resultType: (self spvTypeFor: p type) id
+				          resultId: pId
+				          operands: #(  ).
+			spvFunc parameters add: pInstr.
+			regMap at: i put: pId ].
 	"Single block for straight-line methods"
 	blk := spvFunc addBlock.
 	"Emit each register op"
-	regOps do: [ :op |
-		self emitRegOp: op typeMap: aTypeMap selectorTable: st block: blk ].
+	regOps do: [ :op | self emitRegOp: op block: blk ].
 	"If block not terminated (e.g. void return), add OpReturn"
 	blk isTerminated ifFalse: [
-		blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ].
+			blk terminate:
+				(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ].
 	module addFunction: spvFunc.
 	^ spvFunc
 ]
@@ -1482,14 +1677,10 @@ PVSPIRVEmitter >> emitLoopExitIn: ctx [
 	| sims blk |
 	sims := ctx at: #sims.
 	blk := ctx at: #exitBlock.
-	self
-		emitRegOps: (sims at: #exit) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
+	self emitRegOps: (sims at: #exit) regOps block: blk.
 	blk isTerminated ifFalse: [
-		blk terminate:
-			(SpvInstruction opcode: SpvOpcode opReturn operands: #( )) ]
+			blk terminate:
+				(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ]
 ]
 
 { #category : 'compiling' }
@@ -1500,11 +1691,7 @@ PVSPIRVEmitter >> emitLoopHeaderIn: ctx [
 	| sims blk |
 	sims := ctx at: #sims.
 	blk := ctx at: #headerBlock.
-	self
-		emitRegOps: (sims at: #header) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
+	self emitRegOps: (sims at: #header) regOps block: blk.
 	blk
 		addInstruction: (SpvInstruction
 				 opcode: SpvOpcode opLoopMerge
@@ -1534,15 +1721,9 @@ PVSPIRVEmitter >> emitLoopLatchIn: ctx [
 	sims := ctx at: #sims.
 	phis := ctx at: #phis.
 	blk := ctx at: #latchBlock.
-	self
-		emitRegOps: (sims at: #latch) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
-	ctx
-		at: #phiLatch
-		put: ((phis at: #indices) collect: [ :k |
-				 self spvIdFor: ((phis at: #latch) at: k) ]).
+	self emitRegOps: (sims at: #latch) regOps block: blk.
+	ctx at: #phiLatch put: ((phis at: #indices) collect: [ :k |
+			 self spvIdFor: ((phis at: #latch) at: k) ]).
 	blk terminate: (SpvInstruction
 			 opcode: SpvOpcode opBranch
 			 resultType: nil
@@ -1561,18 +1742,16 @@ PVSPIRVEmitter >> emitLoopPreheaderIn: ctx [
 	sims := ctx at: #sims.
 	phis := ctx at: #phis.
 	blk := ctx at: #preBlock.
-	self
-		emitRegOps: (sims at: #preheader) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
+	self emitRegOps: (sims at: #preheader) regOps block: blk.
+	ctx at: #phiInit put: ((phis at: #indices) collect: [ :k |
+			 self spvIdFor: ((phis at: #init) at: k) ]).
 	ctx
-		at: #phiInit
-		put: ((phis at: #indices) collect: [ :k |
-				 self spvIdFor: ((phis at: #init) at: k) ]).
-	ctx at: #phiResult put: ((phis at: #indices) collect: [ :k | module newId ]).
+		at: #phiResult
+		put: ((phis at: #indices) collect: [ :k | module newId ]).
 	(phis at: #indices) doWithIndex: [ :k :n |
-		regMap at: ((phis at: #init) at: k) put: ((ctx at: #phiResult) at: n) ].
+		regMap
+			at: ((phis at: #init) at: k)
+			put: ((ctx at: #phiResult) at: n) ].
 	blk terminate: (SpvInstruction
 			 opcode: SpvOpcode opBranch
 			 resultType: nil
@@ -1587,8 +1766,6 @@ PVSPIRVEmitter >> emitNestedBlock: aSimKey in: ctx into: aBlockKey [
 
 	^ self
 		  emitRegOps: ((ctx at: #sims) at: aSimKey) regOps
-		  typeMap: ((ctx at: #sims) at: #typeMap)
-		  selectorTable: (ctx at: #selectorTable)
 		  block: (ctx at: aBlockKey)
 ]
 
@@ -1719,84 +1896,165 @@ PVSPIRVEmitter >> emitNestedPreheaderIn: ctx [
 ]
 
 { #category : 'emitting' }
-PVSPIRVEmitter >> emitRegOp: op typeMap: aTypeMap selectorTable: st block: blk [
-    | opc |
-    op opcode = #const ifTrue: [
-        | constId |
-        constId := op literal isFloat
-            ifTrue: [ module constantPool constantFloat32: op literal asFloat ]
-            ifFalse: [ module constantPool constantInt32: op literal ].
-        regMap at: op result put: constId.
-        ^ self ].
-    op opcode = #move ifTrue: [
-        regMap at: op result put: (self spvIdFor: op inputs first).
-        ^ self ].
-    op opcode = #self ifTrue: [ ^ self ].
-    op opcode = #storeInstVar ifTrue: [
-        blk addInstruction: (SpvInstruction opcode: SpvOpcode opStore operands:
-            { outputVarIds at: op literal + 1. self spvIdFor: op inputs first }).
-        ^ self ].
-    op opcode = #send ifTrue: [
-        | mapping resultTypeId resultId |
-        mapping := st at: op literal receiverType: (aTypeMap at: op inputs first).
-        mapping ifNil: [ PVTypeError signal: 'No mapping for ' , op literal ].
-        mapping spirvOp = #bufferLoad       ifTrue: [ self emitBufferLoad: op typeMap: aTypeMap block: blk. ^ self ].
-        mapping spirvOp = #bufferStore      ifTrue: [ self emitBufferStore: op typeMap: aTypeMap block: blk. ^ self ].
-        mapping spirvOp = #sharedLoad       ifTrue: [ self emitSharedLoad: op typeMap: aTypeMap block: blk. ^ self ].
-        mapping spirvOp = #sharedStore      ifTrue: [ self emitSharedStore: op typeMap: aTypeMap block: blk. ^ self ].
-        mapping spirvOp = #coopMatrixLoad    ifTrue: [ self emitCooperativeMatrixLoad: op resultTypeSymbol: mapping resultTypeSymbol typeMap: aTypeMap block: blk. ^ self ].
-        mapping spirvOp = #coopMatrixMulAdd  ifTrue: [ self emitCooperativeMatrixMulAdd: op resultTypeSymbol: mapping resultTypeSymbol block: blk. ^ self ].
-        mapping spirvOp = #coopMatrixStore   ifTrue: [ self emitCooperativeMatrixStore: op typeMap: aTypeMap block: blk. ^ self ].
-        mapping spirvOp = #workgroupBarrier ifTrue: [ self emitWorkgroupBarrier: op block: blk. ^ self ].
-        mapping spirvOp = #workItemX        ifTrue: [ self emitWorkItemComponent: 0 op: op block: blk. ^ self ].
-        mapping spirvOp = #workItemY        ifTrue: [ self emitWorkItemComponent: 1 op: op block: blk. ^ self ].
-        mapping spirvOp = #workItemZ        ifTrue: [ self emitWorkItemComponent: 2 op: op block: blk. ^ self ].
-        mapping spirvOp = #workItemLocalX   ifTrue: [ self emitLocalInvocationComponent: 0 op: op block: blk. ^ self ].
-        mapping spirvOp = #workItemLocalY   ifTrue: [ self emitLocalInvocationComponent: 1 op: op block: blk. ^ self ].
-        mapping spirvOp = #workItemLocalZ   ifTrue: [ self emitLocalInvocationComponent: 2 op: op block: blk. ^ self ].
-        mapping spirvOp = #workItemGridWidth ifTrue: [ self emitGridWidth: op block: blk. ^ self ].
-        mapping spirvOp = #compositeConstruct ifTrue: [ self emitCompositeConstruct: op typeMap: aTypeMap selectorTable: st block: blk. ^ self ].
-        mapping spirvOp = #vecExtractX      ifTrue: [ self emitVecExtract: 0 op: op block: blk. ^ self ].
-        mapping spirvOp = #vecExtractY      ifTrue: [ self emitVecExtract: 1 op: op block: blk. ^ self ].
-        mapping spirvOp = #vecExtractZ      ifTrue: [ self emitVecExtract: 2 op: op block: blk. ^ self ].
-        mapping spirvOp = #vecExtractW      ifTrue: [ self emitVecExtract: 3 op: op block: blk. ^ self ].
-        mapping spirvOp = #subgroupReduceSum ifTrue: [ self emitSubgroupReduceSum: op resultTypeSymbol: mapping resultTypeSymbol block: blk. ^ self ].
-        mapping spirvOp = #glslNormalize    ifTrue: [ self emitExtInst: GlslStd450 normalize  op: op typeMap: aTypeMap selectorTable: st block: blk. ^ self ].
-        mapping spirvOp = #glslLength       ifTrue: [ self emitExtInst: GlslStd450 length     op: op typeMap: aTypeMap selectorTable: st block: blk. ^ self ].
-        mapping spirvOp = #glslFMix         ifTrue: [ self emitExtInst: GlslStd450 fMix       op: op typeMap: aTypeMap selectorTable: st block: blk. ^ self ].
-        mapping spirvOp = #glslFClamp       ifTrue: [ self emitExtInst: GlslStd450 fClamp     op: op typeMap: aTypeMap selectorTable: st block: blk. ^ self ].
-        mapping spirvOp = #glslSqrt         ifTrue: [ self emitExtInst: GlslStd450 sqrt       op: op typeMap: aTypeMap selectorTable: st block: blk. ^ self ].
-        opc := self opcodeFor: mapping spirvOp.
-        resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
-        resultId := module newId.
-        regMap at: op result put: resultId.
-        blk addInstruction: (SpvInstruction opcode: opc resultType: resultTypeId resultId: resultId
-            operands: (op inputs collect: [:r | self spvIdFor: r])).
-        ^ self ].
-    op opcode = #return ifTrue: [
-        isVoidMain
-            ifTrue: [
-                outputVarIds isEmpty ifFalse: [
-                    blk addInstruction: (SpvInstruction opcode: SpvOpcode opStore operands:
-                        { outputVarIds first. self spvIdFor: op inputs first }) ].
-                blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #()) ]
-            ifFalse: [
-                blk terminate: (SpvInstruction opcode: SpvOpcode opReturnValue resultType: nil resultId: nil
-                    operands: { self spvIdFor: op inputs first }) ].
-        ^ self ].
-    op opcode = #returnSelf ifFalse: [ ^ self ].
-    blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #())
+PVSPIRVEmitter >> emitRegOp: op block: blk [
+
+	| opc |
+	op opcode = #const ifTrue: [
+			| constId |
+			constId := op literal isFloat
+				           ifTrue: [
+				           module constantPool constantFloat32: op literal asFloat ]
+				           ifFalse: [
+				           module constantPool constantInt32: op literal ].
+			regMap at: op result put: constId.
+			^ self ].
+	op opcode = #move ifTrue: [
+			regMap at: op result put: (self spvIdFor: op inputs first).
+			^ self ].
+	op opcode = #self ifTrue: [ ^ self ].
+	op opcode = #storeInstVar ifTrue: [
+			blk addInstruction:
+				(SpvInstruction opcode: SpvOpcode opStore operands: {
+						 (outputVarIds at: op literal + 1).
+						 (self spvIdFor: op inputs first) }).
+			^ self ].
+	op opcode = #send ifTrue: [
+			| mapping resultTypeId resultId |
+			mapping := selectorTable
+				           at: op literal
+				           receiverType: (typeMap at: op inputs first).
+			mapping ifNil: [
+				PVTypeError signal: 'No mapping for ' , op literal ].
+			mapping spirvOp = #bufferLoad ifTrue: [
+					self emitBufferLoad: op block: blk.
+					^ self ].
+			mapping spirvOp = #bufferStore ifTrue: [
+					self emitBufferStore: op block: blk.
+					^ self ].
+			mapping spirvOp = #sharedLoad ifTrue: [
+					self emitSharedLoad: op block: blk.
+					^ self ].
+			mapping spirvOp = #sharedStore ifTrue: [
+					self emitSharedStore: op block: blk.
+					^ self ].
+			mapping spirvOp = #coopMatrixLoad ifTrue: [
+					self
+						emitCooperativeMatrixLoad: op
+						resultTypeSymbol: mapping resultTypeSymbol
+						block: blk.
+					^ self ].
+			mapping spirvOp = #coopMatrixMulAdd ifTrue: [
+					self
+						emitCooperativeMatrixMulAdd: op
+						resultTypeSymbol: mapping resultTypeSymbol
+						block: blk.
+					^ self ].
+			mapping spirvOp = #coopMatrixStore ifTrue: [
+					self emitCooperativeMatrixStore: op block: blk.
+					^ self ].
+			mapping spirvOp = #workgroupBarrier ifTrue: [
+					self emitWorkgroupBarrier: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemX ifTrue: [
+					self emitWorkItemComponent: 0 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemY ifTrue: [
+					self emitWorkItemComponent: 1 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemZ ifTrue: [
+					self emitWorkItemComponent: 2 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemLocalX ifTrue: [
+					self emitLocalInvocationComponent: 0 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemLocalY ifTrue: [
+					self emitLocalInvocationComponent: 1 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemLocalZ ifTrue: [
+					self emitLocalInvocationComponent: 2 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #workItemGridWidth ifTrue: [
+					self emitGridWidth: op block: blk.
+					^ self ].
+			mapping spirvOp = #compositeConstruct ifTrue: [
+					self emitCompositeConstruct: op block: blk.
+					^ self ].
+			mapping spirvOp = #vecExtractX ifTrue: [
+					self emitVecExtract: 0 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #vecExtractY ifTrue: [
+					self emitVecExtract: 1 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #vecExtractZ ifTrue: [
+					self emitVecExtract: 2 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #vecExtractW ifTrue: [
+					self emitVecExtract: 3 op: op block: blk.
+					^ self ].
+			mapping spirvOp = #subgroupReduceSum ifTrue: [
+					self
+						emitSubgroupReduceSum: op
+						resultTypeSymbol: mapping resultTypeSymbol
+						block: blk.
+					^ self ].
+			mapping spirvOp = #glslNormalize ifTrue: [
+					self emitExtInst: GlslStd450 normalize op: op block: blk.
+					^ self ].
+			mapping spirvOp = #glslLength ifTrue: [
+					self emitExtInst: GlslStd450 length op: op block: blk.
+					^ self ].
+			mapping spirvOp = #glslFMix ifTrue: [
+					self emitExtInst: GlslStd450 fMix op: op block: blk.
+					^ self ].
+			mapping spirvOp = #glslFClamp ifTrue: [
+					self emitExtInst: GlslStd450 fClamp op: op block: blk.
+					^ self ].
+			mapping spirvOp = #glslSqrt ifTrue: [
+					self emitExtInst: GlslStd450 sqrt op: op block: blk.
+					^ self ].
+			opc := self opcodeFor: mapping spirvOp.
+			resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
+			resultId := module newId.
+			regMap at: op result put: resultId.
+			blk addInstruction: (SpvInstruction
+					 opcode: opc
+					 resultType: resultTypeId
+					 resultId: resultId
+					 operands: (op inputs collect: [ :r | self spvIdFor: r ])).
+			^ self ].
+	op opcode = #return ifTrue: [
+			isVoidMain
+				ifTrue: [
+						outputVarIds isEmpty ifFalse: [
+								blk addInstruction:
+									(SpvInstruction opcode: SpvOpcode opStore operands: {
+											 outputVarIds first.
+											 (self spvIdFor: op inputs first) }) ].
+						blk terminate:
+							(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ]
+				ifFalse: [
+						blk terminate: (SpvInstruction
+								 opcode: SpvOpcode opReturnValue
+								 resultType: nil
+								 resultId: nil
+								 operands: { (self spvIdFor: op inputs first) }) ].
+			^ self ].
+	op opcode = #returnSelf ifFalse: [ ^ self ].
+	blk terminate:
+		(SpvInstruction opcode: SpvOpcode opReturn operands: #(  ))
 ]
 
 { #category : 'emitting structured' }
-PVSPIRVEmitter >> emitRegOps: regOpList typeMap: aTypeMap selectorTable: st block: spvBlk [
+PVSPIRVEmitter >> emitRegOps: regOpList block: spvBlk [
+
 	regOpList do: [ :op |
-		(#(#return #returnSelf) includes: op opcode) ifFalse: [
-			self emitRegOp: op typeMap: aTypeMap selectorTable: st block: spvBlk ] ]
+			(#( #return #returnSelf ) includes: op opcode) ifFalse: [
+				self emitRegOp: op block: spvBlk ] ]
 ]
 
 { #category : 'emitting structured' }
-PVSPIRVEmitter >> emitSelection: selNode typeMap: aTypeMap selectorTable: st function: spvFunc condReg: condReg [
+PVSPIRVEmitter >> emitSelection: selNode function: spvFunc condReg: condReg [
+
 	| trueBlk falseBlk mergeBlk trueSpvBlk falseSpvBlk mergeSpvBlk condId trueVal falseVal phiId phiType condSpvBlk |
 	trueBlk := selNode trueBlocks first.
 	falseBlk := selNode falseBlocks first.
@@ -1807,27 +2065,49 @@ PVSPIRVEmitter >> emitSelection: selNode typeMap: aTypeMap selectorTable: st fun
 	condId := self spvIdFor: condReg.
 	"Terminate cond block with OpSelectionMerge + OpBranchConditional"
 	condSpvBlk := spvFunc blocks at: spvFunc blocks size - 3.
-	condSpvBlk addInstruction: (SpvInstruction opcode: SpvOpcode opSelectionMerge
-		resultType: nil resultId: nil operands: { mergeSpvBlk id. SpvSelectionControl none }).
-	condSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranchConditional
-		resultType: nil resultId: nil operands: { condId. trueSpvBlk id. falseSpvBlk id }).
-	trueVal := self emitBytecodeBlock: trueBlk typeMap: aTypeMap selectorTable: st block: trueSpvBlk.
+	condSpvBlk addInstruction: (SpvInstruction
+			 opcode: SpvOpcode opSelectionMerge
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 mergeSpvBlk id.
+					 SpvSelectionControl none }).
+	condSpvBlk terminate: (SpvInstruction
+			 opcode: SpvOpcode opBranchConditional
+			 resultType: nil
+			 resultId: nil
+			 operands: {
+					 condId.
+					 trueSpvBlk id.
+					 falseSpvBlk id }).
+	trueVal := self emitBytecodeBlock: trueBlk block: trueSpvBlk.
 	trueSpvBlk isTerminated ifFalse: [
-		trueSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch
-			resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
-	falseVal := self emitBytecodeBlock: falseBlk typeMap: aTypeMap selectorTable: st block: falseSpvBlk.
+			trueSpvBlk terminate: (SpvInstruction
+					 opcode: SpvOpcode opBranch
+					 resultType: nil
+					 resultId: nil
+					 operands: { mergeSpvBlk id }) ].
+	falseVal := self emitBytecodeBlock: falseBlk block: falseSpvBlk.
 	falseSpvBlk isTerminated ifFalse: [
-		falseSpvBlk terminate: (SpvInstruction opcode: SpvOpcode opBranch
-			resultType: nil resultId: nil operands: { mergeSpvBlk id }) ].
+			falseSpvBlk terminate: (SpvInstruction
+					 opcode: SpvOpcode opBranch
+					 resultType: nil
+					 resultId: nil
+					 operands: { mergeSpvBlk id }) ].
 	(trueVal notNil and: [ falseVal notNil ]) ifTrue: [
-		phiType := aTypeMap at: trueVal ifAbsent: [ nil ].
-		phiType ifNotNil: [
-			phiId := module newId.
-			mergeSpvBlk addInstruction: (SpvInstruction opcode: SpvOpcode opPhi
-				resultType: (self spvTypeFor: phiType) id
-				resultId: phiId
-				operands: { trueVal. trueSpvBlk id. falseVal. falseSpvBlk id }).
-			^ phiId ] ].
+			phiType := typeMap at: trueVal ifAbsent: [ nil ].
+			phiType ifNotNil: [
+					phiId := module newId.
+					mergeSpvBlk addInstruction: (SpvInstruction
+							 opcode: SpvOpcode opPhi
+							 resultType: (self spvTypeFor: phiType) id
+							 resultId: phiId
+							 operands: {
+									 trueVal.
+									 trueSpvBlk id.
+									 falseVal.
+									 falseSpvBlk id }).
+					^ phiId ] ].
 	^ nil
 ]
 
@@ -1839,11 +2119,7 @@ PVSPIRVEmitter >> emitSelectionArm: armKey into: blockKey valueKey: valueKey in:
 	| sims blk |
 	sims := ctx at: #sims.
 	blk := ctx at: blockKey.
-	self
-		emitRegOps: (sims at: armKey) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
+	self emitRegOps: (sims at: armKey) regOps block: blk.
 	ctx at: valueKey put: (self spvIdFor: (sims at: armKey) resultReg).
 	blk terminate: (SpvInstruction
 			 opcode: SpvOpcode opBranch
@@ -1880,11 +2156,7 @@ PVSPIRVEmitter >> emitSelectionConditionIn: ctx [
 	| sims blk |
 	sims := ctx at: #sims.
 	blk := ctx at: #entryBlock.
-	self
-		emitRegOps: (sims at: #cond) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
+	self emitRegOps: (sims at: #cond) regOps block: blk.
 	blk
 		addInstruction: (SpvInstruction
 				 opcode: SpvOpcode opSelectionMerge
@@ -1903,7 +2175,7 @@ PVSPIRVEmitter >> emitSelectionConditionIn: ctx [
 						 (ctx at: #falseBlock) id })
 ]
 
-{ #category : 'compiling' }
+{ #category : 'emitting structured' }
 PVSPIRVEmitter >> emitSelectionMergeIn: ctx [
 	"The merge block joins the two arms in a phi and then carries the kernel's own work —
 	 the store that writes the chosen value. compileSelection: never had to emit that
@@ -1917,21 +2189,17 @@ PVSPIRVEmitter >> emitSelectionMergeIn: ctx [
 	regMap at: phiReg put: phiId.
 	blk addInstruction: (SpvInstruction
 			 opcode: SpvOpcode opPhi
-			 resultType: (self spvTypeFor: ((sims at: #typeMap) at: phiReg)) id
+			 resultType: (self spvTypeFor: (typeMap at: phiReg)) id
 			 resultId: phiId
 			 operands: {
 					 (ctx at: #trueValue).
 					 (ctx at: #trueBlock) id.
 					 (ctx at: #falseValue).
 					 (ctx at: #falseBlock) id }).
-	self
-		emitRegOps: (sims at: #merge) regOps
-		typeMap: (sims at: #typeMap)
-		selectorTable: (ctx at: #selectorTable)
-		block: blk.
+	self emitRegOps: (sims at: #merge) regOps block: blk.
 	blk isTerminated ifFalse: [
-		blk terminate:
-			(SpvInstruction opcode: SpvOpcode opReturn operands: #( )) ]
+			blk terminate:
+				(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ]
 ]
 
 { #category : 'emitting - shared memory' }
@@ -1962,14 +2230,14 @@ PVSPIRVEmitter >> emitSharedArrayParam: aParam at: paramIndex [
 ]
 
 { #category : 'emitting - shared memory' }
-PVSPIRVEmitter >> emitSharedLoad: op typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitSharedLoad: op block: blk [
 	"One index only in the access chain, unlike a buffer load: a tile is a bare array, not a
 	 struct holding one."
 
 	| tileVarId idxId recvType elemType ptrType elemPtrId loadId |
 	tileVarId := self spvIdFor: op inputs first.
 	idxId := self spvIdFor: op inputs second.
-	recvType := aTypeMap at: op inputs first.
+	recvType := typeMap at: op inputs first.
 	elemType := self sharedElementTypeFor: recvType.
 	ptrType := module typeRegistry
 		           pointerType: SpvStorageClass workgroup
@@ -1992,7 +2260,7 @@ PVSPIRVEmitter >> emitSharedLoad: op typeMap: aTypeMap block: blk [
 ]
 
 { #category : 'emitting - shared memory' }
-PVSPIRVEmitter >> emitSharedStore: op typeMap: aTypeMap block: blk [
+PVSPIRVEmitter >> emitSharedStore: op block: blk [
 	"One index only in the access chain, unlike a buffer store: a tile is a bare array, not a
 	 struct holding one."
 
@@ -2000,7 +2268,7 @@ PVSPIRVEmitter >> emitSharedStore: op typeMap: aTypeMap block: blk [
 	tileVarId := self spvIdFor: op inputs first.
 	idxId := self spvIdFor: op inputs second.
 	valId := self spvIdFor: op inputs third.
-	recvType := aTypeMap at: op inputs first.
+	recvType := typeMap at: op inputs first.
 	elemType := self sharedElementTypeFor: recvType.
 	ptrType := module typeRegistry
 		           pointerType: SpvStorageClass workgroup
@@ -2294,21 +2562,20 @@ PVSPIRVEmitter >> pointerInto: aBufferVarId ofType: aBufferTypeSymbol at: anInde
 	^ pointerId
 ]
 
-{ #category : 'compiling' }
+{ #category : 'emitting - phis' }
 PVSPIRVEmitter >> prependLoopPhisIn: ctx [
 	"A phi must be the first instruction of its block, and both its incoming ids are only
 	 known once the preheader and the latch are emitted, so the phis go in last and go in
 	 at the front."
 
-	| phis blockTypeMap hdr |
+	| phis hdr |
 	phis := ctx at: #phis.
-	blockTypeMap := (ctx at: #sims) at: #typeMap.
 	hdr := ctx at: #headerBlock.
 	(phis at: #indices) doWithIndex: [ :k :n |
 		| phiType |
-		phiType := blockTypeMap
+		phiType := typeMap
 			           at: ((phis at: #latch) at: k)
-			           ifAbsent: [ blockTypeMap at: ((phis at: #init) at: k) ].
+			           ifAbsent: [ typeMap at: ((phis at: #init) at: k) ].
 		hdr prependInstruction: (SpvInstruction
 				 opcode: SpvOpcode opPhi
 				 resultType: (self spvTypeFor: phiType) id
@@ -2320,14 +2587,12 @@ PVSPIRVEmitter >> prependLoopPhisIn: ctx [
 						 (ctx at: #latchBlock) id }) ]
 ]
 
-{ #category : 'emitting-nested-loop' }
+{ #category : 'emitting - phis' }
 PVSPIRVEmitter >> prependNestedPhisIn: ctx [
 	"Both headers take their phis once every block that feeds them is emitted. The inner
 	 phis come from the inner preheader and the inner body; the outer phis come from the
 	 preheader and the outer latch, which is the block the back edge leaves from."
 
-	| blockTypeMap |
-	blockTypeMap := (ctx at: #sims) at: #typeMap.
 	(ctx at: #inner)
 		at: #header put: (ctx at: #innerHeaderBlock);
 		at: #preBlock put: (ctx at: #innerPreBlock);
@@ -2336,12 +2601,12 @@ PVSPIRVEmitter >> prependNestedPhisIn: ctx [
 		at: #header put: (ctx at: #outerHeaderBlock);
 		at: #preBlock put: (ctx at: #preBlock);
 		at: #latchBlock put: (ctx at: #outerLatchBlock).
-	self prependPhisFor: (ctx at: #inner) typeMap: blockTypeMap.
-	self prependPhisFor: (ctx at: #outer) typeMap: blockTypeMap
+	self prependPhisFor: (ctx at: #inner).
+	self prependPhisFor: (ctx at: #outer)
 ]
 
 { #category : 'emitting-nested-loop' }
-PVSPIRVEmitter >> prependPhisFor: aLoopLevel typeMap: aTypeMap [
+PVSPIRVEmitter >> prependPhisFor: aLoopLevel [
 	"A phi must be the first instruction of its block, and both its incoming ids are only
 	 known once the body is emitted, so the phis go in last and go in at the front. The
 	 three blocks a phi names are read off the level, which is what the caller filled in
@@ -2354,9 +2619,9 @@ PVSPIRVEmitter >> prependPhisFor: aLoopLevel typeMap: aTypeMap [
 	latchBlk := aLoopLevel at: #latchBlock.
 	(phis at: #indices) doWithIndex: [ :k :n |
 		| phiType |
-		phiType := aTypeMap
+		phiType := typeMap
 			           at: ((phis at: #latch) at: k)
-			           ifAbsent: [ aTypeMap at: ((phis at: #init) at: k) ].
+			           ifAbsent: [ typeMap at: ((phis at: #init) at: k) ].
 		hdr prependInstruction: (SpvInstruction
 				 opcode: SpvOpcode opPhi
 				 resultType: (self spvTypeFor: phiType) id

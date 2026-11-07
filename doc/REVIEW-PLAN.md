@@ -457,6 +457,64 @@ Verification, per pass: 184 of 184 green over the seven non-device classes, incl
 alone and forked — `VkCoreTest` 68, `PVComputeTest` 63, `VkImageTest` 8, `PVGraphicsTest` 53, all
 green, image alive.
 
+**Pass 3, validated 2026-11-07.** The re-measure's diagnosis, and the two decisions it put.
+
+What the measurement found. Forty-four selectors carry `typeMap:` or `selectorTable:` as a
+parameter, thirty-one on the instance side and fifteen on the class side, not counting the two
+accessors. Ten call sites outside the class send one of them — `PVKernelCompiler` four,
+`PVSelectionNode` three, `PVLoopNode` two, `PVNestedLoopNode` one — and no test sends any of them,
+so shedding the clump breaks no test. `selectorTable` is genuine emitter state: the three
+`emitCompute…From:…selectorTable:` methods put the parameter into `ctx at: #selectorTable` and
+every deeper send reads it back, one value per compile. `typeMap` is not state as the slot pass 2
+added assumed: the compute entries take no `typeMap:` at all, the map is inferred after the
+simulations are built and carried as `sims at: #typeMap`, and eleven sends pass that rather than
+the slot — which on the compute path is nil. But exactly one typeMap exists per compile, because
+each `compute…Simulations:` builds a single `#typeMap` entry and every entry point builds a fresh
+emitter with `self new`, so one emitter emits one kernel.
+
+Extract Class is not the answer, and that is the diagnosis's main negative result. Every emitting
+group touches `module` and `regMap`: the cooperative matrix seven methods, shared memory six, the
+phis three, the structured four, the compute twenty-three. A `PVCooperativeMatrixEmitter` would be
+a facade over the same two objects, which is a layer of indirection for a hypothetical need.
+
+Decision one, the clump goes, both keywords. The compute drivers send `self selectorTable: st` at
+entry and `self typeMap: (sims at: #typeMap)` as soon as the simulations exist; the shader and the
+generic drivers receive both and set them at entry. Then the forty-four selectors shed the two
+keywords, the eleven `(sims at: #typeMap)` and the nine `(ctx at: #selectorTable)` sends become
+slot reads, and the ten outside sites fill the slots by cascade. Both slots are read after this,
+which closes the window pass 2 opened. `RBRemoveParameterRefactoring` does each removal and rewrites
+the senders, so the parameter is replaced by the slot read in the body first and the refactoring
+runs second.
+
+Decision two, eight stateless methods leave, 166 lines. They are internal to the class — no outside
+sender at all — and none of them touches emitter state, which is feature envy on the node, the
+simulation and the annotation. Move Method, eight times:
+
+| From `PVSPIRVEmitter class` | To |
+|---|---|
+| `computeLoopSimulations:annotation:selectorTable:` | `PVLoopNode >> simulationsWith:selectorTable:` |
+| `computeSelectionSimulations:annotation:selectorTable:` | `PVSelectionNode >> simulationsWith:selectorTable:` |
+| `computeNestedLoopSimulations:annotation:selectorTable:` | `PVNestedLoopNode >> simulationsWith:selectorTable:` |
+| `paramTempDefsFor:` | `PVTypeAnnotation >> paramTempDefs` |
+| `inferTypesOver:annotation:selectorTable:` | `PVBlockSimulation class >> typesOver:annotation:selectorTable:` |
+| `loopPhisFrom:latch:` | `PVBlockSimulation >> loopPhisWithLatch:` |
+| `nestedOuterPhisFrom:innerMerge:innerPhis:` | `PVBlockSimulation >> nestedOuterPhisWithInnerMerge:innerPhis:` |
+| `selectionMergeStackFrom:phiReg:` | `PVBlockSimulation >> mergeStackWithPhiReg:` |
+
+The three node methods share one selector, so the emitter asks the node for its simulations instead
+of naming its shape, and the 57-line and 23-line class-side methods leave with the move.
+
+Deliberately not in this pass. The protocol taxonomy — `emitting - compute` twelve methods against
+`emitting compute` eleven, plus `emit` against `emitting` and `compilation` against `compiling` — is
+noted and left, because renaming a protocol moves every method in the Tonel file and says nothing
+about the code. The four constant tables stay on the class side: `VectorGraphics-Vulkan` reads them.
+
+Order of work. Pass 3a first, driver by driver: the slots filled, then the parameter shed from one
+method at a time with the suite re-run after each group, then `run_critics`, the validator, the
+commit and the four device classes. Pass 3b second, one Move Method at a time with the suite re-run
+after each, then the same gates. No test changes in either; if one has to change, the plan stops
+and says so.
+
 ### 8. Two families of classes with no common superclass
 
 - Three hand-built kernel builders each define their own `spirv` and
