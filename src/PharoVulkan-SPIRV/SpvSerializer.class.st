@@ -54,18 +54,10 @@ SpvSerializer >> emit: anInstruction [
 
 { #category : 'emit-sections' }
 SpvSerializer >> emitAnnotations [
-    module decorations do: [:d |
-        | kind ops instr |
-        kind := d at: 1.
-        kind = #decorate ifTrue: [
-            ops := OrderedCollection with: (d at: 2) with: (d at: 3).
-            (d at: 4) do: [:l | ops add: l].
-            instr := SpvInstruction opcode: SpvOpcode opDecorate operands: ops asArray ].
-        kind = #memberDecorate ifTrue: [
-            ops := OrderedCollection with: (d at: 2) with: (d at: 3) with: (d at: 4).
-            (d at: 5) do: [:l | ops add: l].
-            instr := SpvInstruction opcode: SpvOpcode opMemberDecorate operands: ops asArray ].
-        instr ifNotNil: [ self emit: instr ] ]
+	"Each annotation answers the instruction it emits, so this section decides only where the
+	 annotations go."
+
+	module decorations do: [ :each | self emit: each instruction ]
 ]
 
 { #category : 'emit-sections' }

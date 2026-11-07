@@ -168,6 +168,7 @@ fail in an image with no checkout of the repository.
 | `SpvModuleEmitter` | Base for emitters; manages the current module |
 | `SpvType` hierarchy | `SpvFloatType`, `SpvVectorType`, `SpvPointerType`, ... |
 | `SpvConstantPool` | Deduplicates type/constant declarations |
+| `SpvAnnotation` hierarchy | `SpvDecorate`, `SpvMemberDecorate`: one entry of the annotation section, each answering the instruction it emits |
 | `SpvSerializer` | Writes the 5-word header + instruction stream to ByteArray |
 | `SpvValidator` | Checks well-formedness before serialization |
 

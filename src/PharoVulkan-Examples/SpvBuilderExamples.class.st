@@ -290,6 +290,17 @@ SpvBuilderExamples class >> loopSplit [
 	^ 5
 ]
 
+{ #category : 'examples' }
+SpvBuilderExamples class >> memberOffsetAnnotation [
+"One click: the annotation the one member of the buffer structure carries, taken from the
+	 module structuredControlFlowBuilder builds. Open the Annotation tab to read the
+	 instruction it writes into the module."
+
+	<sampleInstance>
+^ self structuredControlFlowBuilder module decorations detect: [ :each |
+	  each opcode = SpvOpcode opMemberDecorate ]
+]
+
 { #category : 'constants' }
 SpvBuilderExamples class >> scalarBitWidth [
 	^ 32

@@ -67,7 +67,10 @@ SpvModule >> addCapability: aSymbol [
 
 { #category : 'building' }
 SpvModule >> addDecoration: anId decoration: decorationInt literals: anArray [
-    decorations add: {#decorate. anId. decorationInt. anArray}
+	decorations add: (SpvDecorate
+			 target: anId
+			 decoration: decorationInt
+			 literals: anArray)
 ]
 
 { #category : 'building' }
@@ -97,7 +100,11 @@ SpvModule >> addGlobalVariable: anSpvGlobalVariable [
 
 { #category : 'building' }
 SpvModule >> addMemberDecoration: aStructId member: memberIdx decoration: decorationInt literals: anArray [
-    decorations add: {#memberDecorate. aStructId. memberIdx. decorationInt. anArray}
+	decorations add: (SpvMemberDecorate
+			 target: aStructId
+			 member: memberIdx
+			 decoration: decorationInt
+			 literals: anArray)
 ]
 
 { #category : 'accessing' }

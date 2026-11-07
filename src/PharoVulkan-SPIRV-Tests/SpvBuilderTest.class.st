@@ -161,6 +161,47 @@ SpvBuilderTest >> resultIdOfTypeOrConstant: anOpcode at: anIndex in: words [
 	^ nil
 ]
 
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testADecorationAnswersTheOpDecorateInstructionOfItsOperands [
+	"A decoration is an object that answers its own instruction. The serializer used to read an
+	 Array with a symbol in slot one and decide the opcode itself."
+
+	| instruction |
+	instruction := (SpvDecorate
+		                target: 7
+		                decoration: SpvDecoration arrayStride
+		                literals: #( 4 )) instruction.
+	self assert: instruction opcode equals: SpvOpcode opDecorate.
+	self assert: instruction resultId isNil.
+	self
+		assert: instruction operands asArray
+		equals: {
+				7.
+				SpvDecoration arrayStride.
+				4 }
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testAMemberDecorationNamesItsMemberBetweenTheStructAndTheDecoration [
+	"OpMemberDecorate carries the member index between the struct and the decoration, which is
+	 the one difference between the two kinds of annotation this project emits."
+
+	| instruction |
+	instruction := (SpvMemberDecorate
+		                target: 9
+		                member: 1
+		                decoration: SpvDecoration offset
+		                literals: #( 16 )) instruction.
+	self assert: instruction opcode equals: SpvOpcode opMemberDecorate.
+	self
+		assert: instruction operands asArray
+		equals: {
+				9.
+				1.
+				SpvDecoration offset.
+				16 }
+]
+
 { #category : 'tests' }
 SpvBuilderTest >> testArrayLengthConstantIsDefinedBeforeTheArrayType [
 	"An array type's length is an id, so the constant holding it has to be serialised first.
@@ -310,6 +351,51 @@ SpvBuilderTest >> testCooperativeMatrixTypeIsOnePerShapeAndRole [
 		equals: (builder types
 				 cooperativeMatrixType: f16
 				 shape: (shapeOf value: SpvCooperativeMatrixType matrixBUse)) id
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testDecorationNamesComeFromTheConstantsThemselves [
+	"The reverse lookup the annotation view reads: a number no constant answers has no name, and
+	 the name of one that does is the selector that answers it, so a constant renamed renames
+	 itself here."
+
+	self
+		assert: (SpvDecoration nameOfDecoration: SpvDecoration arrayStride)
+		equals: #arrayStride.
+	self
+		assert: (SpvDecoration nameOfDecoration: SpvDecoration bindingDecoration)
+		equals: #bindingDecoration.
+	self assert: (SpvDecoration nameOfDecoration: -1) isNil
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testEmitAnnotationsNamesNoKindAndNoOpcodeOfItsOwn [
+	"The type test is gone for good: the section method asks each annotation for its instruction
+	 and names neither kind nor opcode, so a third kind of annotation needs no edit here."
+
+	| method |
+	method := SpvSerializer >> #emitAnnotations.
+	self assert: (method messages includes: #instruction).
+	self deny: (method literals anySatisfy: [ :each |
+			 #( #decorate #memberDecorate ) includes: each ]).
+	self deny: (method messages anySatisfy: [ :each |
+			 #( #opDecorate #opMemberDecorate ) includes: each ])
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testEveryAnnotationKindAnswersAnOpcodeAndOperandsOfItsOwn [
+	"SpvAnnotation holds the target, the decoration and the literals, and declares the two hooks
+	 without answering either: a kind of annotation says what it emits rather than inherit a
+	 guess from its superclass."
+
+	self assert: SpvAnnotation subclasses size equals: 2.
+	SpvAnnotation subclasses do: [ :each |
+		self assert: (each includesSelector: #opcode).
+		self assert: (each includesSelector: #operands) ].
+	#( #opcode #operands ) do: [ :selector |
+		self
+			should: [ SpvAnnotation new perform: selector ]
+			raise: SubclassResponsibility ]
 ]
 
 { #category : 'tests - package' }
@@ -508,6 +594,80 @@ SpvBuilderTest >> testStructuredSelectionBranchesOverItsBodyToAMergeBlock [
 	self assert: blocks second terminator opcode equals: SpvOpcode opBranch.
 	self assert: blocks second terminator operands first equals: blocks third id.
 	self assert: builder currentBlock equals: blocks third
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testTheAnnotationSectionIsWhatItsAnnotationsAnswer [
+	"The annotation section of a serialised module is the concatenation of the instructions its
+	 annotations answer, so the serializer decides nothing about a decoration beyond where it
+	 goes."
+
+	| module words expected |
+	module := SpvModule new beShaderModule.
+	module addDecoration: 3 decoration: SpvDecoration block literals: #(  ).
+	module
+		addMemberDecoration: 3
+		member: 0
+		decoration: SpvDecoration offset
+		literals: #( 0 ).
+	words := self wordsIn: (SpvSerializer serialize: module).
+	expected := module decorations flatCollect: [ :each |
+		            | stream |
+		            stream := WriteStream on: (Array new: 0).
+		            each instruction encodeInto: stream.
+		            stream contents ].
+	self
+		assert:
+		(words asArray indexOfSubCollection: expected asArray startingAt: 1) > 0
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testTheAnnotationViewReadsTheAnnotationItShows [
+	"The view names the instruction and the decoration through the reverse lookups rather than
+	 restating them, shows the member only for the kind that carries one, and its operand row is
+	 the operands of the instruction it would emit."
+
+	| annotation view |
+	annotation := SpvBuilderExamples memberOffsetAnnotation.
+	view := annotation inspectorAnnotation: SpPresenter new.
+	self
+		assert: (view items detect: [ :each | each name = 'instruction' ]) value
+		equals: #opMemberDecorate asString.
+	self
+		assert: (view items detect: [ :each | each name = 'decoration' ]) value
+		equals: #offset asString.
+	self
+		assert: (view items detect: [ :each | each name = 'operands' ]) value
+		equals: annotation instruction operands asArray printString.
+	self assert: (view items anySatisfy: [ :each | each name = 'member' ]).
+	view := (SpvDecorate
+		         target: 7
+		         decoration: SpvDecoration block
+		         literals: #(  )) inspectorAnnotation: SpPresenter new.
+	self deny: (view items anySatisfy: [ :each | each name = 'member' ])
+]
+
+{ #category : 'tests - annotations' }
+SpvBuilderTest >> testTheModuleKeepsAnAnnotationForEveryDecorationItIsGiven [
+	"What the module holds for a decoration is an annotation object, not an Array whose first
+	 slot a reader has to interpret, and the order it was given in is kept."
+
+	| module |
+	module := SpvModule new.
+	module addDecoration: 3 decoration: SpvDecoration block literals: #(  ).
+	module
+		addMemberDecoration: 3
+		member: 0
+		decoration: SpvDecoration offset
+		literals: #( 0 ).
+	self assert: (module decorations allSatisfy: [ :each |
+			 each class includesBehavior: SpvAnnotation ]).
+	self
+		assert:
+		(module decorations collect: [ :each | each instruction opcode ]) asArray
+		equals: {
+				SpvOpcode opDecorate.
+				SpvOpcode opMemberDecorate }
 ]
 
 { #category : 'tests' }

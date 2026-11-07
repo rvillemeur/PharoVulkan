@@ -191,6 +191,27 @@ which deletes the type test with it.
 Gain: medium to high; `PharoVulkan-SPIRV` is the most-read package of the project. Risk: low to
 medium, depending on how many places build a decoration.
 
+**Done.** `SpvAnnotation` holds the target, the decoration and the literals, and declares two
+hooks it answers itself for neither: `opcode` and `operands`. `SpvDecorate` answers `OpDecorate`
+and `{ target. decoration } , literals`; `SpvMemberDecorate` answers `OpMemberDecorate` and puts
+the member index where that instruction asks for it. `SpvAnnotation >> instruction` builds the
+`SpvInstruction` from the two, so `SpvSerializer >> emitAnnotations` is now one line that asks each
+annotation for its instruction and names neither a kind nor an opcode. The two builders on
+`SpvModule` answer the objects instead of Arrays; nothing else in the project read the Array shape.
+`SpvDecoration class >> nameOfDecoration:` is the reverse lookup the new view reads, written by
+reflection over the class's own constants, as `SpvOpcode class >> nameOfOpcode:` already was.
+Eight new tests in `SpvBuilderTest` (protocol `tests - annotations`), one `<sampleInstance>`
+example (`SpvBuilderExamples class >> memberOffsetAnnotation`) and one shared inspector view
+(`SpvAnnotation >> inspectorAnnotation:`, which shows the member row only for the kind that carries
+one). 32 tests in `SpvBuilderTest`, 485 in the non-device suite, critics clean on what changed.
+
+One client outside this repository read the Array shape: `VGTiledFillKernelTest >>
+kernelDecorationLiterals:`, in the VectorGraphics project that shares this image, selected on
+`each first = #decorate` and read slots three and four. The project's rule is to stop and report
+when a refactoring forces a test to change, which was done; the user chose to have it corrected,
+so that helper now selects on `each opcode = SpvOpcode opDecorate` and reads `decoration` and
+`literals`. It is not part of this commit and belongs to the VectorGraphics checkout.
+
 ## 5. Two conformance gaps left by recent work
 
 - `PVStructuredNode` declares one hook, but its three subclasses have implemented

@@ -25,7 +25,7 @@ format. Iceberg manages commits of `src/` — do not use git directly for it.
 | Package | Classes | Purpose |
 |---|---|---|
 | `PharoVulkan-Bindings` | 144 | Generated Vulkan uFFI bindings: commands, structures, handles, the named constant classes (tag `Constants`), `VkResult` and `VkError` |
-| `PharoVulkan-SPIRV` | 39 | SPIR-V binary builder: module, builder, types, constant pool, serialiser, validator, `PVTypeError` |
+| `PharoVulkan-SPIRV` | 43 | SPIR-V binary builder: module, builder, types, constant pool, serialiser, validator, `PVTypeError` |
 | `PharoVulkan-Compiler` | 24 | Pharo bytecode → SPIR-V in seven stages (tag `Pipeline`), the DSL selector table, and the `spirv-val` wrapper |
 | `PharoVulkan-Core` | 17 | Vulkan lifecycle: instance, physical device, device, queue, buffer, memory, command pool and buffer, shader module, pipeline layout |
 | `PharoVulkan-Compute` | 18 | Compute path: descriptor layout and pool, compute pipeline, kernel runner, cooperative matrix, benchmarks, and the two abstract superclasses of the hand-built kernels (`PVSpirvKernel`) and of the runs that allocate their buffers around a dispatch (`PVDeviceRun`) |
