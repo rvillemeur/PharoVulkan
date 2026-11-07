@@ -567,6 +567,17 @@ forked device run must resume notifications, not catch them. `PVGraphicsTest` ra
 `ProvideAnswerNotification` ("You need to restart your image for this changes to take effect"), and
 an `on: Exception do:` handler around the run treats it as a failure and abandons the suite;
 `on: Notification do: [ :e | e resume: nil ]` inside the error handler is what lets it finish.
+After the pass 3b commit the same four ran again — `VkCoreTest` 68, `PVComputeTest` 63,
+`VkImageTest` 8, and `PVGraphicsTest` 52 of 53 with one error, then 53 of 53 when that class was run
+a second time on its own. The error is the device-state kind point 10 already recorded against
+`VkCoreTest`: it does not reproduce, and pass 3b touched no graphics code.
+
+A second trap, and the one that costs the most time: `PVGraphicsTest` opens a real window, and the
+image then stands with that "hello triangle" window in front of it and answers nothing. Every MCP
+evaluation times out, `1 + 1` included, which looks exactly like a crashed image from the agent's
+side. It is not one. The run resumes the moment someone clicks in the window, and the result file
+appears straight afterwards. So a timeout during a forked graphics run is not evidence of a crash:
+the person at the machine has to interact with the window before the suite can finish.
 
 ### 8. Two families of classes with no common superclass
 
