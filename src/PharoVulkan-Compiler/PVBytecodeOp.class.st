@@ -7,8 +7,7 @@ Class {
 	#instVars : [
 		'pc',
 		'opcode',
-		'operands',
-		'stackEffect'
+		'operands'
 	],
 	#category : 'PharoVulkan-Compiler-Bytecode',
 	#package : 'PharoVulkan-Compiler',
@@ -16,8 +15,8 @@ Class {
 }
 
 { #category : 'instance creation' }
-PVBytecodeOp class >> pc: p opcode: op operands: args stackEffect: se [
-	^ self new pc: p; opcode: op; operands: args; stackEffect: se; yourself
+PVBytecodeOp class >> pc: p opcode: op operands: args [
+	^ self new pc: p; opcode: op; operands: args; yourself
 ]
 
 { #category : 'accessing' }
@@ -57,9 +56,4 @@ PVBytecodeOp >> printOn: aStream [
 	aStream nextPutAll: ' '.
 	aStream nextPutAll: opcode.
 	aStream nextPutAll: ')'
-]
-
-{ #category : 'accessing' }
-PVBytecodeOp >> stackEffect: anInteger [
-	stackEffect := anInteger
 ]

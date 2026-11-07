@@ -6,8 +6,6 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'handle',
-		'pool',
-		'layout',
 		'device'
 	],
 	#category : 'PharoVulkan-Compute-Descriptors',
@@ -71,16 +69,6 @@ VkDescriptorSet >> handle [
 { #category : 'accessing' }
 VkDescriptorSet >> handle: aHandle [
 	handle := aHandle
-]
-
-{ #category : 'accessing' }
-VkDescriptorSet >> layout: aLayout [
-	layout := aLayout
-]
-
-{ #category : 'accessing' }
-VkDescriptorSet >> pool: aPool [
-	pool := aPool
 ]
 
 { #category : 'private' }

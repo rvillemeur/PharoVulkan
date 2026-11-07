@@ -33,10 +33,6 @@ VkXmlParser >> parseCommands [
         | desc nameEl typeEl |
         cmdEl tag = 'command' ifTrue: [
             desc := VkCommandDescriptor new.
-            (cmdEl at: 'successcodes' ifAbsent: [ nil ]) ifNotNil: [ :ss |
-                desc successCodes: (ss substrings: ',') ].
-            (cmdEl at: 'errorcodes' ifAbsent: [ nil ]) ifNotNil: [ :es |
-                desc errorCodes: (es substrings: ',') ].
             nameEl := cmdEl children detect: [ :c | c tag = 'proto' ] ifNone: [ nil ].
             nameEl ifNotNil: [
                 typeEl := nameEl children detect: [ :c | c tag = 'type' ] ifNone: [ nil ].
@@ -107,7 +103,6 @@ VkXmlParser >> parseMembersFrom: typeEl [
                 desc type: t text asString ].
             raw := mNode text asString.
             desc isPointer: (raw includesSubstring: '*').
-            desc isConst: (raw includesSubstring: 'const').
             members add: desc ] ].
     ^ members
 ]
@@ -126,7 +121,6 @@ VkXmlParser >> parseParamsFrom: cmdEl [
                 desc type: t text asString ].
             raw := pNode text asString.
             desc isPointer: (raw includesSubstring: '*').
-            desc isConst: (raw includesSubstring: 'const').
             params add: desc ] ].
     ^ params
 ]

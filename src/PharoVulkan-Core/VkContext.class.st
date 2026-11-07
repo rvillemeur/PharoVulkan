@@ -367,17 +367,15 @@ VkContext >> createDeviceFromCreateInfo: aCreateInfo [
 	| devBuf result devHandle |
 	devBuf := ExternalAddress allocate: self class pointerSize.
 	^ [
-	  result := Vk
-		            createDevice: physicalDevice handle
-		            createInfo: aCreateInfo getHandle
-		            allocator: ExternalAddress null
-		            deviceOut: devBuf.
-	  Vk checkResult: result.
-	  devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
-	  device := VkDevice
-		            on: devHandle
-		            physicalDevice: physicalDevice
-		            context: self ] ensure: [ devBuf free ]
+		  result := Vk
+			            createDevice: physicalDevice handle
+			            createInfo: aCreateInfo getHandle
+			            allocator: ExternalAddress null
+			            deviceOut: devBuf.
+		  Vk checkResult: result.
+		  devHandle := VkDevice_H fromHandle: (devBuf pointerAt: 1).
+		  device := VkDevice on: devHandle physicalDevice: physicalDevice ]
+		  ensure: [ devBuf free ]
 ]
 
 { #category : 'initialization' }
@@ -593,10 +591,9 @@ VkContext >> fetchComputeQueue [
 			                queueFamilyIndex: computeQueueFamily
 			                queueIndex: 0
 			                queue: buf.
-		                VkQueue
-			                on: (VkQueue_H fromHandle: (buf pointerAt: 1))
-			                familyIndex: computeQueueFamily ] ensure: [
-		                buf free ]
+		                VkQueue on:
+			                (VkQueue_H fromHandle: (buf pointerAt: 1)) ]
+		                ensure: [ buf free ]
 ]
 
 { #category : 'fetching' }
@@ -610,10 +607,9 @@ VkContext >> fetchGraphicsQueue [
 			                queueFamilyIndex: computeQueueFamily
 			                queueIndex: 0
 			                queue: buf.
-		                VkQueue
-			                on: (VkQueue_H fromHandle: (buf pointerAt: 1))
-			                familyIndex: computeQueueFamily ] ensure: [
-		                buf free ]
+		                VkQueue on:
+			                (VkQueue_H fromHandle: (buf pointerAt: 1)) ]
+		                ensure: [ buf free ]
 ]
 
 { #category : 'private - instance' }

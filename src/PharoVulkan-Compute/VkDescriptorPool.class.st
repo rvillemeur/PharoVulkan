@@ -115,8 +115,7 @@ VkDescriptorPool >> allocateSet: aSetLayout [
 
 	| layouts |
 	layouts := self layoutArrayOutsideObjectMemory: aSetLayout.
-	^ [ self setForLayoutArray: layouts layout: aSetLayout ]
-		  ensure: [ layouts free ]
+	^ [ self setForLayoutArray: layouts ] ensure: [ layouts free ]
 ]
 
 { #category : 'lifecycle' }
@@ -275,7 +274,7 @@ VkDescriptorPool >> poolSizeOutsideObjectMemory [
 ]
 
 { #category : 'private' }
-VkDescriptorPool >> setForAllocateInfo: anAllocateInfo layout: aSetLayout [
+VkDescriptorPool >> setForAllocateInfo: anAllocateInfo [
 	"vkAllocateDescriptorSets writes the new set's handle into a block outside the image. The
 	 result is checked before that block is read, because a failed call leaves it holding
 	 whatever was there, and because the pool answers VK_ERROR_OUT_OF_POOL_MEMORY once maxSets
@@ -291,15 +290,13 @@ VkDescriptorPool >> setForAllocateInfo: anAllocateInfo layout: aSetLayout [
 	  Vk checkResult: result.
 	  set := VkDescriptorSet new.
 	  set handle: (VkDescriptorSet_H fromHandle: (setBuf pointerAt: 1)).
-	  set pool: self.
-	  set layout: aSetLayout.
 	  set device: device.
 	  setsAllocated := self setsAllocated + 1.
 	  set ] ensure: [ setBuf free ]
 ]
 
 { #category : 'private' }
-VkDescriptorPool >> setForLayoutArray: aLayoutArray layout: aSetLayout [
+VkDescriptorPool >> setForLayoutArray: aLayoutArray [
 	"The allocate info, filled through the accessors uFFI generated, so no offset is counted
 	 here. externalInstance runs initialize, so the structure type and the null chain pointer
 	 are already in place and only the pool, the count and the layout array are written. Its
@@ -312,8 +309,7 @@ VkDescriptorPool >> setForLayoutArray: aLayoutArray layout: aSetLayout [
 		        descriptorSetCount: self class setAllocationCount;
 		        pSetLayouts: aLayoutArray;
 		        yourself.
-	^ [ self setForAllocateInfo: info layout: aSetLayout ]
-		  ensure: [ info getHandle free ]
+	^ [ self setForAllocateInfo: info ] ensure: [ info getHandle free ]
 ]
 
 { #category : 'accessing' }

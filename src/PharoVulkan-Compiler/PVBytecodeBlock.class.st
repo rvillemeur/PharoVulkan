@@ -6,7 +6,6 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'id',
-		'startPc',
 		'ops',
 		'successors',
 		'predecessors'
@@ -53,11 +52,6 @@ PVBytecodeBlock >> predecessors [
 { #category : 'accessing' }
 PVBytecodeBlock >> predecessors: c [
 	predecessors := c
-]
-
-{ #category : 'accessing' }
-PVBytecodeBlock >> startPc: n [
-	startPc := n
 ]
 
 { #category : 'accessing' }

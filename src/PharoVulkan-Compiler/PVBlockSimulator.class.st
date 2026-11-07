@@ -4,24 +4,10 @@ Simulates a single bytecode block in isolation during SSA construction. Executes
 Class {
 	#name : 'PVBlockSimulator',
 	#superclass : 'Object',
-	#instVars : [
-		'annotation',
-		'selectorTable'
-	],
 	#category : 'PharoVulkan-Compiler-Registers',
 	#package : 'PharoVulkan-Compiler',
 	#tag : 'Registers'
 }
-
-{ #category : 'accessing' }
-PVBlockSimulator >> annotation: ann [
-	annotation := ann
-]
-
-{ #category : 'accessing' }
-PVBlockSimulator >> selectorTable: st [
-	selectorTable := st
-]
 
 { #category : 'simulating' }
 PVBlockSimulator >> simulateBlock: aBlock initialTempDefs: tempDefs startingNextReg: startReg [

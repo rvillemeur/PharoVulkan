@@ -8,8 +8,7 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'grammar',
-		'instructions',
-		'operandKinds'
+		'instructions'
 	],
 	#category : 'PharoVulkan-Generator-SPIRV',
 	#package : 'PharoVulkan-Generator',
@@ -27,8 +26,7 @@ SpvGrammarParser >> parseFile: aFilePath [
     | json |
     json := NeoJSONReader fromString: aFilePath asFileReference contents.
     grammar := json.
-    self parseInstructions.
-    self parseOperandKinds
+    self parseInstructions
 ]
 
 { #category : 'parsing' }
@@ -53,12 +51,4 @@ SpvGrammarParser >> parseInstructions [
                     quant = '?' ifTrue: [#optional] ifFalse: [#variadic]]).
             od]) asArray.
         instructions at: desc opname put: desc]
-]
-
-{ #category : 'parsing' }
-SpvGrammarParser >> parseOperandKinds [
-    "Build operandKinds dictionary from the grammar operand_kinds list."
-    operandKinds := Dictionary new.
-    (grammar at: 'operand_kinds' ifAbsent: [#()]) do: [:entry |
-        operandKinds at: (entry at: 'kind') put: entry]
 ]

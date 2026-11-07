@@ -28,9 +28,8 @@ PVCFGBuilder class >> buildBytecodeBlocks: bytecodeOps [
 			| blk |
 			blk := PVBytecodeBlock new initialize.
 			blk id: i.
-			blk startPc: pc.
 			blockMap at: pc put: blk ].
-	"Assign each op to the block whose startPc is highest but <= op.pc"
+	"Assign each op to the block whose leader pc is highest but <= op.pc"
 	bytecodeOps do: [:op |
 		| blkPc |
 		blkPc := (sorted select: [:pc | pc <= op pc]) last.

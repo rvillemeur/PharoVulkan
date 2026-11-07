@@ -9,8 +9,7 @@ Class {
 	#instVars : [
 		'id',
 		'type',
-		'storageClass',
-		'initializer'
+		'storageClass'
 	],
 	#category : 'PharoVulkan-SPIRV-Builder',
 	#package : 'PharoVulkan-SPIRV',
@@ -36,14 +35,14 @@ SpvGlobalVariable >> id: x [         id := x
 
 { #category : 'encoding' }
 SpvGlobalVariable >> instruction [
-    | ops |
-    ops := OrderedCollection with: storageClass.
-    initializer ifNotNil: [:init | ops add: init].
-    ^ SpvInstruction
-        opcode: SpvOpcode opVariable
-        resultType: type id
-        resultId: id
-        operands: ops asArray
+	"The operand list is just the storage class: a global variable of this builder never has an
+	 initializer, so nothing can extend it."
+
+	^ SpvInstruction
+		  opcode: SpvOpcode opVariable
+		  resultType: type id
+		  resultId: id
+		  operands: { storageClass }
 ]
 
 { #category : 'accessing' }

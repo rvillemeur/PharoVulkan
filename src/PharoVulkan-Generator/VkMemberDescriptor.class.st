@@ -8,19 +8,12 @@ Class {
 	#instVars : [
 		'name',
 		'type',
-		'isPointer',
-		'isConst',
-		'arrayLen'
+		'isPointer'
 	],
 	#category : 'PharoVulkan-Generator-Vulkan',
 	#package : 'PharoVulkan-Generator',
 	#tag : 'Vulkan'
 }
-
-{ #category : 'accessing' }
-VkMemberDescriptor >> isConst: aValue [
-    isConst := aValue
-]
 
 { #category : 'accessing' }
 VkMemberDescriptor >> isPointer [

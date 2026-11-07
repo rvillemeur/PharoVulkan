@@ -5,8 +5,7 @@ Class {
 	#name : 'VkQueue',
 	#superclass : 'Object',
 	#instVars : [
-		'handle',
-		'familyIndex'
+		'handle'
 	],
 	#category : 'PharoVulkan-Core-Commands',
 	#package : 'PharoVulkan-Core',
@@ -43,8 +42,9 @@ VkQueue class >> graphicsSemaphoreStageMask [
 ]
 
 { #category : 'factory' }
-VkQueue class >> on: aHandle familyIndex: idx [
-    ^ self new initializeWith: aHandle familyIndex: idx
+VkQueue class >> on: aHandle [
+
+	^ self new initializeWith: aHandle
 ]
 
 { #category : 'constants' }
@@ -108,8 +108,8 @@ VkQueue >> handle [
 ]
 
 { #category : 'initialization' }
-VkQueue >> initializeWith: aHandle familyIndex: idx [
-    handle := aHandle. familyIndex := idx
+VkQueue >> initializeWith: aHandle [
+	handle := aHandle
 ]
 
 { #category : 'submitting' }

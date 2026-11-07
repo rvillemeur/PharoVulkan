@@ -9,19 +9,12 @@ Class {
 	#instVars : [
 		'name',
 		'returnType',
-		'params',
-		'successCodes',
-		'errorCodes'
+		'params'
 	],
 	#category : 'PharoVulkan-Generator-Vulkan',
 	#package : 'PharoVulkan-Generator',
 	#tag : 'Vulkan'
 }
-
-{ #category : 'accessing' }
-VkCommandDescriptor >> errorCodes: aValue [
-    errorCodes := aValue
-]
 
 { #category : 'accessing' }
 VkCommandDescriptor >> name [
@@ -51,9 +44,4 @@ VkCommandDescriptor >> returnType [
 { #category : 'accessing' }
 VkCommandDescriptor >> returnType: aValue [
     returnType := aValue
-]
-
-{ #category : 'accessing' }
-VkCommandDescriptor >> successCodes: aValue [
-    successCodes := aValue
 ]

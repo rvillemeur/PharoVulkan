@@ -11,7 +11,6 @@ Class {
 	#instVars : [
 		'handle',
 		'device',
-		'surface',
 		'images',
 		'imageViews',
 		'format',
@@ -374,7 +373,6 @@ VkSwapchain >> initializeDevice: aVkDevice surface: aVkSurface extent: aPoint [
 
 	| capabilities info |
 	device := aVkDevice.
-	surface := aVkSurface.
 	extent := aPoint.
 	capabilities := aVkSurface capabilities.
 	info := self class

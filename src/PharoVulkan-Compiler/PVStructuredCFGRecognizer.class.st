@@ -5,8 +5,7 @@ Class {
 	#name : 'PVStructuredCFGRecognizer',
 	#superclass : 'Object',
 	#instVars : [
-		'blocks',
-		'blockMap'
+		'blocks'
 	],
 	#category : 'PharoVulkan-Compiler-Pipeline',
 	#package : 'PharoVulkan-Compiler',
@@ -42,9 +41,7 @@ PVStructuredCFGRecognizer >> covers: aNode [
 
 { #category : 'initialize-release' }
 PVStructuredCFGRecognizer >> initialize: aBlockArray [
-	blocks := aBlockArray.
-	blockMap := Dictionary new.
-	blocks do: [ :b | blockMap at: b id put: b ]
+	blocks := aBlockArray
 ]
 
 { #category : 'inspecting' }

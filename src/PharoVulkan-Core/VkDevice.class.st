@@ -6,8 +6,7 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'handle',
-		'physicalDevice',
-		'context'
+		'physicalDevice'
 	],
 	#category : 'PharoVulkan-Core-Device',
 	#package : 'PharoVulkan-Core',
@@ -15,8 +14,9 @@ Class {
 }
 
 { #category : 'factory' }
-VkDevice class >> on: aHandle physicalDevice: aPD context: aCtx [
-    ^ self new initializeWith: aHandle physicalDevice: aPD context: aCtx
+VkDevice class >> on: aHandle physicalDevice: aPD [
+
+	^ self new initializeWith: aHandle physicalDevice: aPD
 ]
 
 { #category : 'factory' }
@@ -79,8 +79,9 @@ VkDevice >> handle [
 ]
 
 { #category : 'initialization' }
-VkDevice >> initializeWith: aHandle physicalDevice: aPD context: aCtx [
-    handle := aHandle. physicalDevice := aPD. context := aCtx
+VkDevice >> initializeWith: aHandle physicalDevice: aPD [
+	handle := aHandle.
+	physicalDevice := aPD
 ]
 
 { #category : 'accessing' }

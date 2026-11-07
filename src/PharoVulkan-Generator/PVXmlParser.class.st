@@ -8,8 +8,7 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'stream',
-		'stack',
-		'root'
+		'stack'
 	],
 	#category : 'PharoVulkan-Generator-Vulkan',
 	#package : 'PharoVulkan-Generator',
@@ -164,7 +163,7 @@ PVXmlParser >> parseProcessingInstruction [
 
 { #category : 'parsing' }
 PVXmlParser >> parseSource: aString [
-    | synthetic |
+    | synthetic root |
     synthetic := PVXmlElement new tag: '__root__'.
     stream := ReadStream on: aString.
     stack := OrderedCollection with: synthetic.

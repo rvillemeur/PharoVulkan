@@ -6,8 +6,7 @@ Class {
 	#superclass : 'Object',
 	#instVars : [
 		'spirvOp',
-		'resultTypeSymbol',
-		'isSpecialForm'
+		'resultTypeSymbol'
 	],
 	#category : 'PharoVulkan-Compiler-Selectors',
 	#package : 'PharoVulkan-Compiler',
@@ -16,12 +15,7 @@ Class {
 
 { #category : 'instance creation' }
 PVSelectorMapping class >> spirvOp: op resultType: rt [
-	^ self new spirvOp: op; resultTypeSymbol: rt; isSpecialForm: false; yourself
-]
-
-{ #category : 'accessing' }
-PVSelectorMapping >> isSpecialForm: aBoolean [
-	isSpecialForm := aBoolean
+	^ self new spirvOp: op; resultTypeSymbol: rt; yourself
 ]
 
 { #category : 'accessing' }
