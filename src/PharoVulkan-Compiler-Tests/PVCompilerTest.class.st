@@ -301,6 +301,29 @@ PVCompilerTest >> suffixOfATestPackage [
 	^ '-Tests'
 ]
 
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testAMappingAnswersTheEmitterSelectorOfItsOwnOperation [
+	"A mapping knows how it is emitted: that is what moved out of the emitter. An operation
+	 whose emitter needs the result type as well answers a selector of three keywords, and the
+	 mapping is the only object that can fill that argument."
+
+	self
+		assert: (PVSelectorMapping spirvOp: #workItemY resultType: #u32)
+				emitterSelector
+		equals: #emitWorkItemY:block:.
+	self
+		assert: (PVSelectorMapping spirvOp: #glslSqrt resultType: #f32)
+				emitterSelector
+		equals: #emitGlslSqrt:block:.
+	self
+		assert: (PVSelectorMapping spirvOp: #coopMatrixLoad resultType: #coopMatA)
+				emitterSelector numArgs
+		equals: 3.
+	self
+		assert: (PVSelectorMapping spirvOp: #OpFAdd resultType: #f32) emitterSelector
+		equals: nil
+]
+
 { #category : 'tests - block simulation' }
 PVCompilerTest >> testASimulatedBlockNamesItsFiveParts [
 	| node sim |
@@ -321,6 +344,28 @@ PVCompilerTest >> testAlphaClipFragmentCompiles [
 	| bytes |
 	bytes := PVKernelCompiler compileMethod: (PVKernelExamples >> #alphaClip:threshold:).
 	self assertSpirvMagic: bytes description: 'alphaClip:threshold:'
+]
+
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testAnOpcodeNoEmitterKnowsEmitsNothing [
+	"The degenerate state: a register op carrying an opcode the table does not name must leave
+	 the block it was given untouched rather than raise. #self is such an opcode today, and a
+	 stage that invents a new one must not break a kernel that never reaches it."
+
+	| emitter block |
+	emitter := PVSPIRVEmitter new.
+	block := SpvBlock new id: 1; yourself.
+	#( #self #thisOpcodeExistsNowhere ) do: [ :opcode |
+		emitter
+			emitRegOp: (PVRegisterOp
+					 pc: 0
+					 opcode: opcode
+					 result: 1
+					 inputs: #(  )
+					 literal: nil)
+			block: block.
+		self assert: block instructions isEmpty.
+		self assert: block terminator isNil ]
 ]
 
 { #category : 'tests' }
@@ -656,6 +701,37 @@ PVCompilerTest >> testDefaultLocalSizeWhenPragmaAbsent [
 	self assert: literals equals: PVTypeAnnotation defaultLocalSize
 ]
 
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testEmitRegOpNamesNoOpcodeOfItsOwn [
+	"The dispatcher looks its branch up and sends it. A comparison against an opcode symbol
+	 written inside it would be a branch the table does not know about, which is the shape this
+	 refactoring removed, so the method is held to naming no opcode at all."
+
+	| method |
+	method := PVSPIRVEmitter >> #emitRegOp:block:.
+	PVSPIRVEmitter regOpEmitters keysDo: [ :opcode |
+		self
+			deny: (method literals includes: opcode)
+			description: opcode printString , ' is tested inside the dispatcher' ].
+	self assert: (method messages includes: #regOpEmitters)
+]
+
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testEmitSendNamesNoSpirvOperationOfItsOwn [
+	"The send branch asks the mapping which method emits it. A comparison against a spirvOp
+	 symbol written inside it would be a branch no table knows about, which is the shape this
+	 refactoring removed."
+
+	| method |
+	method := PVSPIRVEmitter >> #emitSend:block:.
+	PVSelectorTable standard table valuesDo: [ :mapping |
+		self
+			deny: (method literals includes: mapping spirvOp)
+			description: mapping spirvOp printString
+				, ' is tested inside the send branch' ].
+	self assert: (method messages includes: #emitOn:op:block:)
+]
+
 { #category : 'tests - dsl surface' }
 PVCompilerTest >> testEveryMappedSelectorThisProjectAddsToABaseClassStaysInsideItsOwnLayer [
 	"The selector table is the DSL surface: a kernel writes clamp:to: or coopMatLoad:, and the
@@ -682,6 +758,27 @@ PVCompilerTest >> testEveryMappedSelectorThisProjectAddsToABaseClassStaysInsideI
 	self assertEmpty: strays
 ]
 
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testEveryRegisterOpcodeTheEmitterHandlesHasItsOwnMethod [
+	"The register opcodes are dispatched through a table rather than tested one by one, so the
+	 table is what has to be complete: every opcode a simulation can produce names a selector
+	 the emitter really implements. An opcode absent from the table emits nothing, which is
+	 what #self has always done."
+
+	| table |
+	table := PVSPIRVEmitter regOpEmitters.
+	self
+		assertCollection: table keys asSortedCollection asArray
+		equals: #( #const #move #return #returnSelf #send #storeInstVar )
+				  asSortedCollection asArray.
+	table valuesDo: [ :selector |
+		self
+			assert: (PVSPIRVEmitter includesSelector: selector)
+			description: selector printString , ' is named by the table and not implemented'.
+		self assert: selector numArgs equals: 2 ].
+	self deny: (table includesKey: #self)
+]
+
 { #category : 'tests - dsl selectors' }
 PVCompilerTest >> testEverySelectorAKernelOfThisProjectSendsIsImplemented [
 	| kernels orphans |
@@ -693,6 +790,30 @@ PVCompilerTest >> testEverySelectorAKernelOfThisProjectSendsIsImplemented [
 		assert: orphans isEmpty
 		description: 'sent by a kernel of this project, implemented by no class: '
 			, orphans printString
+]
+
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testEverySpirvOperationOfTheStandardTableIsEmittable [
+	"Each mapping of the dispatch table either names a method of the emitter or compiles to a
+	 plain SPIR-V opcode of its own name. A third case would be a send the emitter accepts and
+	 then cannot emit, which is a type error discovered at serialisation instead of here."
+
+	PVSelectorTable standard table valuesDo: [ :mapping |
+		| selector |
+		selector := mapping emitterSelector.
+		selector
+			ifNil: [
+				self
+					assert: (SpvOpcode class includesSelector:
+							 mapping spirvOp asString uncapitalized asSymbol)
+					description: mapping spirvOp printString
+						, ' names neither an emitter method nor an opcode' ]
+			ifNotNil: [
+				self
+					assert: (PVSPIRVEmitter includesSelector: selector)
+					description: selector printString
+						, ' is named by a mapping and not implemented'.
+				self assert: (selector numArgs between: 2 and: 3) ] ]
 ]
 
 { #category : 'tests - cfg shapes' }
@@ -1259,6 +1380,32 @@ PVCompilerTest >> testTargetRowsOfANodeReadTheOverridesAndNotAList [
 		assert: (emitted value: nested) asArray
 		equals: #( 'Compute kernel' ).
 	self assert: nested targetRows size equals: 3
+]
+
+{ #category : 'tests - dispatch' }
+PVCompilerTest >> testTheDispatchViewsReadTheTablesTheyReport [
+	"Both views are read from the tables rather than from a list written beside them, so the
+	 mapping's own row names the method the dispatch would send, and the emitter's view carries
+	 one row per register opcode and one per operation of the standard table."
+
+	| mapping row view |
+	mapping := PVCompilerExamples mappingOfTheSubgroupSum.
+	view := mapping inspectorEmitting: SpPresenter new.
+	row := view items detect: [ :each | each name = 'emitted by' ].
+	self assert: row value equals: mapping emitterSelector printString.
+	self
+		assert: (view items detect: [ :each | each name = 'takes the result type' ])
+				value
+		equals: true printString.
+	view := PVSPIRVEmitter inspectorDispatch: SpPresenter new.
+	self
+		assert: view items size
+		equals: PVSPIRVEmitter regOpEmitters size
+			+ PVSelectorTable standard table size.
+	self
+		assert: (view items anySatisfy: [ :each |
+				 each value beginsWith: 'plain opcode ' ])
+		description: 'the arithmetic mappings carry no emitter method of their own'
 ]
 
 { #category : 'tests - dsl selectors' }

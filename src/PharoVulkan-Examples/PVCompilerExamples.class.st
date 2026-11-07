@@ -12,6 +12,17 @@ Class {
 }
 
 { #category : 'examples' }
+PVCompilerExamples class >> mappingOfTheSubgroupSum [
+"One click: the mapping the standard dispatch table holds for subgroupSum sent to an f32.
+ Its Emitting tab says which method of PVSPIRVEmitter emits it and whether that method is
+ one the mapping has to hand its own result type to, which is the dispatch the emitter no
+ longer spells out branch by branch."
+
+<sampleInstance>
+^ PVSelectorTable standard at: #subgroupSum receiverType: #f32
+]
+
+{ #category : 'examples' }
 PVCompilerExamples class >> nestedLoopOfTheTiledMatmul [
 	"One click: the node the recogniser builds for the tiled matmul written in Pharo
 	 source, the kernel this shape was added for. The Blocks tab shows which bytecode block

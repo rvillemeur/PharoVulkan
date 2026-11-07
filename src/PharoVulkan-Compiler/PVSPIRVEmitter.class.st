@@ -294,6 +294,49 @@ PVSPIRVEmitter class >> inspectorCooperativeMatrixTypes: aBuilder [
 		  yourself
 ]
 
+{ #category : 'inspector' }
+PVSPIRVEmitter class >> inspectorDispatch: aBuilder [
+"The two levels of the dispatch, read off the tables themselves: one row per register
+ opcode naming the method that emits it, then one row per operation of the standard
+ selector table naming its emitter method or the plain opcode it compiles to. Reflected
+ rather than listed, so it cannot drift from what emitRegOp:block: and emitSend:block:
+ really send."
+
+<inspectorPresentationOrder: 30 title: 'Dispatch'>
+| rows |
+rows := OrderedCollection new.
+self regOpEmitters keysAndValuesDo: [ :opcode :selector |
+rows add: (PVFactRow name: opcode printString value: selector printString) ].
+PVSelectorTable standard table valuesDo: [ :mapping |
+rows add: (PVFactRow
+name: mapping spirvOp printString
+value: (mapping emitterSelector
+ifNil: [ 'plain opcode ' , mapping spirvOp asString uncapitalized ]
+ifNotNil: [ :each | each printString ])) ].
+^ PVFactRow
+tableOf: (rows asSortedCollection: [ :a :b | a name <= b name ]) asArray
+nameColumn: 'Operation'
+valueColumn: 'Emitted by'
+in: aBuilder
+]
+
+{ #category : 'constants' }
+PVSPIRVEmitter class >> regOpEmitters [
+"The one method that emits each register opcode. The dispatcher looks a branch up here and
+ sends it, so an opcode absent from this table emits nothing: #self names a register the
+ emitter already tracks, and a stage that invents an opcode must not take down a kernel
+ that never reaches it. Every selector here takes the op and the block, because the
+ dispatcher cannot know which branch writes an instruction."
+
+^ Dictionary newFrom: {
+(#const -> #emitConst:block:).
+(#move -> #emitMove:block:).
+(#storeInstVar -> #emitStoreInstVar:block:).
+(#send -> #emitSend:block:).
+(#return -> #emitReturn:block:).
+(#returnSelf -> #emitReturnSelf:block:) }
+]
+
 { #category : 'constants' }
 PVSPIRVEmitter class >> scalarByteWidths [
 	"How many bytes one element of each scalar type occupies in a storage buffer."
@@ -1242,6 +1285,20 @@ PVSPIRVEmitter >> emitComputeSelectionFrom: sims [
 	^ spvFunc
 ]
 
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitConst: op block: blk [
+	"A literal becomes a module-level constant the register map then points at, so the block is
+	 given nothing: every branch of the dispatch takes the block, because the dispatcher cannot
+	 know which of them writes an instruction."
+
+	| constId |
+	constId := op literal isFloat
+		           ifTrue: [
+		           module constantPool constantFloat32: op literal asFloat ]
+		           ifFalse: [ module constantPool constantInt32: op literal ].
+	regMap at: op result put: constId
+]
+
 { #category : 'emitting - cooperative matrix' }
 PVSPIRVEmitter >> emitCooperativeMatrixLoad: op resultTypeSymbol: aTypeSymbol block: blk [
 	"coopMatLoad: answers the matrix that starts at the element its argument names. The
@@ -1327,6 +1384,36 @@ PVSPIRVEmitter >> emitExtInst: glslOp op: op block: blk [
 		resultType: resultTypeId
 		resultId: resultId
 		operands: ({ setId. glslOp } , operandIds))
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitGlslFClamp: op block: blk [
+
+	^ self emitExtInst: GlslStd450 fClamp op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitGlslFMix: op block: blk [
+
+	^ self emitExtInst: GlslStd450 fMix op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitGlslLength: op block: blk [
+
+	^ self emitExtInst: GlslStd450 length op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitGlslNormalize: op block: blk [
+
+	^ self emitExtInst: GlslStd450 normalize op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitGlslSqrt: op block: blk [
+
+	^ self emitExtInst: GlslStd450 sqrt op: op block: blk
 ]
 
 { #category : 'emitting' }
@@ -1509,6 +1596,13 @@ PVSPIRVEmitter >> emitLoopPreheaderIn: ctx [
 			 operands: { (ctx at: #headerBlock) id })
 ]
 
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitMove: op block: blk [
+	"A move emits nothing: both registers name the same SPIR-V id from here on."
+
+	regMap at: op result put: (self spvIdFor: op inputs first)
+]
+
 { #category : 'emitting - compute' }
 PVSPIRVEmitter >> emitNestedBlock: aSimKey in: ctx into: aBlockKey [
 	"Emit one block of a nested loop: the register ops the simulation of that block
@@ -1647,151 +1741,15 @@ PVSPIRVEmitter >> emitNestedPreheaderIn: ctx [
 
 { #category : 'emitting' }
 PVSPIRVEmitter >> emitRegOp: op block: blk [
+	"One register operation. The branch is looked up in regOpEmitters rather than tested here,
+	 so adding an opcode means adding an entry and a method and touching nothing else; an
+	 opcode the table does not name emits nothing."
 
-	| opc |
-	op opcode = #const ifTrue: [
-			| constId |
-			constId := op literal isFloat
-				           ifTrue: [
-				           module constantPool constantFloat32: op literal asFloat ]
-				           ifFalse: [
-				           module constantPool constantInt32: op literal ].
-			regMap at: op result put: constId.
-			^ self ].
-	op opcode = #move ifTrue: [
-			regMap at: op result put: (self spvIdFor: op inputs first).
-			^ self ].
-	op opcode = #self ifTrue: [ ^ self ].
-	op opcode = #storeInstVar ifTrue: [
-			blk addInstruction:
-				(SpvInstruction opcode: SpvOpcode opStore operands: {
-						 (outputVarIds at: op literal + 1).
-						 (self spvIdFor: op inputs first) }).
-			^ self ].
-	op opcode = #send ifTrue: [
-			| mapping resultTypeId resultId |
-			mapping := selectorTable
-				           at: op literal
-				           receiverType: (typeMap at: op inputs first).
-			mapping ifNil: [
-				PVTypeError signal: 'No mapping for ' , op literal ].
-			mapping spirvOp = #bufferLoad ifTrue: [
-					self emitBufferLoad: op block: blk.
-					^ self ].
-			mapping spirvOp = #bufferStore ifTrue: [
-					self emitBufferStore: op block: blk.
-					^ self ].
-			mapping spirvOp = #sharedLoad ifTrue: [
-					self emitSharedLoad: op block: blk.
-					^ self ].
-			mapping spirvOp = #sharedStore ifTrue: [
-					self emitSharedStore: op block: blk.
-					^ self ].
-			mapping spirvOp = #coopMatrixLoad ifTrue: [
-					self
-						emitCooperativeMatrixLoad: op
-						resultTypeSymbol: mapping resultTypeSymbol
-						block: blk.
-					^ self ].
-			mapping spirvOp = #coopMatrixMulAdd ifTrue: [
-					self
-						emitCooperativeMatrixMulAdd: op
-						resultTypeSymbol: mapping resultTypeSymbol
-						block: blk.
-					^ self ].
-			mapping spirvOp = #coopMatrixStore ifTrue: [
-					self emitCooperativeMatrixStore: op block: blk.
-					^ self ].
-			mapping spirvOp = #workgroupBarrier ifTrue: [
-					self emitWorkgroupBarrier: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemX ifTrue: [
-					self emitWorkItemComponent: 0 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemY ifTrue: [
-					self emitWorkItemComponent: 1 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemZ ifTrue: [
-					self emitWorkItemComponent: 2 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemLocalX ifTrue: [
-					self emitLocalInvocationComponent: 0 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemLocalY ifTrue: [
-					self emitLocalInvocationComponent: 1 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemLocalZ ifTrue: [
-					self emitLocalInvocationComponent: 2 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #workItemGridWidth ifTrue: [
-					self emitGridWidth: op block: blk.
-					^ self ].
-			mapping spirvOp = #compositeConstruct ifTrue: [
-					self emitCompositeConstruct: op block: blk.
-					^ self ].
-			mapping spirvOp = #vecExtractX ifTrue: [
-					self emitVecExtract: 0 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #vecExtractY ifTrue: [
-					self emitVecExtract: 1 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #vecExtractZ ifTrue: [
-					self emitVecExtract: 2 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #vecExtractW ifTrue: [
-					self emitVecExtract: 3 op: op block: blk.
-					^ self ].
-			mapping spirvOp = #subgroupReduceSum ifTrue: [
-					self
-						emitSubgroupReduceSum: op
-						resultTypeSymbol: mapping resultTypeSymbol
-						block: blk.
-					^ self ].
-			mapping spirvOp = #glslNormalize ifTrue: [
-					self emitExtInst: GlslStd450 normalize op: op block: blk.
-					^ self ].
-			mapping spirvOp = #glslLength ifTrue: [
-					self emitExtInst: GlslStd450 length op: op block: blk.
-					^ self ].
-			mapping spirvOp = #glslFMix ifTrue: [
-					self emitExtInst: GlslStd450 fMix op: op block: blk.
-					^ self ].
-			mapping spirvOp = #glslFClamp ifTrue: [
-					self emitExtInst: GlslStd450 fClamp op: op block: blk.
-					^ self ].
-			mapping spirvOp = #glslSqrt ifTrue: [
-					self emitExtInst: GlslStd450 sqrt op: op block: blk.
-					^ self ].
-			opc := self opcodeFor: mapping spirvOp.
-			resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
-			resultId := module newId.
-			regMap at: op result put: resultId.
-			blk addInstruction: (SpvInstruction
-					 opcode: opc
-					 resultType: resultTypeId
-					 resultId: resultId
-					 operands: (op inputs collect: [ :r | self spvIdFor: r ])).
-			^ self ].
-	op opcode = #return ifTrue: [
-			isVoidMain
-				ifTrue: [
-						outputVarIds isEmpty ifFalse: [
-								blk addInstruction:
-									(SpvInstruction opcode: SpvOpcode opStore operands: {
-											 outputVarIds first.
-											 (self spvIdFor: op inputs first) }) ].
-						blk terminate:
-							(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ]
-				ifFalse: [
-						blk terminate: (SpvInstruction
-								 opcode: SpvOpcode opReturnValue
-								 resultType: nil
-								 resultId: nil
-								 operands: { (self spvIdFor: op inputs first) }) ].
-			^ self ].
-	op opcode = #returnSelf ifFalse: [ ^ self ].
-	blk terminate:
-		(SpvInstruction opcode: SpvOpcode opReturn operands: #(  ))
+	| selector |
+	selector := self class regOpEmitters
+		            at: op opcode
+		            ifAbsent: [ ^ self ].
+	^ self perform: selector with: op with: blk
 ]
 
 { #category : 'emitting structured' }
@@ -1800,6 +1758,36 @@ PVSPIRVEmitter >> emitRegOps: regOpList block: spvBlk [
 	regOpList do: [ :op |
 			(#( #return #returnSelf ) includes: op opcode) ifFalse: [
 				self emitRegOp: op block: spvBlk ] ]
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitReturn: op block: blk [
+	"A void main stores into the output variable and returns nothing; a function with a value
+	 returns that value. Both terminate the block, so nothing may be emitted into it after."
+
+	isVoidMain
+		ifTrue: [
+				outputVarIds isEmpty ifFalse: [
+					blk addInstruction:
+						(SpvInstruction opcode: SpvOpcode opStore operands: {
+								 outputVarIds first.
+								 (self spvIdFor: op inputs first) }) ].
+				blk terminate:
+					(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ]
+		ifFalse: [
+				blk terminate: (SpvInstruction
+						 opcode: SpvOpcode opReturnValue
+						 resultType: nil
+						 resultId: nil
+						 operands: { (self spvIdFor: op inputs first) }) ]
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitReturnSelf: op block: blk [
+	"A method that answers self answers nothing a kernel can read, so the block terminates on a
+	 plain return and no value is stored."
+
+	blk terminate: (SpvInstruction opcode: SpvOpcode opReturn operands: #(  ))
 ]
 
 { #category : 'compiling' }
@@ -1891,6 +1879,30 @@ PVSPIRVEmitter >> emitSelectionMergeIn: ctx [
 	blk isTerminated ifFalse: [
 			blk terminate:
 				(SpvInstruction opcode: SpvOpcode opReturn operands: #(  )) ]
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitSend: op block: blk [
+	"The selector table answers what this send compiles to for the receiver's type, and a
+	 selector it does not map is a type error rather than an opcode guessed from the name. The
+	 mapping emits itself when it names a method of mine; otherwise it carries a plain SPIR-V
+	 opcode, which is emitted here from its operands."
+
+	| mapping opc resultTypeId resultId |
+	mapping := selectorTable
+		           at: op literal
+		           receiverType: (typeMap at: op inputs first).
+	mapping ifNil: [ PVTypeError signal: 'No mapping for ' , op literal ].
+	(mapping emitOn: self op: op block: blk) ifTrue: [ ^ self ].
+	opc := self opcodeFor: mapping spirvOp.
+	resultTypeId := (self spvTypeFor: mapping resultTypeSymbol) id.
+	resultId := module newId.
+	regMap at: op result put: resultId.
+	blk addInstruction: (SpvInstruction
+			 opcode: opc
+			 resultType: resultTypeId
+			 resultId: resultId
+			 operands: (op inputs collect: [ :r | self spvIdFor: r ]))
 ]
 
 { #category : 'emitting - shared memory' }
@@ -2026,6 +2038,16 @@ PVSPIRVEmitter >> emitStorageBufferParam: aParam at: paramIndex binding: binding
 	^ bVar
 ]
 
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitStoreInstVar: op block: blk [
+	"A store into an instance variable writes the output variable the literal indexes, which is
+	 how a kernel hands a value back on the shader path."
+
+	blk addInstruction: (SpvInstruction opcode: SpvOpcode opStore operands: {
+				 (outputVarIds at: op literal + 1).
+				 (self spvIdFor: op inputs first) })
+]
+
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> emitSubgroupReduceSum: op resultTypeSymbol: aTypeSymbol block: blk [
 	"Adds the value every lane of the subgroup holds and delivers the total to all of them.
@@ -2064,6 +2086,30 @@ PVSPIRVEmitter >> emitVecExtract: index op: op block: blk [
         operands: { (self spvIdFor: op inputs first). index })
 ]
 
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitVecExtractW: op block: blk [
+
+	^ self emitVecExtract: 3 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitVecExtractX: op block: blk [
+
+	^ self emitVecExtract: 0 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitVecExtractY: op block: blk [
+
+	^ self emitVecExtract: 1 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitVecExtractZ: op block: blk [
+
+	^ self emitVecExtract: 2 op: op block: blk
+]
+
 { #category : 'emitting compute' }
 PVSPIRVEmitter >> emitWorkItemComponent: compIdx op: op block: blk [
 	"The work item parameter stands for the GlobalInvocationId variable, so the component
@@ -2099,6 +2145,42 @@ PVSPIRVEmitter >> emitWorkItemInputForParam: paramIndex [
 		decoration: SpvDecoration builtIn
 		literals: { SpvBuiltIn globalInvocationId }.
 	^ gVar
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemLocalX: op block: blk [
+
+	^ self emitLocalInvocationComponent: 0 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemLocalY: op block: blk [
+
+	^ self emitLocalInvocationComponent: 1 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemLocalZ: op block: blk [
+
+	^ self emitLocalInvocationComponent: 2 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemX: op block: blk [
+
+	^ self emitWorkItemComponent: 0 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemY: op block: blk [
+
+	^ self emitWorkItemComponent: 1 op: op block: blk
+]
+
+{ #category : 'emitting' }
+PVSPIRVEmitter >> emitWorkItemZ: op block: blk [
+
+	^ self emitWorkItemComponent: 2 op: op block: blk
 ]
 
 { #category : 'emitting - shared memory' }

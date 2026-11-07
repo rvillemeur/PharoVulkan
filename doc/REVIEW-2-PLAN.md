@@ -161,6 +161,24 @@ level becomes a symbol-to-selector table on the class side of `PVSPIRVEmitter`, 
 method per branch. No new class, no visitor hierarchy: the branches stay in the emitter, where they
 already touch `module` and `regMap`.
 
+**Done.** Level one is `PVSPIRVEmitter class >> regOpEmitters`, a dictionary of six opcodes to the
+six methods that emit them, and `emitRegOp:block:` is four lines that look a branch up and send it;
+an opcode absent from the table emits nothing, which is what `#self` always did and what a test now
+pins for an opcode nobody has invented yet. Level two is `PVSelectorMapping class >>
+emitterSelectors`, twenty-six operations to the emitter method each one names, read through
+`PVSelectorMapping >> emitterSelector` and sent by `emitOn:op:block:`, which answers whether it
+emitted: a mapping with no method of its own answers false and the emitter writes the plain opcode
+its name spells. The four families that carried a constant inside the old cascade — the three
+global components, the three local ones, the four vector components and the five GLSL instructions
+— are fifteen one-line methods named for what they emit, so the constants are out of the
+dispatcher; the three operations whose emitter also needs the result type are the only ones taking
+three keywords, and the mapping fills that argument because it is the only object holding it.
+Nothing in `PharoVulkan-Compiler` compares a `spirvOp` any more. Four new tests hold the two tables
+to the emitter, the dispatcher to naming no opcode and the send branch to naming no operation; a
+`<sampleInstance>` example answers the subgroup-sum mapping and two inspector views, one on the
+mapping and one on the emitter's class side, report the dispatch by reading the tables. 93 tests in
+`PVCompilerTest`, 191 in the non-device suite, critics clean on what changed.
+
 ## 4. A decoration is an `Array` with a symbol in slot one
 
 `SpvSerializer >> emitAnnotations` reads `module decorations`, takes `d at: 1` as a tag, compares it
