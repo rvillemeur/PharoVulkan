@@ -254,6 +254,33 @@ to the same class, so it is done with it.
 
 **Refactoring: Extract Constant.**
 
+**Done.** Four sites carried a value this point named, and each now reads a constant that says what
+the value is. `SpvSerializer class >> initialWordCapacity` answers 256 and `serializeModule:` asks
+for it. `PVOffscreenTarget class >> channelMaximum` answers 255 and `swatchFor:` hands it to
+`Color r:g:b:range:` rather than dividing three times. `PVTriangleScene >> putFloat:into:at:` is one
+line — `aByteArray unsignedLongAt: offset put: aFloat asIEEE32BitWord bigEndian: false` — so the
+four masks and the three shifts are gone, and `buildVertexData` sizes its array from the existing
+`vertexDataSize`. `VkContext >> fetchComputeQueue` reads the existing `VkContext class >> pointerSize`
+and a new `onlyQueueIndex`. The two `VkPhysicalDevice` sites this point names were already fixed
+under point 1, which is why they are not touched again here.
+
+Three new tests pin the four constants to the behaviour that reads them:
+`SpvBuilderTest >> testTheSerializerNamesTheCapacityItsWordStreamStartsAt`,
+`PVGraphicsTest >> testASwatchCarriesTheColourOfThePixelItWasReadFromOnTheRangeItNames` and
+`testAFloatIsWrittenIntoTheVertexDataAsFourLittleEndianBytes`, and
+`VkCoreTest >> testTheQueueFetchNamesThePointerWidthAndTheQueueIndexItAsksFor`. All four are pure:
+they read the constants and the encoding, and ask for no device. The non-device suite is green
+(202 over the seven SPIR-V, compiler, graphics and core classes; 286 in `VkBindingsTest`) and
+`run_critics` names nothing on any method this point changed. No new class and no new behaviour, so
+no example and no view.
+
+Two sites of the same shape were found while reading for this point and are reported rather than
+folded in, because they are pointer arithmetic and not a named quantity:
+`VkPhysicalDevice >> fetchQueueFamilyProperties` allocates `4` for its count out-param, and
+`OSSDL2VulkanBackendWindow` writes `allocate: 8`, `allocate: 4`, `count * 8` and `i - 1 * 8 + 1`.
+Both want one constant for the width of a pointer on this platform, which is a decision about the
+SDL2 boundary rather than about this point.
+
 ## 7. Inspector views are missing on the classes a reader opens
 
 Views per hand-written package: `PharoVulkan-Core` 11 of 17, `PharoVulkan-Compute` 12 of 18,

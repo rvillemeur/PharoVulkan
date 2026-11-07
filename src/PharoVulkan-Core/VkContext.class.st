@@ -94,6 +94,15 @@ VkContext class >> offscreenGraphicsContext [
 ]
 
 { #category : 'constants' }
+VkContext class >> onlyQueueIndex [
+"Queues are indexed from zero inside their family, and queuesPerFamily creates one, so the
+	 queue every path of this project submits from is at index zero. Named here because the
+	 number is the consequence of that decision and not a free choice of the call site."
+
+^ 0
+]
+
+{ #category : 'constants' }
 VkContext class >> pointerSize [
     ^ 8
 ]
@@ -582,17 +591,18 @@ VkContext >> featureChainTypesIn: aStruct [
 
 { #category : 'initialization' }
 VkContext >> fetchComputeQueue [
+	"The out parameter is a single handle and not a structure, so it is one pointer wide and
+	 read at its only index, the way createInstanceFromCreateInfo: reads its own."
 
 	| buf |
-	buf := ExternalAddress allocate: 8.
+	buf := ExternalAddress allocate: self class pointerSize.
 	computeQueue := [
-		                Vk
-			                getDeviceQueue: device handle
-			                queueFamilyIndex: computeQueueFamily
-			                queueIndex: 0
-			                queue: buf.
-		                VkQueue on:
-			                (VkQueue_H fromHandle: (buf pointerAt: 1)) ]
+	                Vk
+		                getDeviceQueue: device handle
+		                queueFamilyIndex: computeQueueFamily
+		                queueIndex: self class onlyQueueIndex
+		                queue: buf.
+	                VkQueue on: (VkQueue_H fromHandle: (buf pointerAt: 1)) ]
 		                ensure: [ buf free ]
 ]
 

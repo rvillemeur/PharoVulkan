@@ -34,6 +34,16 @@ SpvSerializer class >> capabilityTable [
 SpvSerializer class >> generatorId [   ^ 16r50485600
 ]
 
+{ #category : 'constants' }
+SpvSerializer class >> initialWordCapacity [
+"How many words the stream a module is serialised into starts at. A WriteStream grows on its
+	 own, so this is a first guess at the size of a module and nothing a reader of the bytes can
+	 depend on; it is named here rather than written into serializeModule: so that guess is
+	 visible and adjustable in one place."
+
+^ 256
+]
+
 { #category : 'api' }
 SpvSerializer class >> serialize: aModule [
     ^ self new serializeModule: aModule
@@ -197,21 +207,21 @@ SpvSerializer >> encodeString: aString [
     ^ result
 ]
 
-{ #category : 'serialization' }
+{ #category : 'api' }
 SpvSerializer >> serializeModule: aSpvModule [
-    module := aSpvModule.
-    words := WriteStream on: (Array new: 256).
-    self emitHeader.
-    self emitCapabilities.
-    self emitExtensions.
-    self emitExtInstImports.
-    self emitMemoryModel.
-    self emitEntryPoints.
-    self emitExecutionModes.
-    self emitAnnotations.
-    self emitTypesConstantsGlobals.
-    self emitFunctions.
-    ^ self wordsToBytes
+	module := aSpvModule.
+	words := WriteStream on: (Array new: self class initialWordCapacity).
+	self emitHeader.
+	self emitCapabilities.
+	self emitExtensions.
+	self emitExtInstImports.
+	self emitMemoryModel.
+	self emitEntryPoints.
+	self emitExecutionModes.
+	self emitAnnotations.
+	self emitTypesConstantsGlobals.
+	self emitFunctions.
+	^ self wordsToBytes
 ]
 
 { #category : 'private' }

@@ -123,24 +123,24 @@ PVTriangleScene >> buildFragmentShader [
 
 { #category : 'private' }
 PVTriangleScene >> buildVertexData [
-    | data |
-    data := ByteArray new: 60.
-    self putFloat: -0.5 into: data at: 1.
-    self putFloat: 0.5 into: data at: 5.
-    self putFloat: 1.0 into: data at: 9.
-    self putFloat: 0.0 into: data at: 13.
-    self putFloat: 0.0 into: data at: 17.
-    self putFloat: 0.5 into: data at: 21.
-    self putFloat: 0.5 into: data at: 25.
-    self putFloat: 0.0 into: data at: 29.
-    self putFloat: 1.0 into: data at: 33.
-    self putFloat: 0.0 into: data at: 37.
-    self putFloat: 0.0 into: data at: 41.
-    self putFloat: -0.5 into: data at: 45.
-    self putFloat: 0.0 into: data at: 49.
-    self putFloat: 0.0 into: data at: 53.
-    self putFloat: 1.0 into: data at: 57.
-    ^ data
+	| data |
+	data := ByteArray new: self class vertexDataSize.
+	self putFloat: -0.5 into: data at: 1.
+	self putFloat: 0.5 into: data at: 5.
+	self putFloat: 1.0 into: data at: 9.
+	self putFloat: 0.0 into: data at: 13.
+	self putFloat: 0.0 into: data at: 17.
+	self putFloat: 0.5 into: data at: 21.
+	self putFloat: 0.5 into: data at: 25.
+	self putFloat: 0.0 into: data at: 29.
+	self putFloat: 1.0 into: data at: 33.
+	self putFloat: 0.0 into: data at: 37.
+	self putFloat: 0.0 into: data at: 41.
+	self putFloat: -0.5 into: data at: 45.
+	self putFloat: 0.0 into: data at: 49.
+	self putFloat: 0.0 into: data at: 53.
+	self putFloat: 1.0 into: data at: 57.
+	^ data
 ]
 
 { #category : 'private' }
@@ -333,13 +333,13 @@ PVTriangleScene >> lifecycleReport [
 
 { #category : 'private' }
 PVTriangleScene >> putFloat: aFloat into: aByteArray at: offset [
+	"One IEEE 32-bit float in the order the device reads it. ByteArray writes the word itself,
+	 so the byte order is named rather than spelled out as masks and shifts."
 
-	| bits |
-	bits := aFloat asIEEE32BitWord.
-	aByteArray at: offset put: (bits bitAnd: 16rFF).
-	aByteArray at: offset + 1 put: (bits >> 8 bitAnd: 16rFF).
-	aByteArray at: offset + 2 put: (bits >> 16 bitAnd: 16rFF).
-	aByteArray at: offset + 3 put: (bits >> 24 bitAnd: 16rFF)
+	aByteArray
+		unsignedLongAt: offset
+		put: aFloat asIEEE32BitWord
+		bigEndian: false
 ]
 
 { #category : 'accessing' }

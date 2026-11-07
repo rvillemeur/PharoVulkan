@@ -289,6 +289,46 @@ PVGraphicsTest >> submitSignalling: aCommandBuffer semaphore: aSemaphore on: aQu
 		ensure: [ bufferInfo getHandle free ]
 ]
 
+{ #category : 'tests - vertices' }
+PVGraphicsTest >> testAFloatIsWrittenIntoTheVertexDataAsFourLittleEndianBytes [
+	"The vertex buffer holds IEEE 32-bit floats in device order, which is little endian on every
+	 machine this project runs on. The bytes are pinned here before the masks and the shifts are
+	 replaced by the one send that names the rule, and the scene's own size constant is used for
+	 the buffer, so neither the width of a float nor the count of them is written inline."
+
+	| scene data |
+	scene := PVTriangleScene basicNew.
+	data := ByteArray new: PVTriangleScene bytesPerFloat.
+	scene putFloat: 1.0 into: data at: 1.
+	self assert: data equals: #[ 0 0 128 63 ].
+	scene putFloat: -0.5 into: data at: 1.
+	self assert: data equals: #[ 0 0 0 191 ].
+	self deny: ((PVTriangleScene >> #putFloat:into:at:) literals includes: 16rFF).
+	self assert: (scene buildVertexData size = PVTriangleScene vertexDataSize).
+	self deny:
+		((PVTriangleScene >> #buildVertexData) literals includes:
+			 PVTriangleScene vertexDataSize)
+]
+
+{ #category : 'tests - offscreen' }
+PVGraphicsTest >> testASwatchCarriesTheColourOfThePixelItWasReadFromOnTheRangeItNames [
+	"The channels a readback answers are bytes, and the swatch says so by naming the range the
+	 colour is built on rather than dividing by it. No target is created here, so this holds
+	 whether a device is present or not."
+
+	| target swatch |
+	target := PVOffscreenTarget basicNew.
+	swatch := target swatchFor: #( 255 0 0 255 ).
+	self assert: (swatch colorAt: 0 @ 0) equals: Color red.
+	swatch := target swatchFor: #( 128 64 32 255 ).
+	self
+		assert: (swatch colorAt: 0 @ 0)
+		equals: (Color r: 128 g: 64 b: 32 range: PVOffscreenTarget channelMaximum).
+	self deny:
+		((PVOffscreenTarget >> #swatchFor:) literals includes:
+			 PVOffscreenTarget channelMaximum)
+]
+
 { #category : 'tests' }
 PVGraphicsTest >> testBothColorPassVariantsBuildOnTheDevice [
 	"The window and offscreen render passes now share one body, so this states that both final

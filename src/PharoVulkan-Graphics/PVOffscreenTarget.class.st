@@ -28,6 +28,15 @@ PVOffscreenTarget class >> bytesPerPixel [
 ]
 
 { #category : 'constants' }
+PVOffscreenTarget class >> channelMaximum [
+"The largest value one channel of a read-back pixel holds. The offscreen target reads back
+	 eight bits a channel, so a channel is a byte, and the swatch builds its colour on this
+	 range instead of dividing by the number."
+
+^ 255
+]
+
+{ #category : 'constants' }
 PVOffscreenTarget class >> colorFormat [
 	"The same format the swapchain path uses, so a picture rendered offscreen is the picture a
 	 window would have shown. pixelAtX:y: knows this format's b, g, r, a byte order.
@@ -254,12 +263,11 @@ PVOffscreenTarget >> swatchFor: anArray [
 	 clearColor, so a readback that disagrees with what was asked for is visible."
 
 	| form |
-	form := Form
-		        extent: self class swatchExtent
-		        depth: self class swatchDepth.
+	form := Form extent: self class swatchExtent depth: self class swatchDepth.
 	form fillColor: (Color
-			 r: (anArray at: 1) / 255
-			 g: (anArray at: 2) / 255
-			 b: (anArray at: 3) / 255).
+			 r: (anArray at: 1)
+			 g: (anArray at: 2)
+			 b: (anArray at: 3)
+			 range: self class channelMaximum).
 	^ form
 ]

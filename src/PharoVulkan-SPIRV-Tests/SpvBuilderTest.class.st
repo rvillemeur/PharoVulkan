@@ -694,6 +694,23 @@ SpvBuilderTest >> testTheModuleKeepsAnAnnotationForEveryDecorationItIsGiven [
 				SpvOpcode opMemberDecorate }
 ]
 
+{ #category : 'tests - module' }
+SpvBuilderTest >> testTheSerializerNamesTheCapacityItsWordStreamStartsAt [
+	"The capacity the word stream starts at is a constant, not a number written inline: the
+	 stream grows on its own, so the number is only a first guess at a module's size and says so
+	 where it is named."
+
+	| capacity |
+	capacity := SpvSerializer initialWordCapacity.
+	self assert: capacity isInteger.
+	self assert: capacity > 0.
+	self assert:
+		((SpvSerializer >> #serializeModule:) messages includes:
+			 #initialWordCapacity).
+	self deny:
+		((SpvSerializer >> #serializeModule:) literals includes: capacity)
+]
+
 { #category : 'tests' }
 SpvBuilderTest >> testTypeDeduplication [
     "Requesting the same type twice must return the identical object."

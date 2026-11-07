@@ -1340,6 +1340,21 @@ VkCoreTest >> testSubgroupPropertiesOfThisDeviceAgreeWithTheDriver [
 	self assert: device supportsSubgroupArithmetic
 ]
 
+{ #category : 'tests - context' }
+VkCoreTest >> testTheQueueFetchNamesThePointerWidthAndTheQueueIndexItAsksFor [
+	"The out parameter of vkGetDeviceQueue is one handle wide, which the context already names
+	 for every other call of its own, and the queue it asks for is the only one its family
+	 creates. Neither number is written into the method. Pure: no device is opened here."
+
+	| method |
+	method := VkContext >> #fetchComputeQueue.
+	self assert: (method messages includes: #pointerSize).
+	self assert: (method messages includes: #onlyQueueIndex).
+	self assert: VkContext onlyQueueIndex equals: 0.
+	self deny: (method literals includes: VkContext pointerSize).
+	self assert: VkContext queuesPerFamily equals: 1
+]
+
 { #category : 'tests' }
 VkCoreTest >> testUnsatisfiedRequirementsMessageNamesEveryRequirementAsked [
 	"What a failed selection would say. The builder reads only the requirement list, so it
