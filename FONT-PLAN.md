@@ -461,6 +461,9 @@ No facade class is added in the Cairo layer to dodge the table.
 Red: the architecture gate fails with the manager in place and the edge absent, and passes once the
 edge is declared; the test that loads the baseline still loads.
 
+Built inside 3.2, since that is the unit whose `reset` first names `TTFontCatalogue`: one row, and
+no edge declared ahead of the class that needs it.
+
 ### 2.3 — the face answers for Cairo's two messages
 
 `newCairoFontFace` answers the face itself.
@@ -521,12 +524,72 @@ It failed with `TestFailure: 'Assertion failed'`, the inherited `reset` having b
 
 ### 3.2 — registration from metadata
 
-`registerFacesOnFile:` and `registerFacesOnMemory:` add to the catalogue of 1.4 and key the entry
-exactly as upstream does: lowercase family name, then `{slant. weight. stretch}`.
-The manager parses nothing itself; weight and stretch come from `OS/2` through the catalogue.
+`registerFacesOnFile:` and `registerFacesOnMemory:` add to the catalogue of 1.4, and the catalogue
+keys each entry by its lower-case family name and then by `{slant. weightClass. widthClass}`, which
+is what the font states in its `OS/2` table. The manager parses nothing itself.
+Decided in the interview of 2026-11-12, and 2.2's edge was declared here.
 
-Red: registering the six embedded font files gives the two families and the six entries upstream
-gives, with the same keys.
+1. **One index, the catalogue's.** `entriesByFamilyName` stays the empty dictionary `reset` writes,
+   and the four inherited readers of that slot — `entriesByFamilyName`, `faceEntries`,
+   `familyNames`, `includesFamilyName:` — are overridden to read the catalogue. All four read the
+   instance variable directly upstream, so overriding the accessor alone would have changed
+   nothing. The slot cannot be removed: it is upstream's.
+2. **The four doors delegate, and the refusal goes.** `registerFacesOnFile:`,
+   `registerFacesOnMemory:`, `scanDirectory:` and `scanDefaultDirectories` each answer what the
+   catalogue answers, and `refuseUntilTheCatalogueRegisters` is deleted with the test that pinned
+   it. The two register methods answer the entry where upstream answered `self`: nothing read that
+   value, and an entry is what a caller wants back.
+3. **The vocabularies meet in one method.** `entryForFamilyName:slant:weight:stretch:ifNone:`
+   translates the three Alexandrie font category objects into a style key, and
+   `detectFamilyName:slant:weight:stretch:ifNone:` is overridden to go through it. The three
+   translations are exact, and only in this direction: `AeFontSlant name` is the symbol the
+   metadata reader states, `AeFontWeight value` *is* the `OS/2` weight class, and
+   `AeFontStretch value + 1` is the width class, since a stretch counts `ultraCondensed` from zero
+   where `OS/2` counts it from one.
+4. **The Faces view is overridden, and that is the unit's view.** Upstream's `inspectionFaces:`
+   sends `slantName`, `weightName` and `stretchName` to each entry and sorts with
+   `faceEntriesSortedByFamilySlantWeightStretch`, so it would have failed at the inspector the
+   moment the registry held one of our entries — a latent break this unit had to fix anyway. Ours
+   shows the style name and the three `OS/2` numbers the key is built from, so a row says why a
+   face answers the triple it answers.
+5. **The example writes its six keys out.** `managerWithTheEmbeddedFontsRegistered` registers the
+   six faces `AeEmbeddedFontFile allSubclasses` carries and is self-contained, rather than reading
+   `AeFontManager globalInstance`, which holds whatever the host has installed — 5 families and 14
+   entries in this image.
+6. **No `AeFTLibrary` in the suite.** Parity with upstream's style-name parser was checked by hand,
+   outside the suite, through `AeMemoryFaceEntry`: for all six embedded faces its guessed triple
+   and our `OS/2` triple name the same face. A test of that parity would allocate a 378th
+   auto-released library, which is the font-handle hazard.
+7. **2.2 absorbed.** The architecture gate demanded exactly one new row,
+   `VGFontManager >> reset -> VectorGraphics-TrueType`, so only the Bloc row of
+   `allowedDependencies` and the Bloc line of `declareBackendPackagesOn:` changed. No facade in the
+   Cairo layer, and no speculative edge for the units still to come.
+
+The design review that followed moved two rules the manager was reciting back into the catalogue
+that owns them: `TTFontCatalogue >> includesFamilyNamed:` folds the case, and
+`entryOfFamilyNamed:styleKey:ifNone:` holds the shape of the key, so the manager keeps only the
+vocabulary translation and knows nothing of the index. `TTFontCatalogueEntry` answers `styleName` as
+it already answered `familyName`, and the Faces view sorts by `#familyName ascending ,
+#styleName ascending` instead of concatenating the two names per comparison. Three points were
+diagnosed and left alone: `faceEntries` answering an `Array` where upstream answered a `Set`, the
+two register methods' changed return value, and the nineteen-line comment of `reset`, which earns
+its length by naming three deliberate departures from upstream.
+
+`ReExcessiveArgumentsRule` fires at five arguments on both lookups and is accepted:
+`detectFamilyName:slant:weight:stretch:ifNone:` is upstream's own selector, which carries the same
+critique on `AeFontManager`, and the other mirrors it deliberately.
+
+Not built here: `faceAt:` is still inherited, so it reads the permanent cache and signals
+`KeyNotFound` for an entry no one has built a face for — 3.4 gives it the reader. No `rejectedFiles`
+on the manager, no default families, no `FontFamily` change.
+
+Red: registering the six embedded fonts gives two families and six entries, each found by its
+Alexandrie triple. It failed with `MessageNotUnderstood: TTFontCatalogue >> #addBytes:` reaching the
+refusal first, then on the family count once the doors delegated. The second red,
+`testTheFaceLookupReachesTheCacheRatherThanTheEmptyInheritedIndex`, was written because the
+degenerate-state test passed for the wrong reason: the inherited `detectFamilyName:` answered the
+absent block by reading the empty slot, so a test that the lookup reaches the cache was needed to
+fail, and it did, with `'the entry is there to be found'`.
 
 ### 3.3 — refused files are kept, not dropped
 
