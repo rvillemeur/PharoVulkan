@@ -473,8 +473,51 @@ Red: an unmodified `AeCanvas` given one of our faces answers a `VGScaledFont` fr
 
 `VGFontManager`, a subclass of `AeFontManager`, redefines `reset`: no `freetypeLibrary`, and a
 permanent `Dictionary` from entry to face in place of the LRU.
+Decided in the interview of 2026-11-12.
+
+1. **The registry's three doors refuse by name.** `registerFacesOnFile:`,
+   `registerFacesOnMemory:` and `scanDefaultDirectories` are overridden to raise through one
+   `refuseUntilTheCatalogueRegisters`, rather than left inherited to fail on
+   `UndefinedObject >> fastReadFacesOn:do:`. `scanEmbeddedFonts` reaches the registry through
+   `registerFacesOnMemory:`, so it refuses with it and needs no override. It is this one method
+   that 3.2 deletes.
+2. **The cache is a slot here, a reader at 3.4.** `reset` installs the permanent `Dictionary`, and
+   `faceAt:` stays inherited, so it reads that dictionary and would signal `KeyNotFound` rather
+   than build a face. Unreachable while every door refuses: the registry is always empty, so no
+   caller can hold an entry to ask for. 3.4 gives it the reader.
+3. **The manager gets its own test and example classes.** `VGFontManagerTest` in
+   `VectorGraphics-Bloc-Tests` and `VGFontManagerExamples` in `VectorGraphics-Bloc-Examples`,
+   added to `VGBlocExamplesTest >> exampleHolders`, rather than folded into `VGCanvasTest` or an
+   existing holder: the manager is a class of its own and the rest of 3.x will add to both.
+4. **The view shows the manager's own clean state.** `inspectorState:`, eight rows that each ask
+   the real object — the library slot printed, the cache's class and size, the registry counted —
+   so a row cannot drift from what `reset` writes. Not `inspectorSubstitution:`, which this unit
+   has nothing to put in.
+
+`reset` duplicates four of upstream's six assignments and changes two. `super reset` followed by
+two overwrites would remove the duplication and build an `AeFTLibrary newInitialized` to throw
+away at once; that `newInitialized` sends `autoRelease`, so an `FT_Done_FreeType` in the
+finalisation process, which is the hazard behind the font-handle crash. The image already holds
+377 of those instances, one per `AeFontManager new`. The duplication stays, and the comment in
+`reset` says why.
+
+The design review that followed changed the refusal's own message, which cited unit 3.2 of this
+plan to a reader who has never seen it, and left the plan named once, in the comment of the method
+the plan deletes. Critics asked for two things the package's own conventions had: a class tag,
+`VectorGraphics-Bloc-Fonts`, and `scanDefaultDirectories` in the `scanning` protocol upstream
+classifies it under.
+
+No architecture edge yet: 3.1 names no class of `VectorGraphics-TrueType`, so 2.2's row is still
+2.2's, and it is 3.2 that makes it real.
+
+Not built here: no registration, no `rejectedFiles`, no default families, and no
+`SessionManager` registration — `checkSession` already resets a manager a new session finds, and
+the class-side `globalInstance` a subclass gets is its own.
 
 Red: a fresh `VGFontManager` holds nil in the FreeType slot and answers an empty face cache.
+It failed with `TestFailure: 'Assertion failed'`, the inherited `reset` having built an
+`AeFTLibrary`. The second red, that every door refuses by name, failed with
+`TestFailure: 'Denial failed'` on a `MessageNotUnderstood`.
 
 ### 3.2 — registration from metadata
 
