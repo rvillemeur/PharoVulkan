@@ -351,7 +351,8 @@ Decided in the interview of 2026-11-11, eight points.
    `TTFontMetadataReaderTest` into a fixture class both test classes read.
 8. **`defaultFontPath` is fixed after this unit, on the catalogue.** With a catalogue in the image
    the hard-coded path under `/home/renaud/Downloads` becomes the first entry of a scan that is not
-   refused, which holds on any machine. Its failing test comes first, like any bug.
+   refused, which holds on any machine. Its failing test comes first, like any bug. The first
+   drawable entry proved not to be enough: see 1.5.
 
 Not built here: no singleton and no global catalogue, no face of either kind, no duplicate
 detection, and no wiring into `VGFontManager` or `FontFamily`, which are units 3.2 and 5.4.
@@ -359,6 +360,49 @@ detection, and no wiring into `VGFontManager` or `FontFamily`, which are units 3
 Red: a catalogue that scanned a memory directory of eight files answers two families, eight entries
 and two refusals, and `VGFontFace allInstances size` and `TTFontDescription allInstances size` are
 both unchanged by the scan.
+
+### 1.5 — the examples find their own font
+
+`TrueTypeExamples class >> defaultFontPath` answered a literal path to a file in one person's
+download folder, so the twelve examples that draw text failed on every other machine.
+A bug, so its failing test came first: the path the examples draw with must be a font this image
+found in the font directories of the machine it runs on.
+
+Point 8 of 1.4 said the fix was the first drawable entry of a scan.
+On this machine that is `/home/renaud/.fonts/icons-in-terminal.ttf`, an icon font which maps none of
+the letters and digits the examples draw, so `drawString` would trace blanks.
+Decided in the interview of 2026-11-12, keeping to Pharo's own habit of naming a few default
+families rather than measuring what a face covers.
+
+1. **A preference list, best first.** `preferredFontFamilyNames` answers
+   `#( 'Source Sans Pro' 'Source Code Pro' 'DejaVu Sans' 'Liberation Sans' 'Noto Sans' )`. The first
+   two are the faces Pharo itself defaults to, through `AeFontManager defaultFontFamilyName` and
+   `defaultCodeFontFamilyName`; they ship inside the image rather than in a font directory, so a
+   scan finds them only on a machine that installed them as well. Any drawable face of the scan
+   when the machine has none of the five, and an error when it has no drawable face at all.
+2. **The catalogue gains the two questions this asks of it.** `drawableEntries`, the other side of
+   `refusedEntries`, and `entryOfFamilyNamed:`, which takes the name a font states in any case and
+   answers the upright, normal weight, normal width face of that family, any face of it otherwise,
+   and nil for a family it does not hold. No name matching beyond case: that is 5.4's business.
+3. **Found once and kept.** A scan costs some 85 ms and the examples ask a dozen times over a suite
+   run, so `DefaultFontPath` holds the answer. A kept path that no longer names a file is found
+   again, which covers an uninstalled font and the image file carried to another machine;
+   `forgetDefaultFontPath` looks again for any other reason, and `defaultFontPath:` draws with a
+   font of the reader's own, which is what the old comment told them to do by overriding the method.
+4. **The choice is shown, not explained.** The `defaultFontChoice` example answers the families
+   asked for, those installed here, how many drawable faces the scan found, and the path it lands
+   on.
+
+The cost is real and is the face, not the scan: the package suite goes from 2.4 s to 6.0 s, because
+every example that draws now parses a 760 KB text face at 193 ms rather than a 34 KB display font at
+3 ms, some two dozen times over a run.
+
+Not built here: no family-name matching by alias or substring, no coverage test of what a face maps,
+and no platform list behind `defaultFontDirectories`, which still names the five places this
+platform keeps fonts.
+
+Red: `TrueTypeExamples defaultFontPath` names a file that exists and lies under one of
+`TTFontCatalogue defaultFontDirectories`.
 
 ### 2.1 — the face names itself
 
