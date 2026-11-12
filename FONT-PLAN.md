@@ -408,11 +408,48 @@ Red: `TrueTypeExamples defaultFontPath` names a file that exists and lies under 
 
 `VGFontFace >> familyName` and `styleName`, read from the face's own `name` table through the reader
 of 1.1, so one parser answers for both routes.
-This is also where the reader meets a real font for the first time: the Cairo layer already depends
-on Alexandrie, so `AeSourceSansPro_Regular` is in scope here and not in the TrueType tests.
+Decided in the interview of 2026-11-12.
+
+1. **The face keeps the reader's object, not its strings.** A `metadata` slot holds the
+   `TTFontMetadata` that `TTFontMetadataReader readBytes:` builds from the same bytes `readBytes:`
+   reads its tables from, and the two accessors delegate to it. The weight, width and slant the
+   metadata also carries stay unexposed until 3.2 says what shape the manager wants them in.
+2. **The two refusal regimes stay separate.** `readBytes:` keeps its own `requiredTableTags` check,
+   which does not ask for a `name` table, and stores what the reader answers whether or not the
+   reader would have refused the font. So a font stripped of its `name` table is still a face that
+   draws, and only its two names answer nil. Neither refusal is expressed in terms of the other,
+   because what the face needs to draw and what the reader needs to name are not the same tables.
+3. **The fixture is the face's own bundled bytes.** `VGFontFace defaultBytes`, 293 956 bytes of
+   Source Sans Pro, rather than `AeSourceSansPro_Regular` as this section first said. The class
+   side already states `defaultFamilyName` and `defaultStyleName` for those bytes, so the test
+   confronts the constants with what the reader answers and the two cannot drift apart.
+4. **The names go in the view that already exists.** `inspectorFace:` gains a `Family` and a `Style`
+   row at its head, which needs no new `inspectorFaceContext:` gate, and the example stays
+   `VGScaledFontExamples class >> fontFaceOfASystemFont`, already in
+   `VGCairoExamplesTest >> exampleHolders`. No `VGFontFaceExamples` holder and no `inspectorNames:`
+   tab for two rows.
+
+The second table-directory walk the reader does over bytes `readBytes:` has already walked costs
+nothing worth removing: the whole metadata read is under a millisecond of the 8 ms a face takes, and
+the only way to drop it — handing the reader the directory already built — would skip its
+`#notAnSfntFont` and `#fontCollection` refusals, which the face does not make itself.
+
+The design review that followed split `readGlyphsAndHorizontalMetricsFrom:count:`, twenty-four lines
+and two jobs, into `readHorizontalMetricsFrom:`, `readGlyphRecordsFrom:count:` and
+`fillGlyphAdvancesFrom:numHMetrics:` behind a three-send coordinator, and moved the
+`requiredTableTags` loop out of `readBytes:` into `refuseIfATableIsMissingFrom:`.
+`ReExcessiveVariablesRule` still reports `VGFontFace`, at fourteen slots against a threshold of ten.
+It was already over before this unit, and the one coherent cluster left — `glyfEntry`, `glyfStart`
+and the three methods that read the glyf table as a byte cursor — would return two slots and keep
+the critique, so it waits for a second table that needs a cursor.
+
+Not built here: no `metadata` accessor, no weight, width or slant on the face, and no collapsing of
+the metrics slots into `VGFontExtents`, which `VGScaledFont >> computeFontExtents` builds in scaled
+space while the face speaks in font units.
 
 Red: a face built from the embedded bytes answers `'Source Sans Pro'` and `'Regular'`, the same
 family and style the reader answers for those bytes.
+It failed with `MessageNotUnderstood: VGFontFace >> #familyName`.
 
 ### 2.2 — the declared edge
 
