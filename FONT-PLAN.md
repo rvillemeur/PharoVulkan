@@ -696,6 +696,24 @@ own `KeyNotFound` carrying the file name and the reason in its text already, so 
 `deny: (error isKindOf: KeyNotFound)` and failed with `Denial failed` before the guard was written.
 The view test was written after the two views rather than before, and passed first time: no red.
 
+Design review of 3.4, executed on 2026-11-12. Two points, both applied, commit `077bc6a6`.
+
+1. **Replace Direct Variable Access.** The views and `faceAt:` read `faceByEntryCache`, and the six
+   readers of the catalogue read `catalogue`, straight out of the slots. Upstream guards its four
+   slots in accessors that send `checkSession` first, so reading a slot walks around the check: a
+   manager left over from a dead session answered entries naming bytes nobody in this session had
+   read. The `catalogue` accessor now sends `self checkSession` itself, which covers every reader
+   and every writer built on it in one place, and `faceAt:` and the three cache views ask
+   `self faceByEntryCache`. `inspectorState:` reads nothing out of a slot any more except the
+   session it is reporting.
+   Red: a manager whose `session` slot is written to a foreign object answers an empty
+   `faceEntries`, no family names, no refused files, and a State view saying nought files met and
+   nought faces kept. It failed with `Assertion failed`. The cache is asked last in that test on
+   purpose — asking it first resets the manager, and every other reader then answers empty whether
+   it checks or not, which is how the first draft of the test passed while the bug was still there.
+2. **Extract Method.** `refuseFaceFor: anEntry` holds the error the guard signals, so `faceAt:`
+   answers a face and the new method states the refusal.
+
 ### 3.5 — installation that survives a session start
 
 `AeFontManager class >> globalInstance:` is a new extension method, a plain setter, so nothing
