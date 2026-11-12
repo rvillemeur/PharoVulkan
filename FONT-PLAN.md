@@ -593,11 +593,58 @@ fail, and it did, with `'the entry is there to be found'`.
 
 ### 3.3 — refused files are kept, not dropped
 
-`rejectedFiles` answers the catalogue's refusals, each a path and a reason from 1.3.
-The list lives once, in the catalogue, and the manager reads it.
+`rejectedFiles` answers the catalogue's refused entries, each carrying the reason the reader of 1.3
+gave. The list lives once, in the catalogue, which derives it from the entries it kept, and the
+manager reads it.
+Decided in the interview of 2026-11-12.
 
-Red: scanning a directory holding one TTF and one OTF registers one family and records one rejection
-naming the OTF.
+1. **The entries themselves, not a second shape.** `rejectedFiles` answers
+   `catalogue refusedEntries`, where an entry already carries both its source and its reason, rather
+   than associations of a path to a reason: a font registered from bytes has no path, and a reader
+   who wants the family name the refused file did state would have to come back to the entry
+   anyway. A reader holds a manager, not a catalogue, which is why the delegation is worth a method
+   — the four readers of 3.2 set that precedent.
+2. **The State view is extended, not doubled.** Two rows, `Files met` and `Files refused`, so the
+   three file counts reconcile: every file met is either an entry registered or a file refused —
+   544 = 362 + 182 on this machine. No Refusals tab on the manager: `TTFontCatalogue >>
+   inspectorRefusals:` already groups the refusals by reason, one dive away, and a second grouped
+   table would be duplication between two classes.
+3. **The example scans the machine.** `managerThatScannedTheInstalledFonts` sends
+   `scanDefaultDirectories`, so the State tab shows 208 families, 544 files met, 362 entries and 182
+   refusals — the cost decision 14 takes knowingly, in the numbers of the reader's own machine. It
+   runs inside `VGBlocExamplesTest` with the other examples, and the scan was measured at 129 ms for
+   those 544 files, which the gate can afford. A deterministic toy directory would only repeat the
+   test.
+4. **No fixture edge for the OTF case.** The plan's red named a TTF and an OTF, but
+   `TTFontFixtures otfFontBytes` lives in `VectorGraphics-TrueType-Tests`, which
+   `VectorGraphics-Bloc-Tests` may not name: the table allows one test-to-test edge and it is
+   Vulkan's. The scan test uses an embedded font and a text file, `#notAnSfntFont`, and names no
+   class of the font packages. `#noGlyfTable` stays covered in `TTFontCatalogueTest`, where the
+   fixture lives.
+
+A bug of 3.1 was fixed here, failing test first. The `Families registered` row of
+`inspectorState:` read the instance variable `entriesByFamilyName`, which 3.2 leaves empty for
+ever, so it answered 0 over six registered faces while `Entries registered`, which went through
+`self faceEntries`, answered 6. The row now goes through the reader. It failed with
+`Got 0 instead of 2.`
+
+The design review that followed changed nothing, and declined three points, each because the change
+would add a method or a layer without simplifying anything today: `inspectorState:` is ten literal
+associations over two levels of abstraction, and extracting `sessionRows` and `catalogueRows` to
+concatenate them reads worse than the list; `rejectedFiles` and `faceEntries` are the same sentence
+twice, which is a second occurrence and so a coincidence, not a rule; and `rejectedFiles` names
+files while answering entries, which the plan fixed as the manager's word and the comment explains.
+
+A latent break was checked and is not one: `inspectionFaces:` sorts by `familyName` and `styleName`,
+which would fail on a nil name, but `addSource:metadata:` indexes by `familyName asLowercase` and a
+font with no `name` table is refused `#noNameTable`, so a drawable entry always has both names.
+
+Not built here: `faceAt:` is still inherited, so no face is built — 3.4. No default families, no
+`SessionManager` registration, no architecture edge.
+
+Red: a manager that scanned a directory holding one font and one text file answers one refused file,
+reason `#notAnSfntFont`, named `readme.txt`, and a fresh manager refuses none. It failed with
+`MessageNotUnderstood: VGFontManager >> #rejectedFiles`.
 
 ### 3.4 — the face is ours and parsed once
 
