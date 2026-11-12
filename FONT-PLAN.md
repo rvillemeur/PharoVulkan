@@ -648,10 +648,53 @@ reason `#notAnSfntFont`, named `readme.txt`, and a fresh manager refuses none. I
 
 ### 3.4 — the face is ours and parsed once
 
-`faceAt:` answers a `VGFontFace`, built through the permanent cache.
+`faceAt:` answers a `VGFontFace` read from the entry's own bytes and kept in the permanent cache of
+1.4. Upstream's answers whatever its `LRUCache` holds, and that cache was given a factory sending
+`anEntry newFaceWith: freetypeLibrary`; ours builds the face itself, so the only thing that ever
+reads a font is our own reader.
+Decided in the interview of 2026-11-12.
 
-Red: two `faceAt:` for one entry answer the identical object, and `AeFTFace allInstances size` is
-unchanged across both.
+1. **The face is built in `faceAt:`, with `ifAbsentPut:`.** One method, and the cache stays a plain
+   `Dictionary` a test can read. A `factory:` installed by `reset`, which is upstream's shape, would
+   mean going back to `LRUCache` or writing a subclass of `Dictionary` that has one — 1.4 decided
+   the permanent cache. A separate `faceForEntry:` would be a second method with a single sender.
+   The entry cannot build its own face: `VGFontFace` lives in `VectorGraphics-Cairo` and
+   `VectorGraphics-TrueType -> VectorGraphics-Cairo` is not an edge the table allows. That is the
+   table deciding, not the interview.
+2. **The bytes are read at this point and not before.** A scan reads a few hundred bytes per file to
+   say what the file is; the fonts of this machine are 262 MB in all. So `TTFontCatalogueEntry >>
+   bytes` is sent when something draws with the face, and the face is kept for the session.
+3. **A refused entry is named, not parsed.** `VGFontFace newForBytes:` on bytes that are not a font
+   raises `SubscriptOutOfBounds: '13 in #[110 111 116 ...]'`, and since 3.3 a reader holds
+   `rejectedFiles` and can hand one of them back. `faceAt:` checks `isRejected` first and signals an
+   error naming the source and the reason the reader of 1.3 gave.
+4. **Two views, since both facts are worth showing.** The Faces tab gains a `Face built` column read
+   from the cache, so the laziness shows where the entries are listed; the Cache tab lists the faces
+   built with the glyph count, the em square and the outlines read so far, each row asking the face
+   itself. `inspectorCacheContext:` hides the tab until something has drawn.
+5. **The example draws with every embedded font.** `managerWithAFaceBuiltForEveryEmbeddedFont`
+   starts from `managerWithTheEmbeddedFontsRegistered` and asks for all six faces, so the two
+   examples stand side by side: the same manager before anything drew with it, and after. The Cache
+   tab shows 1568 and 1972 glyphs, 1000 units per em and no outline read yet.
+
+A test of 3.2 was rewritten here, not refactored away:
+`testTheFaceLookupReachesTheCacheRatherThanTheEmptyInheritedIndex` pinned `raise: KeyNotFound`,
+which is exactly what this unit removes, so it now asserts that the lookup answers the face the
+cache holds. It failed with `Assertion failed` the moment `faceAt:` built anything.
+
+Not built here: the FreeType detour of `VectorGraphics-Bloc` is untouched —
+`VGCanvas class >> faceForFreeTypeFace:` still goes through `VGFontFace class >> newForFace:` and
+the hand-rolled search of `bytesForFamilyName:styleName:`. It stays unreachable while
+`BAFontConverter >> faceFor:` asks `AeFontManager globalInstance`, which is until 3.5 installs ours,
+and 5.2 kills the bridge entirely. No default families, no session registration.
+
+Red: two `faceAt:` for one entry answer the identical object and `AeFTFace allInstances size` is
+unchanged across both. It failed with
+`key a TTFontCatalogueEntry a TTFontMetadata 'Source Sans Pro' 'Regular' from 248132 bytes not found in Dictionary`.
+The second red was written twice: the refusal test passed at first for the wrong reason, the cache's
+own `KeyNotFound` carrying the file name and the reason in its text already, so it was hardened with
+`deny: (error isKindOf: KeyNotFound)` and failed with `Denial failed` before the guard was written.
+The view test was written after the two views rather than before, and passed first time: no red.
 
 ### 3.5 — installation that survives a session start
 
