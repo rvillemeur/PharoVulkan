@@ -1213,10 +1213,72 @@ would add a class and simplify nothing today.
 
 ### 4.4 — text as a path
 
-`appendGlyphsPath:` appends our outlines to the Cairo path, which is what text shadows and
-text-as-path drawing need.
+Decided in the interview of 2026-11-13 and built the same day.
 
-Red: the path extents of a run enclose the same box as the mask route reports.
+`VGScaledFont >> appendPathOfGlyphs:length:onAeContext:` answers the path site: every contour of
+every glyph of a run, appended to the path the context is building, which is what a text border, a
+text shadow and text-as-path drawing are made of. The consumer is
+`BlTextBorderAttribute >> aeDrawOn:span:`, which hands the canvas a path factory that sends
+`BATextParagraphSpan >> appendPathOn:`, which sends `AeCanvas >> appendGlyphsPath:font:`.
+
+1. **The contours go on in user space.** A glyph of a `cairo_glyph_t` is positioned in user space
+   and `cairo_glyph_path` builds its path there, so ours does too: no `saveState`, no identity
+   matrix, no snapping to the device grid. The matrix of the context then takes part when the
+   caller fills or strokes, as it does for any other path. The alternative — appending device
+   contours under an identity matrix, which is what the mask route of 4.2 does — would buy pixel
+   equality with that route and bake the matrix into the shape, so a stroke width or a later
+   transform would land on a path already scaled.
+2. **One poser for both routes.** `appendContour:toAeContext:`, written for the masks in 4.2,
+   takes a contour already placed and never looks at the space it is in; only its comment said
+   device space, and the comment was rewritten. Duplicating five lines to keep two comments true
+   would be abstracting backwards.
+3. **Placement is a named method.** `userSpaceContoursOfGlyphAt:at:` translates the cached
+   contours to the position of the glyph, beside `deviceContoursOfGlyphAt:underMatrix:at:` which
+   has a linear matrix to apply as well. The site stays three lines and the concept has a name in
+   both spaces.
+4. **Two levels of red, in two places.**
+   `VGAeTextContextTest >> testThePathOfARunEnclosesTheBoxItsExtentsReport` asks Cairo itself, with
+   `pathExtentsInUserSpace`, and `VGCanvasTest >> testARunPathAppendedThroughTheCanvasInksOurOwnOutlines`
+   fills the figure through `AeCanvas` and reads the pixels, which is the selector Bloc actually
+   sends. Extents alone would pass for a path whose curves are posed with the control point and the
+   end point exchanged; ink alone would say nothing about the path before it is rasterised.
+5. **The degenerate run has its own test.**
+   `testARunThatInksNothingAppendsNoSubPath` lays out three spaces and asserts both that the path
+   extents are empty and that the context has no current point: Cairo drops a move-to that starts
+   no sub-path from the extents it reports, so the extents alone would also pass for a path of
+   stray move-tos.
+6. **The view is the other route of the same object.** `VGScaledFont >> inspectorGlyphPath:`
+   strokes the outlines of a short run thinly on white, beside the `Cairo masks` tab that 4.2 put
+   there: a fill would hide where the contours run. The view and its gate both ask
+   `contoursOfTheInspectorSample`, which calls the placement method, so neither restates the route.
+   `VGScaledFontExamples class >> glyphsPathOfARunOnACairoContext` and
+   `VGCanvasExamples class >> runPathFilledThroughTheCanvas` give the two sites their click.
+
+**No paragraph guard, for the reason unit 4.3 found.** `VGRenderer >> renderWith:…` builds a
+`VGCairoImageSurface` over the window's pixels, whose context is `VGCairoContext`, and
+`VGCairoContext >> appendGlyphsPath:length:` has posed our own contours since phase 3. The live
+window route is therefore already ours, and a guard on it would have been green before the unit.
+The site 4.4 delivers is the other meeting: an Alexandrie-made surface, reached through
+`AeCairoSurface >> newContext`, with a font of ours on it — shadows, composition layers, exporters
+and the canvas-level test above.
+
+Two findings worth keeping. The path box and the box our measuring reports are built from the same
+points, contour points with their control points among them, so they are the same box and not
+merely close ones; the whole of the difference is that Cairo keeps a path point on a grid of two
+hundred and fifty sixths of a pixel, and the test allows a quarter of a hundredth for it. And a
+canvas drawn by hand needs `setBorderOff` before `drawFigure`: the figure block is chosen by the
+border setters, and `drawFigureWithBackgroundAndNoBorder` called directly reads an unset
+`clipAfterwards` and dies on `NonBooleanReceiver`.
+
+Design review, agreed before anything was edited: **nothing executed, one point deferred,
+three rejected.** Deferred, and now a point of the phase 4 review: `VGScaledFont` carries 45
+methods and 8 variables, and 20 of those methods sit in `*VectorGraphics-Bloc` — the font model
+and the whole Alexandrie substitution adapter are one class. The refactoring is **Extract Class**,
+and it is worth doing once, after unit 4.5 has posed the fifth and last site, rather than twice.
+Rejected: factoring the two contour placers together, which is two occurrences and the third would
+have to be invented; extracting the surface setup out of `glyphPathFormOfContours:`, fourteen lines
+of view code read once; and pulling the duplicated `inkBoxOf:` test helper up, which has no common
+test superclass to go to and belongs to the test review in any case.
 
 ### 4.5 — font extents
 
