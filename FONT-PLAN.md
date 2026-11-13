@@ -775,6 +775,22 @@ extension were first compiled with LF line endings through `compile:classified:`
 The class comment was corrected in the same unit: its last paragraph still said `faceAt:` was the
 inherited one, pending 3.4.
 
+Design review of 3.5, executed on 2026-11-13, commit `a81aea0c`. Two points.
+
+1. **Remove a duplicate observation.** `inspectorInstallation:` showed the families, the entries and
+   the faces built of the posed manager, each behind its own nil test, which is what that manager's
+   own State view already says. Two copies of a count can disagree; one cannot. The view now names
+   the manager posed and nothing else, and the four nil tests go with the three rows. This was the
+   one point that forced a test to change: the view test of this unit asserted the `Families` row,
+   which pinned the content of the view rather than the fact of the unit, so that assertion was
+   dropped and the rest of the test kept.
+2. **Replace Direct Variable Access.** The view reads `self installedInstance`, the rule the review
+   of 3.4 set for every reader.
+
+Considered and rejected: `AeFontManager globalInstance:` is sent from `installGlobally`,
+`uninstallGlobally` and `startUp:`, three occurrences, but a wrapper around a single message send
+simplifies nothing today.
+
 ### 3.6 — the default families
 
 The six `AeEmbeddedFontFile` subclasses are registered from their bytes, as upstream does, so a
