@@ -1018,26 +1018,94 @@ direction, the script and the language, which is exactly what units 4.1 and 4.2 
 real text; two of the four occurrences are specimens, and the shape of the real caller is not known
 yet. A `TTFontRefusal` exception class was rejected too: nothing catches this `Error` today.
 
-### 4.1 — the context and its substitution
+### 4.1 and 4.2 — the substituted context and glyphs drawn as A8 masks
+
+Decided in the interview of 2026-11-13 and built as one unit, because a context that substitutes
+nothing draws no text and could only be pinned by a test asserting its own class.
 
 `VGAeTextContext`, a subclass of `AeCairoContext`, plus one extension method redefining
-`AeCairoSurface >> newContext` to answer it, with a one-line comment saying why.
-Every text selector delegates to `super` when the scaled font it is given is a real
-`AeCairoScaledFont`, so an image without our manager behaves exactly as before.
+`AeCairoSurface >> newContext` to answer it, with a one-line comment saying why. Every text
+selector delegates to `super` when the scaled font it is given is a real `AeCairoScaledFont`, so an
+image without our manager behaves exactly as before. `scaledFont:` keeps our scaled font, and
+`showGlyphs:size:` blits one mask per glyph with `maskSurface:x:y:`, so the colour comes from the
+Cairo source as it does for any other mask.
 
-Red: any surface answers a `VGAeTextContext`, and a figure drawn with no text is pixel-identical to
-the one the stock context draws.
+1. **Cairo rasterises our outlines, and the masks of this route live in their own atlas.** The
+   glyph contours come from our reader and the coverage from `cairo_fill` into an
+   `AeCairoImageSurface` of format `a8`: this unit owes Bloc the same pixels Alexandrie draws, and
+   our own rasteriser is unit 7's subject, not this one's. The surface is externally allocated, as
+   every Cairo image surface is, because the garbage collector may move a `ByteArray` while Cairo
+   holds the address of its first byte.
+2. **A second slot, `cairoMaskAtlas`, beside the existing `atlas`.** The two routes rasterise with
+   different code and must be comparable at unit 7; one atlas holding both would key on the route
+   as well as on the glyph, phase and matrix, and the keys of the existing atlas would change for
+   a reason that has nothing to do with it.
+3. **All five text selectors are overridden now, dispatch only.** `scaledFont:`,
+   `showGlyphs:size:`, `getGlyphExtentsOf:size:into:`, `appendGlyphsPath:length:` and
+   `getFontExtentsInto:` are the sites `AeCanvas` reaches text through, so the context is whole
+   from the start and units 4.3 to 4.5 each fill in one answer instead of also having to find its
+   site. A test names the three not yet answered, with the receiver and the selector a reader will
+   see, so the unit that answers one deletes a line from a list rather than discovering a DNU.
+4. **No type test: the font decides, by double dispatch.** Each site sends a message of ours to the
+   scaled font it was given — `poseOnAeContext:`, `showGlyphs:size:onAeContext:`,
+   `glyphExtentsOf:size:into:onAeContext:`, `appendPathOfGlyphs:length:onAeContext:`,
+   `fontExtentsInto:onAeContext:` — and `AeCairoScaledFont` answers each one by sending the context
+   back the matching `…ThroughCairo…` escape, which is the superclass's own method under a name an
+   override cannot hide. `VGScaledFont` answers with our own drawing. Neither class asks what the
+   other is.
+5. **The whole font-side half is filed in `VectorGraphics-Bloc`, protocol `*VectorGraphics-Bloc`.**
+   `VGScaledFont` lives in `VectorGraphics-Cairo`, a package of the default group, which
+   `VGArchitectureTest >> testNoPackageOfTheDefaultGroupNamesAClassOfTheStackItReplaces` forbids
+   from naming any Bloc or Alexandrie class. The slot is on the class; every method that mentions
+   an `Ae*` class is an extension.
+6. **The proof reads the pixels of the drawn surface.** A test asserting that a mask was blitted
+   where the pen stood would restate the code; reading the alpha of the drawn surface says that
+   Cairo put ink on the page and that it landed inside the extents our own metrics answer. An
+   untouched pixel of an ARGB32 surface reads back as `16777215`, transparent white, so ink is the
+   alpha byte and never the whole word.
+7. **A view of the A8 masks on `VGScaledFont`, `inspectorCairoMasks:`, order 12.** One row per
+   glyph of this route's atlas, with the mask as Cairo rasterised it — read back as a `Form`, the
+   coverage reads as grey. It reads the variable, not the `cairoMaskAtlas` accessor, because the
+   accessor builds the atlas on first use and a view must leave the object it shows alone.
 
-### 4.2 — glyphs drawn as A8 masks
+`VGAeTextContext class >> unownedNewFor:` had to be redefined with our own class as the uFFI return
+type: `AeCairoContext class >> unownedNewFor:` names `AeCairoContext` in its `ffiCall:`, so without
+the override `surface newContext` answered a stock context although the extension was installed.
 
-`scaledFont:` keeps our scaled font, and `showGlyphs:` blits one mask per glyph with
-`maskSurface:x:y:`, so the colour comes from the Cairo source as it does for any other mask.
-The masks for this route live in externally allocated A8 surfaces owned by the atlas, never in a
-`ByteArray` of object memory: the garbage collector may move a `ByteArray` while Cairo holds its
-address.
+`cairo_mask_surface` places the mask in user space, so `showGlyphs:size:onAeContext:` sets the
+identity matrix inside `saveState`/`restoreState` and passes device coordinates. The pen position
+is transformed by the matrix read off the context, the whole-pixel part chooses the blit and the
+fractional part is the atlas key's phase, as the existing route already rounds.
 
-Red, by the criterion of decision 11: the glyph identifiers come from `cmap`, the pen advances match
-`hmtx`, and the drawn ink lies inside the run extents.
+Red 1: every surface answers the context that knows our fonts. Red 2: a figure with no text is
+pixel for pixel what the stock context draws. Red 3: a glyph run drawn through real Cairo inks
+inside its run extents — the ink box is non-nil and lies inside the extents our metrics answer,
+expanded by one pixel. Red 4: the three text sites the later units deliver fail naming our own font
+and selector. Red 5: a real Cairo font still draws through Cairo itself, and the context keeps no
+font of ours.
+
+Two slips worth keeping. The ink test first counted every non-zero word and so found the whole
+surface inked, which is the transparent-white reading above. And the delegation test first borrowed
+a live FreeType scaled font from `VGCairoTextTest`, which broke
+`VGArchitectureTest >> testBlocTestsStayInsideTheirAllowedDependencies`; it uses Cairo's own toy
+font instead, which also keeps the suite clear of the FreeType handle-lifetime crash.
+
+The examples are `VGAeTextContextExamples` in `VectorGraphics-Bloc-Examples`:
+`textRunDrawnThroughRealCairo` answers the drawn surface, and
+`scaledFontWithAWarmCairoMaskAtlas` draws the run twice, the second time shifted one pixel, and
+answers the font — nine masks for ten characters, the two spaces sharing one.
+
+Critics on what changed leave five `ReTrivialCritique` of one kind, "Sends different super
+message", one per `…ThroughCairo…` escape. That is the design of decision 4: the escape exists to
+reach the superclass's own method under a name the override cannot hide, so the send cannot be
+renamed away.
+
+Two gates of `VGRendererTest` are red and were already red before this unit:
+`testNoMethodOfThisProjectNamesACairoClass` and
+`testThisProjectDefinesNoMethodOnABlocOrAlexandrieClass`. The offenders predate it —
+`AeCairoFontOptions >> hintsMetrics` from unit 2.3 and `AeFontManager class >> globalInstance:`
+from phase 3. Both gates encode the old rule that this project never names or extends the stack it
+replaces, which phases 3 and 4 deliberately break, so they need a decision rather than a patch.
 
 ### 4.3 — extents that Bloc can measure with
 
