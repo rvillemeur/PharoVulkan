@@ -1100,12 +1100,47 @@ message", one per `…ThroughCairo…` escape. That is the design of decision 4:
 reach the superclass's own method under a name the override cannot hide, so the send cannot be
 renamed away.
 
-Two gates of `VGRendererTest` are red and were already red before this unit:
-`testNoMethodOfThisProjectNamesACairoClass` and
-`testThisProjectDefinesNoMethodOnABlocOrAlexandrieClass`. The offenders predate it —
-`AeCairoFontOptions >> hintsMetrics` from unit 2.3 and `AeFontManager class >> globalInstance:`
-from phase 3. Both gates encode the old rule that this project never names or extends the stack it
-replaces, which phases 3 and 4 deliberately break, so they need a decision rather than a patch.
+Design review of this unit, executed the same day. Five refactorings, each committed on green:
+`e6479191`, `20cd5698`, `e91a4a3c`, `442c74be` and `d5a4a6f4`.
+
+1. **Move Method.** `wholePixelBoxOfContours:` stood on `VGScaledFont` and on `VGCairoContext`,
+   body and comment alike. The copy on the font stays, filed in `outlines` since it names no class
+   of the replaced stack, and the Cairo context asks its current scaled font for the box.
+2. **Move Method.** `deviceContoursOfGlyphAt:underMatrix:at:` is now the one rule, on the font that
+   owns the outlines; `VGCairoContext >> deviceContoursOfGlyph:at:` delegates, handing over its own
+   matrix without the translation. The two routes can no longer drift apart in the coordinates they
+   give the rasteriser, which is what unit 7 compares.
+3. **Extract Method, and one transform per mask.** The mask of a glyph,
+   `cairoMaskForGlyph:atPhase:underMatrix:onAeContext:`, built its contours twice, once to measure
+   the box and once shifted into it, so every miss of the atlas transformed the outline twice.
+   The contours are placed once and moved to the box, and
+   `cairoMaskSurfaceOfContours:extent:onAeContext:` holds the A8 surface and the fill.
+4. **Move Method.** `matrixOfAeContext:` used nothing of the font: it is now the extension
+   `AeCairoMatrix >> asVGCairoMatrix`, filed in `VectorGraphics-Bloc`, where units 4.3 to 4.5 can
+   ask for it too.
+5. **Move Method, to the class side.** `snapped:` and `fixedOf:` use nothing of a path being built.
+   They move to `VGPathBuilder class`, the instance method delegates, and neither `VGScaledFont` nor
+   `VGCairoContext` builds or holds a path builder to round one point. The rounding rule has one
+   home.
+
+Left undone on purpose: the two contour walks, `VGScaledFont >> appendContour:toAeContext:` and
+`VGCairoContext >> appendDeviceContour:into:`, stay separate. Unifying them needs an
+`AeCairoContext >> quadraticVia:to:` that reads the current point back from Cairo, an FFI round trip
+a curve, for two occurrences. The third occurrence is the trigger. `inspectorCairoMasks:` keeps its
+five columns and the nil mask said in three of them: ready-made rows would hide what a column shows.
+`VGCairoContext >> renderedGlyphMaskFor:atPhase:` still builds its contours twice, as point 3 did;
+it is the other route's method and no bug has been seen there, so it waits for a reason of its own.
+
+The two gates of `VGRendererTest` that were red before this unit are settled, as their own step,
+commit `f6bff11c`. `testNoMethodOfThisProjectNamesACairoClass` is gone:
+`VGArchitectureTest >> testNoPackageOfTheDefaultGroupNamesAClassOfTheStackItReplaces` already says
+it for the packages it still holds for. `testThisProjectDefinesNoMethodOnABlocOrAlexandrieClass`
+moved to `VGArchitectureTest` as
+`testNoPackageOfTheDefaultGroupDefinesAMethodOnTheStackItReplaces`, narrowed to the default group,
+whose members the baseline's own group list answers. It says what the naming gate does not: an
+extension method on a foreign class has no class to go on in an image without that class. The Bloc
+packages extend Bloc and Alexandrie by design — that is what phases 3 and 4 are — and what they may
+name stays stated by `VGArchitectureTest class >> allowedDependencies`.
 
 ### 4.3 — extents that Bloc can measure with
 
