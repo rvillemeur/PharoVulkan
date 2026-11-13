@@ -836,13 +836,100 @@ the second 12 ms, so nothing here is worth making lazy.
 
 ### 3.7 — HarfBuzz keeps working
 
-The entries our manager holds are the upstream `AeFileFaceEntry` and `AeMemoryFaceEntry`, so
-`newHbFont` keeps answering through `AeHbBlob`, with no FreeType and no change of ours.
-This unit is a test, not code: it pins the one service of the chain that must survive the removal
-untouched, because Bloc enables HarfBuzz shaping later.
+The premise written here was wrong.
+Our manager holds `TTFontCatalogueEntry`, not the upstream `AeFileFaceEntry` and
+`AeMemoryFaceEntry`, so `newHbFont` answers for no entry of ours; and `AeFaceEntry >> newHbFont`
+has no production sender in the image at all.
+So this unit is production code, not a test.
+HarfBuzz is also absent from Bloc's text path today: `AeHbBuffer` appears only in Alexandrie's
+experiments and tests, and in the two of those we ported, so what this unit pins is the shaping
+service, not window drawing.
+Decided in the interview of 2026-11-13, built and committed as `1a62baa7`.
 
-Red: an entry registered by `VGFontManager` answers an `AeHbFont`, that font shapes a run into glyph
-identifiers, and `AeFTFace allInstances size` is unchanged across the shaping.
+1. **`TTFontCatalogueEntry >> newHbFontScaledTo:`, an extension of ours filed in
+   `VectorGraphics-Bloc`.** The entry already knows which font it names and whether the reader
+   refused it, so shaping is asked of it rather than of a second object built to carry the same
+   two facts. The method is filed in the Bloc package, in protocol `*VectorGraphics-Bloc`, because
+   `VectorGraphics-TrueType` references no `Ae*` class and must keep it that way.
+2. **Nothing new on `AeHbBuffer`.** A consumer builds the buffer as Alexandrie's own experiments
+   build it, then sends `shapeWithFont:` and `cairoGlyphArray`. A wrapper of ours would restate
+   upstream's own protocol and hide the direction, script and language the caller has to choose
+   anyway.
+3. **The blob comes from the source itself, polymorphically: `newHbBlob` on `FileReference` and on
+   `ByteArray`.** The two kinds of source need two different calls for a reason the catalogue
+   entry should not have to know, so the entry sends one message and neither class is type-tested.
+   The companions of `fontBytes` and `fontSourceName`, which already split this way.
+   - A file goes to `hb_blob_create_from_file`, which opens the file itself: no byte enters
+     Pharo's object memory, and nothing has to be pinned or kept alive.
+   - Bytes go to `AeHbBlob newFrom:`, which calls `hb_blob_create` in `HB_MEMORY_MODE_READONLY`
+     with no destroy callback. HarfBuzz keeps the raw address of the first byte and reads through
+     it long after the call returns, so the `ByteArray` pins itself first; an unpinned one can be
+     moved by the garbage collector and the blob would then read whatever took its place.
+   - A `FileLocator` reaches the `FileReference` extension through its own `doesNotUnderstand:`,
+     which forwards any selector the resolved reference responds to.
+4. **A refused file is refused here too, with an error naming the file and the reason.** HarfBuzz
+   would read it: it parses the font file itself and accepts a collection, which this project's
+   reader rejects. The glyph identifiers would then name glyphs of a face no font face of this
+   project can draw. The sentence is the one `VGFontManager >> refuseFaceFor:` says about a face,
+   said about shaping.
+5. **The scale is `aSize * 64` on both axes, posed by us.** A font built from a blob is unscaled —
+   its scale is the units per em of its face — while `AeHbBuffer >> cairoGlyphArray` reads every
+   advance and offset as 26.6 fixed point. `hb_ft_font_create_referenced` took this scale from the
+   size set on the FreeType face, and nothing poses it on the blob route.
+   The face index is 0 because a drawable entry holds exactly one font: a file holding several is a
+   collection, which `TTFontMetadataReader class >> offsetTableRejection:inFileOfSize:` refuses
+   with `#fontCollection` before the entry is ever drawable.
+6. **A new test class, `VGHarfbuzzShapingTest`, with one test per kind of source.** The subject is
+   shaping, not the catalogue and not the manager, and the class comment is where the two upstream
+   routes and the absence of HarfBuzz from Bloc's text path are written down. It calls
+   `libharfbuzz` through uFFI, so its comment also says to commit before running it.
+7. **A new class, `VGHarfbuzzShapingExamples`, with one example,
+   `glyphArrayShapedWithoutFreeType`.** It answers the `AeCairoGlyphArray` itself, one element a
+   glyph, so a reader inspecting it sees the identifiers and the places HarfBuzz chose. Five glyphs
+   for `'Pharo'` at 22 pixels: identifiers 17, 35, 28, 45 and 42 at x 0.0, 12.453125, 24.421875,
+   35.515625 and 42.9375.
+8. **A view, `TTFontCatalogueEntry >> inspectorShaping: aBuilder`, gated on `isRejected not`.**
+   It shapes the sample word here and now rather than describing it: the scale is read back off the
+   font HarfBuzz answered and the glyphs are the ones it placed, so neither can drift from
+   `newHbFontScaledTo:`. The gate is the rule of decision 4 asked of the entry, and the refusal
+   itself is already named by the `Source` view.
+
+Not built here: no shaping in the Bloc drawing path. `AeHbBuffer >> cairoGlyphArrayForFace:size:`,
+the FreeType route, is untouched, and so are the two ported experiments in
+`VectorGraphics-Conformance` that still take it; they die at 5.2.
+
+Red 1: a font this project carries in memory shapes `'Pharo'` into five glyph identifiers, the
+font's scale is `22 * 64 @ (22 * 64)`, and `AeFTFace allInstances size` is unchanged across the
+shaping. It failed with `Message not understood: TTFontCatalogueEntry >> #newHbFontScaledTo:`.
+Red 2: the same through a font on disk, added as the `FileLocator`
+`AeFilesystemResources inriaSerifRegularTTF`. It failed with
+`Message not understood: FileReference >> #newHbBlob`.
+Red 3: a file the reader refused is not shaped at all, and the error names both the source and the
+reason.
+Red 4: the `Shaping` view answers seven rows for a drawable entry, and the tab is offered on a
+drawable entry only.
+
+Two slips worth keeping. The first green answered
+`AeHbBlob newFrom: self pinInMemory` and failed with `Instances of True are not indexable`:
+`pinInMemory` answers whether the object was already pinned, not the object. The second was a bug
+claimed and not real — that `fontBytes` on a `FileReference` would leave an entry holding a
+`FileLocator` answering a DNU; the test written for it passed on the first run, and reading
+`FileLocator >> doesNotUnderstand:` showed why. The test was deleted rather than kept as a
+tautology.
+
+The examples gate also caught two defects left by 3.5, which no run had covered until this unit
+added a holder to `VGBlocExamplesTest >> exampleHolders`.
+`VGFontManager class >> inspectorInstallation:` was ungated although it reads `installedInstance`,
+a class-instance variable every subclass would hold its own always-nil copy of; it now has
+`inspectorInstallationContext:`, active where `installGlobally` is defined.
+And the example `managerBlocAsksToday` answered `AeFontManager globalInstance`, the same singleton
+twice, so it rebuilt nothing; it was deleted, with the sentence a reader needs moved into the
+comment of `inspectorInstallation:`.
+
+The new edge is declared twice, as this project's rule asks: `VectorGraphics-Bloc-Examples` and
+`VectorGraphics-Bloc-Tests` name `VectorGraphics-TrueType` in
+`BaselineOfVectorGraphics >> declareBackendPackagesOn:` and in
+`VGArchitectureTest class >> allowedDependencies`.
 
 ### 4.1 — the context and its substitution
 
