@@ -472,6 +472,55 @@ no edge declared ahead of the class that needs it.
 Red: an unmodified `AeCanvas` given one of our faces answers a `VGScaledFont` from
 `scaledFontForFace:size:`.
 
+Built on 2026-11-13, interviewed first. Commits `cd861377` and `06445f8c`.
+
+`VGFontFace >> newCairoFontFace` answers the face itself, so Alexandrie's own `AeCanvas` builds one
+of our scaled fonts for one of our faces with no class of either backend named in the source. That
+and `newScaledFontWithFontMatrix:userToDeviceMatrix:options:` are the two messages the Cairo font
+protocol sends a face, which is why they sit together. Nothing in `VGCanvas` was touched: its
+`scaledFontForFace:size:` stays as it is, cache bug included, and the decision about its survival
+belongs to 5.2.
+
+`VGCanvasTest >> testAnUnmodifiedCanvasAnswersOneOfOurScaledFontsForOneOfOurFaces` is the red, with
+four assertions: the canvas is an `AeCanvas` and not one of ours, the answer is a `VGScaledFont`,
+its face is the one given, and its font matrix is the size scaled. `VGCanvasExamples class >>
+scaledFontAnUnmodifiedCanvasAnswers` shows the object, beside its companion
+`scaledFontForTheDefaultFace` which shows the same seam through `VGCanvas`. `VGFontFace >>
+inspectorFace:` gained a row that sends `newCairoFontFace` rather than saying what it answers, so it
+stops being true the day the method answers something else.
+
+Two real breaks came out from behind the new seam, both fixed here with the failing test first.
+
+1. The canvas hands the scaled font its own `AeCairoFontOptions`, not a `VGFontOptions`, and our
+   measurements ask the options record one question it does not answer: `hintsMetrics`. Both
+   `VGScaledFont >> fontExtents` and `>> glyphAdvanceOf:` raised
+   `MessageNotUnderstood: AeCairoFontOptions >> #hintsMetrics`, so a face reached this way could be
+   scaled but never measured. `AeCairoFontOptions >> hintsMetrics` is an extension in
+   `VectorGraphics-Bloc`, because Alexandrie's classes are never edited in this project; it reads
+   `CAIRO_HINT_METRICS_DEFAULT` as off, the same reading `VGFontOptions` takes of its own default.
+   Alexandrie's canvas asks Cairo for hinted metrics, so the ascent and the advance come back
+   rounded, which is what the test asserts.
+2. Alexandrie's `AeCanvas >> inspectionOfSurface:` answers the surface's `Form` itself. The
+   inspector sends `asInspection` to what a view answered, which a `Form` does not understand, and
+   that send is outside the handler `StInspectionContext >> newInspectionPresenterOnApplication:`
+   wraps the build in: the Surface tab raises for any `AeCanvas`, ours included. `VGCanvas >>
+   inspectionOfSurface:` passes the Form through the builder, with `inspectionOfSurfaceContext:` for
+   its gate.
+
+The examples gate did not catch either one, because it scanned only the views the project wrote on
+a class's own methods. `VGCairoExamplesTest >> viewMethodsAReaderOpensOf:` is the wider set the
+build gate now uses: the selector is looked up, so an inherited view counts, and on an object whose
+own class is ours a view the replaced stack wrote counts too, by `replacedStackDefines:`. On an
+object an example merely answers — a `Form`, a `BlElement` — the views of its own stack stay out,
+as Pharo's always were. `viewMethodsOf:` keeps the narrow set, because the project's own rules, the
+gate rule among them, apply to the views the project wrote. The build gate also asserts that a view
+answers an `SpPresenter`, which is what `asInspection` needs.
+
+Carried: the Bloc example that answers a plain `BlElement` cannot show Bloc's own
+`inspectionPreview:` tab — `MessageNotUnderstood: VGFontFace >> #tfPointerAddress`. Bloc's own view
+on Bloc's own class, so the gate leaves it out; the send is Bloc text drawing through a face of
+ours, which is what units 4.1 to 4.5 build.
+
 ### 3.1 — the manager without a library
 
 `VGFontManager`, a subclass of `AeFontManager`, redefines `reset`: no `freetypeLibrary`, and a
