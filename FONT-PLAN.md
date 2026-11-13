@@ -1126,10 +1126,15 @@ Design review of this unit, executed the same day. Five refactorings, each commi
 Left undone on purpose: the two contour walks, `VGScaledFont >> appendContour:toAeContext:` and
 `VGCairoContext >> appendDeviceContour:into:`, stay separate. Unifying them needs an
 `AeCairoContext >> quadraticVia:to:` that reads the current point back from Cairo, an FFI round trip
-a curve, for two occurrences. The third occurrence is the trigger. `inspectorCairoMasks:` keeps its
-five columns and the nil mask said in three of them: ready-made rows would hide what a column shows.
+a curve, for two occurrences. The third occurrence is the trigger.
 `VGCairoContext >> renderedGlyphMaskFor:atPhase:` still builds its contours twice, as point 3 did;
 it is the other route's method and no bug has been seen there, so it waits for a reason of its own.
+
+Critics asked for one more cut after the view learned to tolerate a font with no atlas, commit
+`11471568`: the block argument shadowed the `atlas` instance variable and four nil tests in one
+method read as complex. `cairoMaskAssociations` answers the rows, still through the variable so that
+asking does not build the atlas, and one reader a column says what a row shows where a glyph inks
+nothing.
 
 The two gates of `VGRendererTest` that were red before this unit are settled, as their own step,
 commit `f6bff11c`. `testNoMethodOfThisProjectNamesACairoClass` is gone:
