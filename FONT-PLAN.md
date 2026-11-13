@@ -713,6 +713,8 @@ Design review of 3.4, executed on 2026-11-12. Two points, both applied, commit `
    it checks or not, which is how the first draft of the test passed while the bug was still there.
 2. **Extract Method.** `refuseFaceFor: anEntry` holds the error the guard signals, so `faceAt:`
    answers a face and the new method states the refusal.
+   The review of 3.7 moved it onto the entry, as `signalRefusal:`: the sentence is about the file
+   the entry names and uses nothing of the manager.
 
 ### 3.5 — installation that survives a session start
 
@@ -870,8 +872,8 @@ Decided in the interview of 2026-11-13, built and committed as `1a62baa7`.
 4. **A refused file is refused here too, with an error naming the file and the reason.** HarfBuzz
    would read it: it parses the font file itself and accepts a collection, which this project's
    reader rejects. The glyph identifiers would then name glyphs of a face no font face of this
-   project can draw. The sentence is the one `VGFontManager >> refuseFaceFor:` says about a face,
-   said about shaping.
+   project can draw. The refusal is said by `signalRefusal:`, which `VGFontManager >> faceAt:`
+   sends for the same reason about a face.
 5. **The scale is `aSize * 64` on both axes, posed by us.** A font built from a blob is unscaled —
    its scale is the units per em of its face — while `AeHbBuffer >> cairoGlyphArray` reads every
    advance and offset as 26.6 fixed point. `hb_ft_font_create_referenced` took this scale from the
@@ -930,6 +932,31 @@ The new edge is declared twice, as this project's rule asks: `VectorGraphics-Blo
 `VectorGraphics-Bloc-Tests` name `VectorGraphics-TrueType` in
 `BaselineOfVectorGraphics >> declareBackendPackagesOn:` and in
 `VGArchitectureTest class >> allowedDependencies`.
+
+Design review of this unit, executed the same day. Three refactorings, each committed on green:
+`673029b5`, `279602ec` and `61b35759`, plus `c52c82cf`.
+
+1. **Hide Delegate.** Four sites reached through the entry into `source` or `metadata` to name a
+   font or say why it was refused. `TTFontCatalogueEntry >> fontSourceName` and `>> rejectionReason`
+   answer for the parts, as `isRejected` already did; `source` and `metadata` stay, so no test had
+   to change.
+2. **Move Method.** `VGFontManager >> refuseFaceFor:` used nothing of the manager and said a
+   sentence about the entry's file, which `newHbFontScaledTo:` then said again with a different
+   last clause. `TTFontCatalogueEntry >> signalRefusal:` writes the first two clauses once and each
+   caller says only what cannot be done; `refuseFaceFor:` is gone.
+3. **Extract Method.** `inspectorShaping:` shaped the word, formatted the rows and built the table.
+   `shapingRowsAtSize:` answers the rows, and the view builds a table and nothing else; the figures
+   can now be asked without a presenter.
+
+Also, `inspectorInstallationContext:` compared the class to `VGFontManager` by name, which Renraku
+reads as a class referring to itself and which restates the rule its own comment states. It sends
+`includesSelector: #installGlobally` instead.
+
+Left undone on purpose: the `AeHbBuffer` cascade is still written out four times, in the view, the
+example and two tests. A method answering a glyph array for a string at a size would freeze the
+direction, the script and the language, which is exactly what units 4.1 and 4.2 have to decide for
+real text; two of the four occurrences are specimens, and the shape of the real caller is not known
+yet. A `TTFontRefusal` exception class was rejected too: nothing catches this `Error` today.
 
 ### 4.1 — the context and its substitution
 
