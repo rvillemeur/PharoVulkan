@@ -516,6 +516,17 @@ as Pharo's always were. `viewMethodsOf:` keeps the narrow set, because the proje
 gate rule among them, apply to the views the project wrote. The build gate also asserts that a view
 answers an `SpPresenter`, which is what `asInspection` needs.
 
+Design review of this unit, executed the same day: one refactoring, `0ef6d164`. The examples suite
+has two finders of views and the difference between them is a rule, but only one said so in its
+name: `viewMethodsOf:` is now `viewMethodsTheProjectWroteOf:`, beside `viewMethodsAReaderOpensOf:`.
+Rejected: delegating `VGCanvas >> inspectionOfSurface:` to `VGCairoImageSurface >> inspectorPicture:`
+to drop the duplicated `aBuilder newImage image: … asForm`, because a `VGCanvas` can hold a surface
+of Alexandrie's, which does not understand `inspectorPicture:` — a one-line duplication traded for a
+conditional doesNotUnderstand. Deferred: the hint-metrics value is read as a `Symbol` by
+`VGFontOptions` and as an enum by the extension, which is 4.5 and 5.1's decision about the options
+record; the rounding rule stands twice in `VGScaledFont`, and two occurrences are a coincidence; and
+`VGFontFace`'s variable count is the carried Extract Class.
+
 Carried: the Bloc example that answers a plain `BlElement` cannot show Bloc's own
 `inspectionPreview:` tab — `MessageNotUnderstood: VGFontFace >> #tfPointerAddress`. Bloc's own view
 on Bloc's own class, so the gate leaves it out; the send is Bloc text drawing through a face of
