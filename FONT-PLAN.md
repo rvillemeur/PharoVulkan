@@ -1149,10 +1149,67 @@ name stays stated by `VGArchitectureTest class >> allowedDependencies`.
 
 ### 4.3 — extents that Bloc can measure with
 
-`getGlyphExtentsOf:size:into:` fills the `AeCairoTextExtents` that `AeCanvas >> metricsFor:font:`
-reads, from our own metrics.
+Decided in the interview of 2026-11-13 and built the same day: commits `44bbee21`, `25e3bdad`,
+`8f009d08` and `d2f5778c`.
 
-Red: a Bloc paragraph measured through the stock canvas has the width of the sum of our advances.
+`VGScaledFont >> glyphExtentsOf:size:into:onAeContext:` answers the measuring site from
+`glyphExtentsOf:`, which the font already had: the inked box relative to the origin of the first
+glyph, and the advance from that origin to where the next run starts, in user space, as
+`cairo_glyph_extents` answers them.
+
+1. **The six numbers are copied by the record they come from.** `VGTextExtents >> writeInto:`
+   names no class and sends six setters, so anything that answers them serves: Cairo's call writes
+   into a record its caller owns, and `AeCanvas` keeps one such record and reuses it for every run
+   it measures.
+2. **The context argument is kept, and unused.** The numbers are in user space, so the matrix
+   takes no part; the keyword stays because all five text sites dispatch the same way and a test
+   pins the selector a missing site has to name.
+3. **The red sits where the measured site sits.** `VGCanvasTest`, because the site is
+   `AeCanvas >> metricsFor:font:` and that class already gates what a font of ours answers when
+   Alexandrie's own canvas asks.
+4. **The red builds its font from the bundled bytes.** Measuring must not depend on a FreeType
+   face, which is what the canvas route still builds its own faces from; the fixture duplicates
+   the one in `VGAeTextContextTest`, and a second duplication is still a coincidence.
+5. **What it asserts.** The `AeCairoTextMetrics` the canvas answers carries exactly the six
+   numbers of our `glyphExtentsOf:`, and its `advanceX` is the sum of the run's advances. The run
+   is `'a b'`, so a glyph that inks nothing sits in the middle and the inked box and the advance
+   cannot agree by accident.
+6. **The view goes on `VGTextExtents`.** `inspectorGeometry:` draws what the six numbers mean —
+   the baseline, the origin, the inked box at the bearing, the advance to the next run — because
+   six bare numbers are unreadable, and because that is the object this unit hands to Bloc.
+   `VGScaledFontExamples class >> textExtentsOfARun` gives the view its click, and
+   `VGCanvasExamples class >> metricsOfARunMeasuredThroughTheCanvas` runs the delivered site.
+
+**The paragraph guard was dropped, because it was green before the unit.** The plan's red was a
+Bloc paragraph measured end to end, and it passed with the new method removed from the image. The
+reason is that `VGCanvas >> newCairoSurfaceExtent:` answers a `VGCairoImageSurface`, whose context
+is `VGCairoContext`, not the substituted `VGAeTextContext`: the live Bloc measuring route has been
+answering from our own metrics since phase 3, through
+`VGCairoContext >> getGlyphExtentsOf:size:into:`. The site unit 4.3 answers is the other meeting —
+a surface Alexandrie made, reached through `AeCairoSurface >> newContext`, with a font of ours on
+it — and the narrow red covers exactly that. A test that cannot fail guards nothing, so it went.
+
+Two smaller findings. The record holds doubles, so our exact fractions come back rounded to the
+nearest double and the test compares with `closeTo:`. And `writeInto:`, filed in
+`*VectorGraphics-Bloc` by the interview's decision, moved to `VectorGraphics-Cairo` as soon as
+`VGCairoContext` could use it too: it names no Alexandrie class, and the Cairo package may not
+depend on the Bloc one.
+
+The view needed a gate, which `VGCairoExamplesTest >> testEveryViewHasAGate` caught:
+`inspectorGeometryContext:` shuts the tab on an empty run. Both it and the view ask
+`VGTextExtents >> isEmpty`, and the view still answers a sentence rather than a picture for an
+empty run, because the gate that builds every view ignores the activation method.
+
+Design review, agreed before anything was edited. Executed: **Extract Method** on `geometryForm`,
+which held the fitting and the drawing at once, into `geometryPlacerInto:` and
+`drawGeometryOn:placing:`, with `inkedBox` as the domain accessor both need (`8f009d08`); and the
+marks the drawing puts down, six bare numbers, expressed from one named tick (`d2f5778c`).
+Deferred: the filling sequence — `glyphsOf:size:`, `glyphExtentsOf:`, `writeInto:` — now appears in
+both contexts, which is two occurrences, and the shape of the common factor depends on what units
+4.4 and 4.5 ask the context for. Rejected: moving `outline:on:color:` onto `Form`, a kernel class,
+for a four-line helper with one sender; drawing the view through a `VGCairoContext` instead of a
+`Form`, which is more code for no more clarity; and moving the view off `VGTextExtents`, which
+would add a class and simplify nothing today.
 
 ### 4.4 — text as a path
 
