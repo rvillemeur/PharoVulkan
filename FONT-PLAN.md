@@ -795,10 +795,44 @@ simplifies nothing today.
 
 The six `AeEmbeddedFontFile` subclasses are registered from their bytes, as upstream does, so a
 default text has a family with no FreeType in the image.
-`VGFontFace class >> defaultBytes` already reads Pharo's own embedded family without an FT call.
+Decided in the interview of 2026-11-13, built and committed as `cfaef72c`.
 
-Red: `detectFamilyName:slant:weight:stretch:ifNone:` for Source Sans Pro answers one of our faces
-in a fresh manager.
+1. **A class-side constructor, `newWithDefaultFaces`, and `installGlobally` builds through it.**
+   A test, an example or a consumer can then hold a manager ready to draw without posing it as the
+   one the whole image asks. The same work inside `installGlobally` would make every test of this
+   unit install and restore; inside the instance-side `initialize` it would peel the empty
+   catalogue away from the twelve tests of `VGFontManagerTest` that count on it, and an empty
+   manager is a legitimate state — it is what `scanDirectory:` fills.
+2. **The six embedded faces, and nothing else.** The same set as upstream, so a default text draws
+   the families Alexandrie drew, and the result is the same on every machine: six entries, two
+   families, no dependency on the file system. The machine's own fonts stay one
+   `scanDefaultDirectories` away — 129 ms and 544 files on this one, which is not a thing to do at
+   every image start, and a count no test could state.
+3. **The families are named by the embedded font classes.** `AeSourceSansPro_Regular familyName` and
+   `AeSourceCodePro_Regular familyName`, asked through
+   `detectFamilyName:slant:weight:stretch:ifNone:`, so the path exercised is the one Bloc takes,
+   Alexandrie's vocabulary included, and renaming an embedded font leaves no stale string behind.
+   An absent family raises an error naming it, where upstream writes `'Shouldn''t happen'`: a
+   default face left nil comes back as nil from `BAFontConverter >> faceFor:` and the breakage
+   appears in the drawing instead.
+4. **Two tests, one per class.** The constructor is stated in `VGFontManagerTest`, which touches no
+   global state; what `installGlobally` poses is stated in `VGFontManagerInstallationTest`, and
+   asked through upstream's own `AeFontManager defaultFontFamilyName` and
+   `defaultCodeFontFamilyName`, which is how the rest of the image asks.
+5. **An example, no new view.** `managerReadyToDrawDefaultText` answers
+   `VGFontManager newWithDefaultFaces`; the `Default face` and `Default code face` rows of
+   `inspectorState:` are the view of this unit, and they showed nothing but nil until today. An
+   extra tab for two faces would be the duplication the review of 3.5 just removed.
+
+Not built here: no scan of the machine's fonts. `VGFontFace class >> defaultBytes` and its route
+through `FreeTypeFontProvider current families` are untouched; they die at 5.2.
+
+Red: a manager from `newWithDefaultFaces` holds the two embedded families, six entries, a
+`VGFontFace` for each default, and leaves `AeFTFace allInstances size` unchanged. It failed with
+`Message not understood: VGFontManager class >> #newWithDefaultFaces`. The second red states the
+installed half and failed with `receiver of "familyName" is nil`, since `installGlobally` still
+posed a bare manager. Measured while deciding: the scan plus the first default face is 15 ms and
+the second 12 ms, so nothing here is worth making lazy.
 
 ### 3.7 — HarfBuzz keeps working
 
