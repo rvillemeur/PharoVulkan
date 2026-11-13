@@ -720,9 +720,60 @@ Design review of 3.4, executed on 2026-11-12. Two points, both applied, commit `
 upstream is rewritten.
 `AeFontManager class >> startUp:` nils the slot on every image start, at GUI priority 110, so
 `VGFontManager class >> startUp:` registers at a priority above it and re-installs.
+Decided in the interview of 2026-11-12, built and committed as `eeacf056`.
 
-Red: sending `startUp: true` to both classes in that order leaves a `VGFontManager` in
-`globalInstance`.
+1. **The installation is commanded, not automatic.** `installGlobally` and `uninstallGlobally`,
+   and `startUp:` only puts back what was posed. Installing unconditionally here would route the
+   whole image through our manager before 4.x exists: `BlFont >> asAeFTFace` would answer a
+   `VGFontFace`, and `BATextParagraphSpan >> measure`, `BAMockedTextParagraphSpan >> aeDrawOn:`
+   and the two Album and Toplo background decorations would break, along with the 22 other senders
+   of `globalInstance`. 5.1 turns the installation on; 5.2 deletes the whole mechanism.
+2. **The manager posed is `self new`, empty.** It knows no family until something scans or
+   registers; the default families are 3.6, and putting them here would move that decision into the
+   unit about the mechanism.
+3. **One class slot, `installedInstance`, holding the manager posed.** Not a boolean beside a
+   manager, which is two pieces of state that can fall out of step, and not a boolean plus a read
+   of Alexandrie's slot: `globalInstance` builds a complete FreeType manager when the slot is nil,
+   so asking it costs a scan just to answer "nothing". A nil slot of ours means hands off, which is
+   what lets `startUp:` run in every image this package loads into.
+4. **GUI priority 115.** A category starts its handlers by rising priority (`SessionCategory >>
+   prioritizedList` sorts the keys), and the category holds 10 FreeType, 100 the Form and font
+   classes, 110 `AeFontManager`'s reset, 120 `AeCanvas initializeFontOptions`, 150 `BAOffscreen`,
+   200 `BlHostRegistry`. 115 is after the reset and before the font options. Registering at 110
+   would work only while our package happens to load after Alexandrie's, since a priority list
+   keeps the order it was registered in.
+5. **The tests live in `VGFontManagerInstallationTest`.** Their `setUp` and `tearDown` remember and
+   restore both slots, which the 11 tests of `VGFontManagerTest` have no reason to pay for, and
+   5.2 deletes the class whole. Upstream's slot is read by reflection there, for the same reason as
+   decision 3.
+6. **The view is class-side, the example asks the real route.** `VGFontManager class >>
+   inspectorInstallation:` shows what was posed and what it knows, reading our slot only.
+   `managerBlocAsksToday` answers `AeFontManager globalInstance`, so one click says which reader of
+   fonts the image draws with — and accepts that asking builds Alexandrie's manager if nobody has
+   asked yet, which is what Bloc would do on its first text.
+
+Not built here: no default families, no scan, so the manager posed draws nothing. The Alexandrie
+text route is untouched, because nothing is posed outside a test.
+
+Red: `installGlobally`, then `startUp: true` to both classes in that order, leaves our manager in
+`globalInstance`. It failed with
+`Could not build slot named 'installedInstance' because the assignated slot was not found in the image`.
+The second red states the other half: an image that installed nothing keeps the manager Alexandrie
+built, and it failed with `an AeFontManager is not identical to an AeFontManager` once the guard on
+a nil slot was taken back out — that guard had been written in the green of the first test, before
+a test asked for it. The third red is the view: `Message not understood: VGFontManager class >>
+#inspectorInstallation:`.
+
+Two slips, both caught: the `tearDown` of the first run died on
+`Message not understood: InstanceVariableSlot >> #write:with:` (the selector is `write:to:`), so it
+restored nothing and left our manager posed in the image for one run — the slot was put back by
+hand and the lazy getter rebuilt Alexandrie's manager. And the five class-side methods plus the
+extension were first compiled with LF line endings through `compile:classified:`, which
+`compile_method` would have normalised; the package scan found all six and they were recompiled with
+`String cr`.
+
+The class comment was corrected in the same unit: its last paragraph still said `faceAt:` was the
+inherited one, pending 3.4.
 
 ### 3.6 — the default families
 
