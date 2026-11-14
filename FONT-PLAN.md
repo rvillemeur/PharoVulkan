@@ -1569,19 +1569,74 @@ Four commits: `e24b62e` and `bc89100` the two extractions, `bf5ef57` the two com
 
 ### 5.2 — the bridge dies
 
-Delete `VGCanvas class >> faceForFreeTypeFace:`, `VGFontFace class >> newForFace:` and
-`VGFontFace class >> bytesForFamilyName:styleName:`.
-Those three exist only to recover bytes from an `AeFTFace`, which no longer reaches us.
-`VGCanvas >> scaledFontForFace:size:` stays, because it also fixes the upstream cache that never
-fills.
+Done, in three cycles.
 
-`VGAlexandrieFontLifetime class >> freeTypeLibrary` and `roleOf:` name `AeFTLibrary`, and they are
-ours, in `VectorGraphics-Conformance`: they document the handle lifetime of a stack we no longer
-use, so they are guarded on `Smalltalk includesKey: #AeFTLibrary` or deleted with their examples.
-Phase 6 cannot run while a class of ours names a class that phase 6 removes.
+**Cycle 1 — the ported experiments read their font with no FreeType.**
+The five experiments of `VGAlexandriePortedExperiments` that picked their font out of the global
+`AeFontManager` now read a `TTFontCatalogue` of their own, scanning the directory Alexandrie scans,
+or the bytes an embedded font class carries; and they shape from a HarfBuzz blob over the bytes of
+the face, because upstream's `AeHbBuffer >> cairoGlyphArrayForFace:size:` sends `charHeight:` to a
+FreeType face, which a `VGFontFace` is not. `numberOfGlyphs` became `glyphCount`.
+The copies are generated, so the rewrites live in `VGAlexandrieCorpus class` as
+`fontLookupRewriteIndentedBy:informing:` and `shapingRewriteIndentedBy:`, each asked for at the two
+indentation depths of the copies through the new `source:indentedBy:`. The gate is
+`VGConformanceTest >> testTheExperimentsPortedFromAlexandrieReadTheirFontWithNoFreeType`.
 
-Red: the two extension methods are gone from `VectorGraphics-Bloc`, no class of our packages names
-an `AeFT*` class, and the VG renderer tests still pass.
+The copies read a catalogue rather than `VGFontManager`, which was the first design and had to be
+abandoned: `VectorGraphics-Conformance` is loaded by the Cairo example, test and dev groups, which
+bring no Bloc package, so naming a class of `VectorGraphics-Bloc` broke three tests of
+`VGArchitectureTest`. The new edge is `VectorGraphics-Conformance` → `VectorGraphics-TrueType`,
+stated in `VGArchitectureTest class >> allowedDependencies` and in
+`BaselineOfVectorGraphics >> declareSupportPackagesOn:`. For the same reason the shaping rule is
+written out in the generated copies instead of being sent to
+`TTFontCatalogueEntry >> newHbFontScaledTo:`, which is the one place the project states that rule
+but is filed in `VectorGraphics-Bloc`. No production method was added.
+`VGAlexandrieCorpusTest` stays green, so the ported pictures are still the pictures Alexandrie's
+own FreeType experiments draw.
+
+One sibling test lost its subject with the last two senders: `VGCairoTextTest` asserted that every
+method of ours handing a face to HarfBuzz keeps it for the session, because
+`hb_ft_font_create_referenced` frees it with `FT_Done_Face` from the finalisation process. The rule
+now reads the other way round, as `testNoMethodHandsAFreeTypeFaceToHarfbuzz`: no method of this
+project sends `cairoGlyphArrayForFace:size:` at all, and the reason stays in the comment.
+Two commits: `8b91c71` the experiments, `3ceed0e` the inverted gate.
+
+**Cycle 2 — the bridge itself.**
+Gone: `VGFontFace class >> newForFace:` and `bytesForFamilyName:styleName:`,
+`VGCanvas class >> faceForFreeTypeFace:` with its `faceCache` class variable and `resetFaceCache`,
+both implementations of `fontFaceFor:`, and the `VGCanvas` override of `inspectorBackendProperties`
+that counted the cached faces. `VGFontCanvas >> scaledFontForFace:size:` stays, because it also
+fixes the upstream cache that never fills, and it now hands the face it is given straight to
+`VGScaledFont`: the two canvases part on nothing in the font path any more.
+`VGFontFace class >> default` and `defaultBytes` stay — they read the font Pharo embeds and name no
+FreeType class.
+
+The gate is `VGCanvasTest >> testNoMethodOfThisProjectRecoversTheBytesBehindAFreeTypeFace`: no
+package of this project implements any of those six selectors. It scans the image and then keeps to
+our own packages, because upstream implements `newForFace:` too, on its own Cairo font face.
+`bytesForFamilyName:styleName:` made the fallback for a family no registry can name, a second time
+over; the one that remains is `BAFontConverter >> faceFor:` falling back on the default face of the
+manager posed, which `installGlobally` sets, and it is pinned by
+`VGFontManagerInstallationTest >> testAFamilyNobodyHoldsFallsBackOnTheDefaultFaceOfTheManagerPosed`.
+Three tests of the bridge are deleted, with the two `VGCairoTextTest` fixture helpers only they
+used, and the example that built a face from the manager's FreeType face;
+`VGCanvasExamples class >> scaledFontForTheDefaultFace` now asks a `VGFontManager` of its own for
+the face, since posing one would change the image an example runs in. The test of the scaled font
+states that the canvas passes the face through untouched, and the Backend view test no longer looks
+for the faces-cached row. The class comments of `VGCanvas` and `VGFontCanvas` say what the font
+seam is without the bridge. One commit: `0685b9e`.
+
+**Cycle 3 — the plan.** This section, and the correction to phase 6 below.
+
+`VGAlexandrieFontLifetime class >> freeTypeLibrary` and `roleOf:` name `AeFTLibrary` and are kept,
+with their examples: they document the handle lifetime of the stack phase 6 unloads, which is what
+makes a reader understand why the project left it. They live in `VectorGraphics-Conformance`, which
+loads only in the test, example and dev groups, so phase 6 can run with them in the image — that
+package is red during the unload window and green again after the reload, like the seven Alexandrie
+test packages.
+
+Counts after the unit: `VectorGraphics-Bloc-Tests` is 95, three bridge tests out and two gates in;
+`VGCairoTextTest` is 36; the whole `VectorGraphics-Cairo-Tests` package is 382.
 
 ### 5.3 — a window drawn by Cairo
 
@@ -1631,6 +1686,9 @@ The test packages that name an `AeFT*` class, and so the suites to expect red du
 measured in the image: `Alexandrie-Cairo-Tests`, `Alexandrie-Canvas-Tests`,
 `Alexandrie-Harfbuzz-Tests`, `Alexandrie-FreeType-Tests`, `Alexandrie-CairoFreetype-Tests`,
 `Alexandrie-FontManager-Tests` and `Alexandrie-Blur-Tests`.
+One package of ours joins them: `VectorGraphics-Conformance` names `AeFTLibrary` through
+`VGAlexandrieFontLifetime`, which unit 5.2 kept on purpose, and it loads only in the test, example
+and dev groups, so nothing a user loads is red.
 All of them pass again after step 3.
 
 ### 7 — review and write-up
