@@ -1471,6 +1471,19 @@ sites and the masks, `209a4b8` the views and the examples, `6dbd856` the renames
 repackaging and the write-up. `VectorGraphics-Bloc-Tests` is 79, `VectorGraphics-Cairo-Tests` 381,
 and both examples gates are green on the new class.
 
+The design review that follows the unit kept three points and rejected the rest. The loop that
+appends every contour of a set was written out in four places, which is the rule of three passed, so
+`appendContours:toAeContext:` is one method now. The line box view measured the right edge of the run
+with a nested `inject:into:` although `VGScaledFont >> wholePixelBoxOfContours:` already answers that
+box, so the size of that picture is a method of its own that asks the real rule, and the margin is a
+method rather than a literal in two places. The drawing site built the part of the matrix a vector is
+mapped by from a copy and two setters: `VGCairoMatrix >> linearPart` answers it under the name the
+geometry gives it, pinned by a test that it maps a vector as the whole matrix maps the step between
+two points. `676841a` and `3596893`. Rejected, and why: no Extract Class on the masks of
+`VGAeTextFont` while nothing else needs them; no key object for a glyph's index, phase and matrix; and
+the five `…ThroughCairo…` twins of `VGAeTextContext` stay, because an extension method cannot send
+`super` and nothing upstream may be redefined.
+
 ### 5.1 — the Bloc route, end to end
 
 A paragraph measured and drawn in an offscreen space, with our manager installed and no FreeType
