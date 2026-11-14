@@ -1638,6 +1638,25 @@ test packages.
 Counts after the unit: `VectorGraphics-Bloc-Tests` is 95, three bridge tests out and two gates in;
 `VGCairoTextTest` is 36; the whole `VectorGraphics-Cairo-Tests` package is 382.
 
+**The mutation reference.** The design review after the unit asked for one figure: that deleting
+four tests had not taken coverage with them. The four tested `faceForFreeTypeFace:`, `faceCache`,
+`newForFace:` and `bytesForFamilyName:styleName:`, every one of which the same cycle deleted, so no
+surviving method lost its only test by construction. The run gives the number the later units are
+measured against. MuTalk 3.0.8, loaded through the baseline's `dev` group, mutating
+`VGFontCanvas` and `VGFontFace` alone, with the nine test classes that name either of them
+(`TTFontMetadataReaderTest`, `VGAeCanvasTest`, `VGAeRendererTest`, `VGAeTextContextTest`,
+`VGAeTextFontTest`, `VGCairoTextTest`, `VGCanvasTest`, `VGFontManagerInstallationTest`,
+`VGFontManagerTest`): **score 34, 1599 mutants, 547 killed, 1052 alive, 15 min 32 s**. The working
+copy held no production change afterwards.
+
+The alive mutants fall in two heaps, and neither is a surprise. The inspector views and `printOn:`
+carry most of them, because a view is pinned by one test that it builds and reads, not by a test per
+label. The rest sit in the glyph reader that `VGFontFace` grew in phase 2 — `readBytes:`,
+`nextSignedByte`, `readComponentWithFlags:`, `contoursOfSimpleGlyph:`, `glyphIndexForCodePoint:` —
+where the composite-glyph path and the signed readings survive mutation. That is the coverage to
+raise before phase 8 touches the same reader for CFF, and it is a defect of phase 2, not of this
+unit: no test of this unit should be written to chase it.
+
 ### 5.3 — a window drawn by Cairo
 
 One `open…` example that is the deliverable: text in a window drawn by `VGAeRenderer`, Cairo
