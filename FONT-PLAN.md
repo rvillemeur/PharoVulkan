@@ -1311,7 +1311,8 @@ and, like the measuring site of 4.3, never looks at the context it is handed.
    `testTheTextSitesTheLaterUnitsDeliverFailNamingOurOwnFontAndSelector` existed to name the site
    still missing; the list is now empty and the test is deleted, with its helper
    `receiverAndSelectorNotUnderstoodIn:`, which had no other sender. The guard stays with the four
-   site tests and `testEverySurfaceAnswersTheContextThatKnowsOurFonts`.
+   site tests and `testEverySurfaceAnswersTheContextThatKnowsOurFonts`, itself deleted in 4.6 with
+   the decision it asserted.
 5. **The view draws real glyphs, so it hangs on the font.** `VGFontExtents` holds five doubles and
    no font, so a witness word cannot come from it. The arithmetic stays there — `drawLinesOn:
    placing:`, over the four rows `horizontalLines` names — and the tab is
@@ -1322,6 +1323,7 @@ and, like the measuring site of 4.3, never looks at the context it is handed.
    over it, so the green part still showing to the right is the line box.
 6. **One example, for the site.** `VGScaledFontExamples class >> fontExtentsThroughAnAlexandrieContext`
    answers the `AeCairoFontExtents` our font filled, beside the four examples the earlier sites left.
+   Unit 4.6 moved it to `VGAeTextContextExamples class >> fontExtentsFilledIntoAnAlexandrieRecord`.
 
 **The incident the surface test caught.** Alexandrie was reloaded into the image during the unit.
 Epicea records, in order, `AeCanvas >> inspectionOfSurface:` rewritten to a newer upstream source,
@@ -1333,9 +1335,9 @@ eight others, all new selectors on `AeCairoScaledFont`, `AeCairoFontOptions`, `A
 and died on `VGFontFace >> #tfPointerAddress`, far from the cause —
 `testEverySurfaceAnswersTheContextThatKnowsOurFonts` named it in one line instead. The method was
 recompiled from the committed Tonel source back into `*VectorGraphics-Bloc`; the checkout had never
-been wrong. The lesson for phase 5 is that a redefining extension is only as durable as the last
-load of the package it redefines, and that the test which asserts the substitution is in force is
-what makes that survivable.
+been wrong. The lesson was read first as a durability one - a redefining extension is only as durable as the
+last load of the package it redefines - and then, in 4.6, as the deeper one: a redefinition cannot
+leave the upstream checkout clean at all, so there was never a site to keep in force.
 
 Design review, agreed before anything was edited: **one point executed, one kept as its own unit,
 two rejected.** Executed: Extract Method on `VGFontExtents >> drawLinesOn:placing:`, whose nested
@@ -1350,10 +1352,76 @@ extracting the surface setup shared by `glyphPathFormOfContours:` and
 `writeInto:` up out of `VGTextExtents` and `VGFontExtents`, which have no common superclass and
 would need one built for two methods of five lines.
 
+### 4.6 — the substitution site withdrawn
+
+Asked for on 2026-11-14, straight after 4.5: the method `AeCairoSurface >> newContext` is still in
+the `Alexandrie-Cairo` package, while it should be in a VectorGraphics package as an extension
+method.
+
+In the image the method already belonged to `VectorGraphics-Bloc`, in protocol
+`*VectorGraphics-Bloc`. The Alexandrie checkout was dirty all the same, with one diff node on
+`src/Alexandrie-Cairo/AeCairoSurface.class.st`, and no reclassification can mend that. A class holds
+one method object for a selector, so an extension that *redefines* a selector takes the upstream
+package's own method away: Iceberg reads the upstream method as gone, and the next load of
+`Alexandrie-Cairo` puts the stock version back and ours away without a word — the incident 4.5
+records. An extension that *adds* a selector has none of this. The rule of this project is that code
+outside it is never changed except by an extension that adds a selector, so decision 7 of unit 4.1 —
+one substitution site, `AeCairoSurface >> newContext`, covering window, composition layers, shadows,
+exporters and offscreen at once — is withdrawn, and the stock `^ AeCairoContext newFor: self` was
+recompiled into `Alexandrie-Cairo`, protocol `instance creation`. The Alexandrie working copy reports
+no diff and no modified package again.
+
+1. **The rule is a test, read off the upstream sources on disk.**
+   `VGArchitectureTest >> testNoMethodOfThisProjectRedefinesAMethodOfAnotherProject` walks the
+   extension methods of every package of this project, finds through `IceRepository registry` the
+   repository that owns the class each one extends, and looks in that package's Tonel file for the
+   header `<Class> >> <selector> [`. The helper `tonelFileDefiningTheClassOf:` answers nil for one of
+   our own classes, for a registered repository with no location on disk — `pharo` among them — and
+   for a package no repository has, as the image's own packages are. The red named
+   `AeCairoSurface >> newContext`, the only offender in the project, and it is the guard against the
+   next one.
+2. **`VGAeTextContext` is built where it is wanted.** `VGAeTextContext newFor: aSurface` in place of
+   `aSurface newContext`, at the five site tests of `VGAeTextContextTest`, at the stock-against-ours
+   pixel comparison, and at the four examples. Nothing else changes: the class, the five sites and
+   their numbers are the ones units 4.1 to 4.5 delivered.
+3. **The canvas sites drive `VGCanvas`.** Four places built a stock `AeCanvas` and relied on the
+   redefinition to get our fonts into it: two tests of `VGCanvasTest` (the measuring site of 4.3 and
+   the path site of 4.4) and the two examples beside them. They now build `VGCanvas`, the canvas of
+   this project, which makes a `VGCairoImageSurface` and a `VGCairoContext` of its own and needs no
+   substitution. `AeCanvas >> metricsFor:font:` and the path factory are inherited unchanged, so the
+   route under test is still the one Bloc calls.
+4. **`testEverySurfaceAnswersTheContextThatKnowsOurFonts` is deleted.** It asserted decision 7, which
+   is what has just been withdrawn, and the architecture test above now pins the rule that replaced
+   it. The behaviour of the five sites stays covered by the tests that name them.
+5. **The two examples of 4.4 and 4.5 move to the Bloc examples.** Naming `VGAeTextContext` from
+   `VectorGraphics-Cairo-Examples` crosses the layering, which
+   `testCairoExamplesStayInsideTheirAllowedDependencies` reported at once.
+   `VGScaledFontExamples class >> glyphsPathOfARunOnACairoContext` and
+   `fontExtentsThroughAnAlexandrieContext` are therefore
+   `VGAeTextContextExamples class >> glyphsPathOfARunOnACairoSurface` and
+   `fontExtentsFilledIntoAnAlexandrieRecord`, on the class whose subject they are, reading that
+   class's own fixture.
+6. **What is left uncovered.** `VGAeTextContext` is now reached from tests and examples only: no
+   production sender exists. Alexandrie and Bloc create their surfaces themselves —
+   `AeCanvas class >> extent:`, `BAAxisAlignedCompositionLayer >> createSurfaceToBePaintedOn:` and
+   `BlGradientShadowEffect >> setUpShadowSurfaceFor:extent:` — and ask them for a context, which is
+   stock again, so a `VGScaledFont` reaching one of those contexts still dies on
+   `VGFontFace >> #tfPointerAddress`. Phase 5 therefore cannot route Bloc's text through the stock
+   canvas; it has to put a canvas of this project in the frame. The honest shape, when phase 5 gets
+   there, is a surface class of ours over `cairo_image_surface_create` whose `newContext` answers
+   `VGAeTextContext`, created by a canvas of ours — not an extension that redefines anything.
+7. **A stage for the tags phase 4 added.** `VGFrameProfileTest` was red on three keys with no stage:
+   `VectorGraphics-Bloc/Fonts` and `VectorGraphics-Bloc/Text` are `text`, since a frame enters the
+   font manager or the substituted context only to lay out or to draw a run, and
+   `VectorGraphics-Bloc-Examples/Text` is `notInTheFrame`.
+
 ### 5.1 — the Bloc route, end to end
 
-A paragraph measured and drawn in an offscreen space by the stock `AeCanvas`, with our manager
-installed and no canvas of ours anywhere in the frame.
+A paragraph measured and drawn in an offscreen space, with our manager installed and no FreeType
+face anywhere in the frame. Unit 4.6 withdrew the substitution site, so the stock `AeCanvas` cannot
+be the canvas of this test any more: it makes a stock surface and asks it for a stock context, which
+a `VGScaledFont` cannot enter. The frame is driven through a canvas of this project, and the first
+question of the unit is how far up the Bloc route that canvas can be put.
 
 Red: the scaled font the context received is a `VGScaledFont`, and `AeFTFace allInstances size` is
 unchanged across the whole frame.
