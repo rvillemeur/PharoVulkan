@@ -1550,6 +1550,23 @@ Three cycles, three commits: `85a6db9` the canvas, `0aa5b79` the offscreen, `0ac
 `VectorGraphics-Bloc-Tests` is 95, the architecture gate 48 and the documentation gate 60, all green,
 and `run_critics` is clean on everything the unit touched.
 
+The design review that follows the unit kept three points. The stretch of the hierarchy that holds
+our overrides is now named once, by `VGFontCanvas class >> ourClassesBelowAlexandrie`, instead of
+being computed in both seam methods; `seamRows` scans upstream and scans ours through two methods of
+its own; and the two inspector extensions say why they read the slots of the object instead of its
+accessors — `BAOffscreen >> canvas` sends `ensureReady`, so a tab that used it would build the
+measuring canvas of an object a reader is merely looking at, and `BlHostRenderer` declares
+`scaleFactor` with no accessor at all. The review also found a hole: `VGAeRenderer` inherits
+`newFormFrom:` and `write:asPngTo:`, whose upstream bodies reach Alexandrie's own canvas, which
+cannot draw a `VGScaledFont`, so an element carrying text can be drawn in a frame on this route but
+not exported from it. The sister route redefines both. The hole is recorded as a stated fact by
+`VGAeRendererTest >> exportSelectorsWithNoOverrideYet`, which fails as soon as one of the two is
+covered, and unit 5.3 decides whether this route needs them. The duplication of `ensureReady` and
+`initializeForHostSpace:` between the two routes was left alone: two occurrences, and Alexandrie
+names the canvas class inline, so even a hook would still leave both methods overridden.
+Four commits: `e24b62e` and `bc89100` the two extractions, `bf5ef57` the two comments,
+`9a2eeab` the stated hole. `VectorGraphics-Bloc-Tests` is 96 with the hole test in it.
+
 ### 5.2 — the bridge dies
 
 Delete `VGCanvas class >> faceForFreeTypeFace:`, `VGFontFace class >> newForFace:` and
