@@ -182,7 +182,7 @@ The dependency is real: the Bloc manager is an adapter onto the font catalogue.
 |---|---|
 | `VectorGraphics-TrueType` | `TTFontMetadata`, `TTFontMetadataReader`, `TTFontCatalogue`, `TTOS2TableParser`, `macStyle` on `TTHeadTableParser`, `buildTableDirectory:offset:` extracted to the class side, `FontFamily class >> addFamiliesFrom:` |
 | `VectorGraphics-Cairo` | `VGFontFace >> familyName`, `styleName`, `newCairoFontFace`, A8 mask bytes on `VGGlyphMask` |
-| `VectorGraphics-Bloc` | `VGFontManager`, `VGAeTextContext`, the `newContext` override, `AeFontManager class >> globalInstance:` |
+| `VectorGraphics-Bloc` | `VGFontManager`, `VGAeTextContext`, `VGAeTextFont` (unit 4.7), `AeFontManager class >> globalInstance:`, `AeCairoScaledFont >> aeTextFont`; the `newContext` override was withdrawn in 4.6 |
 
 `VectorGraphics-Bloc` is already the one package allowed to name an Alexandrie class, so both new
 classes and both extensions belong there.
@@ -1093,7 +1093,8 @@ font instead, which also keeps the suite clear of the FreeType handle-lifetime c
 The examples are `VGAeTextContextExamples` in `VectorGraphics-Bloc-Examples`:
 `textRunDrawnThroughRealCairo` answers the drawn surface, and
 `scaledFontWithAWarmCairoMaskAtlas` draws the run twice, the second time shifted one pixel, and
-answers the font — nine masks for ten characters, the two spaces sharing one.
+answers the font — `VGAeTextFontExamples class >> textFontWithAWarmCairoMaskAtlas` since 4.7, where
+it answers the adapter that holds the atlas — nine masks for ten characters, the two spaces sharing one.
 
 Critics on what changed leave five `ReTrivialCritique` of one kind, "Sends different super
 message", one per `…ThroughCairo…` escape. That is the design of decision 4: the escape exists to
@@ -1152,7 +1153,8 @@ name stays stated by `VGArchitectureTest class >> allowedDependencies`.
 Decided in the interview of 2026-11-13 and built the same day: commits `44bbee21`, `25e3bdad`,
 `8f009d08` and `d2f5778c`.
 
-`VGScaledFont >> glyphExtentsOf:size:into:onAeContext:` answers the measuring site from
+`VGScaledFont >> glyphExtentsOf:size:into:onAeContext:`, on `VGAeTextFont` since 4.7, answers the
+measuring site from
 `glyphExtentsOf:`, which the font already had: the inked box relative to the origin of the first
 glyph, and the advance from that origin to where the next run starts, in user space, as
 `cairo_glyph_extents` answers them.
@@ -1215,7 +1217,8 @@ would add a class and simplify nothing today.
 
 Decided in the interview of 2026-11-13 and built the same day.
 
-`VGScaledFont >> appendPathOfGlyphs:length:onAeContext:` answers the path site: every contour of
+`VGScaledFont >> appendPathOfGlyphs:length:onAeContext:`, on `VGAeTextFont` since 4.7, answers the
+path site: every contour of
 every glyph of a run, appended to the path the context is building, which is what a text border, a
 text shadow and text-as-path drawing are made of. The consumer is
 `BlTextBorderAttribute >> aeDrawOn:span:`, which hands the canvas a path factory that sends
@@ -1285,7 +1288,8 @@ test superclass to go to and belongs to the test review in any case.
 Decided in the interview of 2026-11-14 and built the same day. It poses the fifth and last of the
 text sites, so the substitution of phase 4 is complete.
 
-`VGScaledFont >> fontExtentsInto:onAeContext:` answers the font extents site: ascent, descent, line
+`VGScaledFont >> fontExtentsInto:onAeContext:`, on `VGAeTextFont` since 4.7, answers the font
+extents site: ascent, descent, line
 height and the widest advance the face allows, written into the record the caller owns. The numbers
 are the ones `VGScaledFont >> fontExtents` already computes from `hhea` over the em square through
 the font matrix, rounded when the options hint metrics, so the site adds no arithmetic of its own
@@ -1345,7 +1349,7 @@ associations became `horizontalLines`, four rows of three named fields; the pict
 pixel the one it was. Kept: the **Extract Class** on `VGScaledFont` that 4.4 deferred, now 49
 methods and 8 variables with 24 of the methods in `*VectorGraphics-Bloc` — the font model and the
 whole Alexandrie adapter in one class. It is a unit of its own at the end of phase 4, with its own
-green steps, not a tail to 4.5: `VGAeTextContext` dispatches through `scaledFontToWorkFrom`, so the
+green steps, not a tail to 4.5: `VGAeTextContext` dispatches through `scaledFontToWorkFrom`, `textFontToWorkFrom` since 4.7, so the
 adapter has to be reachable from the font, and twenty-four methods move at once. Rejected:
 extracting the surface setup shared by `glyphPathFormOfContours:` and
 `lineBoxFormOfTheInspectorSample`, two occurrences with the third still to be invented; and pulling
@@ -1414,6 +1418,58 @@ no diff and no modified package again.
    `VectorGraphics-Bloc/Fonts` and `VectorGraphics-Bloc/Text` are `text`, since a frame enters the
    font manager or the substituted context only to lay out or to draw a run, and
    `VectorGraphics-Bloc-Examples/Text` is `notInTheFrame`.
+
+### 4.7 — the font model stops being the Alexandrie adapter
+
+The end-of-phase-4 unit deferred by the design review of 4.1 to 4.5: `VGScaledFont` carried the whole
+Alexandrie route as twenty-four extension methods of `VectorGraphics-Bloc` — more methods than the
+twenty-four its own package holds — so the font model was two objects wearing one name. Extract Class
+was the named refactoring, and the interview settled one adapter class carrying all twenty-four
+rather than one class a concern.
+
+1. **The red.** `VGAeTextFontTest`, in `VectorGraphics-Bloc-Tests`, states three facts: the adapter
+   answers each of the five verbs an Alexandrie context sends and `VGScaledFont` understands none of
+   them, a font answers one and the same adapter however often it is asked and that adapter answers
+   for that font, and a run drawn twice through two contexts rasterises each glyph once. The third is
+   why the adapter is kept on the font and not built per pose: each context of a frame poses the font
+   again, and a fresh adapter would throw the masks away every time.
+2. **`VGAeTextFont`**, package `VectorGraphics-Bloc`, tag `Text`, beside `VGAeTextContext`. Slots
+   `scaledFont` and `cairoMaskAtlas`, built by `on:`, with the five text sites in protocol
+   `text sites`, the mask machinery in `masks`, `appendContour:toAeContext:` in `private` and the
+   three views in `inspector`. Every send that was `self` and meant the font reads `scaledFont`; the
+   five sites, the mask machinery and the views are otherwise the methods units 4.1 to 4.5 delivered.
+3. **The pivot stays a dispatch.** `VGAeTextContext >> scaledFont:` is
+   `^ aScaledFont aeTextFont poseOnAeContext: self`, and `AeCairoScaledFont >> aeTextFont` answers
+   `self` — an extension that adds a selector, which 4.6 showed is the only kind this project may
+   write. So the route is still chosen by the font answering for itself, with no `isKindOf:` anywhere,
+   and the cost is one selector of upstream surface instead of a second façade on the font model.
+4. **`VGScaledFont` keeps one selector of that package**, the lazy accessor `aeTextFont`, in a ninth
+   slot of the same name; `cairoMaskAtlas` left the font with the methods that read it. The font model
+   now names nothing of Alexandrie.
+5. **The views and their examples.** The three tabs of the Alexandrie route — Cairo masks, Path, Line
+   box — look at what the adapter holds, so they moved with their gates and their six helpers, and
+   are numbered 1 to 3 on the class they now sit on. `VGAeTextFontExamples`, in
+   `VectorGraphics-Bloc-Examples`, answers the adapter of a font a run was drawn through twice, which
+   gives the Cairo masks tab a warm atlas to show; it reads the font and the run from
+   `VGAeTextContextExamples`, its sibling in the same package, because the run that warms the atlas is
+   drawn through one of their contexts and `VectorGraphics-Bloc-Examples` may not name
+   `VectorGraphics-Cairo-Examples`. The class is listed in `VGBlocExamplesTest >> exampleHolders`:
+   without that line the two generic gates never see it, and `ReClassNotReferencedRule` is what says
+   so.
+6. **A backwards dependency closed.** `glyphsOf:size:` sat in `VectorGraphics-Bloc` and was sent three
+   times from `VGCairoContext`, so the Cairo backend reached into the Bloc package for a method of its
+   own class. It is now in `VectorGraphics-Cairo`, protocol `layout`. No test saw this: the
+   architecture gate reads references between packages by the classes a method names, and a send to a
+   method of one's own class names nothing.
+7. **The context names what it holds.** Pharo's own rename refactorings took the slot `ownScaledFont`
+   to `ownTextFont` and the selectors to `ownTextFont`, `ownTextFont:` and `textFontToWorkFrom`,
+   rewriting the senders, the one test among them. The class comments of `VGAeTextContext` and
+   `VGAeTextContextTest` still claimed the substitution 4.6 withdrew, and were corrected here.
+
+Twenty-three methods moved, in four steps with the suite green and a commit at each: `31aba7a` the
+sites and the masks, `209a4b8` the views and the examples, `6dbd856` the renames, and this one the
+repackaging and the write-up. `VectorGraphics-Bloc-Tests` is 79, `VectorGraphics-Cairo-Tests` 381,
+and both examples gates are green on the new class.
 
 ### 5.1 — the Bloc route, end to end
 
