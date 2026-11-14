@@ -1490,10 +1490,65 @@ A paragraph measured and drawn in an offscreen space, with our manager installed
 face anywhere in the frame. Unit 4.6 withdrew the substitution site, so the stock `AeCanvas` cannot
 be the canvas of this test any more: it makes a stock surface and asks it for a stock context, which
 a `VGScaledFont` cannot enter. The frame is driven through a canvas of this project, and the first
-question of the unit is how far up the Bloc route that canvas can be put.
+question of the unit was how far up the Bloc route that canvas has to be put. The answer the
+interview settled is the whole way: the route Cairo draws and we only feed with fonts gets its own
+three sisters beside the all-ours ones, built bottom up with a commit at each green step.
 
-Red: the scaled font the context received is a `VGScaledFont`, and `AeFTFace allInstances size` is
-unchanged across the whole frame.
+1. **`VGAeCanvas`**, package `VectorGraphics-Bloc`, tag `Text`, with `VGFontCanvas` inserted above
+   both canvases. The one override is `prepareForSurface:`, Alexandrie's own method with the send
+   `cairoSurface newContext` replaced by `VGAeTextContext unownedNewFor: aeCairoSurface`, and
+   `VGAeCanvasTest` holds the rest of the method against the upstream source by parsing both and
+   comparing the bodies. The five font methods the two canvases share — `initialize`, `fontOptions`,
+   the two quality setters and `scaledFontForFace:size:` — moved up into the new abstract class with
+   its three class-side constants, and a `fontFaceFor:` hook parts them: `VGFontCanvas` answers the
+   face it was handed, because on this route Bloc's face is already one of ours, and `VGCanvas`
+   overrides it with `self class faceForFreeTypeFace: aFace`, the bridge unit 5.2 deletes.
+   Reparenting `VGCanvas` in Pharo 13 drops its class-side instance variable, so `faceCache` was
+   declared again afterwards.
+2. **`VGAeOffscreen`**, same package and tag. Bloc measures a paragraph during layout, before any
+   window exists, through a singleton canvas of one pixel, so the route needs its own or a paragraph
+   would be laid out against fonts read by Cairo's own FreeType while the frame it belongs to is
+   drawn against ours. Like `VGOffscreen`, the single override is Alexandrie's `ensureReady` with
+   the canvas class changed, held against the upstream source by a test, and the singleton is its
+   own because a class instance variable gives each subclass its own slot.
+3. **`VGAeRenderer`**, same package and tag, with `initializeForHostSpace:`, `label` and
+   `offscreenMeasureTextParagraph:`. The instance side override is Alexandrie's method with the
+   canvas and the offscreen changed, pinned the same way; `renderWith:…` is inherited whole, because
+   on this route the surfaces, the paths and the paint are Cairo's own and only the fonts are ours.
+   The label is `'VectorGraphics fonts'`, told apart from the other two in a window title and in
+   Bloc's own tools.
+4. **The gate.** `VGAeRendererTest` opens a real `BlSpace` holding a `BlTextElement` on
+   `VGPixelBufferHost`, with our manager installed and this renderer named in
+   `BlHostRenderer class >> preferableClass`, and states four facts about the frame it drew: the
+   space chose this renderer, pixels reached the buffer the host lent, the span was measured against
+   a `VGFontFace` and a `VGScaledFont`, and `AeFTFace allInstances size` did not grow across the
+   frame. The fonts are read from the offscreen canvas and not from the frame canvas, because
+   `BATextParagraphSpan >> measure` resolves the scaled font while the span is measured and the frame
+   canvas is then handed that font to draw with — which is also why the measuring canvas of the route
+   had to be its own.
+5. **Three inspector tabs serve all the siblings now.** Seams and Backend moved from `VGCanvas` to
+   `VGFontCanvas`, and the Seams gate had asked for `AeCanvas` as the direct superclass, which the
+   new class in between made false: the tab had gone silent on the reader's screen with nothing
+   failing, and a test states it is offered on each of the three canvases. It now asks
+   `overridesUpstreamSelector:`, which walks the stretch from the canvas up to Alexandrie's. The
+   Backend tab lists `inspectorBackendProperties`, and `VGCanvas` appends the one row the bridge
+   fills. Measuring and Renderer could not move up the same way, because the offscreens and the
+   renderers of the routes are siblings under Alexandrie's own classes: they are extension methods of
+   `VectorGraphics-Bloc` on `BAOffscreen` and `BARenderer`, with `canvas`, and each one asks the
+   object which canvas and measurer it holds rather than restating it. That is the only kind of
+   change this project may make to a class it does not own, and the precedent is
+   `TTFontCatalogueEntry >> inspectorShaping:`.
+6. **The examples.** `VGAeCanvasExamples` answers a canvas over a small surface, the scaled font it
+   builds for a face of our manager, and the one pixel offscreen of the route;
+   `VGAeRendererExamples` answers a renderer prepared for a host space, and a space holding text
+   opened and drawn into a buffer of pixels with no window present, which is this unit end to end in
+   one click. Both are listed in `VGBlocExamplesTest >> exampleHolders`, without which the two
+   generic gates never see them, and both examples that touch a global put the image's own renderer
+   and font manager back in an `ensure:`.
+
+Three cycles, three commits: `85a6db9` the canvas, `0aa5b79` the offscreen, `0ace22b` the renderer.
+`VectorGraphics-Bloc-Tests` is 95, the architecture gate 48 and the documentation gate 60, all green,
+and `run_critics` is clean on everything the unit touched.
 
 ### 5.2 — the bridge dies
 
@@ -1513,8 +1568,11 @@ an `AeFT*` class, and the VG renderer tests still pass.
 
 ### 5.3 — a window drawn by Cairo
 
-One `open…` example that is the deliverable: text in a window drawn by the stock renderer, Cairo
+One `open…` example that is the deliverable: text in a window drawn by `VGAeRenderer`, Cairo
 compositing every pixel, with our fonts behind it and no FreeType in the image.
+The stock renderer cannot be that renderer, as this unit read it before 5.1 was built: a stock
+renderer measures text through `BAOffscreen`, whose stock canvas asks its surface for a stock
+context, which a `VGScaledFont` cannot enter. Unit 5.1 built the three sisters that can.
 A second `open…` on `VGRenderer` is kept as a sibling, because the same faces serve it, but it
 proves nothing about this plan.
 Commit first and run them alone, per the project rule on window and device runs.
