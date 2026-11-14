@@ -1282,9 +1282,73 @@ test superclass to go to and belongs to the test review in any case.
 
 ### 4.5 — font extents
 
-`fontExtents` answers ascent, descent and height from `hhea`, with the signs `AeCanvas` expects.
+Decided in the interview of 2026-11-14 and built the same day. It poses the fifth and last of the
+text sites, so the substitution of phase 4 is complete.
 
-Red: `metricsFor:font:` answers a negated ascent and a positive descent, as upstream does.
+`VGScaledFont >> fontExtentsInto:onAeContext:` answers the font extents site: ascent, descent, line
+height and the widest advance the face allows, written into the record the caller owns. The numbers
+are the ones `VGScaledFont >> fontExtents` already computes from `hhea` over the em square through
+the font matrix, rounded when the options hint metrics, so the site adds no arithmetic of its own
+and, like the measuring site of 4.3, never looks at the context it is handed.
+
+1. **The copy lives on the extents, not on the font.** `VGFontExtents >> writeInto:` poses five
+   setters and names no class, as `VGTextExtents >> writeInto:` does for the six numbers of a
+   measured run. What a record of extents holds stays knowledge of extents.
+2. **The red sits at the context and nowhere else.** The plan's own note for this unit — "Red:
+   `metricsFor:font:` answers a negated ascent" — was wrong: `AeCanvas >> metricsFor:font:` sends
+   `fontExtents` to the scaled font, never to the context, so that route was green before the unit
+   and no site of ours is on it. The failing test is
+   `VGAeTextContextTest >> testTheContextAnswersTheFontExtentsOfOurOwnFont`, and it failed with
+   `VGScaledFont >> #fontExtentsInto:onAeContext:` not understood, on our own class, as the four
+   sites before it did.
+3. **The test compares against the font, not against hhea.** The five fields of `context
+   fontExtents` against those of `font fontExtents`. The numbers themselves are pinned against live
+   Cairo and live FreeType in `VGCairoTextTest`, and copying figures out of the face into
+   `VectorGraphics-Bloc-Tests` would only restate them. The record holds five C doubles while our
+   own metrics are exact fractions, so the comparison is against the double each one becomes on the
+   way in: the first run said `23.616` against `2952/125`.
+4. **The list of undelivered sites dies with its last entry.**
+   `testTheTextSitesTheLaterUnitsDeliverFailNamingOurOwnFontAndSelector` existed to name the site
+   still missing; the list is now empty and the test is deleted, with its helper
+   `receiverAndSelectorNotUnderstoodIn:`, which had no other sender. The guard stays with the four
+   site tests and `testEverySurfaceAnswersTheContextThatKnowsOurFonts`.
+5. **The view draws real glyphs, so it hangs on the font.** `VGFontExtents` holds five doubles and
+   no font, so a witness word cannot come from it. The arithmetic stays there — `drawLinesOn:
+   placing:`, over the four rows `horizontalLines` names — and the tab is
+   `VGScaledFont >> inspectorLineBox:`, gated by `inspectorLineBoxContext:`, drawing the word from
+   the contours the path site of 4.4 puts down, at the font's own size, so the picture cannot drift
+   from the route. A face with no line gap puts the bottom of its line box exactly on its descent:
+   the line box is drawn first across the whole width and the blue ascent and descent lines short
+   over it, so the green part still showing to the right is the line box.
+6. **One example, for the site.** `VGScaledFontExamples class >> fontExtentsThroughAnAlexandrieContext`
+   answers the `AeCairoFontExtents` our font filled, beside the four examples the earlier sites left.
+
+**The incident the surface test caught.** Alexandrie was reloaded into the image during the unit.
+Epicea records, in order, `AeCanvas >> inspectionOfSurface:` rewritten to a newer upstream source,
+an `EpProtocolRemoval` on `AeCairoSurface`, and `newContext` back to `^ AeCairoContext newFor: self`
+in protocol `instance creation`. `AeCairoSurface >> newContext` is the project's only extension that
+*redefines* an Alexandrie selector instead of adding a new one, so it was the only one lost; the
+eight others, all new selectors on `AeCairoScaledFont`, `AeCairoFontOptions`, `AeCairoMatrix` and
+`AeFontManager`, came through untouched. Every text call then marshalled a `VGScaledFont` into FFI
+and died on `VGFontFace >> #tfPointerAddress`, far from the cause —
+`testEverySurfaceAnswersTheContextThatKnowsOurFonts` named it in one line instead. The method was
+recompiled from the committed Tonel source back into `*VectorGraphics-Bloc`; the checkout had never
+been wrong. The lesson for phase 5 is that a redefining extension is only as durable as the last
+load of the package it redefines, and that the test which asserts the substitution is in force is
+what makes that survivable.
+
+Design review, agreed before anything was edited: **one point executed, one kept as its own unit,
+two rejected.** Executed: Extract Method on `VGFontExtents >> drawLinesOn:placing:`, whose nested
+associations became `horizontalLines`, four rows of three named fields; the picture is pixel for
+pixel the one it was. Kept: the **Extract Class** on `VGScaledFont` that 4.4 deferred, now 49
+methods and 8 variables with 24 of the methods in `*VectorGraphics-Bloc` — the font model and the
+whole Alexandrie adapter in one class. It is a unit of its own at the end of phase 4, with its own
+green steps, not a tail to 4.5: `VGAeTextContext` dispatches through `scaledFontToWorkFrom`, so the
+adapter has to be reachable from the font, and twenty-four methods move at once. Rejected:
+extracting the surface setup shared by `glyphPathFormOfContours:` and
+`lineBoxFormOfTheInspectorSample`, two occurrences with the third still to be invented; and pulling
+`writeInto:` up out of `VGTextExtents` and `VGFontExtents`, which have no common superclass and
+would need one built for two methods of five lines.
 
 ### 5.1 — the Bloc route, end to end
 
