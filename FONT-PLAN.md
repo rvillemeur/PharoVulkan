@@ -1657,16 +1657,50 @@ where the composite-glyph path and the signed readings survive mutation. That is
 raise before phase 8 touches the same reader for CFF, and it is a defect of phase 2, not of this
 unit: no test of this unit should be written to chase it.
 
-### 5.3 — a window drawn by Cairo
+### 5.3 — a window drawn by Cairo — done
 
-One `open…` example that is the deliverable: text in a window drawn by `VGAeRenderer`, Cairo
+One `open…` example is the deliverable: text in a window drawn by `VGAeRenderer`, Cairo
 compositing every pixel, with our fonts behind it and no FreeType in the image.
 The stock renderer cannot be that renderer, as this unit read it before 5.1 was built: a stock
 renderer measures text through `BAOffscreen`, whose stock canvas asks its surface for a stock
 context, which a `VGScaledFont` cannot enter. Unit 5.1 built the three sisters that can.
 A second `open…` on `VGRenderer` is kept as a sibling, because the same faces serve it, but it
 proves nothing about this plan.
-Commit first and run them alone, per the project rule on window and device runs.
+
+**What the window shows.** `VGAeRendererExamples class >> textSceneInTwoSizes` builds the scene:
+one line in `Cascadia Code` at 12 and at 36, on a light background that makes the compositing
+visible. The family is named rather than left to the default face, so that what a reader sees is a
+font found on the disk; Pharo bundles Cascadia Code, so the name holds in any image of it.
+`VGRendererExamples class >> textSceneInTwoSizes` is its own scene, word for word the same today.
+The two are kept apart on purpose: each example reads on its own, and two occurrences are not yet a
+rule.
+
+**What the examples install.** `openWindowWithTextDrawnByCairo` and
+`openWindowWithTextDrawnWithoutCairo` save `BlHostRenderer preferableClass` and the
+`globalInstance` slot, pose `VGFontManager installGlobally`, scan the directory Pharo ships its
+fonts in — the manager's default faces are the two Source families, and Cascadia Code is nowhere
+else — choose their renderer, reset the offscreen of their route, and open a space on the host Bloc
+prefers. The window has to outlive the method, so nothing is put back in an `ensure:`: a frame
+resolves its faces through `AeFontManager globalInstance` again on every repaint, and
+`space when: BlSpaceClosedEvent doOnce: [ … ]` puts the renderer, the manager and the offscreen
+back when the reader closes the window.
+
+**The gates.** A window blocks the image until a reader closes it, so no test opens one. Each
+route gets a test that draws its own scene on `VGPixelBufferHost` instead:
+`VGAeRendererTest >> testTheWindowSceneDrawsTextOfTwoSizesInACatalogueFamily` and the same selector
+on `VGRendererTest`. Three facts each: the frame reached the pixels the host lent, the scene names
+one family in two sizes, and the scaled fonts the frame resolved are `VGFontFace` instances
+carrying `Cascadia Code` at 12 and at 36 — which is what tells a silent fallback on the default
+face from the font the catalogue found. `VGRendererTest` saves and restores the manager slot in the
+test itself, since no other test of that class poses one.
+
+**No new inspector view**, and the unit says so rather than inventing one: no new kind of object
+appears here — a scene is a `BlElement`, the result is a window — and the Pixels tab of the renderer
+already shows the frame that was drawn. The cycle's fifth artefact is missing on purpose.
+
+Counts after the unit: `VectorGraphics-Bloc-Tests` is 97, two gates in. Critics on the four classes
+touched are clean but for the `ReClassNotCategorizedRule` already on the carried defect list.
+Commit first and run the two `open…` alone, per the project rule on window and device runs.
 
 ### 5.4 — `FontFamily` takes its families from the catalogue
 
