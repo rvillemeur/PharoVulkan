@@ -1848,28 +1848,118 @@ defect list — the two `ReExcessiveArgumentsRule` on `VGFontManager`, the missi
 and the long, complex `TrueTypeFont >> glyphAtUtf8Byte1:byte2:byte3:byte4:`, which this unit did
 not touch.
 
-### 6 — the proof by absence
+### 6 — the proof by absence — done
 
-The removal is bounded: Morphic's text stack is a different package and a different binding, so the
-image keeps running and the only casualties are test suites.
-Preconditions all the same, in order: every repository committed, the image saved, and the reload
-script written and read back before anything is removed.
+The route was proved in an image with no FreeType in it at all: `Alexandrie-CairoFreetype-Tests`,
+`Alexandrie-CairoFreetype`, `Alexandrie-FreeType-Tests` and `Alexandrie-FreeType` were removed with
+`removeFromSystem`, `Smalltalk includesKey: #AeFTFace` went from true to false, and a Bloc text
+element was then drawn into a frame by Cairo through faces and scaled fonts of this project alone.
+The frame is `font-plan-6-proof.png` next to the image, 320 by 160, and the script that drew it is
+`font-plan-6-proof.st` in the same directory.
 
-1. Unload `Alexandrie-CairoFreetype`, then `Alexandrie-FreeType`.
-   Check `Smalltalk includesKey: #AeFTFace` answers false.
-2. Run the 5.1 test and open the 5.3 window; write the Form to a file in `Smalltalk imageDirectory`.
-3. Reload both packages with Metacello and re-run the Alexandrie suites that use them.
+**Deviation from the plan.** The plan said the only casualties would be test suites. That is wrong,
+and the reason is packaging rather than FreeType: `Alexandrie-FreeType` also holds the embedded
+font files, `AeEmbeddedFontFile` and the six `AeSourceSansPro_*`/`AeSourceCodePro_*` classes, which
+are pure data. `VGFontManager class >> newWithDefaultFaces` names two of them, so
+`VGFontManager installGlobally` — our own installation, the thing a consumer sends — cannot run
+while the package is out. The proof therefore ran on a font of this machine: a manager built with
+`scanDefaultDirectories` (208 families in 66 ms), posed by hand with `AeFontManager globalInstance:`
+and `FontFamily addFamiliesFrom:`, with `'DejaVu Sans'` as the default face and `'Liberation Mono'`
+as the default code face. That is the stronger statement of the unit, not a weaker one: the route
+needs an sfnt file, not FreeType, and not even the fonts the package ships.
 
-`AeFontManager >> reset` names `AeFTLibrary`, so the upstream manager is broken while the packages
-are out; ours is installed, so the route under test is not.
-The test packages that name an `AeFT*` class, and so the suites to expect red during that window,
-measured in the image: `Alexandrie-Cairo-Tests`, `Alexandrie-Canvas-Tests`,
-`Alexandrie-Harfbuzz-Tests`, `Alexandrie-FreeType-Tests`, `Alexandrie-CairoFreetype-Tests`,
-`Alexandrie-FontManager-Tests` and `Alexandrie-Blur-Tests`.
-One package of ours joins them: `VectorGraphics-Conformance` names `AeFTLibrary` through
-`VGAlexandrieFontLifetime`, which unit 5.2 kept on purpose, and it loads only in the test, example
-and dev groups, so nothing a user loads is red.
-All of them pass again after step 3.
+**Two more dependencies on `Alexandrie-FreeType`, neither of them FreeType.** `Integer >>
+from26Dot6FractionalPoint` is an extension method packaged in `Alexandrie-FreeType`, and its only
+senders are in `Alexandrie-Harfbuzz`: `AeHbGlyphPosition >> xAdvanceFrom26Dot6` and its three
+siblings, and `AeHbFont >> positionWithFallback:`. So shaping breaks when the package goes, with
+`Message not understood: SmallInteger >> #from26Dot6FractionalPoint`, although nothing in the path
+touches FreeType. `AeFilesystemResources class >> fontsDirectory` and `>> inriaSerifRegularTTF` are
+extensions packaged in `Alexandrie-FreeType-Tests`, and our `VGAeRendererExamples class >>
+openWindowWithTextDrawnByCairo` sends the first of them to find Cascadia Code. Both are upstream
+packaging defects, and both are for unit 7 to answer, because the answer is not an extension method
+of ours: adding a selector upstream already defines would collide the moment the package loads.
+
+**What `removeFromSystem` leaves behind.** It does not rewrite the references of surviving methods,
+so a method that names a removed class gets an obsolete binding. Two came out of that, and both
+read as a defect in an unrelated place. `AeCairoContextTest class >> resources` answers
+`AnObsoleteAeFTLibraryResource`, whose `setUp` fails on the missing `downloadedFontsDirectory` and
+whose `tearDown` then raises `receiver of "externallyFree" is nil` **outside** the SUnit harness,
+in `TestResource class >> makeAvailable` — so the whole suite of `Alexandrie-Cairo-Tests` dies with
+one unreported error instead of failing test by test. And `VGAlexandrieFontLifetime class >>
+inspectorKept:` prints each object it keeps, which are now `AnObsoleteAeFTFace` instances, whose
+`printOn:` fails on `AnObsoleteAeFTFaceFlag class >> bitFlagNamesAt:`.
+
+**The proof.** It is a throwaway script in `Smalltalk imageDirectory` and belongs to no package,
+because nothing of the project may depend on it; the write-up is where it is kept. It checks the
+five class names are absent, builds the manager described above, scans the fonts directory of
+Alexandrie's own checkout on top (three families more, Cascadia Code among them, which the scene of
+unit 5.3 names), opens the scene of that unit on `VGPixelBufferHost` with `VGAeRenderer`, and states
+what the 5.1 gate states: the space chose our renderer, the pixels are not all zero, and the faces
+and scaled fonts the offscreen canvas cached are `VGFontFace` and `VGScaledFont`. It then writes the
+`Form` to `font-plan-6-proof.png` and puts the renderer and the font manager back. Read on the
+machine: 211 families scanned, 213 registered with `FontFamily`, two faces and two scaled fonts
+(Cascadia Code at 12 and at 36 points), 5436 bytes of PNG. The file was read back, parsed, and run
+again from its own text, which answered the same figures.
+
+**The window.** `font-plan-6-window.st`, beside the proof, opens the same scene in a real window of
+this machine and puts the renderer and the manager back when the space closes. It was run by hand,
+alone, in the image with no FreeType, and the reader saw what the unit promises: the sentence
+`Drawn with our own fonts` in a window, small and large. A window example is run by hand by the
+project rule, and that rule is why this one is a script and not a gate.
+
+**The red, measured during the window.** Of ours, three packages are untouched —
+`VectorGraphics-TrueType-Tests` 225 of 225 green in 7.5 s, `VGArchitectureTest` 48 of 48, and
+`VectorGraphics-Tests`, `-Engine-Tests`, `-Paths-Tests` and `-Text-Tests` all green. The rest is
+red for the embedded fonts, not for FreeType: `VectorGraphics-Bloc-Tests` 79 of 100, of which
+fifteen say `No face registered for the family Source Sans Pro`, three
+`SmallInteger >> #from26Dot6FractionalPoint`, one `inriaSerifRegularTTF`;
+`VGCairoExamplesTest` two green of six, the four others on
+`Attempt to read undeclared variable AeSourceSansPro_Regular`; `VGCairoTextTest` 35 of 36, the
+missing one the inspector-view gate printing an obsolete face; `VGCairoSkeletonTest` one failure,
+which is the project's own undeclared-variable gate naming the two methods of `VGCairoTextTest` that
+read `AeCairoFreetypeFontFace` and `AeSourceSansPro_Regular`; `VGConformanceTest` 14 of 15, the
+missing one on `fontsDirectory`. `VGAlexandrieCorpusTest` was not measured, being too slow for one
+call. So the plan's claim that `VectorGraphics-Conformance` is the only package of ours to go red
+was wrong in both directions: conformance loses one test, and the Bloc layer loses twenty-one.
+
+Of Alexandrie's: `Alexandrie-FontManager-Tests` two green, one failure
+(`scanEmbeddedFonts` answers `#()`) and five errors; `Alexandrie-Harfbuzz-Tests` nineteen green, one
+failure and twenty-eight errors, every one of them a missing fixture extension;
+`Alexandrie-Cairo-Tests` and `Alexandrie-Canvas-Tests` die at the obsolete test resource described
+above, with sixteen of the eighteen Cairo classes green when run one by one; `Alexandrie-Blur-Tests`,
+`-Base-Tests` and `-NewTools-Tests` unchanged.
+
+**The reload, and green again.** `font-plan-6-reload.st`, written and read back before anything was
+removed, puts the four packages back from the local Iceberg clone pinned at
+`e9f1ddc719df8a14bd13876ee64802d2b5cbe565` — no network, the very checkout this unit measured — and
+raises if a package or `AeFTFace` is still missing; a Metacello form by the same SHA is kept at its
+foot as the fallback. It ran in 7.5 s, the five class names answered true again, and no obsolete
+class was left in `Smalltalk globals`. Then the two globals the window had used to pin live faces
+and hold the manager were dropped and `VGFontManager uninstallGlobally` left upstream's slot nil,
+which is the state of an image that never met this project.
+
+Re-run after the reload: `VectorGraphics-TrueType-Tests` 225 of 225, `VectorGraphics-Bloc-Tests` 100
+of 100, `VGArchitectureTest` 48 of 48, `VGCairoTextTest` 36 of 36, `VGConformanceTest` 15 of 15 in
+36 s, the sixteen other `VectorGraphics-Cairo-Tests` classes green, `VGCairoExamplesTest` 6 of 6,
+and Alexandrie's `-FreeType-Tests`, `-CairoFreetype-Tests`, `-FontManager-Tests`, `-Canvas-Tests`,
+`-Blur-Tests`, `-Base-Tests` and `-NewTools-Tests` all green. Two figures to keep: `VGCairoExamplesTest`
+takes 7 minutes 44 (171 s for `testEveryExampleRebuildsItsObject` alone) and has to be forked with
+its result written to a file, because the mesh examples are slow and no MCP call survives it; the
+abstract `AePixelMatchTest` answers `subclassResponsibility` when a suite is built from the class
+itself, before and after, which is not a regression.
+
+**The image went down** on the first suite started after the reload, `Alexandrie-Harfbuzz-Tests`,
+and nothing was lost: the image had been saved before the unload, by the order this unit announced,
+and no code was compiled after that save. The two re-runs that had not been reached when it fell,
+`Alexandrie-Harfbuzz-Tests` and `Alexandrie-Cairo-Tests`, are to be redone on the restarted image,
+alone, by the project rule on suites that drive a device through uFFI.
+
+**What the unit proves.** Bloc draws text through Cairo with the two FreeType packages of Alexandrie
+out of the image: the glyphs are read, scaled and shaped by this project from an sfnt file on disk.
+What it does not prove, and what unit 7 therefore owes: `VGFontManager installGlobally` still needs
+the embedded font bytes of `Alexandrie-FreeType`, and shaping still needs an `Integer` extension
+packaged there. No class, test or production method was written for this unit, by the decision taken
+at the interview: the artefacts are the three scripts, the PNG, and this write-up.
 
 ### 7 — review and write-up
 
