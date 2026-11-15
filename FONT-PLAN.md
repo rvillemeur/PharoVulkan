@@ -1942,17 +1942,39 @@ Re-run after the reload: `VectorGraphics-TrueType-Tests` 225 of 225, `VectorGrap
 of 100, `VGArchitectureTest` 48 of 48, `VGCairoTextTest` 36 of 36, `VGConformanceTest` 15 of 15 in
 36 s, the sixteen other `VectorGraphics-Cairo-Tests` classes green, `VGCairoExamplesTest` 6 of 6,
 and Alexandrie's `-FreeType-Tests`, `-CairoFreetype-Tests`, `-FontManager-Tests`, `-Canvas-Tests`,
-`-Blur-Tests`, `-Base-Tests` and `-NewTools-Tests` all green. Two figures to keep: `VGCairoExamplesTest`
+`-Blur-Tests`, `-Base-Tests`, `-NewTools-Tests`, `-Harfbuzz-Tests` and `-Cairo-Tests` all green. Two figures to keep: `VGCairoExamplesTest`
 takes 7 minutes 44 (171 s for `testEveryExampleRebuildsItsObject` alone) and has to be forked with
 its result written to a file, because the mesh examples are slow and no MCP call survives it; the
 abstract `AePixelMatchTest` answers `subclassResponsibility` when a suite is built from the class
 itself, before and after, which is not a regression.
 
-**The image went down** on the first suite started after the reload, `Alexandrie-Harfbuzz-Tests`,
-and nothing was lost: the image had been saved before the unload, by the order this unit announced,
-and no code was compiled after that save. The two re-runs that had not been reached when it fell,
-`Alexandrie-Harfbuzz-Tests` and `Alexandrie-Cairo-Tests`, are to be redone on the restarted image,
-alone, by the project rule on suites that drive a device through uFFI.
+**The image went down** on the first suite started after the reload,
+`Alexandrie-Harfbuzz-Tests`, and the dump names the cause exactly: `SIGSEGV` in
+`libfreetype FT_Done_Face`, reached from `hb_font_destroy`, `hb_face_destroy` and
+`hb_blob_destroy`, in the **finalisation process**, running `FFIExternalResourceExecutor >>
+finalize` on an object whose class prints blank in the dump — an obsolete class. So the precaution
+this unit took was the right kind and the wrong set: every live `AeFTFace` and `AeFTLibrary` was
+pinned in a global so nothing of FreeType's own would finalise during the window, but the Harfbuzz
+objects that hold a blob of a FreeType face were not, and the fatal collection came *after* the
+reload, when the executors of the obsolete classes were finally mourned and freed a face that no
+longer existed. The lesson for any later unload is that the finalisation registry, not the class
+table, decides what a package removal can still kill, and that the dangerous moment is the first
+garbage collection after the reload.
+
+Nothing was lost — no code had been compiled since the save — but the image came back from a
+snapshot taken *during* the window, with the four packages still out and the two globals still
+there, so the reload was run a second time on the restarted image: 8.7 s, the five class names true
+again, no obsolete class left in `Smalltalk globals`. Iceberg then needed one correction of its own,
+the shape the project note on a crash describes: `VectorGraphics-Conformance` read as modified while
+`diffToReferenceCommit` was empty, the working copy was attached and its reference commit was the
+head, and `adoptCommit:` did not clear the flag — `IcePackage >> beClean` did. The package was
+compared with the checkout method by method first, 245 either side, which is what made clearing it
+safe rather than hopeful.
+
+The two suites that had not been reached were then run on that image, each forked with its result
+written to a file, after the commit: `Alexandrie-Harfbuzz-Tests` 46 of 46, and
+`Alexandrie-Cairo-Tests` 149 of 149 over its eighteen classes — including the four `testFormSelector`
+errors the baseline carried, which this image does not reproduce.
 
 **What the unit proves.** Bloc draws text through Cairo with the two FreeType packages of Alexandrie
 out of the image: the glyphs are read, scaled and shaped by this project from an sfnt file on disk.
