@@ -1735,24 +1735,118 @@ they are one-line readers of a class slot on a class that already has its instal
 `inspectorInstallation:` deliberately says nothing about what upstream holds. Counts after the
 review: `VectorGraphics-Bloc-Tests` is 99.
 
-### 5.4 — `FontFamily` takes its families from the catalogue
+### 5.4 — `FontFamily` takes its families from the catalogue — done
 
 `FontFamily class >> addFamiliesFrom: aCatalogue` builds one `TrueTypeFontFamily` per family the
-catalogue holds, through `baseTTFontDescription:`, and registers it with `addFamily:`.
-The description is read lazily, on the first use of a family, because that is the 200 ms parse.
-`AvailableFamilies`, `familyNamed:` and `defaultFamilyAndPointSize` keep their protocol, so
-`VectorCanvas` and its tests see no change in shape — the dictionary is simply no longer empty by
-default.
+catalogue holds and registers it with `addFamily:`. Nothing is parsed on the way: a family keeps
+the catalogue entry of each of its faces and reads the outlines behind one when a reader first asks
+for a font of that face. A name already registered is left alone, so a family posed by hand — by a
+test, by a consumer, by a font loaded on its own — is never replaced by a scan, and a second call
+does nothing rather than throw away the fonts the first one built. `AvailableFamilies`,
+`familyNamed:` and `defaultFamilyAndPointSize` keep their protocol, so `VectorCanvas` and its tests
+see no change in shape — the dictionary is simply no longer empty by default.
 
 This is the other half of decision 13: one scan, two registries, two kinds of face —
 `TrueTypeFont` in `Form` for `VectorCanvas`, `VGFontFace` in outlines for Cairo and Bloc.
-The cost is this one hook, which is code of ours, and a re-read of the `FontFamily` tests: they
-assume a registry filled by hand, and the fixtures that add a family themselves must still work
-beside a populated catalogue.
 
-Red: after `addFamiliesFrom:` on a catalogue of the embedded files, `FontFamily familyNamed:
-'Source Sans Pro'` answers a family, `availableFamilies` holds the catalogue's two families, and a
-family added by hand is still found.
+**Deviation from the plan.** The plan registered each family through `baseTTFontDescription:`, with
+the description read lazily. A family built that way knows one face, and cannot say which of its
+faces is the bold one until it has parsed them: the emphasis of a face is read from the triple the
+catalogue already keys it by — slant, weight class, width class — and not from the description. So
+a family keeps the catalogue entry of every face instead, filed by emphasis in the encoding
+`StrikeFont` uses and `TrueTypeFont >> emphasis` answers: 1 bold, 2 italic, 3 both, 0 the plain
+face. A weight class of 600 is Semibold, the lightest weight a reader is meant to see as bold. The
+first face to claim an emphasis keeps it, so a family carrying both Semibold and Black draws with
+the one met first. The lazy parse the plan asked for is still there, one face at a time rather than
+one family at a time: 82 ms for Cascadia Code, against the 17 s that parsing 210 families eagerly
+would cost at the scan.
+
+**A face is an object.** `TTFamilyFace` holds the catalogue entry a scan met and the description a
+reader parses out of it at the first ask; `isParsed` answers whether the outlines have been read
+without reading them, and `styleName` names the face from whichever end is there. A face built from
+a description has no entry behind it, which is how a font posed by hand becomes a face of a family.
+The family keeps one dictionary of faces by emphasis, the base face under 0.
+
+**The emphasis comes from the family.** `TrueTypeFont >> emphasized:` asked for a face it holds no
+derivative for now asks its family: `fontForEmphasis:pointSize:` parses that one face, builds the
+font, wires it to the plain font of that size and files it as its derivative. A family with no face
+of that emphasis answers nil, which leaves the old fallbacks in charge — italic or bold in place of
+bold italic, the plain font for a bold or an italic nobody holds, and the synthetic derivation for
+underline, strike-through, superscript and subscript, none of which a font file carries.
+`atPointSize:` hangs only the faces already parsed off the plain font, so asking for the plain font
+parses nothing else. `clearCache` throws away the fonts built and keeps the faces: it used to reach
+for a description a lazy family does not have and fail on nil.
+
+**The wiring.** `VGFontManager class >> installGlobally` registers its own catalogue with
+`FontFamily` and poses the default family and point size the manager can draw with —
+`AeSourceSansPro_Regular familyName` and 12 — each one only when the image has not chosen it.
+`FontFamily class >> familyNames` and `familyNamed:` read `self availableFamilies` rather than the
+class variable, since a pristine image still holds nil there and an installation is the first
+reader. The manager is built by `newWithDefaultFaces`, which scans the embedded fonts only, so an
+image that wants the machine's fonts sends `scanDefaultDirectories` as before.
+
+**The gates.** The fixtures of `TTFontFixtures` carry a name table and an OS/2 table and no glyph
+tables at all, so a parse of one raises `Missing required TrueType table: head`: that is how a test
+states that a face was not read, and which face a reader reached for. On that,
+`TrueTypeFontFamilyTest` states that a face is filed under the emphasis its style key gives, that a
+family keeps the faces it was given and parses none of them, that a font of an emphasis is parsed
+only when it is asked for and that an emphasis no face carries answers nil, and that clearing the
+cache reads nothing. `TrueTypeFontTest >> testEmphasizedAsksItsFamilyForAFaceItHasNotBuiltYet`
+states the same from the font's side. `FontFamilyTest` states that registration gives one lazy
+family per catalogue name, keeps every face of a family, and leaves a family posed by hand alone.
+`VGFontManagerInstallationTest >> testInstallingRegistersTheCatalogueFamiliesAndPosesADefaultOnlyWhenNoneIsSet`
+states the wiring, saving and restoring the three class variables of `FontFamily` the way the class
+already saves the two manager slots. Two tests use a font of this machine instead of a fixture,
+where the parse succeeds: the plain face is read at the first `atPointSize:` and not before, and a
+face posed as a description is parsed from the start.
+
+**The example and the view.** `TrueTypeExamples class >> fontFamilyOfThisMachine` builds, in one
+click, the family of the font the examples draw with, taken from this machine's own fonts the way
+an installation takes it; `fontFaceOfThisMachine` answers its unread plain face.
+`TrueTypeFontFamily >> inspectorFaces:` is one row per emphasis — the emphasis, the style the face
+states, parsed or pending — and `TTFamilyFace >> inspectorFace:` says what a face is and where it
+comes from. Neither reads a byte, which is what makes them usable on a family nobody has asked
+anything of yet; both have a test that builds them through `StInspectionContext` and runs every
+column block over every row, on fixtures that would raise if a row parsed.
+
+**Read on the machine.** `VGFontManager installGlobally` takes 15 ms. `Source Sans Pro` at 16 pt
+answers 13.27 for the width of `$A` plain, 14.06 bold and 12.44 italic — three real faces, not one
+face three times. On `DejaVu Sans` taken from the machine's scan, `atPointSize: 14` leaves bold and
+italic pending, `emphasized: 1` parses the bold face alone, and the italic one is still pending
+after it.
+
+**The design review.** Two refactorings were agreed and done, one was dropped.
+
+The family kept four slots for one idea — the entry of its base face, its parsed description, a
+dictionary of entries by emphasis and a dictionary of descriptions by emphasis — and four methods
+asked whether an emphasis was the base one. Extract Class: a face is a `TTFamilyFace`, a family
+keeps one dictionary of faces, and `hasParsedEmphasis:`, `styleNameOfEmphasis:` and
+`catalogueEntryForEmphasis:` each ask the face. `atPointSize:` keeps the only remaining condition
+that earns its place, and the comment says why: a face still pending is not built here, or asking
+for the plain font would parse every face of the family.
+
+`TrueTypeFont >> emphasized:` mixed four levels and was long and complex by Renraku's count before
+this unit touched it. Extract Method: the body is the sequence of decisions, and the three tails
+are `realFontForEmphasis:`, `plainestFontForEmphasis:` and `syntheticFontForEmphasis:`. Both
+critics on the method are clean.
+
+Extracting a lazy `ttFontDescriptionForEmphasis:` out of `fontForEmphasis:pointSize:` was dropped:
+the extract-class step moved the lazy parse into the face, so the extraction would have added a
+level of indirection that simplifies nothing.
+
+Two tests changed before the refactoring and not during it, which is where a test pinning an
+implementation detail belongs. One read the slot holding the parsed description through
+`instVarNamed:` and now asks `hasParsedEmphasis:`. The other asserted that the catalogue entry of
+emphasis 0 is nil, which said only that the plain face is kept apart from the faces filed by
+emphasis; the fact that a family has no entry for an emphasis it holds no face for stays, stated on
+emphasis 3.
+
+Counts after the review: `VectorGraphics-TrueType-Tests` is 225, `VectorGraphics-Bloc-Tests` is
+100, `VGArchitectureTest` is 48. Critics on the classes touched are clean but for the carried
+defect list — the two `ReExcessiveArgumentsRule` on `VGFontManager`, the missing class tag on
+`VGFontManagerInstallationTest`, `ReRefersToClassRule` on `FontFamily class >> defaultLineSpacing`,
+and the long, complex `TrueTypeFont >> glyphAtUtf8Byte1:byte2:byte3:byte4:`, which this unit did
+not touch.
 
 ### 6 — the proof by absence
 
