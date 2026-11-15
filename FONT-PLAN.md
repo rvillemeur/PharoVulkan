@@ -1702,6 +1702,39 @@ Counts after the unit: `VectorGraphics-Bloc-Tests` is 97, two gates in. Critics 
 touched are clean but for the `ReClassNotCategorizedRule` already on the carried defect list.
 Commit first and run the two `open…` alone, per the project rule on window and device runs.
 
+**Read on the machine.** Both windows were opened by hand from the browser after the commit, one
+after the other: text is drawn in a Bloc window at the small and at the large size, on the Cairo
+route and on the route without Cairo. The deliverable of the unit is a window a reader can look at,
+so nothing short of looking at it closes the unit.
+
+**The design review.** Two duplications were past the rule of three, and both are now said in one
+place.
+
+The slot `AeFontManager` keeps its manager in was read by reflection in nine methods over five
+classes, each repeating why `AeFontManager globalInstance` cannot be sent for it: the getter builds
+a whole FreeType manager when the slot is nil, which a test or an example that only wants to put
+the image back as it found it must not do. `VGFontManager class >> managerUpstreamHolds` and
+`>> restoreUpstreamManager:` say it once, and
+`VGFontManagerInstallationTest >> testTheUpstreamSlotIsReadAndWrittenWithoutEverBuildingAManager`
+states the three facts, the last of them by reading the two methods' own `messages`: neither sends
+`globalInstance`. The two assertions that pin the real slot against what `installGlobally` did keep
+their reflection on purpose — a reader of those tests must see the slot itself, not a reader of
+ours standing in for it.
+
+The variable `scaledFontCache` was reached with `instVarNamed:` in three test methods, which no
+rename would follow. `VGFontCanvas >> cachedScaledFontsByFaceAndSize` answers a snapshot of it,
+keyed by the face and the size the font was asked for. A snapshot and not the cache: it is an
+`LRUCache`, which reading promotes and which a reader could empty under the canvas drawing with it.
+
+Nothing else was changed. The two `textSceneInTwoSizes` and the two pairs of private test helpers
+are two occurrences each, which the interview chose deliberately; both renderer test classes descend
+straight from `TestCase` and both examples classes from `Object`, so pulling either up would mean
+inventing a superclass for a duplication that is not yet a rule. The two new readers got no
+`<sampleInstance>` example and no inspector view, and the unit says so rather than inventing them:
+they are one-line readers of a class slot on a class that already has its installation view, and
+`inspectorInstallation:` deliberately says nothing about what upstream holds. Counts after the
+review: `VectorGraphics-Bloc-Tests` is 99.
+
 ### 5.4 — `FontFamily` takes its families from the catalogue
 
 `FontFamily class >> addFamiliesFrom: aCatalogue` builds one `TrueTypeFontFamily` per family the
