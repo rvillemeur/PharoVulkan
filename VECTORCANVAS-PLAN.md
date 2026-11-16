@@ -1787,6 +1787,29 @@ it, one per table it reads; this unit added none of them.
 
 Gate met on both counts.
 
+**Superseded in part by `FONT-PLAN.md` §5.2.** This facade was built on FreeType, and phase 6 of that
+plan took FreeType out of the project, so three statements above no longer describe the code.
+
+`VGFontFace class >> newForFace:` and `VGFontFace class >> bytesForFamilyName:styleName:` are gone,
+and with them `VGCanvas class >> faceForFreeTypeFace:`, its face cache and both implementations of
+`fontFaceFor:`. No method of this project takes an `AeFTFace` any more, and
+`VGCanvasTest >> testNoMethodOfThisProjectRecoversTheBytesBehindAFreeTypeFace` is the gate that keeps
+it so. A face is built from bytes instead, through `VGFontFace class >> newForBytes:` and
+`newForFile:`, and the five experiments this unit unblocked read their font out of a
+`TTFontCatalogue` of their own rather than out of the global `AeFontManager`:
+`VGAlexandrieCorpus class >> fontLookupRewriteIndentedBy:informing:` holds that rewrite and
+`VGConformanceTest >> testTheExperimentsPortedFromAlexandrieReadTheirFontWithNoFreeType` is its gate.
+`VGFontFace class >> default` and `defaultBytes` stay, and so does
+`VGFontFace >> newScaledFontWithFontMatrix:userToDeviceMatrix:options:`, the instance-side form
+`fillPaint1` uses.
+
+Everything else this unit built stands: the four enumeration classes, `ourNameExceptions` — still
+mapping `AeCairoFreetypeFontFace`, `AeCairoScaledFont` and `AeCairoFontOptions` onto `VGFontFace`,
+`VGScaledFont` and `VGFontOptions` — the empty `missingClassUnitTable`, `progressDescription` reading
+`draws already: 82`, `VGClip >> narrowedTo:` with the mask sized walk behind it, the dash pattern
+fix, and the two glyph tolerance tables. What those tables measure is unchanged in kind: this
+project's filled outlines against Cairo's grid-fitted ones.
+
 ## 7. Phase 2 — Vulkan as an optimisation
 
 ### 2.0 — probe and recovery

@@ -1983,14 +1983,123 @@ the embedded font bytes of `Alexandrie-FreeType`, and shaping still needs an `In
 packaged there. No class, test or production method was written for this unit, by the decision taken
 at the interview: the artefacts are the three scripts, the PNG, and this write-up.
 
-### 7 — review and write-up
+### 7 — review and write-up — done
 
-Design review of the production code touched, by the project rule: diagnose, prioritise with a named
-refactoring, guard against over-engineering, present the plan and wait.
-MuTalk on the changed classes only, against a clean checkout, with the score compared before and
-after the refactor step.
-Then update `VECTORCANVAS-PLAN.md` §1.13, which describes the font facade as it was before this
-work, and the memory note on the measured cost of the TrueType route.
+The code unit closed with `e5c09d5`, and this section is what the project rule asks for after it: a
+design review of the production code the phase touched, the mutation figures that review asked for,
+and the corrections this work owes the other plan documents.
+
+**The diagnosis.** Six points, each named against a class or a method, each with the refactoring that
+answers it.
+
+- `VGFontManager >> defaultFaceOfFamilyNamed:` lost its last sender in unit 7 — dead code, Remove
+  Method.
+- `TTFontCatalogue >> refusedEntries` spelled as a refusal what `drawableEntries` and
+  `TTFontMetadataReader` call a rejection: one idea, two words — Rename Method.
+- `VGCanvas class >> inspectionOfSurface:` and `VGFontManager >> inspectionFaces:` read as names
+  describing the implementation rather than the intention — Rename Method, and cancelled below.
+- `VGScaledFont >> glyphsOf:size:` and `VGCairoContext >> glyphsOf:size:` held the same unwrapping of
+  an opaque glyph array twice — Extract Method, onto the class that owns a glyph.
+- `VGScaledFont >> glyphExtentsOf:` mixed two levels of abstraction, merging the inked boxes of a run
+  inside the method that converts the merged box to text extents — Extract Method.
+- `TTFontCatalogueEntry >> styleKey` carried a domain concept — slant, weight class, width class — as
+  a three element array, read in five places and printed as `#(#normal 400 5)`: primitive obsession,
+  Extract Class.
+
+**What was executed**, one refactoring at a time with the suite re-run and committed at each green
+step. `6dba43a` removes the dead method. `fab04ab` renames `refusedEntries` to `rejectedEntries`
+through `ReRenameMethodRefactoring`, which rewrote the seven senders — the MCP `method_rename` tool
+does not, and `RBRenameMethodRefactoring` does not exist in this image. `e283395` takes the old word
+out of the two prose references left behind, a class comment and a test comment. `ff3be09` moves the
+unwrapping to `VGGlyph class >> glyphsOf:size:`, which asks for `#asExternalStructure` rather than
+for a class name and so keeps the package free of Alexandrie's names; both canvases now delegate to
+it. `7bec0e3` extracts `VGScaledFont >> inkedBoxOfRun:`, which answers nil when nothing in the run is
+inked, so `glyphExtentsOf:` reads as the two steps it is.
+
+`5c77e1e` is the Extract Class. `TTFontStyle` holds the three facts a font states about its face,
+answers `plainest` from the reader's own `normalWeightClass` and `normalWidthClass` constants, is a
+value — `=`, `hash`, `printOn:` as `TTFontStyle(italic 700 3)` — and knows `isPlainest`. It has the
+five artefacts the cycle asks for: `TTFontStyleTest` with five tests, the class-side example
+`TrueTypeExamples class >> styleOfTheBoldestFaceOfThisMachine`, and `inspectorStyle:` with its gate,
+which reads its rows off the class's own instance variables so that a fact added to the class shows
+in the view without the view being touched. `TTFontMetadata >> style` builds one,
+`TTFontCatalogueEntry >> styleKey` became `style`, and `entryOfFamilyNamed:styleKey:ifNone:` became
+`entryOfFamilyNamed:style:ifNone:`. `VGFontManager >> styleForSlant:weight:stretch:` holds the three
+translations from Alexandrie's category objects, and
+`entryForFamilyName:slant:weight:stretch:ifNone:` keeps its five arguments on purpose: it mirrors
+`AeFontManager >> detectFamilyName:slant:weight:stretch:ifNone:`, so the `ReExcessiveArgumentsRule`
+it carries is untouchable, like the six arguments of `VGCairoContext` that mirror Cairo's own C API.
+No three argument `entryForFamilyName:style:ifNone:` was added, because nothing would send it today.
+
+That last refactoring forced five tests to change, which the rule says to stop and report rather than
+absorb: they pinned the array representation rather than the behaviour, and each now states a
+`TTFontStyle`. The rewrite was validated before anything was edited.
+
+**P3 was cancelled on evidence.** `inspectionOfSurface:` and `inspectionFaces:` are overrides of
+`AeCanvas` and `AeFontManager` selectors, so a rename would not improve a name — it would restore
+upstream's tab beside ours in the inspector. Both comments already say so, and nothing was changed.
+
+**The mutation figures.** MuTalk 3.0.8 through the baseline's `dev` group, two runs forked at
+priority 46 against a clean checkout, each writing its result beside the image.
+
+Run A replays unit 5.2's reference exactly — `VGFontCanvas` and `VGFontFace` alone, with the same
+nine test classes: **score 36, 1495 mutants, 549 killed, 946 alive, 5 min 00 s**, against 5.2's score
+34, 1599 mutants, 547 killed, 1052 alive, 15 min 32 s. The score did not drop. The mutant count
+differs because units 5.3, 5.4 and 6 changed both classes after that run, and the run is three times
+faster, which nothing here measures the cause of. The alive mutants sit where 5.2 said they would:
+`readComponentWithFlags:` 163, `readBytes:` 125, `refuseIfATableIsMissingFrom:` 119, then the
+inspector views and `printOn:`. That is still the phase 2 coverage defect to raise before phase 8
+touches the same reader for CFF.
+
+Run B measures the six classes the refactorings touched — `TTFontStyle`, `TTFontCatalogue`,
+`TTFontCatalogueEntry`, `TTFontMetadata`, `VGScaledFont` and `VGGlyph` — with the eight test classes
+that name them: **score 48, 1801 mutants, 869 killed, 932 alive, 1 min 35 s**. There is no before to
+hold it against, because 5.2's reference covered the other pair of classes, so this figure is the
+baseline the next refactor of these classes is held to. The alive mutants are again the inspector
+views, `printOn:` and one outlier, `TTFontCatalogueEntry >> signalRefusal:` with 138 — a message
+string built for a reader, which no test reads word by word. Of `TTFontStyle` itself, 19 alive
+mutants are in the view, 4 in `hash`, 4 in the view's gate and 1 in `=`.
+
+After both runs the working copy diff was empty and `isDetached` false, so no production method was
+left mutated.
+
+**Two constats this review recorded, neither a defect of this phase.** Section 6 filed both as owed
+to this unit; here is what each one is, exactly.
+
+The suite still needs `Alexandrie-FreeType` in the image, and will keep needing it: the fixtures of
+`TTFontMetadataReaderTest`, the manager tests that assert no FreeType library is owned and no
+FreeType face is built, the example `VGFontManagerExamples class >> managerWithoutALibrary`, and
+`VGAlexandrieFontLifetime`, which documents the handle lifetime of the stack phase 6 unloads. A gate
+that asserts the absence of a thing has to be able to name it.
+
+`Integer >> from26Dot6FractionalPoint` is implemented in `Alexandrie-FreeType` and sent only from
+`Alexandrie-Harfbuzz`: `AeHbFont >> positionWithFallback:` and the four conversions of
+`AeHbGlyphPosition`. Shaping stays Alexandrie's, and `TTFontCatalogueEntry >> shapingRowsAtSize:`
+reaches those conversions through `AeHbBuffer >> cairoGlyphArray`, so an image that loads HarfBuzz
+without FreeType dies in a `doesNotUnderstand:` on a pure arithmetic conversion. That is an upstream
+packaging defect, and it is what keeps `Alexandrie-FreeType` loaded in an image that draws text with
+none of it.
+
+**Carried, and not fixed here.** `ReClassNotCategorizedRule` on several classes of the phase.
+`VGFontFace` carries `ReExcessiveVariablesRule` for its thirteen tables and
+`readComponentWithFlags:` is 32 lines; `TTFontMetadata >> inspectorIdentity:` carries
+`ReCyclomaticComplexityRule`; `TrueTypeFont >> glyphAtUtf8Byte1:` and
+`FontFamily class >> defaultLineSpacing` are upstream shapes we only extend. `VGFontFace` still mixes
+sfnt generic state with `glyf` specific state, which is the seam section 8 will press on: it is not
+split now, because the first red of CFF is what should drive the split rather than a guess made
+before it.
+
+Two names still carry the old word after `fab04ab`: `TTFontCatalogue >> inspectorRefusals:` and
+`TTFontCatalogueEntry >> signalRefusal:`. Extending the rename to them was left outside the validated
+scope of this review.
+
+**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 231 and green, six of them written
+here — the five of `TTFontStyleTest` and the metadata test for `style`; the two extractions added
+none, because the tests that existed already covered the methods they moved.
+`VectorGraphics-Bloc-Tests` is 103; `VGCairoTextTest` 36, `VGCanvasTest` 15,
+`VGTrueTypeExamplesTest` 10, `VGArchitectureTest` 49. Critics are clean on everything written here,
+with the two `VGFontManager` excessive arguments hits and `TTFontMetadata >> inspectorIdentity:`
+carried as above.
 
 ### 8 — CFF, after FreeType is gone
 
