@@ -2251,6 +2251,66 @@ one click at a time, with `VGScaledFontExamples class >> fontFaceOfAnOpenTypeFon
 first `otf` file this machine has. Critics are clean on every class the phase touched;
 `VGFontFace` keeps the excessive variables hit that the deferred review point would answer.
 
+### 9 — the glyph source, the deferred review point — done
+
+Phase 8's review deferred one point and this phase executes it. `VGFontFace` asked
+`TTFontReader class >> holdsTrueTypeOutlines:` itself, then kept `glyfEntry`, `glyfStart` and
+`glyphDataOffsets` nil on the CFF route — an implicit state machine, and the reason the face carries
+`ReExcessiveVariablesRule`. Replace Conditional with Polymorphism, with the composite glyphs of
+`readComponentWithFlags:` moving too, because only the `glyf` route reads them.
+
+**What it is now.** `TTGlyphSource` holds the records and is abstract.
+`TTGlyphSource class >> on:count:indexToLocFormat:` asks the reader which format the file carries
+and answers a `TTGlyfGlyphSource` or a `TTCffGlyphSource`, so a reader and a face cannot disagree
+about a file. Both answer `glyphCount`, `glyphAt:`, `outlineOfGlyphAt:` and
+`fillAdvancesFrom:numHMetrics:`, and the face keeps one source and the memo of the outlines it has
+been asked for. The flags and lengths of a composite glyph record are class-side constants of
+`TTGlyfGlyphSource`. `VGGlyphOutline` and `VGGlyphComponent` moved to `VectorGraphics-TrueType`,
+which is where the code that builds them now lives, and `VGArchitectureTest` holds the project to it:
+`testTrueTypeStaysInsideItsAllowedDependencies` failed on exactly those two classes until they moved.
+
+**The units**, each committed at its green step in the `VectorGraphics` repository.
+
+- `3a4cd1c` the split, red first: an abstract `TTGlyphSourceTest` states the two facts both formats
+  share — a source answers one record per glyph of the font, and the outline of a glyph is its
+  contours, its box and its advance in font units — and `TTGlyfGlyphSourceTest` and
+  `TTCffGlyphSourceTest` answer it with a font each, built byte by byte. Both routes answer the
+  identical square for the identical glyph, which is measured and not assumed. `VGFontBytesFixture`
+  moved to `VectorGraphics-TrueType-Tests` so the tests of a source can reach it, which gives
+  `VectorGraphics-Cairo-Tests` a declared edge to the reader's two test packages: the table of
+  `allowedDependencies` and the baseline both say so, and the group gate names the packages the
+  `cairo-tests` group now brings.
+- `32440da` section 9 of `doc/ARCHITECTURE.md`: the glyph source, not the face, decides the format.
+- `2ecc207` the two `Glyphs` views, one per source, and the titles their tests read. A `glyf` glyph
+  states its contour count, whether it is a composite, its advance and its box; a CFF glyph states
+  whether its charstring has been interpreted yet, because showing it must not interpret one.
+  `TrueTypeExamples glyfGlyphSource` and `cffGlyphSource` open them on a real font of either format,
+  found by `installedFontPathEndingWith:`, since `defaultFontPath` on this machine answers a `.otf`.
+
+**The mutation figures**, MuTalk through the baseline's `dev` group, `MTFreeBudget`, forked at
+priority 46 against a clean checkout, with `VectorGraphics-TrueType-Tests` plus `VGCairoTextTest` as
+the test classes.
+
+| Class | Score | Mutants | Killed | Time |
+|---|---|---|---|---|
+| `TTGlyphSource` | 93 | 118 | 110 | 12 s |
+| `TTGlyfGlyphSource` | 47 | 496 | 236 | 1 min 26 s |
+| `TTCffGlyphSource` | 15 | 77 | 12 | 12 s |
+
+The `glyf` figure is the 41 `VGFontFace` scored before the split, measured the same way, so moving
+the code cost no coverage; what stays alive is `readComponentWithFlags:` 148, as it was. **The test
+classes have to include `VGCairoTextTest`**: without it the same class reads 6, because the
+composite glyph tests drive through the face and live in the other package. The two views are what
+holds both concrete figures down — 86 alive mutants of one and 64 of the other, 64 of 77 in the CFF
+case — and naming the columns in both tests changed neither figure, although a hand stub that drops
+the columns is killed by the test. A view built as one cascade through the presenter builder is
+where MuTalk's arithmetic says least.
+
+**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 295, `VGArchitectureTest` 49 and
+`VectorGraphics-Cairo-Tests` 398, all green, and critics are clean on the three sources, on
+`TrueTypeExamples` and on `VGFontFace`, which now carries `ReExcessiveVariablesRule` alone: eleven
+variables instead of fourteen, and the three that were nil on one route are gone.
+
 ## 6. First failing test
 
 `TTFontMetadataReaderTest >> testFamilyAndStyleOfAFont`: the reader answers `'Source Sans Pro'`
