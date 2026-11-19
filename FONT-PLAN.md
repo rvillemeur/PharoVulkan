@@ -2306,10 +2306,43 @@ case — and naming the columns in both tests changed neither figure, although a
 the columns is killed by the test. A view built as one cascade through the presenter builder is
 where MuTalk's arithmetic says least.
 
-**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 295, `VGArchitectureTest` 49 and
-`VectorGraphics-Cairo-Tests` 398, all green, and critics are clean on the three sources, on
-`TrueTypeExamples` and on `VGFontFace`, which now carries `ReExcessiveVariablesRule` alone: eleven
-variables instead of fourteen, and the three that were nil on one route are gone.
+**The design review that followed**, four points, each committed at its green step.
+
+- `da214ba` Extract Method on `readComponentWithFlags:`, which read the glyph index, the offsets
+  and all three forms of transform in one method three levels deep. Each form is a method now,
+  behind `applyTransformFromFlags:to:`, which states why the three are tested in the order the
+  specification writes them: each reads a different number of F2Dot14 numbers, so taking the wrong
+  branch leaves the entry over the next field. The transform cases were covered only through
+  `VGFontFace`, in `VGCairoTextTest`, so `TTGlyfGlyphSourceTest` states them of the source itself,
+  one component record each. Stubbing `nextTwoDotFourteen` to answer 1 kills three of the four, and
+  the fourth reads no F2Dot14 number: the new tests bite where the extraction happened.
+- `f346f2c` Move Method: `nextSignedByte` and `nextTwoDotFourteen` read nothing but the glyf entry,
+  and `TTFontTableDirEntry` already reads `nextByte`, `nextShort`, `nextUShort`, `nextLong` and
+  `nextULong`. They are its primitives, with the F2Dot14 scale beside them, and
+  `TTFontTableDirEntryTest` states what each reads.
+- `b37f8d6` Pull Up Method: both views opened a table with the same first column and the same items,
+  which is `TTGlyphSource >> glyphTableThrough:`; each source adds only the columns its format
+  states for free. And `boxDescriptionOf:` read nothing but a glyph's four edges, so it is
+  `TTGlyph >> boundsDescription`, where the glyph's own views reach it.
+
+A fifth point was raised and declined: Extract Class on `VGFontFace`'s six `head`/`hhea` metrics
+would add a class and six delegating methods to silence one critique, and simplify nothing today.
+It waits until those metrics have behaviour of their own.
+
+**The figures after the review**, same harness, same test classes: `TTGlyphSource` 88 (147 mutants),
+`TTGlyfGlyphSource` 49 (444), `TTCffGlyphSource` 22 (54). Two of the three rise, and the abstract
+class falls five points because the shared table moved into it and brought the view's unkillable
+mutants along: 362 of 645 mutants killed against 358 of 691 before, so the review added coverage
+rather than spending it. Counting mutants per method says little on its own — the six-line
+`readComponentWithFlags:` still generates 167, most of them selector substitutions no caller can
+reach.
+
+**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 306, `VGArchitectureTest` 49,
+`VGCairoTextTest` 51 and `VectorGraphics-Cairo-Tests` 398, all green, and critics are clean on the
+three sources, on `TTGlyph`, on `TrueTypeExamples` and on `VGFontFace`, which now carries
+`ReExcessiveVariablesRule` alone: eleven variables instead of fourteen, and the three that were nil
+on one route are gone. `TTFontTableDirEntry` keeps its own `ReVariableReferencedOnceRule` on `tag`,
+which is older than this phase.
 
 ## 6. First failing test
 
