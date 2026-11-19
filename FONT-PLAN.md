@@ -2101,7 +2101,7 @@ none, because the tests that existed already covered the methods they moved.
 with the two `VGFontManager` excessive arguments hits and `TTFontMetadata >> inspectorIdentity:`
 carried as above.
 
-### 8 — CFF, after FreeType is gone
+### 8 — CFF, after FreeType is gone — done
 
 Decision 14's second half, and the phase that closes the format gap: 101 `otf` files against 362
 `ttf` on this machine, and with them Cantarell, Cascadia Code, STIX, URW Base35 and the CJK faces.
@@ -2119,6 +2119,135 @@ expensive to add first.
 
 Red, first test of the phase: a `.otf` face answers the contours of one glyph, and the metadata
 reader no longer records a rejection for it.
+
+**The units**, each committed at its green step in the `VectorGraphics` repository.
+
+- `0318437` the `INDEX`: `TTCffIndex` reads the count, the offset size and the offsets, and answers
+  its elements as byte arrays. One structure, read once, used for the names, the top dictionaries,
+  the strings, the charstrings and the subroutines.
+- `1f979d8` the dictionary: `TTCffDictionary` reads operands and operators into a dictionary keyed by
+  operator number, with the two byte operators spelled as 1200 plus the second byte, so the
+  registry-ordering-supplement operator is 1230.
+- `ce16cce` the table: `TTCffTableParser` walks the header, the name `INDEX`, the top dictionary, the
+  string `INDEX`, the charstring `INDEX`, the private dictionary and both subroutine indexes, and
+  answers `defaultWidthX`, `nominalWidthX` and the charstring of a glyph.
+- `ce20d5a` the interpreter: `TTCffCharstringInterpreter` runs a Type 2 charstring against
+  `TTCffOutlineBuilder`, which collects `TTCffContour` segments. A cubic becomes `TTCffCubic`, which
+  answers the chain of quadratics that holds it to within a tolerance — the conversion happens in
+  the parser, so nothing above a contour knows a CFF outline was ever cubic.
+- `ad278d7` the glyph: a `TTGlyph` built from those contours, with its box computed from the points
+  rather than read from a table, because CFF states no box.
+- `5e87c12` units 6 and 7 together: `VGFontFace` and `TTFontReader` both read a CFF face.
+
+**Unit 6 could not land without unit 7.** The moment the catalogue stopped rejecting an `otf` file,
+`VGScaledFontExamples` picked Source Code Pro for its examples, and the eager door —
+`TTFontReader`, which reads a whole font into a `TTFontDescription` — raised
+`Missing required TrueType table: loca` on it. So the two doors were wired in one commit, and the
+rule that decides the format now lives in exactly one place: `TTFontReader class >>
+holdsTrueTypeOutlines:`, which answers true when the directory holds `glyf` **or** `loca`, with
+`outlineTableTagsIn:` and `requiredTableTags` beside it. `VGFontFace` delegates to them. It cannot
+hold the rule itself, because `VGArchitectureTest class >> allowedDependencies` lets
+`VectorGraphics-Cairo` name `VectorGraphics-TrueType` and not the other way about, and a face that
+answered the question itself would be a second rule to keep in step.
+
+**A CFF glyph is drawn when it is first asked for.** `TTCffGlyph` is a `TTGlyph` that holds the
+table parser and its own index, and interprets its charstring the first time somebody asks for its
+shape; `TTHmtxTableParser` fills in the advance of every glyph of a font without drawing one. So
+installing a font reads its metrics and none of its outlines, which is what the catalogue of unit
+1.4 was built for. The two rejections the scan can record for a CFF file are `#noOutlineTable` —
+`#noGlyfTable` renamed, since a missing outline table is now one of two things — and
+`#cidKeyedFont`, read from operator 1230 in the top dictionary of a 4096 byte prefix of the table
+(`TTFontMetadataReader class >> cffHeadSize`), because this project's interpreter does not walk an
+FDArray and an FDSelect.
+
+**What the machine now reads.** 544 files in the font directories: 462 drawable — 362 TrueType and
+100 OpenType — 1 `#noOutlineTable`, 3 `#fontCollection` and 78 `#notAnSfntFont`, which are metrics
+and bitmap fonts. No CID-keyed font is installed here, so `#cidKeyedFont` is held by built bytes
+(`TTFontFixtures class >> cidKeyedFontBytes`, 131 of them) and not by a file.
+
+**Three defects, each with its failing test written first.**
+
+- The box of a CFF glyph came out upside down, because `glyf` writes `xMin, yMin, xMax, yMax` while
+  `TTGlyph` calls the smallest y `boundsTop` and the largest `boundsBottom`. The bounds are computed
+  from the contours now, in the convention the rest of the reader already used.
+- `TTCffDictionary >> realFrom:` raised `Reading a number failed: a digit between 0 and 9 expected`
+  on every real `otf` file. CFF spells only the nibbles it needs, so `.001` carries no zero in front
+  of its point and `-.5` none after its sign, and Pharo's number reader wants a digit there.
+  `numberFrom:` supplies it.
+- `TTFontDescription >> widthOfUtf8Byte1:b2:b3:b4:` divided by zero on an OpenType font, because
+  `TTGlyph >> topSideBearing` read the `boundsBottom` **instance variable** of a glyph nobody had
+  drawn yet. A superclass that reads its own state behind its accessors defeats any lazy subclass,
+  so `TTGlyph` asks for its state through them.
+
+**The design review**, after the units were green and before anything was edited, found five points
+and the plan was validated with three of them to execute.
+
+- `ad278d7` and `5e87c12` each built the parser and collected the records of a CFF face, the same
+  loop twice — Extract Method. `2baaca8` gives `TTCffGlyph class >> onTable:count:` the one
+  statement of how a CFF face is populated, and both doors ask it.
+- `TTCffGlyph` works only because no method of `TTGlyph` reads the state of a glyph behind its own
+  accessors, which held by inspection and had broken once already. `c5ec68e` makes it a test:
+  `TTGlyphTest >> testOnlyTheGetterOfAnInstanceVariableReadsItDirectly` reflects over the methods of
+  `TTGlyph` and allows a read only in the getter of that variable, in the `private-initialization`
+  methods, which fill a glyph in before anybody can look at it, and in `printOn:`, which must never
+  be the thing that makes an object draw itself. It found `contourCount`, which now asks.
+- `TTFontMetadataReader class >> cidRejectionFrom:` caught `Error` whole, which the project rule
+  calls a bug: a defect in the reader read as a font that draws. `b832cc8` narrows it to
+  `TTCffError, SubscriptOutOfBounds`, which is what a prefix cut inside a dictionary actually
+  raises — measured on the installed corpus, where nothing escapes, and on truncations of the built
+  fixture, where a prefix of 4, 12 or 20 bytes raises `SubscriptOutOfBounds` and one of 30 answers
+  false.
+- Deferred, as its own unit: `VGFontFace` carries `ReExcessiveVariablesRule`, and `glyfEntry`,
+  `glyfStart` and `glyphDataOffsets` stay nil on the CFF route — an implicit state machine that a
+  glyph source object per format (Replace Conditional with Polymorphism) would answer. It is not
+  free: the composite glyphs of `readComponentWithFlags:` live there too.
+- Left alone: `TTFontReader >> readFrom:fromOffset:` is thirty lines of six table reads, and
+  extracting from it would buy legibility only.
+
+**The mutation figures.** MuTalk through the baseline's `dev` group, forked at priority 70 against a
+clean checkout, writing beside the image, mutating one class at a time with the whole of
+`VectorGraphics-TrueType-Tests` as the test classes. **Two traps came out of the first run, and
+both inflate a score or deflate it without saying so.** MuTalk's default budget is
+`MTTimeBudget for: 5 minutes` per analysis, and when it runs out the mutants it never evaluated
+count as alive: under that cap `TTCffCharstringInterpreter` reported 8 mutants and a score of 87,
+while the same class with `MTFreeBudget new` has 2052 mutants and a score of 51. And the measured
+score falls as test classes are added: `TTCffGlyph` scores 29 against `TTCffGlyphTest` alone and 6
+against the whole package, although stubbing `TTCffGlyph >> boundsLeft` to `^ self` by hand makes
+`TTCffGlyphTest` and `TTFontReaderTest` fail — the mutant MuTalk reported alive is killed by the
+tests it was given. So the figures below are the free-budget, whole-package ones, which is the
+pessimistic reading, and the figure to hold the next refactor to is each class's own.
+
+| Class | Score | Killed | Alive | Time |
+|---|---|---|---|---|
+| `TTCffTableParser` | 63 | 368 | 211 | 2 min 00 s |
+| `TTCffDictionary` | 59 | 482 | 330 | 1 min 25 s |
+| `TTCffCubic` | 56 | 293 | 223 | 2 min 10 s |
+| `TTCffIndex` | 54 | 122 | 102 | 45 s |
+| `TTCffCharstringInterpreter` | 51 | 1050 | 1002 | 3 min 33 s |
+| `TTCffOutlineBuilder` | 48 | 59 | 63 | 21 s |
+| `TTCffContour` | 47 | 175 | 196 | 33 s |
+| `TTCffGlyph` | 6 | 12 | 160 | 20 s |
+
+`3f8f06f` answers what the figures pointed at rather than the figures themselves. The flattening of
+a cubic was held by tolerance properties alone — the chain stays within the tolerance, starts and
+ends where the cubic does — so three tests now read the arithmetic off a cubic whose figures are
+round: the control point of the one quadratic is where the tangents meet, the deviation is the third
+difference times the square root of three over thirty-six, the halves join at the point the
+parameter reaches halfway, and a point is measured to the nearest point of a segment and not to its
+ends, the degenerate segment included. The record view of a lazy glyph states all six of its rows
+instead of two of their values. There is no comparable before for these classes, since the first
+run was budget-capped, so the table above is the baseline.
+
+**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 268 tests, counted by test selector
+and green, of which 46 are the six CFF test classes — `TTCffCharstringInterpreterTest` 13,
+`TTCffTableParserTest` 11, `TTCffDictionaryTest` 7, `TTCffCubicTest` 6, `TTCffIndexTest` 5,
+`TTCffGlyphTest` 2 — and `TTCffContourTest` 2 beside them. `VGCairoTextTest` is 51, and
+`VGFontManagerTest`, `VGCairoDrawingTest`, `VGConformanceTest`, `VGAlexandrieCorpusTest`,
+`VGRasteriserTest`, `VGCairoExamplesTest` and `VGArchitectureTest` have no failure. The nine CFF
+classes hold 166 methods and eleven inspector views, and nine `<sampleInstance>` examples open them
+one click at a time, with `VGScaledFontExamples class >> fontFaceOfAnOpenTypeFont` reaching for the
+first `otf` file this machine has. Critics are clean on every class the phase touched;
+`VGFontFace` keeps the excessive variables hit that the deferred review point would answer.
 
 ## 6. First failing test
 
