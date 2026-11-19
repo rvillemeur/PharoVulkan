@@ -2238,8 +2238,10 @@ ends, the degenerate segment included. The record view of a lazy glyph states al
 instead of two of their values. There is no comparable before for these classes, since the first
 run was budget-capped, so the table above is the baseline.
 
-**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 268 tests, counted by test selector
-and green, of which 46 are the six CFF test classes — `TTCffCharstringInterpreterTest` 13,
+**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 283 test methods, green, of which 15
+are the ones `VGTrueTypeDocumentationTest` inherits from the abstract documentation test — a count
+by `testSelectors` says 268, because that selector answers a class's own tests and not the ones it
+inherits. 46 of them are the six CFF test classes — `TTCffCharstringInterpreterTest` 13,
 `TTCffTableParserTest` 11, `TTCffDictionaryTest` 7, `TTCffCubicTest` 6, `TTCffIndexTest` 5,
 `TTCffGlyphTest` 2 — and `TTCffContourTest` 2 beside them. `VGCairoTextTest` is 51, and
 `VGFontManagerTest`, `VGCairoDrawingTest`, `VGConformanceTest`, `VGAlexandrieCorpusTest`,
