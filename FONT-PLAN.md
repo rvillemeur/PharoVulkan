@@ -2344,6 +2344,90 @@ three sources, on `TTGlyph`, on `TrueTypeExamples` and on `VGFontFace`, which no
 on one route are gone. `TTFontTableDirEntry` keeps its own `ReVariableReferencedOnceRule` on `tag`,
 which is older than this phase.
 
+### 10 — the coverage of the CFF classes — done
+
+Phase 8 built nine `TTCff*` classes and phase 9 split the glyph source off the face. What phase 8
+left behind was coverage: `TTCffOutlineBuilder` had nine methods and no test class at all,
+`TTCffContour` had fourteen methods and two tests, `TTCffGlyph` fourteen and two. The classes were
+driven through `TTCffCharstringInterpreterTest` and `TTCffTableParserTest`, so the suite was green
+and the facts of each class were nowhere stated. This phase states them. No production code was
+changed for coverage: the one change here is the bug the measurement found, below.
+
+The reference before writing, `MTFreeBudget`, every concrete test class of
+`VectorGraphics-TrueType-Tests` plus `VGCairoTextTest`:
+
+| Class | Score | Mutants | Alive |
+|---|---|---|---|
+| `TTCffOutlineBuilder` | 48 | 122 | 63 |
+| `TTCffContour` | 47 | 371 | 196 |
+| `TTCffGlyph` | 41 | 174 | 102 |
+
+- `3debd60` `TTCffOutlineBuilderTest`, the class that did not exist. The builder is where a
+  charstring's relative steps become absolute points, so the facts are about the point reached and
+  which contours are handed back: a move counts its step from the point reached and opens a contour
+  there, a line keeps where it lands and not the step, a cubic is three steps and not three points
+  from the same place, a contour opened without a segment is dropped, closing with nothing open
+  changes nothing, a fresh builder starts at the origin with no contour, and contours drawn
+  elsewhere are taken as they stand without moving the point reached. The Contours view is pinned
+  with its column titles and its rows. The tests build the builder by hand rather than through
+  `TTCffCharstringInterpreter`: a fact about the builder must fail when the builder breaks, not when
+  an operator is decoded differently.
+- `c94365a` `TTCffContourTest` extended from two tests to eleven. The two it had were about the turn
+  into a TrueType contour; the new ones state the contour itself — empty and closed and ending where
+  it starts, the last point is where the last segment ends and never a control point, the points are
+  answered with the start first, translating moves every point and leaves the contour it came from,
+  printing says where it starts and how much was drawn, the degenerate contour of a single point
+  keeps that point, and a tighter tolerance holds a cubic with more quadratics while the points still
+  alternate off and on the curve. Both views are pinned.
+- `c8364b3` `TTCffGlyphTest` extended from two tests to eight, about laziness and about what hmtx
+  wrote: a record draws nothing until its shape is asked for, every selector that needs the
+  charstring draws it, the box is the extent of the points drawn, the advance and the left side
+  bearing survive the drawing while the right side bearing is computed by it, a table answers one
+  undrawn record per charstring counted from one, and a charstring this reader cannot draw raises
+  where the shape is asked for and not where the font is read.
+- `8d0aadb` the bug the measurement found. `TTCffContour >> contourConstructionWithinTolerance:`
+  drops the closing point when `points size > 1`, and raising that guard to `> 2` changed no test:
+  the contour of a start and one segment drawn back to it kept the same point twice, which a reader
+  draws a segment of no length from. The test states the smallest contour that closes on itself, and
+  it kills the mutant.
+
+**The figures after**, same harness: `TTCffOutlineBuilder` 51 (122 mutants, 59 alive),
+`TTCffContour` 54 (371, 167), `TTCffGlyph` 62 (174, 65). Together 376 of 667 mutants killed against
+306 before, so the three classes gained 70 killed mutants without a line of production code moving.
+
+**Every alive mutant that is not inside a view**, which is the gate this phase set itself. Of the 291
+still alive, 272 are in the five `inspector…` methods, where one presenter-builder cascade leaves
+most of its mutants alive however the view is tested — the figure of phase 9, unchanged. The
+nineteen others are each equivalent to the code they mutate or beyond its reach:
+
+- eight `MTSubclassReplacementOperator` mutants that swap the `OrderedCollection` a method builds its
+  points in for `SortedCollection`, `WeakOrderedCollection`, `RSGroup`, `NeoJSONArray` or
+  `ObjectFinalizerCollection`. Each answers `add:` and `last` the same way for the few points a test
+  draws, so nothing can see the difference.
+- four `MTMessageSendToYourselfOperator` mutants, `super yourself` for `super initialize`, `each
+  yourself`, `controls yourself`, `self yourself` for `self drawIfNeeded` in
+  `TTCffGlyph >> contourCount`. The first three answer the receiver, which is what the original
+  answered. The fourth is reachable but harmless: `contourCount` is `^ super contourCount`, which
+  asks `self contours`, which draws. A hand stub confirmed it — 57 tests of `TTCffGlyphTest`,
+  `TTCffGlyphSourceTest` and `VGCairoTextTest` pass with the send removed.
+- one `MTAssignmentNullifierOperator` on `contour := nil`, whose mutation is the same assignment: the
+  value assigned is already nil.
+- one `MTEmptyMethodOperator` on `TTCffGlyph >> updateRightSideBearing`, whose body is `^ self`. An
+  emptied method answers self too. That method exists to say that hmtx's hook does nothing here,
+  which no mutant can contradict.
+- one `MTReplaceAndWithEqvMutantOperator` on `points size > 1 and: [ points last = points first ]`.
+  The two differ only when the size is one or less and the last point is not the first, and a
+  one-point contour's last point is its first, so no contour can tell them apart.
+- four more `MTSubclassReplacementOperator` and one `MTMessageSendToYourselfOperator` of the same two
+  kinds in `TTCffOutlineBuilder >> initialize`.
+
+**Where the suite stands.** `VectorGraphics-TrueType-Tests` is 332 (308 before this phase),
+`VGCairoTextTest` 46 and `VGArchitectureTest` 49, all green, and critics are clean on the three
+classes and their three test classes. A trap worth writing down: reading
+`IceRepository >> workingCopyDiff` while a forked MuTalk run holds a mutant installed shows that
+mutant as a modification against HEAD. It is not a lost mutation — the next read, after the run,
+shows nothing.
+
 ## 6. First failing test
 
 `TTFontMetadataReaderTest >> testFamilyAndStyleOfAFont`: the reader answers `'Source Sans Pro'`
