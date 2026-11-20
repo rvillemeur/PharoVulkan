@@ -140,8 +140,7 @@ was the plan to remove them, which that section has since done.
 
 `VGCairoReferenceScanner` moves to a leaf package with its mirrors, and
 `VGCairoReferenceScannerExamples` moves with it. The packages that name the scanner —
-`VectorGraphics-Canvas`, `VectorGraphics-Bloc` through `VGFrameProfile`,
-`VectorGraphics-Bloc-FontEngine` through `VGFontCanvas` after unit 3, and four test packages — each
+`VectorGraphics-Bloc` through `VGFrameProfile` and `VGFontCanvas`, and four test packages — each
 gain the entry.
 
 The first failing test is the same shape as unit 1's: the table entry
@@ -149,7 +148,56 @@ The first failing test is the same shape as unit 1's: the table entry
 
 ### Verification
 
-Not yet run.
+Done on 2026-11-20, in the image.
+
+The red came first, as planned: both new per-package tests errored with
+`KeyNotFound: key 'VectorGraphics-Reflection' not found in PackageOrganizer`.
+
+`VGCairoReferenceScanner` is in `VectorGraphics-Reflection` under a `Reflection` tag and
+`VGCairoReferenceScannerExamples` in `VectorGraphics-Reflection-Examples` under `Examples`. The
+scan was measured rather than assumed: `VGCairoReferenceScanner allCallsOn` answers eleven methods,
+in `VectorGraphics-Bloc` (`VGFontCanvas class >> upstreamCairoRows`, `VGFrameProfile class >>
+packageAndTagKeys`), `VectorGraphics-Canvas-Fonts-Tests`, `VectorGraphics-Canvas-Raster-Tests`,
+`VectorGraphics-Canvas-Tests` and the two example methods that moved with it. `VectorGraphics-Canvas`
+itself names the scanner nowhere, so its own entry did not change — the canvas held the class
+without using it, which is why the move cost it nothing.
+
+`VectorGraphics-Reflection-Tests` was **not** created, and this departs from decision 4. No test
+class has the scanner as its subject: the eleven references are the gate, the backend selection and
+the text tests reading it as a tool, and decision 4 says those stay where they are, each class being
+about its own subject. A tests package with nothing in it would be a Tonel directory, a table entry
+and a group no test justifies, so the mirror pair of this package is the examples package alone. The
+one test whose subject really is the scan, `VGArchitectureTest >>
+testTheScanReadsAReferencePlantedInsideANestedBlock`, stayed in the architecture suite with its
+fixture; moving it is a change to the suites, not to the load units, and it is the user's call.
+
+The table gained `'VectorGraphics-Reflection' -> #( )`,
+`'VectorGraphics-Reflection-Examples' -> #( 'VectorGraphics-Reflection' )` and their two
+per-package tests, and the entries of `VectorGraphics-Bloc`,
+`VectorGraphics-Canvas-Fonts-Tests` and `VectorGraphics-Canvas-Raster-Tests` gained the scan.
+`VectorGraphics-Canvas-Tests` gained both it and the examples mirror, because
+`VGCairoExamplesTest class >> exampleHolders` names `VGCairoReferenceScannerExamples`.
+
+The baseline declares both packages in `declareSupportPackagesOn:`, beside the corpus and the
+benchmark harness: all three hold neither a layer nor a suite. `declareGroupsOn:` gained
+`reflection` and `reflection-examples`, and `examples` gained the latter. `reflection` is in no
+group above it — every package that reads the scan requires it, so it arrives with whichever of
+them is asked for, and it stays out of `default`, which no longer holds a package that names it.
+
+`VGArchitectureTest`: 65 ran, 53 passed, 2 failures, 10 errors — the two new tests included, and
+the same deferred failures and errors as before the unit.
+
+The suites the move could touch are green: `VGBackendSelectionTest` 13, `VGCairoTextTest` 47,
+`VGCairoInventoryTest` 6, the four documentation gates 15 each, `VGPathsExamplesTest` 5,
+`VGEngineExamplesTest` 5, `VGTextExamplesTest` 5, `VGTrueTypeExamplesTest` 10,
+`VGConformanceTest` 15 — 221 tests, no failure and no error. `VGCairoExamplesTest` names the
+scanner's examples class and was again not run, because it opens windows; the architecture suite
+holds the same reference through its own gate and passes.
+
+`run_critics` on `VectorGraphics-Reflection` and `VectorGraphics-Reflection-Examples`: clean. The
+production package has its comment and its two tags, the examples mirror has neither comment nor
+manifest, as every other mirror of this project. The `Reflection` tag line left the comment of
+`VectorGraphics-Canvas`, which now says where the scan went and why.
 
 ## 5. Unit 3 — the Bloc split
 
