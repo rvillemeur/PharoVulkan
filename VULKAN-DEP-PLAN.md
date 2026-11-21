@@ -94,4 +94,24 @@ reds closed.
 
 ### Verification
 
-Not yet run.
+Run by the user on 2026-11-21, against the local checkout at `5309b9f` on `main` rather than the
+GitHub remote, because the two commits of this unit are not pushed yet; the repository argument was
+`tonel:///home/renaud/devzone/iceberg/rvillemeur/VectorGraphics/src`. The seven PharoVulkan packages
+arrived on their own, and the whole suite of the loaded image is green: the `key '…' not found in
+PackageOrganizer` errors and both table failures are gone, which is the seven reds closed.
+
+The first attempt looked like a defect of this unit and was not. It warned that
+`VectorGraphics-Vulkan` depends on `PVComputeKernel`, `VkAccess2`, `VkBuffer`, `VkPipelineStage2`
+and `VkCommandBuffer`, and listed the twelve extension methods this project adds to them. The load
+order was never wrong: recording the same group here with `Metacello new baseline: …; record:
+'vulkan-tests'` and walking it with `packageDirectivesDo:` showed the seven PharoVulkan packages
+ahead of `VectorGraphics-Vulkan`. The image was the one the fonts work had left behind, and it
+already held a `BaselineOfVectorGraphics` from before this unit, which Metacello reused instead of
+reading the one on disk. `Metacello new baseline: 'VectorGraphics'; repository: …; get` fetches the
+baseline itself, and after it `BaselineOfVectorGraphics project version projects` answered the three
+projects; the load then behaved. The lesson for the next gate: check that the baseline in the image
+is the one under test before reading anything into the result, and prefer a fresh image.
+
+The remaining step is a load from `github://rvillemeur/VectorGraphics:main/src`, which needs the two
+commits of this unit pushed. It proves nothing about the declaration that the run above has not
+already proved; it proves that the published repository holds it.
