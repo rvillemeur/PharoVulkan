@@ -293,9 +293,9 @@ below them has. The gap predates this unit.
 
 `BaselineOfVectorGraphics >> declareBackendPackagesOn:` gains the two new packages and their
 mirrors, and the requires of the packages whose edges changed. `declareGroupsOn:` gains
-`canvas-paths` and `reflection` groups with their test and example groups, and `fonts` is rewritten
-to decision 5. `dev` and `default` keep their meaning: `default` still loads the canvas, because it
-is the project's own renderer.
+`canvas-geometry` and `reflection` groups with their test and example groups, and `fonts` is
+rewritten to decision 5. `dev` and `default` keep their meaning: `default` still loads the canvas,
+because it is the project's own renderer.
 
 `VGArchitectureTest` gains the per-package scan tests for the new packages and the group assertions
 for `fonts`. The README's package table gains six rows, and the section on the `fonts` group is
@@ -303,7 +303,57 @@ rewritten to say what it now loads and what it deliberately leaves out.
 
 ### Verification
 
-Not yet run.
+The `fonts` group names five entries — `truetype`, `VectorGraphics-Canvas-Fonts`,
+`VectorGraphics-Canvas-Geometry`, `VectorGraphics-Reflection` and
+`VectorGraphics-Bloc-FontEngine` — and `packagesLoadedByGroupNamed: 'fonts'` resolves them to seven
+packages:
+
+    VectorGraphics-Bloc-FontEngine  VectorGraphics-Bloc-Text  VectorGraphics-Canvas-Fonts
+    VectorGraphics-Canvas-Geometry  VectorGraphics-Paths      VectorGraphics-Reflection
+    VectorGraphics-TrueType
+
+`VectorGraphics-Canvas`, `VectorGraphics-Canvas-Raster`, `VectorGraphics-Engine` and
+`VectorGraphics-Text` are all absent, which is the point of the plan. The route itself arrives
+through the requires of the engine package, not through a canvas group; `bloc-text` alone resolves
+to the same set less the engine package, six packages.
+
+`reflection` and `reflection-examples` are declared, since unit 2 left the scan a package with no
+group to ask for it by name. The comment of `declareGroupsOn:` gained a paragraph naming what
+`fonts` is and why it names no canvas group.
+
+`testTheFontsGroupLoadsTheCairoRouteAndNoCanvas` was written red, then green: it names the seven
+packages one by one rather than asserting package by package, so the group cannot grow a layer back
+unnoticed. It replaced `testTheFontsGroupLoadsTheRouteItInstallsAndNothingElse` of unit 3.7, which
+asserted the canvas was part of the route; keeping both would have left two overlapping claims, so
+the old one was deleted. `testTheExamplesAndTestsGroupsAreTheUnionOfTheirLayerGroups` now counts
+thirteen example groups — the twelve layers and the reference scan — and twelve test groups.
+`testTheCanvasExampleAndTestGroupsNameNoBlocClass` was widened to the measured
+`canvas-geometry-tests` set.
+
+`VGArchitectureTest`: 68 tests, 60 passed, 2 failed, 6 errored. The eight are exactly the deferred
+set — the `VectorGraphics-Vulkan` and `VectorGraphics-Benchmarks` packages that are absent from this
+image, and the MuTalk pin test, which fails on `MetacelloRepositoriesSpec >> #map`. The four
+documentation suites: 60 tests, 60 passed. Critics on the three classes this unit touched report
+only their pre-existing shapes: `ReExcessiveMethodsRule` on `VGArchitectureTest`,
+`ReCyclomaticComplexityRule` on `declareBackendPackagesOn:`, and `ReBlocDoNotSendForceLayoutRule` on
+`VGFrameProfile >> newScene`.
+
+The README gained rows for `VectorGraphics-Canvas-Geometry`, `VectorGraphics-Reflection` and
+`VectorGraphics-Bloc-Text` with their examples and suites, and group rows for `canvas-geometry`,
+`bloc-text`, `reflection` and their mirrors. The `fonts` row, the `default` row and the section on
+replacing Bloc's font engine were rewritten to the measured sets, and the counts in the text were
+corrected against the image: `canvas-tests` brings fifteen packages, not eleven; `dev` names eight
+test groups, not seven.
+
+Two commits: `d574dde` for the image work through Iceberg, `1e79471` for the README. The README is
+outside `src/`, so Iceberg does not carry it and git commits it directly, which moved HEAD behind
+Iceberg's back and made the next `commitWithMessage:` raise `IceWorkingCopyDesyncronized`.
+`workingCopy adoptCommit: repo head commit` cleared it. Commit the image work first next time.
+
+Left behind for a later unit: `fonts-tests` still brings the canvas and the conformance corpus,
+because `VectorGraphics-Bloc-FontEngine-Tests` requires `VectorGraphics-Canvas-Tests`. The route's
+own suite, `bloc-text-tests`, is what a reader of the route should run; `fonts-tests` covers the
+engine, whose tests were written against the canvas suite's fixtures.
 
 ## 7. The gate
 
@@ -318,7 +368,7 @@ Metacello new
 ```
 
 The plan is proved when no package whose name begins `VectorGraphics-Canvas` other than
-`VectorGraphics-Canvas-Fonts` and `VectorGraphics-Canvas-Paths` is in the image, `VGFontEngine` poses
+`VectorGraphics-Canvas-Fonts` and `VectorGraphics-Canvas-Geometry` is in the image, `VGFontEngine` poses
 its font manager, and a glyph renders.
 
 ### Verification
