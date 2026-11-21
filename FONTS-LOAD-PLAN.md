@@ -373,4 +373,12 @@ its font manager, and a glyph renders.
 
 ### Verification
 
-Not yet run.
+Run by the user on 2026-11-21, in a fresh image, against the local checkout at `d574dde` on `main`.
+All five checks passed: the load returned on its own, the image held exactly the seven packages of
+the route, no package whose name begins `VectorGraphics-Canvas` other than the font layer and the
+geometry was present, `VGFontEngine isInstalled` answered true with `VGFontManager` and
+`VGAeRenderer` in the two slots, and a `BlTextElement` drew its text with the faces this project
+reads.
+
+The plan is closed: someone who wants the TrueType engine on cairo loads `fonts` and gets the route
+and nothing of the software canvas.
