@@ -36,10 +36,16 @@ PVVulkanDriver class >> quietlySetDriverClass: aDriverClass [
 	 user to restart the image; that advice does not apply here, because the same
 	 method also nils the cached driver instance, so the swap takes effect on the next
 	 window creation. An example swaps twice, which would mean two dialogs per run.
+	 The non-interactive manager is posed here rather than through
+	 UIManager class >> nonInteractiveDuring:, which cannot run on Pharo 14: the base
+	 UIManager >> nonInteractiveManager it reaches sends beDefault to the
+	 NonInteractiveUIManager class, and that class-side method is gone from this image.
 	 Only the swap itself runs non-interactively, never caller code, so a genuine error
 	 raised inside an installDuring: block still opens a debugger as usual."
-
-	UIManager nonInteractiveDuring: [ OSWindowDriver driverClass: aDriverClass ]
+	| previous |
+	previous := UIManager default.
+	NonInteractiveUIManager new beDefault.
+	[ OSWindowDriver driverClass: aDriverClass ] ensure: [ previous beDefault ]
 ]
 
 { #category : 'driver management' }
