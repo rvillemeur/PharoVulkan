@@ -40,12 +40,18 @@ section.
 | 5 | The `fonts` group keeps its name. Its contents become `truetype`, `VectorGraphics-Canvas-Fonts`, `VectorGraphics-Canvas-Paths`, `VectorGraphics-Reflection` and `VectorGraphics-Bloc-FontEngine` | Anyone who loads `fonts` today gets the same route, with the canvas gone. A second name for one route would be two entries to hold in step |
 | 6 | Four units, each green and committed on its own, then a fresh-image gate | A red is placeable, and the closing proof is a load, not an argument |
 
+Amendments, each recorded in the unit that made it. Decision 1 is superseded: the eight classes
+went to a package of their own, `VectorGraphics-Bloc-Text`, and `VectorGraphics-Bloc-FontEngine`
+kept `VGFontEngine` and the install hook alone, because a package carrying that hook cannot be
+required by `VectorGraphics-Bloc` without posing the cairo renderer on every image that loads the
+software canvas — see section 5. In decisions 2, 4 and 5 the new leaf package is named
+`VectorGraphics-Canvas-Geometry`, not `-Canvas-Paths`, and `VGCairoMatrix` moved into it as well —
+see section 3. Package count therefore goes from thirty-four to forty-two: three production
+packages and five mirrors are added, and none is removed.
+
 Not in scope. No class is renamed and no production behaviour changes. The three unguarded
 `VGConformanceTest` cases and `testTheMuTalkProjectIsPinnedToATagAndNotToMaster` stay as they are,
 on the user's instruction of 2026-11-20. Nothing on the Vulkan side is touched.
-
-Package count goes from thirty-four to forty: two production packages and four mirrors are added,
-and none is removed.
 
 ## 3. Unit 1 — `VectorGraphics-Canvas-Paths`
 
@@ -201,26 +207,87 @@ manifest, as every other mirror of this project. The `Reflection` tag line left 
 
 ## 5. Unit 3 — the Bloc split
 
-Eight classes move from `VectorGraphics-Bloc` to `VectorGraphics-Bloc-FontEngine`: `VGAeCanvas`,
+The cairo text route leaves `VectorGraphics-Bloc`. Eight classes move: `VGAeCanvas`,
 `VGAeOffscreen`, `VGAeRenderer`, `VGAeTextContext`, `VGAeTextFont`, `VGFontCanvas`, `VGFontManager`
-and `VGFontManagerHasNoUsableFamily`. Their package tags come with them, so `-Bloc-FontEngine`
-holds `Installation` as it does today plus the `Backend`, `Fonts` and `Text` tags of what arrives.
-`VectorGraphics-Bloc` keeps `VGCanvas`, `VGRenderer`, `VGOffscreen`, `VGPixelBufferHost`,
+and `VGFontManagerHasNoUsableFamily`, with the ten extension methods on the classes of Alexandrie
+that serve them. Their package tags come with them, so the new package holds `Backend`, `Fonts` and
+`Text`. `VectorGraphics-Bloc` keeps `VGCanvas`, `VGRenderer`, `VGOffscreen`, `VGPixelBufferHost`,
 `VGPixelBufferHostSpace`, `VGFormExporter`, `VGPngExporter` and `VGFrameProfile`.
 
-The test and example classes of the moved classes move to `VectorGraphics-Bloc-FontEngine-Tests`
-and `-Examples`. Those four mirror packages are not loaded in a `dev` image, because `dev` excludes
-the `bloc-tests` and `fonts-tests` groups, so this unit begins by loading both groups. Each such
-load has taken about ten minutes and leaves the image unresponsive, so it runs on its own.
+The test and example classes of the moved classes move to the mirror packages of the new package.
+Those mirror packages are not loaded in a `dev` image, because `dev` excludes the `bloc-tests` and
+`fonts-tests` groups, so this unit begins by loading both groups. Each such load has taken about
+ten minutes and leaves the image unresponsive, so it runs on its own.
 
-After the move, `VectorGraphics-Bloc-FontEngine` requires `VectorGraphics-TrueType`,
-`VectorGraphics-Canvas-Fonts`, `VectorGraphics-Canvas-Paths` and `VectorGraphics-Reflection`, and
-nothing of the canvas or the rasteriser. `VectorGraphics-Bloc` requires what it does today plus
-`VectorGraphics-Bloc-FontEngine`.
+### Amendment — the installer is a package of its own
+
+The plan above put the eight classes into `VectorGraphics-Bloc-FontEngine`, which already held
+`VGFontEngine` and the `postLoadDoIt: #installTheFontEngine` of the baseline. That cannot work.
+`VGCanvas` is a subclass of `VGFontCanvas`, so `VectorGraphics-Bloc` has to require whatever
+package holds `VGFontCanvas`; had that package carried the install hook, every image that loaded
+the `bloc` group would have posed our font manager and `VGAeRenderer` over the renderer the user
+asked for. Reparenting `VGCanvas` was ruled out: `VGFontCanvas >> scaledFontForFace:size:` was
+pulled up deliberately in unit 5.1 of `FONT-PLAN.md` and both canvases share it.
+
+Two decisions settled it. The route becomes a package of its own, named
+`VectorGraphics-Bloc-Text`, and `VectorGraphics-Bloc-FontEngine` keeps only `VGFontEngine` and the
+hook. So the split is three ways: eight classes to `VectorGraphics-Bloc-Text` with its two mirror
+packages, one class left in `VectorGraphics-Bloc-FontEngine`, and the hook left with it. Loading
+the route poses nothing; posing it is the one thing the font engine package does.
 
 ### Verification
 
-Not yet run.
+The image holds the packages the amendment names. `VectorGraphics-Bloc-Text` has eight classes and
+120 methods, its examples mirror five classes and its tests mirror nine, seven of them test classes
+and two fixtures. `VectorGraphics-Bloc-FontEngine` has one class and five methods.
+`VectorGraphics-Bloc` has eight classes left.
+
+The measured edges are the point of the unit. `VectorGraphics-Bloc-Text` names
+`VectorGraphics-Canvas-Fonts`, `VectorGraphics-Canvas-Geometry`, `VectorGraphics-Reflection` and
+`VectorGraphics-TrueType`, and no canvas and no rasteriser. `VectorGraphics-Bloc` names the canvas,
+the rasteriser and the reference scan, and nothing of the route; it requires the route in the
+baseline for the superclass of `VGCanvas` alone, an edge the dependency table cannot state, because
+a superclass is not a reference a method makes. `VectorGraphics-Bloc-FontEngine` names the route
+and nothing else.
+
+`VGArchitectureTest class >> allowedDependencies` holds 42 entries, and a run of
+`edgesOf:` against it reports no mismatch for any loaded package. Six per-package scan tests were
+added or renamed: three for `VectorGraphics-Canvas-Geometry` and its mirrors, three for
+`VectorGraphics-Bloc-Text` and its mirrors. The baseline declares the six packages of the route and
+the engine with their requires, and `declareGroupsOn:` gains `bloc-text`, `bloc-text-examples` and
+`bloc-text-tests`, the last two inside the project-wide `examples` and `tests` unions.
+
+What the groups load now, read back from the baseline:
+
+- `bloc-text` alone: the route, the font layer, the geometry, the reference scan, the reader and
+  the two pure Pharo packages below them. No canvas, no rasteriser.
+- `bloc`: all of the above plus the canvas and the rasteriser, and **not**
+  `VectorGraphics-Bloc-FontEngine`. A `bloc` user gets the renderer they asked for and nothing is
+  posed.
+- `fonts`: unchanged by this unit, and still pulling the canvas through `VectorGraphics-Bloc`.
+  Unit 4 rewrites it.
+
+`VGFrameProfile class >> stageByPackageAndTag` was re-keyed for all three units of this plan: the
+geometry, the reference scan and the route each took their tags to a new package, and no stage
+changed. `VGFrameProfileTest` had been failing on the stale keys of units 1 and 2 as well.
+
+Suites: `VectorGraphics-Bloc-Text-Tests` 48 of 48, `VectorGraphics-Bloc-FontEngine-Tests` 17 of 17,
+`VectorGraphics-Canvas-Geometry-Tests` 29 of 29, `VectorGraphicsDocumentationTest` 60 of 60,
+`VGArchitectureTest` 60 of 68 and `VectorGraphics-Bloc-Tests` 54 of 55. Every red in the last two
+is the deferred one: the `VectorGraphics-Vulkan` and `VectorGraphics-Benchmarks` packages are not
+in this image, so the table entries naming them, the four scan tests over them, the stage keys of
+their tags and the MuTalk pin test stay red until the PharoVulkan project is loaded again.
+
+`run_critics`: nothing new. `VectorGraphics-Bloc-Text` reports only the critiques of the Alexandrie
+classes it extends, which the package critic walks whole, plus the five `super` sends and the one
+classification of `VGAeTextContext` and `VGAeOffscreen` that stood before the move.
+`VectorGraphics-Bloc-FontEngine` is clean. `VectorGraphics-Canvas-Geometry` reports the three
+six-argument matrix and curve selectors it always had. `VGArchitectureTest` and
+`BaselineOfVectorGraphics` report the method count and the complexity of their own tables.
+
+Left behind for a later unit: `VectorGraphics-Bloc`, `VectorGraphics-Bloc-Text` and
+`VectorGraphics-Bloc-FontEngine` carry no manifest class comment, which every production package
+below them has. The gap predates this unit.
 
 ## 6. Unit 4 — the baseline, the table and the README
 
