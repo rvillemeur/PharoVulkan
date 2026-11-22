@@ -1035,6 +1035,43 @@ PVGraphicsTest >> testRenderPassClearsToTheColourItWasGiven [
 			self assert: ((pixel at: i) - (expected at: i)) abs <= 1 ] ] ]
 ]
 
+{ #category : 'tests' }
+PVGraphicsTest >> testRequiredInstanceExtensionsRaisesWhenTheCountCallRefuses [
+	"SDL_Vulkan_GetInstanceExtensions answers a boolean, so a refusal has to be read as false.
+	 It was read as zero, which a boolean never equals, and the window went on to read a count
+	 SDL never wrote."
+
+	| window raised |
+	window := PVRefusingVulkanWindowStub new refusedCall: #count.
+	raised := [
+	          window requiredInstanceExtensions.
+	          nil ]
+		          on: Error
+		          do: [ :failure | failure messageText ].
+	self
+		assert: raised
+		equals: 'SDL_Vulkan_GetInstanceExtensions (count) failed'.
+	self assert: window callCount equals: 1
+]
+
+{ #category : 'tests' }
+PVGraphicsTest >> testRequiredInstanceExtensionsRaisesWhenTheNamesCallRefuses [
+	"The second call answers a boolean too: a window that was told how many extensions there are
+	 and then refused the names must raise rather than read the pointers SDL never wrote."
+
+	| window raised |
+	window := PVRefusingVulkanWindowStub new refusedCall: #names.
+	raised := [
+	          window requiredInstanceExtensions.
+	          nil ]
+		          on: Error
+		          do: [ :failure | failure messageText ].
+	self
+		assert: raised
+		equals: 'SDL_Vulkan_GetInstanceExtensions (names) failed'.
+	self assert: window callCount equals: 2
+]
+
 { #category : 'tests - driver lifecycle' }
 PVGraphicsTest >> testSceneDestroyIsIdempotent [
 	"destroy runs from an ensure: block, so it may be reached twice, or on a scene

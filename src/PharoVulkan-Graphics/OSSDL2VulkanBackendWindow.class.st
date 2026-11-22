@@ -21,30 +21,39 @@ OSSDL2VulkanBackendWindow >> createVulkanSurface: aVkInstance [
     ] ensure: [ pSurface free ]
 ]
 
-{ #category : 'accessing' }
-OSSDL2VulkanBackendWindow >> requiredInstanceExtensions [
+{ #category : 'vulkan' }
+OSSDL2VulkanBackendWindow >> instanceExtensionsInto: aCountAddress names: aNamesAddress [
+	"SDL_Vulkan_GetInstanceExtensions, answering what it answers: a boolean, true when it filled
+	 in what was asked of it. Asked with a null names address it writes the count alone.
+	 It is a method of its own so that a test can refuse the call, which no window and no
+	 argument can make SDL do: it answers true for every window one can build."
 
-	| pCount result count names |
+	^ SDL2Vulkan
+		  getInstanceExtensions: sdl2Window getHandle
+		  count: aCountAddress
+		  names: aNamesAddress
+]
+
+{ #category : 'vulkan' }
+OSSDL2VulkanBackendWindow >> requiredInstanceExtensions [
+	"The instance extensions a Vulkan surface on this window needs, named by SDL. The call
+	 answers a boolean and is sent twice: once with a null names address, which writes the
+	 count alone, and once with room for that many pointers. A refusal is false, not zero, and
+	 nothing SDL did not write is read afterwards."
+
+	| pCount count names |
 	pCount := ExternalAddress allocate: 4.
 	^ [
-		  result := SDL2Vulkan
-			            getInstanceExtensions: sdl2Window getHandle
-			            count: pCount
-			            names: ExternalAddress null.
-		  result = 0 ifTrue: [
-			  Error signal: 'SDL_Vulkan_GetInstanceExtensions (count) failed' ].
-		  count := pCount unsignedLongAt: 1.
-		  names := ExternalAddress allocate: count * 8.
-		  [
-			  result := SDL2Vulkan
-				            getInstanceExtensions: sdl2Window getHandle
-				            count: pCount
-				            names: names.
-			  result = 0 ifTrue: [
-				  Error signal: 'SDL_Vulkan_GetInstanceExtensions (names) failed' ].
-			  (1 to: count) collect: [ :i |
-				  (names pointerAt: i - 1 * 8 + 1) readString asString ] ]
-			  ensure: [ names free ] ] ensure: [ pCount free ]
+	  (self instanceExtensionsInto: pCount names: ExternalAddress null) ifFalse: [
+		  Error signal: 'SDL_Vulkan_GetInstanceExtensions (count) failed' ].
+	  count := pCount unsignedLongAt: 1.
+	  names := ExternalAddress allocate: count * VkContext pointerSize.
+	  [
+	  (self instanceExtensionsInto: pCount names: names) ifFalse: [
+		  Error signal: 'SDL_Vulkan_GetInstanceExtensions (names) failed' ].
+	  (1 to: count) collect: [ :i |
+		  (names pointerAt: i - 1 * VkContext pointerSize + 1) readString asString ] ]
+		  ensure: [ names free ] ] ensure: [ pCount free ]
 ]
 
 { #category : 'surface' }
