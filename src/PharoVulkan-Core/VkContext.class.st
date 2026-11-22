@@ -11,7 +11,8 @@ Class {
 		'computeQueue',
 		'computeQueueFamily',
 		'deviceRequirements',
-		'chosenDeviceName'
+		'chosenDeviceName',
+		'surfaceExtensionNames'
 	],
 	#category : 'PharoVulkan-Core-Device',
 	#package : 'PharoVulkan-Core',
@@ -105,6 +106,17 @@ VkContext class >> onlyQueueIndex [
 { #category : 'constants' }
 VkContext class >> pointerSize [
     ^ 8
+]
+
+{ #category : 'instance creation' }
+VkContext class >> presentingContextForExtensions: aNameCollection [
+	"One context for compute and for presentation both. The instance carries the surface
+	 extensions the window system named, and the device is chosen and built by the compute path,
+	 so the kernels keep every feature buildFeatureChain asks for. The queue family must do
+	 graphics and compute both, because this context creates one queue and dispatches and
+	 presents on that one."
+
+	^ self new initializePresentingForExtensions: aNameCollection
 ]
 
 { #category : 'constants' }
@@ -527,10 +539,13 @@ VkContext >> deviceSatisfiesRequirements: aPhysicalDevice [
 		  aPhysicalDevice perform: selector ]
 ]
 
-{ #category : 'querying' }
+{ #category : 'device creation' }
 VkContext >> enabledDeviceExtensionNames [
 	"The device extensions this context asks for: each one only where the chosen device
-	 reports it, because device creation fails on an extension the device does not have."
+	 reports it, because device creation fails on an extension the device does not have.
+	 A presenting context adds the swapchain extension, which its device was required to
+	 report when it was selected."
+
 	^ (self halfPrecisionAvailable
 		   ifTrue: [ self class halfPrecisionExtensionNames ]
 		   ifFalse: [ #() ])
@@ -538,6 +553,10 @@ VkContext >> enabledDeviceExtensionNames [
 	  (self cooperativeMatrixAvailable
 		   ifTrue: [ { VkPhysicalDevice cooperativeMatrixExtensionName } ]
 		   ifFalse: [ #() ])
+	  ,
+	  (surfaceExtensionNames
+		   ifNil: [ #() ]
+		   ifNotNil: [ self class graphicsExtensionNames ])
 ]
 
 { #category : 'querying' }
@@ -702,7 +721,7 @@ VkContext >> halfPrecisionAvailable [
 
 { #category : 'initialization' }
 VkContext >> initializeCompute [
-	self createInstanceWithExtensions: self class computeInstanceExtensionNames.
+	self createInstanceWithExtensions: self instanceExtensionNames.
 	self selectPhysicalDevice.
 	self createLogicalDevice.
 	self fetchComputeQueue.
@@ -725,6 +744,17 @@ VkContext >> initializeGraphicsWithExtensions: aNameCollection [
 	self createGraphicsDevice.
 	self fetchGraphicsQueue.
 	^ self
+]
+
+{ #category : 'initialization' }
+VkContext >> initializePresentingForExtensions: aNameCollection [
+	"The names are remembered because two later steps read them: the instance is created with
+	 them, and enabledDeviceExtensionNames adds the swapchain extension only for a context that
+	 has them."
+
+	surfaceExtensionNames := aNameCollection.
+	^ self initializeComputeRequiring:
+		  #( #supportsGraphicsAndComputeOnOneQueue #supportsSwapchain )
 ]
 
 { #category : 'inspector' }
@@ -759,6 +789,14 @@ VkContext >> inspectorDeviceFeatures: aBuilder [
 { #category : 'accessing' }
 VkContext >> instance [
     ^ instance
+]
+
+{ #category : 'accessing' }
+VkContext >> instanceExtensionNames [
+	"What the instance of this context is created with: nothing for plain compute, and whatever
+	 the window system named for a context that also presents."
+
+	^ surfaceExtensionNames ifNil: [ self class computeInstanceExtensionNames ]
 ]
 
 { #category : 'accessing' }
@@ -826,6 +864,15 @@ VkContext >> subgroupArithmeticAvailable [
 	 arithmetic operations, which a device may leave out while still reporting a subgroup."
 
 	^ physicalDevice supportsSubgroupArithmetic
+]
+
+{ #category : 'accessing' }
+VkContext >> surfaceExtensionNames [
+	"The surface instance extensions this context was created with, or nil for a compute-only
+	 one. A caller that holds a window compares its own names against these: an instance created
+	 without the extension a window needs cannot make a surface on it."
+
+	^ surfaceExtensionNames
 ]
 
 { #category : 'private' }

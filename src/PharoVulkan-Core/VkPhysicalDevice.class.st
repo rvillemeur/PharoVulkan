@@ -110,6 +110,13 @@ VkPhysicalDevice class >> on: aHandle [
     ^ self new initializeWith: aHandle
 ]
 
+{ #category : 'constants' }
+VkPhysicalDevice class >> swapchainExtensionName [
+	"The device extension a context needs before it can create a swapchain on a surface."
+
+	^ 'VK_KHR_swapchain'
+]
+
 { #category : 'private' }
 VkPhysicalDevice >> callCooperativeMatrixProperties: aCommand count: countBuf properties: aPropertiesBuffer [
 	"VkResult vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR(VkPhysicalDevice,
@@ -562,6 +569,13 @@ VkPhysicalDevice >> supportsSubgroupFeature: aBit [
 	"Asked of the properties block itself, so the device and the block cannot disagree."
 
 	^ self subgroupProperties supportsFeature: aBit
+]
+
+{ #category : 'testing' }
+VkPhysicalDevice >> supportsSwapchain [
+	"Unary, because device selection asks its requirements by perform:."
+
+	^ self supportsExtension: self class swapchainExtensionName
 ]
 
 { #category : 'querying' }
