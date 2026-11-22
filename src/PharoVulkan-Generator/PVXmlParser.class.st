@@ -176,15 +176,18 @@ PVXmlParser >> parseSource: aString [
 
 { #category : 'parsing' }
 PVXmlParser >> parseText [
-    | buf ch txt cur |
-    buf := WriteStream on: String new.
-    [stream atEnd or: [stream peek = $<]] whileFalse: [
-        ch := stream next.
-        ch = $& ifTrue: [self readEntityInto: buf] ifFalse: [buf nextPut: ch]].
-    txt := buf contents trimmed.
-    txt isEmpty ifFalse: [
-        cur := self currentElement.
-        cur text: cur text , txt]
+
+	| buf ch txt cur |
+	buf := WriteStream on: String new.
+	[ stream atEnd or: [ stream peek = $< ] ] whileFalse: [
+			ch := stream next.
+			ch = $&
+				ifTrue: [ self readEntityInto: buf ]
+				ifFalse: [ buf nextPut: ch ] ].
+	txt := buf contents trimBoth.
+	txt isEmpty ifFalse: [
+			cur := self currentElement.
+			cur text: cur text , txt ]
 ]
 
 { #category : 'parsing' }
@@ -201,21 +204,39 @@ PVXmlParser >> readAttributeValue [
     ^ buf contents
 ]
 
-{ #category : 'parsing' }
+{ #category : 'reading' }
 PVXmlParser >> readEntityInto: buf [
-    "Read XML entity like &amp; &lt; &gt; and write decoded char to buf."
-    | entity |
-    entity := self readName.
-    (stream atEnd not and: [stream peek = $;]) ifTrue: [stream next].
-    entity = 'amp' ifTrue: [buf nextPut: $&. ^self].
-    entity = 'lt' ifTrue: [buf nextPut: $<. ^self].
-    entity = 'gt' ifTrue: [buf nextPut: $>. ^self].
-    entity = 'apos' ifTrue: [buf nextPut: $'. ^self].
-    entity = 'quot' ifTrue: [buf nextPut: $". ^self].
-    "Unknown entity — emit as-is"
-    buf nextPut: $&.
-    buf nextPutAll: entity.
-    buf nextPut: $;
+	"Read XML entity like &amp; &lt; &gt; and write decoded char to buf."
+
+	| entity |
+	entity := self readEntityName.
+	(stream atEnd not and: [ stream peek = $; ]) ifTrue: [ stream next ].
+	entity = 'amp' ifTrue: [ ^ buf nextPut: $& ].
+	entity = 'lt' ifTrue: [ ^ buf nextPut: $< ].
+	entity = 'gt' ifTrue: [ ^ buf nextPut: $> ].
+	entity = 'apos' ifTrue: [ ^ buf nextPut: $' ].
+	entity = 'quot' ifTrue: [ ^ buf nextPut: $" ].
+	buf nextPut: $&.
+	buf nextPutAll: entity.
+	buf nextPut: $;
+]
+
+{ #category : 'reading' }
+PVXmlParser >> readEntityName [
+	"An entity reference ends at its semicolon, which readName does not stop at — it stops at tag
+	 punctuation, so inside an attribute value it reads the closing quote and everything after it
+	 as part of the name. Stop at the semicolon and at anything that cannot appear in a name, so a
+	 stray ampersand in the source costs one character rather than the rest of the document."
+
+	| buf |
+	buf := WriteStream on: String new.
+	[
+	stream atEnd or: [
+		| c |
+		c := stream peek.
+		c = $; or: [ c isSeparator or: [ #( $< $> $/ $= $" $' $& ) includes: c ] ] ] ] whileFalse: [
+			buf nextPut: stream next ].
+	^ buf contents
 ]
 
 { #category : 'parsing' }

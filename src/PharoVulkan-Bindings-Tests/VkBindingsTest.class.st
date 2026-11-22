@@ -5386,6 +5386,51 @@ VkBindingsTest >> testSynchronization2FeaturesLayoutMatchesTheCLayout [
 		self assert: a second + a third <= b second ]
 ]
 
+{ #category : 'tests - generator' }
+VkBindingsTest >> testTheParserDecodesAnEntityInsideAnAttributeValue [
+	"vk.xml writes a len attribute whose value is pAllocateInfo-&gt;descriptorSetCount, and an
+	 entity inside an attribute value must end at its semicolon. When it does not, the reader runs
+	 past the closing quote of the value and reads everything after it as more attribute: the rest
+	 of the registry is swallowed by one element, which is why 91 of its 700 commands reached the
+	 parser and the others did not."
+
+	| parsed |
+	parsed := PVXmlParser parse: '<registry><command len="a-&gt;b"/><command len="c"/></registry>'.
+	self assert: (parsed children collect: [ :each | each tag ]) asArray equals: #( 'command' 'command' ).
+	self assert: (parsed children first attributes at: 'len') equals: 'a->b'.
+	self assert: (parsed children last attributes at: 'len') equals: 'c'
+]
+
+{ #category : 'tests - generator' }
+VkBindingsTest >> testTheParserDecodesAnEntityInsideText [
+	"The same semicolon rule in text content. Here a run-on entity name damages nothing
+	 structurally, since the text ends at the next tag either way, so the only way it shows is
+	 the undecoded character arriving in a type or a name read out of the registry."
+
+	| parsed |
+	parsed := PVXmlParser parse: '<registry><comment>a &gt; b &amp; c</comment></registry>'.
+	self assert: parsed children first text equals: 'a > b & c'
+]
+
+{ #category : 'tests - generator' }
+VkBindingsTest >> testTheParserReadsTheCommandsOfARegistry [
+	"vk.xml is read for its commands as well as its types, and a command the registry declares
+	 has to reach the parser's command table under its own name, with its parameters in order.
+	 Nothing else in this suite exercises the command half of the parser, which is why a
+	 regeneration is the only thing that ever reads it."
+
+	| source file parser command |
+	source := '<registry><commands><command><proto><type>void</type><name>vkCmdCopyBufferToImage</name></proto><param><type>VkCommandBuffer</type><name>commandBuffer</name></param><param><type>VkBuffer</type><name>srcBuffer</name></param></command></commands></registry>'.
+	file := FileSystem memory root / 'vk.xml'.
+	file writeStreamDo: [ :stream | stream nextPutAll: source ].
+	parser := VkXmlParser new.
+	parser parseFile: file.
+	command := parser commands at: 'vkCmdCopyBufferToImage' ifAbsent: [ nil ].
+	self deny: command isNil description: 'the parser found no vkCmdCopyBufferToImage'.
+	self assert: command returnType equals: 'void'.
+	self assert: (command params collect: [ :each | each name ]) asArray equals: #( 'commandBuffer' 'srcBuffer' )
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testUncreatedFenceAndSemaphoreReportThemselvesNotLive [
 	"The examples answer an uncreated primitive on a machine with no device, so the rows must

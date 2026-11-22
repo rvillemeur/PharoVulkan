@@ -27,20 +27,20 @@ VkXmlParser >> enums [    ^ enums
 
 { #category : 'parsing' }
 VkXmlParser >> parseCommands [
-    | cmdsEl |
-    cmdsEl := root children detect: [ :c | c tag = 'commands' ] ifNone: [ ^ self ].
-    cmdsEl children do: [ :cmdEl |
-        | desc nameEl typeEl |
-        cmdEl tag = 'command' ifTrue: [
-            desc := VkCommandDescriptor new.
-            nameEl := cmdEl children detect: [ :c | c tag = 'proto' ] ifNone: [ nil ].
-            nameEl ifNotNil: [
-                typeEl := nameEl children detect: [ :c | c tag = 'type' ] ifNone: [ nil ].
-                typeEl ifNotNil: [ desc returnType: typeEl text asString ].
-                nameEl children detect: [ :c | c tag = 'name' ] ifFound: [ :n |
-                    desc name: n text asString ].
-                desc params: (self parseParamsFrom: cmdEl) ].
-            desc name ifNotNil: [ commands at: desc name put: desc ] ] ]
+	| cmdsEl |
+	cmdsEl := xml children detect: [ :c | c tag = 'commands' ] ifNone: [ ^ self ].
+	cmdsEl children do: [ :cmdEl |
+		| desc nameEl typeEl |
+		cmdEl tag = 'command' ifTrue: [
+			desc := VkCommandDescriptor new.
+			nameEl := cmdEl children detect: [ :c | c tag = 'proto' ] ifNone: [ nil ].
+			nameEl ifNotNil: [
+				typeEl := nameEl children detect: [ :c | c tag = 'type' ] ifNone: [ nil ].
+				typeEl ifNotNil: [ desc returnType: typeEl text asString ].
+				nameEl children detect: [ :c | c tag = 'name' ] ifFound: [ :n |
+					desc name: n text asString ].
+				desc params: (self parseParamsFrom: cmdEl) ].
+			desc name ifNotNil: [ commands at: desc name put: desc ] ] ]
 ]
 
 { #category : 'parsing' }
@@ -127,25 +127,29 @@ VkXmlParser >> parseParamsFrom: cmdEl [
 
 { #category : 'parsing' }
 VkXmlParser >> parseTypes [
-    "Iterate <types> nodes and build VkTypeDescriptor objects."
-    (xml childrenNamed: 'types') do: [:typesNode |
-        (typesNode childrenNamed: 'type') do: [:node |
-            | desc name cat |
-            name := node at: 'name'.
-            name isNil ifTrue: [
-                "name may be a child <name> element"
-                | nameEl |
-                nameEl := node firstChildNamed: 'name'.
-                name := nameEl isNil ifTrue: [nil] ifFalse: [nameEl text trimmed]].
-            name isNil ifFalse: [
-                cat := node at: 'category'.
-                desc := VkTypeDescriptor new.
-                desc name: name.
-                desc category: (cat isNil ifTrue: [#basetype] ifFalse: [cat asSymbol]).
-                desc requires: (node at: 'requires').
-                desc alias: (node at: 'alias').
-                desc members: (self parseMembersFrom: node).
-                types at: name put: desc]]]
+	"Iterate <types> nodes and build VkTypeDescriptor objects."
+
+	(xml childrenNamed: 'types') do: [ :typesNode |
+			(typesNode childrenNamed: 'type') do: [ :node |
+					| desc name cat |
+					name := node at: 'name'.
+					name isNil ifTrue: [ "name may be a child <name> element"
+							| nameEl |
+							nameEl := node firstChildNamed: 'name'.
+							name := nameEl isNil
+								        ifTrue: [ nil ]
+								        ifFalse: [ nameEl text trimBoth ] ].
+					name isNil ifFalse: [
+							cat := node at: 'category'.
+							desc := VkTypeDescriptor new.
+							desc name: name.
+							desc category: (cat isNil
+									 ifTrue: [ #basetype ]
+									 ifFalse: [ cat asSymbol ]).
+							desc requires: (node at: 'requires').
+							desc alias: (node at: 'alias').
+							desc members: (self parseMembersFrom: node).
+							types at: name put: desc ] ] ]
 ]
 
 { #category : 'accessing' }
