@@ -382,7 +382,14 @@ frames in sequence, the image index cycles through `imageCount`, the swapchain's
 resize recreates the swapchain at the new `vulkanDrawableExtent`, and closing the space destroys
 swapchain, surface and semaphores in reverse order with nothing left on the device.
 
-**7.3 The frame that ends on the device.** `VGTiledFillDispatch` gains the device-local copy: the
+**7.3a One device for compute and presentation.** The session's context and the host space's context
+become one: a context built for presentation is chosen and built by the compute path, so the kernels
+keep every feature they ask for, and its instance carries the surface extensions the window system
+names. Gate: the host space and the session answer the same context object, the compute-only context
+is released when the first presentation request arrives, a session that cannot present is refused at
+host selection, and the surface extensions are read before any window has been opened.
+
+**7.3b The frame that ends on the device.** `VGTiledFillDispatch` gains the device-local copy: the
 target buffer into a given `VkImage` by `vkCmdCopyBufferToImage`, with the layout transitions around
 it, and `VGVulkanBackend` gains the path that asks for it instead of `drainInto:`. Gate: the subset
 corpus draws the same pixels through the copy as the software backend draws, read back once inside
@@ -537,7 +544,8 @@ so an example can close its window and still hand back what it did.
 The context is the host space's own, built on first use from `requiredInstanceExtensions`. It is not
 `VGVulkanDeviceSession`'s: the session's context is created for compute and carries none of the
 instance extensions a surface needs. Unit 7.3 is where the two become one, and `presentContext` is
-the only method that has to change for it.
+the only method that has to change for it. (Superseded by 7.3a, which did exactly that: the host
+space holds no context of its own any more.)
 
 `presentChain` keeps one chain per drawable extent: it answers the chain it holds while
 `matchesDrawable` is true, and otherwise destroys it and builds the next one. A swapchain is created
@@ -605,6 +613,134 @@ uncommitted half of this unit and had it replayed from disk HEAD. The lesson for
 the mechanical one — commit first, then run a long or window-opening suite forked at priority 60 with
 its result written to a file in `Smalltalk imageDirectory`, and poll that file in calls short enough
 to answer.
+
+### 7.3a as built, 22 November 2026
+
+The grill split unit 7.3 in two. 7.3a is one device for compute and presentation; 7.3b is the frame
+that ends on the device, which keeps the gate §7e states for 7.3 and is next. Everything below is
+7.3a, and it changes no pixel: it removes the second device the presenting path used to open.
+
+#### One context, chosen by the compute path
+
+`VkContext` gained a `surfaceExtensionNames` slot and
+`VkContext class >> presentingContextForExtensions:`, which is the only new way in. The instance it
+creates carries the extensions the window system named, and the device is then chosen and built by
+the compute path: `initializePresentingForExtensions:` stores the names and calls the existing
+`initializeComputeRequiring: #( #supportsGraphicsAndComputeOnOneQueue #supportsSwapchain )`. Going
+through the compute path rather than the graphics one is what keeps the kernels working — the
+graphics path enables `buildSynchronization2Features`, and the compute path enables
+`buildFeatureChain`, which is a superset of it. The device requirement is a pair of unary predicates
+because device selection asks its requirements by `perform:`; `VkPhysicalDevice >> supportsSwapchain`
+is the new one, reading the name from `VkPhysicalDevice class >> swapchainExtensionName`.
+
+Two methods became conditional on the new slot rather than duplicated:
+`instanceExtensionNames` answers the surface names when a presenting context asked for them and
+`computeInstanceExtensionNames` — which is empty — otherwise, and
+`enabledDeviceExtensionNames` adds `graphicsExtensionNames` only for a presenting context, since a
+device that was not required to report the swapchain extension must not be asked for it.
+`VkContext class >> graphicsExtensionNames` now names `VkPhysicalDevice swapchainExtensionName`
+instead of repeating the string, which is where selection reads it.
+
+The queue family has to do graphics and compute both, because this context creates one queue and
+dispatches and presents on it. `supportsGraphicsAndComputeOnOneQueue` already existed for
+`offscreenGraphicsContext`, so nothing new was needed for that half.
+
+#### The session owns the one device
+
+`VGVulkanDeviceSession` gained a `contextKind` slot and `openContextOfKind:with:`, which is the one
+place that opens a context, records the kind, stamps the image run and turns a failure into
+`unavailableReason`. `contextOrNil` opens the compute context through it, and
+`presentableContextOrNil` opens the presenting one: a session already presenting answers what it
+holds, a session holding a compute-only context releases it first — its instance carries none of the
+surface extensions a window needs, so nothing of it can be kept — and a machine whose window system
+names no surface extension answers nil. `canPresent` is `presentableContextOrNil notNil`.
+`isPresenting` is the one reader of the kind's value, so no caller restates the symbol.
+`releaseDevice` clears the kind with the context, and moved to the `initialize-release` protocol,
+which is what it does and what keeps Renraku quiet about a unary accessor with no return.
+
+#### SDL will not name the surface extensions until its loader is loaded
+
+The read of the instance extensions answered nil in a fresh image and the names in an image that had
+already shown a window, which was the one real surprise of the unit. SDL loads the Vulkan loader
+when the first `SDL_WINDOW_VULKAN` window is created, and until it is loaded
+`SDL_Vulkan_GetInstanceExtensions` answers false and writes nothing — so host selection, which asks
+before any window exists, was told this machine cannot present. `SDL_WasInit(SDL_INIT_VIDEO)`
+answering 32 is not enough, and a null window argument is accepted but does not load the loader.
+
+`VGSdl2VulkanLoader` declares `SDL_Vulkan_LoadLibrary`, the one SDL function this project needs and
+PharoVulkan does not, and `surfaceInstanceExtensionNames` asks for the loader before reading the
+names. The call is reference counted inside SDL and nothing here unloads it, because the loader is
+wanted for the rest of the image run. The failing test came first and is kept: with a Vulkan device
+present, the names are read before any window has been opened. On this machine they are
+`#( 'VK_KHR_surface' 'VK_KHR_xlib_surface' )`.
+
+#### The host space stopped owning a context
+
+`VGVulkanPresentHostSpace >> presentContext` answers `VGVulkanDeviceSession default
+presentableContextOrNil` and caches nothing — the session holds the context and may release and
+rebuild it, so a copy kept in the host space would outlive the handles it names. The
+`presentContext` slot is gone. `close` destroys the chain and no longer destroys the context: it is
+the session's one device, which compute frames draw on whether a window exists or not, so a host
+space that destroyed it would take the next frame of any kind down with it.
+`testClosingMyHostSpaceDestroysItsChainAndItsContext` asserted the opposite and was replaced by
+`testClosingMyHostSpaceDestroysItsChainAndKeepsTheSessionsDevice`, which states the fact that now
+holds. The paragraph in the 7.2 record saying the context is the host space's own is superseded here.
+
+#### The failover is decided before the window opens
+
+`VGVulkanPresentHost class >> isSupported` now reads
+`self isSupportedWithSession: VGVulkanDeviceSession default`, and `isSupportedWithSession:` is the
+driver, the opt-in and `aSession canPresent` together. Taking the session as an argument is what
+lets a test hold the refusal on a machine that can in fact present:
+`VGNoSurfaceExtensionSessionStub` is a session whose window system names no surface extension, by
+construction. This is §7d's frozen decision — a swapchain image already acquired cannot turn back
+into a `ByteArray` halfway through a frame, so the choice is made at host selection or not at all.
+
+#### The example and the tab
+
+`VGVulkanDeviceSessionExamples class >> sessionThatPresentsAndComputesOnOneDevice` asks a fresh
+session for presentation first and for compute after, and draws two frames of the three-shape
+encoding. The Lifetime tab names what the context was built for and the Residency tab names the
+buffers those frames kept on that very device, so the two tabs together are the fact the unit is
+about: no second device was opened for the drawing. `lifetimeRows` gained the `Context built for`
+row; `canPresent` is deliberately not a row, because answering it would build the presenting device
+rather than report one.
+
+#### Verified
+
+On this machine — Intel Iris Plus Graphics (ICL GT2), queue family 0 — the presenting context asks
+the device for `#( 'VK_KHR_shader_float16_int8' 'VK_KHR_16bit_storage' 'VK_KHR_swapchain' )`, the
+session's compute context is released and rebuilt on the first presentation request, and the host
+space and the session answer the same object. Green, each class run on its own: 13 in
+`VGVulkanPresentHostTest`, 16 in `VGVulkanDeviceSessionTest`, 12 in `VGVulkanPresentChainTest`, 13 in
+`VGVulkanBackendTest`, 5 in `VGVulkanDriverSdl2HostTest`, 6 in `VGVulkanExamplesTest`, and on the
+PharoVulkan side 72 in `VkCoreTest`, 61 in `PVGraphicsTest` and 8 in `VkImageTest`. Renraku is clean
+on every class the unit touched.
+
+#### The window suites run in a second image, not in the one being worked in
+
+The image went down three times while this unit was built, every time in a suite that opens a
+window: once a hard crash, twice a wedge where the image still accepted a TCP connection but served
+no answer, which takes the MCP session down with it and loses whatever was not committed. The cause
+is still not diagnosed. What removes the cost of it is running those suites in a child image instead:
+
+```
+"<vm>" "<image>" st --quit --no-source "<script>.st"
+```
+
+started from the working image with `LibC system:` and a trailing `&`, with the script writing
+`aTestClass suite run printString` into a file under `Smalltalk imageDirectory` — the agent
+scratchpad is not writable from the image, and `ensureCreateFile` has to come first because
+`isWritable` is false for a file that does not exist. The child reads the saved image, so the work
+has to be committed and the image saved before it is started, which is the discipline those three
+incidents were asking for anyway. The child's own Morphic world fails to start under `st`
+(`OSSDL2FormRenderer >> outputExtent` is nil, printed repeatedly on stderr) and the suites run green
+regardless, since they build their own host and window. All the counts above were taken that way for
+the five window-opening classes, and in the working image for the rest.
+
+One thing is known and not fixed here. `OSSDL2VulkanBackendWindow >> requiredInstanceExtensions`
+tests `result = 0` on a value the uFFI call answers as a Boolean, so both of its `Error signal:`
+paths are dead code; the bug workflow for it comes next, failing test first.
 
 ## 8. What this is not
 
