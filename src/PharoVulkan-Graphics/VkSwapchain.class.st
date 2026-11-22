@@ -58,7 +58,7 @@ VkSwapchain class >> createInfoForSurface: aSurfaceHandle format: aSurfaceFormat
 		imageFormat: aSurfaceFormat format;
 		imageColorSpace: aSurfaceFormat colorSpace;
 		imageArrayLayers: VkImage arrayLayerCount;
-		imageUsage: VkImageUsage colorAttachmentBit;
+		imageUsage: self imageUsage;
 		preTransform: aCapabilities currentTransform;
 		compositeAlpha: VkCompositeAlpha opaqueBit;
 		presentMode: VkRenderConfig presentModeFifo;
@@ -145,6 +145,16 @@ VkSwapchain class >> imageIndexByteCount [
 	 blocks of this many bytes."
 
 	^ Vk countByteCount
+]
+
+{ #category : 'constants' }
+VkSwapchain class >> imageUsage [
+	"What every swapchain of this project asks of its images: the colour attachment a presented
+	 image is, and the transfer destination a frame computed in a buffer is copied into. The
+	 second bit is not free — a surface may refuse it, which is why creation verifies it against
+	 what the surface reports allowing."
+
+	^ VkImageUsage colorAttachmentBit bitOr: VkImageUsage transferDstBit
 ]
 
 { #category : 'constants' }

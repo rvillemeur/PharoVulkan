@@ -5314,6 +5314,29 @@ VkBindingsTest >> testSwapchainImageCountAsksForOneMoreThanTheSurfaceDemands [
 ]
 
 { #category : 'tests - layout' }
+VkBindingsTest >> testSwapchainRequestAsksForImagesACopyCanWriteInto [
+	"A presenting swapchain here is copied into and not rendered into: the frame is computed in a
+	 buffer and copied to the image that was acquired, so the request asks for the transfer
+	 destination usage beside the colour attachment every presented image needs."
+
+	| capabilities info usage |
+	capabilities := VkSwapchainExamples
+		                capabilitiesAWindowSurfaceMightReport.
+	info := VkSwapchain
+		        createInfoForSurface: VkSwapchainCreateInfoKHR exampleSurfaceHandle
+		        format: VkSwapchainExamples formatAWindowSurfaceMightReport
+		        capabilities: capabilities
+		        extent: VkImage exampleExtent.
+	usage := [ info imageUsage ] ensure: [ info getHandle free ].
+	self
+		assert: (usage bitAnd: VkImageUsage colorAttachmentBit)
+		equals: VkImageUsage colorAttachmentBit.
+	self
+		assert: (usage bitAnd: VkImageUsage transferDstBit)
+		equals: VkImageUsage transferDstBit
+]
+
+{ #category : 'tests - layout' }
 VkBindingsTest >> testSwapchainRequestAsksForWhatTheSurfaceReported [
 	"What the builder writes, with no device in reach: the surface's own transform, the pair it
 	 offered, the image count the rule asks for, and the extent given. The exclusive sharing
@@ -5342,7 +5365,7 @@ VkBindingsTest >> testSwapchainRequestAsksForWhatTheSurfaceReported [
 		self assert: info imageExtent width equals: VkImage exampleExtent x.
 		self assert: info imageExtent height equals: VkImage exampleExtent y.
 		self assert: info imageArrayLayers equals: VkImage arrayLayerCount.
-		self assert: info imageUsage equals: VkImageUsage colorAttachmentBit.
+		self assert: info imageUsage equals: VkSwapchain imageUsage.
 		self
 			assert: info imageSharingMode
 			equals: VkRenderConfig sharingModeExclusive.
@@ -5398,7 +5421,7 @@ VkBindingsTest >> testSwapchainRequestRowsNameTheFormatTheTransformAndThePresent
 	self assert: (rows at: #presentModeName) equals: 'presentModeFifo'.
 	self
 		assert: (rows at: #usageNames)
-		equals: (VkImageUsage nameForFlags: VkImageUsage colorAttachmentBit).
+		equals: (VkImageUsage nameForFlags: VkSwapchain imageUsage).
 	self assert: (rows at: #discardsObscuredPixels).
 	self deny: (rows at: #surfaceSet).
 	self deny: (rows at: #replacesASwapchain).
