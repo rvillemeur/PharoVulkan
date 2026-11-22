@@ -39,6 +39,28 @@ VkImageTest >> testABorrowedImageDoesNotOwnItsHandle [
 ]
 
 { #category : 'tests' }
+VkImageTest >> testAnImageCanBeToldTheLayoutSomethingElseLeftItIn [
+	"A render pass moves an image to the layout its attachment description ends in, and it does
+	 that without a barrier of this image's own. The layout is what the recorded commands say,
+	 so whoever recorded the pass says which layout it left — otherwise the next frame records
+	 a barrier from a layout the image is no longer in. No driver is asked anything here: a
+	 declaration records nothing."
+
+	| image |
+	image := VkBorrowedImage
+		         on: nil
+		         handle: nil
+		         format: VkFormat b8g8r8a8Unorm
+		         extent: 64 @ 64
+		         usage: VkImageUsage colorAttachmentBit.
+	self assert: image layout equals: VkImageLayout undefined.
+	image declareLayout: VkImageLayout presentSrcKHR.
+	self assert: image layout equals: VkImageLayout presentSrcKHR.
+	image declareLayoutUndefined.
+	self assert: image layout equals: VkImageLayout undefined
+]
+
+{ #category : 'tests' }
 VkImageTest >> testAnImageDeclaredUndefinedForgetsTheLayoutItWasLeftIn [
 	"An image handed out again — a swapchain image acquired for the next frame — keeps nothing
 	 of what the last frame left in it: its contents after a present are not guaranteed, so

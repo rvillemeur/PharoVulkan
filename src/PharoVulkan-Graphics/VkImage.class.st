@@ -222,13 +222,22 @@ VkImage >> createView [
 ]
 
 { #category : 'recording' }
+VkImage >> declareLayout: aLayout [
+	"Say which layout this image is in, for a move no barrier of mine recorded. A render pass
+	 moves its attachments to the layouts its description ends in, so the frame that recorded
+	 the pass is the one that knows. The layout is what the recorded commands say, and this
+	 states it without recording anything."
+
+	layout := aLayout
+]
+
+{ #category : 'recording' }
 VkImage >> declareLayoutUndefined [
 	"Say that nothing in this image is worth keeping. A swapchain image comes back from an
 	 acquire with contents the presentation engine does not guarantee, so the next frame
-	 transitions it from undefined, which discards them instead of preserving them. The layout
-	 is what the recorded commands say, and this is the one way to say it without recording."
+	 transitions it from undefined, which discards them instead of preserving them."
 
-	layout := VkImageLayout undefined
+	self declareLayout: VkImageLayout undefined
 ]
 
 { #category : 'lifecycle' }
