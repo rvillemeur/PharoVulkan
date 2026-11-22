@@ -39,6 +39,43 @@ VkImageTest >> testABorrowedImageDoesNotOwnItsHandle [
 ]
 
 { #category : 'tests' }
+VkImageTest >> testAnImageDeclaredUndefinedForgetsTheLayoutItWasLeftIn [
+	"An image handed out again — a swapchain image acquired for the next frame — keeps nothing
+	 of what the last frame left in it: its contents after a present are not guaranteed, so
+	 whatever draws into it transitions from undefined, which discards them and is the cheapest
+	 transition there is. Declaring it says so without recording anything."
+
+	| context lender borrowed pool |
+	context := VkContext offscreenGraphicsContext.
+	[
+	lender := VkImage
+		          on: context device
+		          format: VkFormat b8g8r8a8Unorm
+		          extent: 64 @ 64
+		          usage: VkImageUsage transferDstBit.
+	borrowed := VkBorrowedImage
+		            on: context device
+		            handle: lender handle
+		            format: VkFormat b8g8r8a8Unorm
+		            extent: 64 @ 64
+		            usage: VkImageUsage transferDstBit.
+	pool := context device createCommandPool: context computeQueueFamily.
+	[
+	| buffer |
+	buffer := pool allocateBuffer.
+	buffer begin.
+	borrowed transitionTo: VkImageLayout transferDstOptimal in: buffer.
+	buffer end.
+	context computeQueue submit: buffer andWait: true.
+	self assert: borrowed layout equals: VkImageLayout transferDstOptimal.
+	borrowed declareLayoutUndefined.
+	self assert: borrowed layout equals: VkImageLayout undefined ]
+		ensure: [ pool destroy ] ] ensure: [
+		lender ifNotNil: [ lender destroy ].
+		context destroy ]
+]
+
+{ #category : 'tests' }
 VkImageTest >> testAttributeRowsNameTheLayoutAndWhoOwnsTheHandle [
 	"The two facts a frame that copies into an image is read by: which layout the recorded
 	 commands have left it in, named through the constant class rather than printed as a number,

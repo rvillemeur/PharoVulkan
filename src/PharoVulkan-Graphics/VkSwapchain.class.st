@@ -285,30 +285,33 @@ VkSwapchain >> createImageViews [
 	 longer keeps a second copy of the layout."
 
 	imageViews := images collect: [ :each |
-		              VkImage viewOn: device image: each format: format ]
+		              VkImage viewOn: device image: each handle format: format ]
 ]
 
-{ #category : 'lifecycle' }
+{ #category : 'initialization' }
 VkSwapchain >> destroy [
+	"The views first, then the swapchain, then the images it gave back. Destroying the
+	 swapchain destroys those images, so each borrowed image is told to let go of a handle
+	 that no longer names anything rather than to destroy it."
 
 	imageViews ifNotNil: [
-			imageViews do: [ :iv |
-					Vk
-						destroyImageView: device handle
-						imageView: iv
-						allocator: ExternalAddress null.
-					iv invalidate ].
-			imageViews := nil ].
-	handle ifNotNil: [
+		imageViews do: [ :iv |
 			Vk
-				destroySwapchainKHR: device handle
-				swapchain: handle
+				destroyImageView: device handle
+				imageView: iv
 				allocator: ExternalAddress null.
-			handle invalidate.
-			handle := nil ].
+			iv invalidate ].
+		imageViews := nil ].
+	handle ifNotNil: [
+		Vk
+			destroySwapchainKHR: device handle
+			swapchain: handle
+			allocator: ExternalAddress null.
+		handle invalidate.
+		handle := nil ].
 	images ifNotNil: [
-			images do: [ :img | img invalidate ].
-			images := nil ]
+		images do: [ :each | each destroy ].
+		images := nil ]
 ]
 
 { #category : 'accessing' }
@@ -356,11 +359,13 @@ VkSwapchain >> images [
 
 { #category : 'initialization' }
 VkSwapchain >> imagesFromDriver [
-	"The images the driver made for this swapchain. The count comes back from a call with a
-	 null run and stays in its buffer, because the call that fills the run needs it there as
-	 well. The run is a block of handles with no field specification to read a width from, so
-	 it is read by the stride this class names. Both blocks are freed whichever way the calls
-	 go: the handles are copied out of the run before it goes."
+	"The images the driver made for this swapchain, each wrapped as the borrowed image it is:
+	 the handle belongs to the swapchain, which destroys them with itself, and whatever draws
+	 into one needs the format, the extent and the layout the wrapper carries. The count comes
+	 back from a call with a null run and stays in its buffer, because the call that fills the
+	 run needs it there as well. The run is a block of handles with no field specification to
+	 read a width from, so it is read by the stride this class names. Both blocks are freed
+	 whichever way the calls go: the handles are copied out of the run before it goes."
 
 	| countBuffer |
 	countBuffer := ExternalAddress allocate: Vk countByteCount.
@@ -383,8 +388,13 @@ VkSwapchain >> imagesFromDriver [
 		            pSwapchainImages: run.
 	  Vk checkResult: result.
 	  (1 to: count) collect: [ :index |
-		  VkImage_H fromHandle: (run
-				   pointerAt: index - 1 * self class imageHandleByteCount + 1) ] ]
+		  VkBorrowedImage
+			  on: device
+			  handle: (VkImage_H fromHandle: (run
+						    pointerAt: index - 1 * self class imageHandleByteCount + 1))
+			  format: format
+			  extent: extent
+			  usage: self class imageUsage ] ]
 		  ensure: [ run free ] ] ensure: [ countBuffer free ]
 ]
 
@@ -461,7 +471,7 @@ VkSwapchain >> presentModeName [
 	^ self class presentModeNameFor: self presentMode
 ]
 
-{ #category : 'reporting' }
+{ #category : 'inspecting' }
 VkSwapchain >> presentationRows [
 	"What a reader can ask of this swapchain. The state and the two rules creation follows hold
 	 for any swapchain, created or not: the present mode is read from the render configuration
@@ -474,6 +484,9 @@ VkSwapchain >> presentationRows [
 	rows := OrderedCollection new
 		        add: (PVFactRow name: 'swapchain' value: self stateLabel);
 		        add: (PVFactRow name: 'present mode' value: self presentModeName);
+		        add: (PVFactRow
+				         name: 'image usage'
+				         value: (VkImageUsage nameForFlags: self class imageUsage));
 		        add: (PVFactRow
 				         name: 'images asked for beyond the surface minimum'
 				         value: self class imagesBeyondMinimum);

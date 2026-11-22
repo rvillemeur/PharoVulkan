@@ -221,6 +221,16 @@ VkImage >> createView [
 	^ view
 ]
 
+{ #category : 'recording' }
+VkImage >> declareLayoutUndefined [
+	"Say that nothing in this image is worth keeping. A swapchain image comes back from an
+	 acquire with contents the presentation engine does not guarantee, so the next frame
+	 transitions it from undefined, which discards them instead of preserving them. The layout
+	 is what the recorded commands say, and this is the one way to say it without recording."
+
+	layout := VkImageLayout undefined
+]
+
 { #category : 'lifecycle' }
 VkImage >> destroy [
 	"Release in reverse creation order, nilling each slot so a second call is safe: this is

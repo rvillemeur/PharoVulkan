@@ -1314,6 +1314,26 @@ PVGraphicsTest >> testTheCoveragePopulationsAreNotEmpty [
 	self deny: self class projectClasses isEmpty
 ]
 
+{ #category : 'tests - swapchain' }
+PVGraphicsTest >> testTheImagesOfARealSwapchainAreBorrowedImagesOfItsFormatAndExtent [
+	"What a swapchain hands out: images, not bare handles. Whatever draws into one has to
+	 transition its layout and know its extent, and whatever tears down must not destroy what
+	 the swapchain created, which is what a borrowed image answers for."
+
+	PVHelloTriangleScene displayAvailable ifFalse: [
+		^ self skip: PVHelloTriangleScene displayUnavailableReason ].
+	self windowSceneDo: [ :scene :backendWindow |
+		| swapchain |
+		swapchain := scene swapchain.
+		self assert: swapchain images size equals: swapchain imageCount.
+		swapchain images do: [ :image |
+			self assert: image class equals: VkBorrowedImage.
+			self deny: image ownsHandle.
+			self assert: image format equals: swapchain format.
+			self assert: image extent equals: swapchain extent.
+			self assert: image usage equals: VkSwapchain imageUsage ] ]
+]
+
 { #category : 'tests - views' }
 PVGraphicsTest >> testThePipelineViewNamesTheFixedStateEveryPipelineOfThisProjectIsCreatedWith [
 	"A pipeline is opaque once the driver holds it, so what a reader opens it for is the state it

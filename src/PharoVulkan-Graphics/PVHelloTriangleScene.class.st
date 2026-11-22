@@ -25,7 +25,8 @@ PVHelloTriangleScene class >> attachmentSeparator [
 
 { #category : 'testing' }
 PVHelloTriangleScene class >> displayAvailable [
-	^ self displayAvailableIn: Smalltalk os environment
+
+	^ self displayAvailableIn: OSPlatform current environment
 ]
 
 { #category : 'testing' }
