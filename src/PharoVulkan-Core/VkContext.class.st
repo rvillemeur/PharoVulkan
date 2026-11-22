@@ -65,9 +65,10 @@ VkContext class >> graphicsContextForExtensions: extNames [
 VkContext class >> graphicsExtensionNames [
 	"What the graphics path asks of the device beyond the core: presenting to a surface. The
 	 compute path asks for none of these and the half precision names are optional and device
-	 dependent, which is why they are a list of their own."
+	 dependent, which is why they are a list of their own. The name is taken from the device
+	 class, which is where selection reads it to refuse a device that cannot present."
 
-	^ #( 'VK_KHR_swapchain' )
+	^ { VkPhysicalDevice swapchainExtensionName }
 ]
 
 { #category : 'constants' }
