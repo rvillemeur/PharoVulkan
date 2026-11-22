@@ -18,7 +18,8 @@ Class {
 		'handle',
 		'memory',
 		'view',
-		'memorySize'
+		'memorySize',
+		'layout'
 	],
 	#category : 'PharoVulkan-Graphics-Targets',
 	#package : 'PharoVulkan-Graphics',
@@ -174,10 +175,10 @@ VkImage >> allocate [
 			 memoryOffset: 0)
 ]
 
-{ #category : 'inspecting' }
+{ #category : 'accessing' }
 VkImage >> attributeRows [
-	"Name -> value for what the inspector shows. The format and usage names come from the
-	 constant classes by reflection, so this list cannot name a format the image does not
+	"Name -> value for what the inspector shows. The format, usage and layout names come from
+	 the constant classes by reflection, so this list cannot name a format the image does not
 	 carry or hide a usage bit the driver was asked for. Reads slots only."
 
 	^ {
@@ -186,6 +187,10 @@ VkImage >> attributeRows [
 			    ifNotNil: [ :name | name , ' (' , format printString , ')' ])).
 		  ('Extent' -> extent printString).
 		  ('Usage' -> (VkImageUsage nameForFlags: usage)).
+		  ('Layout' -> ((VkImageLayout nameForValue: layout)
+			    ifNil: [ layout printString ]
+			    ifNotNil: [ :name | name , ' (' , layout printString , ')' ])).
+		  ('Owns handle' -> self ownsHandle printString).
 		  ('Memory size asked by driver' -> memorySize printString).
 		  ('Memory size as width * height * 4'
 		   -> (extent x * extent y * 4) printString).
@@ -216,10 +221,11 @@ VkImage >> createView [
 	^ view
 ]
 
-{ #category : 'releasing' }
+{ #category : 'lifecycle' }
 VkImage >> destroy [
 	"Release in reverse creation order, nilling each slot so a second call is safe: this is
-	 reached from ensure: blocks that may already have run once on the same image."
+	 reached from ensure: blocks that may already have run once on the same image. A handle this
+	 image does not own is let go of and not destroyed, because its owner destroys it."
 
 	view ifNotNil: [
 		Vk
@@ -229,11 +235,12 @@ VkImage >> destroy [
 		view invalidate.
 		view := nil ].
 	handle ifNotNil: [
-		Vk
-			destroyImage: device handle
-			image: handle
-			allocator: ExternalAddress null.
-		handle invalidate.
+		self ownsHandle ifTrue: [
+			Vk
+				destroyImage: device handle
+				image: handle
+				allocator: ExternalAddress null.
+			handle invalidate ].
 		handle := nil ].
 	memory ifNotNil: [
 		Vk
@@ -265,6 +272,7 @@ VkImage >> initializeDevice: aDevice format: aFormat extent: anExtent usage: usa
 	format := aFormat.
 	extent := anExtent.
 	usage := usageFlags.
+	layout := VkImageLayout undefined.
 	self create.
 	self allocate
 ]
@@ -281,6 +289,14 @@ VkImage >> inspectorImage: aBuilder [
 		  nameColumn: 'Attribute'
 		  valueColumn: 'Value'
 		  in: aBuilder
+]
+
+{ #category : 'accessing' }
+VkImage >> layout [
+	"The layout the driver has the image in, as far as the recorded commands say. A fresh
+	 image and a swapchain image just acquired are both undefined."
+
+	^ layout
 ]
 
 { #category : 'accessing' }
@@ -310,6 +326,30 @@ VkImage >> memorySize [
 	 width * height * 4."
 
 	^ memorySize
+]
+
+{ #category : 'testing' }
+VkImage >> ownsHandle [
+	"Whether teardown destroys the image. An image this class created owns its handle;
+	 VkBorrowedImage answers otherwise."
+
+	^ true
+]
+
+{ #category : 'recording' }
+VkImage >> transitionTo: aLayout in: aCommandBuffer [
+	"Record the move from the layout this image is in to the one asked for, and remember it.
+	 The layout is what the recorded commands say, not what the driver has done yet: the
+	 recording is the only thing that decides it, and the submission makes it so."
+
+	| barrier |
+	barrier := VkCommandBuffer
+		           imageBarrierFrom: layout
+		           to: aLayout
+		           image: self.
+	[ aCommandBuffer recordImageBarrier: barrier ] ensure: [
+		barrier getHandle free ].
+	layout := aLayout
 ]
 
 { #category : 'accessing' }

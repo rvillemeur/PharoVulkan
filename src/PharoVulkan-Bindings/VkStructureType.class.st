@@ -99,6 +99,14 @@ VkStructureType class >> imageCreateInfo [
 	^ 14
 ]
 
+{ #category : 'constants' }
+VkStructureType class >> imageMemoryBarrier2 [
+	"VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 — the barrier that moves an image from one
+	 layout to another, which is the form a copy into an image needs."
+
+	^ 1000314002
+]
+
 { #category : 'structure-types' }
 VkStructureType class >> imageViewCreateInfo [
     ^ 15

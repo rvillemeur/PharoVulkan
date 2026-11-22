@@ -11,6 +11,64 @@ Class {
 	#tag : 'Tests'
 }
 
+{ #category : 'tests' }
+VkImageTest >> testABorrowedImageDoesNotOwnItsHandle [
+	"A swapchain hands out the images it created, and nothing that draws into one may destroy
+	 it: the swapchain destroys them with itself. VkBorrowedImage says so, and that is the one
+	 thing its teardown reads."
+
+	| context owner borrowed |
+	context := VkContext offscreenGraphicsContext.
+	[
+	owner := VkImage
+		         on: context device
+		         format: VkFormat b8g8r8a8Unorm
+		         extent: 64 @ 64
+		         usage: VkImageUsage colorAttachmentBit.
+	borrowed := VkBorrowedImage
+		            on: context device
+		            handle: owner handle
+		            format: VkFormat b8g8r8a8Unorm
+		            extent: 64 @ 64
+		            usage: VkImageUsage transferDstBit.
+	self assert: owner ownsHandle.
+	self deny: borrowed ownsHandle.
+	self assert: borrowed handle equals: owner handle ] ensure: [
+		owner ifNotNil: [ owner destroy ].
+		context destroy ]
+]
+
+{ #category : 'tests' }
+VkImageTest >> testAttributeRowsNameTheLayoutAndWhoOwnsTheHandle [
+	"The two facts a frame that copies into an image is read by: which layout the recorded
+	 commands have left it in, named through the constant class rather than printed as a number,
+	 and whether tearing this image down destroys the handle or lets go of it."
+
+	| context owner borrowed rowsOf |
+	context := VkContext offscreenGraphicsContext.
+	rowsOf := [ :anImage :key |
+	          (anImage attributeRows detect: [ :each | each key = key ]) value ].
+	[
+	owner := VkImage
+		         on: context device
+		         format: VkFormat b8g8r8a8Unorm
+		         extent: 64 @ 64
+		         usage: VkImageUsage transferDstBit.
+	borrowed := VkBorrowedImage
+		            on: context device
+		            handle: owner handle
+		            format: VkFormat b8g8r8a8Unorm
+		            extent: 64 @ 64
+		            usage: VkImageUsage transferDstBit.
+	self assert: (rowsOf value: owner value: 'Owns handle') equals: 'true'.
+	self assert: (rowsOf value: borrowed value: 'Owns handle') equals: 'false'.
+	self
+		assert: ((rowsOf value: owner value: 'Layout') includesSubstring: 'undefined') ]
+		ensure: [
+			owner ifNotNil: [ owner destroy ].
+			context destroy ]
+]
+
 { #category : 'tests - image' }
 VkImageTest >> testColorAttachmentImageIsCreatedAndBound [
 	"A colour attachment needs a device that can draw, which setUp's compute context does not
@@ -30,6 +88,35 @@ VkImageTest >> testColorAttachmentImageIsCreatedAndBound [
 	self assert: image extent equals: 64 @ 64.
 	self assert: image format equals: VkFormat b8g8r8a8Unorm ] ensure: [ image destroy ] ]
 		ensure: [ context destroy ]
+]
+
+{ #category : 'tests' }
+VkImageTest >> testDestroyingABorrowedImageLeavesTheHandleWithItsOwner [
+	"Teardown of a borrowed image lets go of the handle and destroys nothing: the owner still
+	 holds the image it created, and destroys it itself. Without this a frame that ends in a
+	 swapchain image would free an image the swapchain frees again."
+
+	| context owner borrowed |
+	context := VkContext offscreenGraphicsContext.
+	[
+	owner := VkImage
+		         on: context device
+		         format: VkFormat b8g8r8a8Unorm
+		         extent: 64 @ 64
+		         usage: VkImageUsage colorAttachmentBit.
+	borrowed := VkBorrowedImage
+		            on: context device
+		            handle: owner handle
+		            format: VkFormat b8g8r8a8Unorm
+		            extent: 64 @ 64
+		            usage: VkImageUsage transferDstBit.
+	borrowed destroy.
+	borrowed destroy.
+	self assert: borrowed handle isNil.
+	self deny: owner handle isNil.
+	self deny: owner handle isNull ] ensure: [
+		owner ifNotNil: [ owner destroy ].
+		context destroy ]
 ]
 
 { #category : 'tests - image' }
@@ -207,6 +294,68 @@ VkImageTest >> testOneRequestServesSeveralViewsOfOneImageOnThisMachine [
 						imageView: each
 						allocator: ExternalAddress null.
 					each invalidate ] ] ] ensure: [ image destroy ] ] ensure: [
+		context destroy ]
+]
+
+{ #category : 'tests' }
+VkImageTest >> testTheBarrierOfATransitionNamesBothLayoutsAndTheImage [
+	"The structure a transition hands the driver: the layout the image is in, the layout it is
+	 to be in, the image itself and the whole of its colour aspect. The transfer stage is both
+	 sides of it, because the copy that follows is the reader and whatever wrote before it is
+	 the writer this frame knows about."
+
+	| context image barrier |
+	context := VkContext offscreenGraphicsContext.
+	[
+	image := VkImage
+		         on: context device
+		         format: VkFormat b8g8r8a8Unorm
+		         extent: 64 @ 64
+		         usage: VkImageUsage transferDstBit.
+	barrier := VkCommandBuffer
+		           imageBarrierFrom: VkImageLayout undefined
+		           to: VkImageLayout transferDstOptimal
+		           image: image.
+	[
+	self assert: barrier sType equals: VkStructureType imageMemoryBarrier2.
+	self assert: barrier oldLayout equals: VkImageLayout undefined.
+	self assert: barrier newLayout equals: VkImageLayout transferDstOptimal.
+	self assert: barrier dstAccessMask equals: VkAccess2 transferWriteBit.
+	self
+		assert: barrier subresourceRange aspectMask
+		equals: VkImageAspect colorBit.
+	self assert: barrier subresourceRange layerCount equals: 1.
+	self assert: barrier subresourceRange levelCount equals: 1 ] ensure: [
+		barrier getHandle free ] ] ensure: [
+		image ifNotNil: [ image destroy ].
+		context destroy ]
+]
+
+{ #category : 'tests' }
+VkImageTest >> testTransitioningAnImageMovesTheLayoutTheDriverAccepts [
+	"The driver leg: a real command buffer on this machine records the transition, the queue
+	 runs it, and the image says it is in the layout asked for. A barrier at a wrong offset or
+	 with a count the dependency does not carry fails here rather than inside the copy."
+
+	| context image pool buffer |
+	context := VkContext offscreenGraphicsContext.
+	[
+	image := VkImage
+		         on: context device
+		         format: VkFormat b8g8r8a8Unorm
+		         extent: 64 @ 64
+		         usage: VkImageUsage transferDstBit.
+	self assert: image layout equals: VkImageLayout undefined.
+	pool := context device createCommandPool: context computeQueueFamily.
+	[
+	buffer := pool allocateBuffer.
+	buffer begin.
+	image transitionTo: VkImageLayout transferDstOptimal in: buffer.
+	buffer end.
+	context computeQueue submit: buffer andWait: true.
+	self assert: image layout equals: VkImageLayout transferDstOptimal ]
+		ensure: [ pool destroy ] ] ensure: [
+		image ifNotNil: [ image destroy ].
 		context destroy ]
 ]
 

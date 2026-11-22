@@ -133,12 +133,13 @@ VkBindingsTest >> testBarrierAndDependencyInfoInitializeOnlyWhatIsConstantForThe
 
 	{
 		(VkMemoryBarrier2 -> VkStructureType memoryBarrier2).
+		(VkImageMemoryBarrier2 -> VkStructureType imageMemoryBarrier2).
 		(VkDependencyInfo -> VkStructureType dependencyInfo) } do: [ :each |
 		| info setters |
 		info := each key externalInstance.
 		[
-			self assert: info sType equals: each value.
-			self assert: info pNext isNull ] ensure: [ info getHandle free ].
+		self assert: info sType equals: each value.
+		self assert: info pNext isNull ] ensure: [ info getHandle free ].
 		setters := (each key >> #initializeConstantFields) messages select: [
 			           :selector | each key includesSelector: selector ].
 		self assert: setters asArray equals: #( #sType: ) ].
@@ -1825,6 +1826,24 @@ VkBindingsTest >> testEveryFeatureStructureShowsEveryFlagItDeclares [
 			instance getHandle free ] ]
 ]
 
+{ #category : 'tests - constants' }
+VkBindingsTest >> testEveryImageUsageBitThisProjectAsksForIsNamed [
+	"The image inspector promises it cannot hide a usage bit the driver was asked for, and it
+	 keeps that promise only while every bit this project passes to vkCreateImage is in the
+	 table the decoder reads. A bit left out of it is printed as a hexadecimal number."
+
+	VkImageUsage class selectors do: [ :selector |
+		(#( #namedBits #constantProtocol ) includes: selector) ifFalse: [
+			| value |
+			value := VkImageUsage perform: selector.
+			self
+				assert: (VkImageUsage nameForFlags: value) isString
+				description: selector printString , ' answers no name'.
+			self
+				deny: ((VkImageUsage nameForFlags: value) endsWith: 'h')
+				description: selector printString , ' is decoded as a number' ] ]
+]
+
 { #category : 'tests - graphics pipeline' }
 VkBindingsTest >> testEveryPipelineAsksForTheEntryPointTheModulesDeclare [
 	"The name of the entered function belongs to the compiled module, not to a kind of pipeline,
@@ -2747,6 +2766,32 @@ VkBindingsTest >> testImageCreationWritesNoScalarFieldAtAHandCountedOffset [
 			           'VkImage class >> handleForViewRequest:on:' )
 ]
 
+{ #category : 'tests - structures' }
+VkBindingsTest >> testImageMemoryBarrier2LayoutMatchesTheCLayout [
+	"Synchronization2 carries the stage and access masks as quad words, so the two layout enums
+	 sit at forty-eight and the handle at sixty-four with the subresource range by value after it.
+	 A barrier that transitions an image is the one form of barrier a copy into an image needs,
+	 and a field placed a word out writes a layout into a queue family index."
+
+	self
+		assert: (VkImageMemoryBarrier2 layoutRows collect: [ :each | each first -> each second ])
+				asArray
+		equals: {
+				(#sType -> 0).
+				(#pNext -> 8).
+				(#srcStageMask -> 16).
+				(#srcAccessMask -> 24).
+				(#dstStageMask -> 32).
+				(#dstAccessMask -> 40).
+				(#oldLayout -> 48).
+				(#newLayout -> 52).
+				(#srcQueueFamilyIndex -> 56).
+				(#dstQueueFamilyIndex -> 60).
+				(#image -> 64).
+				(#subresourceRange -> 72) }.
+	self assert: VkImageMemoryBarrier2 byteSize equals: 96
+]
+
 { #category : 'tests - image' }
 VkBindingsTest >> testImageRequestAsksForATwoDimensionalOptimalAttachment [
 	"What the builder writes, with no device in reach, against what it leaves as the zeros a
@@ -3408,6 +3453,23 @@ VkBindingsTest >> testOnlyOneMethodBeginsARenderPass [
 		equals: #( 'VkCommandBuffer >> recordRenderPassBeginWith:' )
 ]
 
+{ #category : 'tests - commands' }
+VkBindingsTest >> testOnlyOneMethodCopiesABufferToAnImage [
+	"The other direction of the image copy, held to the same rule as the readback: one method
+	 writes the call, so the region and the layout it demands are built in one place. The senders
+	 are asked of the system, and the tests are rejected: a test naming the call is itself a
+	 sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #cmdCopyBufferToImage:srcBuffer:dstImage:dstImageLayout:regionCount:pRegions:)
+		           reject: [ :each | each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandBuffer >> recordCopyOfBuffer:toImage:layout:region:' )
+]
+
 { #category : 'tests - structures' }
 VkBindingsTest >> testOnlyOneMethodCopiesAnImageToABuffer [
 	"Every image readback in the project records through the one method that hands the region to
@@ -3642,11 +3704,11 @@ VkBindingsTest >> testOnlyOneMethodPresentsASwapchain [
 		#( 'VkSwapchain class >> presentInfoForSwapchain:imageIndex:waitSemaphore:' )
 ]
 
-{ #category : 'tests - structures' }
+{ #category : 'tests - commands' }
 VkBindingsTest >> testOnlyOneMethodRecordsAPipelineBarrier [
 	"Every barrier the project records goes through the one method that writes the dependency
-	 info. The senders are asked of the system, and the tests are rejected: a test naming the
-	 call is itself a sender."
+	 info, whether the dependency carries a memory barrier or an image barrier. The senders are
+	 asked of the system, and the tests are rejected: a test naming the call is itself a sender."
 
 	| writers |
 	writers := (SystemNavigation default allSendersOf:
@@ -3655,7 +3717,7 @@ VkBindingsTest >> testOnlyOneMethodRecordsAPipelineBarrier [
 	self
 		assert: (writers collect: [ :each |
 				 each methodClass name , ' >> ' , each selector ]) asArray
-		equals: #( 'VkCommandBuffer >> recordBarrier:' )
+		equals: #( 'VkCommandBuffer >> recordDependency:' )
 ]
 
 { #category : 'tests - layout' }

@@ -12,6 +12,41 @@ Class {
 }
 
 { #category : 'examples' }
+VkResourceExamples class >> borrowedImageMovedToTransferDestinationOnThisMachine [
+	"One click: an image of someone else''s, moved to the layout a copy into it writes to. The
+	 handle comes from an image created here, which stands in for the swapchain image a frame
+	 that ends on the device draws into; the borrowed image records the transition, the queue
+	 runs it, and the lender is destroyed before the borrowed image is handed back. The Image
+	 tab then shows a layout of transferDstOptimal over a handle it reports as dead, and says
+	 the handle was never its own to destroy."
+
+	<sampleInstance>
+	| context lender borrowed pool |
+	context := VkContext offscreenGraphicsContext.
+	^ [ lender := VkImage
+		              on: context device
+		              format: VkFormat b8g8r8a8Unorm
+		              extent: VkImage exampleExtent
+		              usage: VkImageUsage transferDstBit.
+	  borrowed := VkBorrowedImage
+		              on: context device
+		              handle: lender handle
+		              format: VkFormat b8g8r8a8Unorm
+		              extent: VkImage exampleExtent
+		              usage: VkImageUsage transferDstBit.
+	  pool := context device createCommandPool: context computeQueueFamily.
+	  [ | buffer |
+	  buffer := pool allocateBuffer.
+	  buffer begin.
+	  borrowed transitionTo: VkImageLayout transferDstOptimal in: buffer.
+	  buffer end.
+	  context computeQueue submit: buffer andWait: true ] ensure: [ pool destroy ].
+	  borrowed destroy.
+	  lender destroy.
+	  borrowed ] ensure: [ context destroy ]
+]
+
+{ #category : 'examples' }
 VkResourceExamples class >> bufferFromTheComputePoolOnThisMachine [
 	"One click: the primary command buffer a compute dispatch here records into, cut from a
 	 pool on this machine's compute queue family. The pool is destroyed with its context, which

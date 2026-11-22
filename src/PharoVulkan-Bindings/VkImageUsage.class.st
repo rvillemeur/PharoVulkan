@@ -23,7 +23,15 @@ VkImageUsage class >> namedBits [
 
 	^ {
 		  (self transferSrcBit -> 'TransferSrc').
+		  (self transferDstBit -> 'TransferDst').
 		  (self colorAttachmentBit -> 'ColorAttachment') }
+]
+
+{ #category : 'constants' }
+VkImageUsage class >> transferDstBit [
+	"VK_IMAGE_USAGE_TRANSFER_DST_BIT — the image may be the destination of a copy."
+
+	^ 16r00000008
 ]
 
 { #category : 'constants' }

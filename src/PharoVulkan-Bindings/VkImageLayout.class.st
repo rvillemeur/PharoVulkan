@@ -28,6 +28,13 @@ VkImageLayout class >> presentSrcKHR [
 ]
 
 { #category : 'constants' }
+VkImageLayout class >> transferDstOptimal [
+	"VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL — the layout a copy into an image writes to."
+
+	^ 7
+]
+
+{ #category : 'constants' }
 VkImageLayout class >> transferSrcOptimal [
 	"VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL — the layout a copy out of an image reads from."
 

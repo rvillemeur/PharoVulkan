@@ -126,7 +126,9 @@ PVArchitectureTest class >> packageNameSeparator [
 { #category : 'scanning' }
 PVArchitectureTest class >> packagesNamedBy: aCompiledMethod [
 	"The packages of this project whose classes aCompiledMethod names, reading the literals of
-	 every block inside it as well as its own, to any depth."
+	 every block inside it as well as its own, to any depth. A block that closes over nothing is
+	 held as a CleanBlockClosure rather than as a CompiledBlock, so both forms are followed —
+	 missing the clean one blinds the scan to exactly the ensure: blocks the driver calls sit in."
 
 	| found scan |
 	found := Set new.
@@ -140,7 +142,11 @@ PVArchitectureTest class >> packagesNamedBy: aCompiledMethod [
 						        (package name beginsWith: self projectPackageNamePrefix)
 							        ifTrue: [ found add: package name asString ] ] ] ]
 			        ifFalse: [
-				        literal class = CompiledBlock ifTrue: [ scan value: literal ] ] ] ].
+				        literal class = CompiledBlock
+					        ifTrue: [ scan value: literal ]
+					        ifFalse: [
+						        (literal isKindOf: BlockClosure) ifTrue: [
+							        scan value: literal compiledBlock ] ] ] ] ].
 	scan value: aCompiledMethod.
 	^ found
 ]

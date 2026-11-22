@@ -124,6 +124,20 @@ Vk class >> cmdBindVertexBuffers: cmdBuf firstBinding: firstBinding bindingCount
 ]
 
 { #category : 'ffi-calls' }
+Vk class >> cmdCopyBufferToImage: cmdBuf srcBuffer: buffer dstImage: image dstImageLayout: imageLayout regionCount: count pRegions: pRegions [
+	"imageLayout, not layout: Vk carries a class-side layout variable that the shorter name
+	 would shadow."
+
+	^ self ffiCall: #( void vkCmdCopyBufferToImage (
+		VkCommandBuffer_H cmdBuf,
+		VkBuffer_H buffer,
+		VkImage_H image,
+		int32 imageLayout,
+		uint32 count,
+		void* pRegions ) )
+]
+
+{ #category : 'ffi-calls' }
 Vk class >> cmdCopyImageToBuffer: cmdBuf srcImage: image srcImageLayout: imageLayout dstBuffer: buffer regionCount: count pRegions: pRegions [
     "imageLayout, not layout: Vk carries a class-side layout variable that the shorter name
      would shadow."

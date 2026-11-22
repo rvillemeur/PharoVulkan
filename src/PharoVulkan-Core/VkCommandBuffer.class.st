@@ -87,6 +87,20 @@ VkCommandBuffer class >> dependencyForBarrier: aMemoryBarrier [
 		  yourself
 ]
 
+{ #category : 'structures' }
+VkCommandBuffer class >> dependencyForImageBarrier: anImageBarrier [
+	"The dependency info that carries one image barrier and nothing else. The caller owns the
+	 block and must free its handle; the barrier must outlive the recording call, because the
+	 driver reads it through the pointer written here."
+
+	| info |
+	info := VkDependencyInfo externalInstance.
+	^ info
+		  imageMemoryBarrierCount: self barriersPerDependency;
+		  pImageMemoryBarriers: anImageBarrier getHandle;
+		  yourself
+]
+
 { #category : 'constants' }
 VkCommandBuffer class >> firstScissorIndex [
 	"The scissor slot the one rectangle is bound to."
@@ -118,6 +132,32 @@ VkCommandBuffer class >> hostReadBarrier [
 		  yourself
 ]
 
+{ #category : 'structures' }
+VkCommandBuffer class >> imageBarrierFrom: oldLayout to: newLayout image: anImage [
+	"The barrier that moves one image from one layout to another, over the whole of its colour
+	 aspect. The caller owns the block and must free its handle. The transfer stage is named on
+	 both sides: the copy that follows is the reader, and a transfer that wrote the image
+	 before it is the writer a frame of this project knows about."
+
+	| barrier |
+	barrier := VkImageMemoryBarrier2 externalInstance.
+	barrier
+		srcStageMask: VkPipelineStage2 allTransferBit;
+		srcAccessMask: VkAccess2 transferWriteBit;
+		dstStageMask: VkPipelineStage2 allTransferBit;
+		dstAccessMask: VkAccess2 transferWriteBit;
+		oldLayout: oldLayout;
+		newLayout: newLayout;
+		srcQueueFamilyIndex: self queueFamilyIgnored;
+		dstQueueFamilyIndex: self queueFamilyIgnored;
+		image: anImage handle.
+	barrier subresourceRange
+		aspectMask: VkImageAspect colorBit;
+		levelCount: self levelsPerTransition;
+		layerCount: self layersPerCopy.
+	^ barrier
+]
+
 { #category : 'constants' }
 VkCommandBuffer class >> layersPerCopy [
 	"One array layer per readback: every image this project copies back is a single layer."
@@ -125,9 +165,24 @@ VkCommandBuffer class >> layersPerCopy [
 	^ 1
 ]
 
+{ #category : 'constants' }
+VkCommandBuffer class >> levelsPerTransition [
+	"Every image this project transitions has one mip level, so a transition covers one."
+
+	^ 1
+]
+
 { #category : 'factory' }
 VkCommandBuffer class >> on: aHandle pool: aPool level: aLevel [
 	^ self new initializeWith: aHandle pool: aPool level: aLevel
+]
+
+{ #category : 'constants' }
+VkCommandBuffer class >> queueFamilyIgnored [
+	"VK_QUEUE_FAMILY_IGNORED — a barrier that moves no ownership between queue families names
+	 this on both sides."
+
+	^ 16rFFFFFFFF
 ]
 
 { #category : 'constants' }
@@ -530,14 +585,9 @@ VkCommandBuffer >> inspectorBuffer: aBuilder [
 
 { #category : 'recording' }
 VkCommandBuffer >> recordBarrier: aMemoryBarrier [
-	"The one place a pipeline barrier is recorded. The driver reads the dependency info and the
-	 barrier it points at during this call, so the barrier must still be alive here and the
-	 dependency is freed only once the call has returned."
+	"A memory barrier recorded on its own, through the dependency that carries one."
 
-	| info |
-	info := self class dependencyForBarrier: aMemoryBarrier.
-	[ Vk cmdPipelineBarrier2: handle pDependencyInfo: info getHandle ] ensure: [
-		info getHandle free ]
+	self recordDependency: (self class dependencyForBarrier: aMemoryBarrier)
 ]
 
 { #category : 'recording' }
@@ -552,6 +602,39 @@ VkCommandBuffer >> recordCopyOf: anImage layout: layout toBuffer: aBuffer region
 		dstBuffer: aBuffer handle
 		regionCount: self class regionsPerCopy
 		pRegions: aRegion getHandle
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordCopyOfBuffer: aBuffer toImage: anImage layout: layout region: aRegion [
+	"The one place a buffer to image copy is recorded. The driver reads the region during this
+	 call, so it must still be alive here and is freed by whoever built it. The image has to be
+	 in the layout named here already, which is what the barrier before this call is for."
+
+	Vk
+		cmdCopyBufferToImage: handle
+		srcBuffer: aBuffer handle
+		dstImage: anImage handle
+		dstImageLayout: layout
+		regionCount: self class regionsPerCopy
+		pRegions: aRegion getHandle
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordDependency: aDependencyInfo [
+	"The one place a pipeline barrier is recorded. The driver reads the dependency info and the
+	 barriers it points at during this call, so both must still be alive here; the dependency is
+	 freed once the call has returned and the barriers are freed by whoever built them."
+
+	[ Vk cmdPipelineBarrier2: handle pDependencyInfo: aDependencyInfo getHandle ] ensure: [
+		aDependencyInfo getHandle free ]
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordImageBarrier: anImageBarrier [
+	"An image barrier recorded on its own, through the dependency that carries one. The
+	 barrier must outlive this call and is freed by whoever built it."
+
+	self recordDependency: (self class dependencyForImageBarrier: anImageBarrier)
 ]
 
 { #category : 'recording' }
