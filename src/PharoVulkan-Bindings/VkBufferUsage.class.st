@@ -12,6 +12,7 @@ Class {
 { #category : 'decoding' }
 VkBufferUsage class >> namedBits [
 	^ {
+		  (self transferSrcBit -> 'TransferSrc').
 		  (self transferDstBit -> 'TransferDst').
 		  (self storageBufferBit -> 'StorageBuffer').
 		  (self vertexBufferBit -> 'VertexBuffer') }
@@ -29,6 +30,11 @@ VkBufferUsage class >> transferDstBit [
 	"VK_BUFFER_USAGE_TRANSFER_DST_BIT, bit 1."
 
 	^ 2
+]
+
+{ #category : 'constants' }
+VkBufferUsage class >> transferSrcBit [
+	^ 16r00000001
 ]
 
 { #category : 'constants' }

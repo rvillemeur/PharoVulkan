@@ -1796,6 +1796,24 @@ VkBindingsTest >> testEnumeratePhysicalDevices [
 		Vk destroyInstance: instance allocator: ExternalAddress null ]
 ]
 
+{ #category : 'tests - constants' }
+VkBindingsTest >> testEveryBufferUsageBitThisProjectAsksForIsNamed [
+	"Same promise as the image usage bits: a buffer created with a usage this project names
+	 must be reported by the decoder under that name, or a report of what a buffer was created
+	 for prints a hexadecimal number where a reader expects a word."
+
+	VkBufferUsage class selectors do: [ :selector |
+		(#( #namedBits #constantProtocol ) includes: selector) ifFalse: [
+			| value |
+			value := VkBufferUsage perform: selector.
+			self
+				assert: (VkBufferUsage nameForFlags: value) isString
+				description: selector printString , ' answers no name'.
+			self
+				deny: ((VkBufferUsage nameForFlags: value) endsWith: 'h')
+				description: selector printString , ' is decoded as a number' ] ]
+]
+
 { #category : 'tests - results' }
 VkBindingsTest >> testEveryDeclaredResultCodeAnswersItsName [
 	"Every code VkResult declares must have a name, and the name must be the declaring
