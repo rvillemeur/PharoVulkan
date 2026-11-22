@@ -742,6 +742,83 @@ One thing is known and not fixed here. `OSSDL2VulkanBackendWindow >> requiredIns
 tests `result = 0` on a value the uFFI call answers as a Boolean, so both of its `Error signal:`
 paths are dead code; the bug workflow for it comes next, failing test first.
 
+### 7.3b as built, 22 November 2026
+
+The frame that ends on the device. Nothing of a frame crosses to the host any more on this path: the
+target buffer is copied into a `VkImage` by `vkCmdCopyBufferToImage`, and the two host copies a
+drained frame paid — reading the surface into packed bytes and writing them back — are gone from it.
+
+#### The copy
+
+`VGTiledFillDispatch >> draw:into:endingIn:` runs the frame with `readBack: false` and then sends
+`copyTargetInto:`, which allocates a command buffer from a command pool of its own, transitions the
+image to `VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`, records the copy of the `#target` buffer into it
+with the region `VkCommandBuffer class >> regionForExtent:` builds, and submits it with a wait. The
+caller owns the image and the layout it wants it in afterwards. A frame that touches no tile
+dispatches nothing and copies nothing, and answers the image untouched.
+
+The pool is the dispatch's own (`copyCommandPool`, released and nilled by `releaseDevice`) rather
+than the kernel's, because the kernel's pool belongs to the dispatch it records compute work in.
+The target buffer is now created with `VkBufferUsage transferSrcBit` beside the storage bit — a
+buffer a copy reads has to carry it — which is `VGTiledFillDispatch class >> bufferUsage`.
+
+`stageNames` gained `#copy` beside `#readback`, and the comment says what the pair means: one frame
+pays one of the two and never both. A new `Stages` tab on a dispatch shows every stage the table
+names with what it cost or `not reached`, read off `stageNames` so a stage cannot appear there under
+a name no report uses. That tab is how the kind of a frame is read by eye.
+
+#### The backend
+
+`VGVulkanBackend >> drawFrameInto:` is the path a presenting window takes: it encodes the frame it
+has recorded for the extent of the image it is given and dispatches it with the copy, where
+`drainInto:` would have encoded for a surface and drained. The device trip the two share was
+extracted as `dispatchOf:during:` — the session lookup, the refusal when no device computes, and
+the handler that releases the session and refuses when one fails — so `dispatch:into:` and
+`dispatch:into:endingIn:` differ by the block that says where the frame ends and by nothing else.
+
+#### The gate
+
+`VGTiledImageCopyTest`, six tests, green against the device on this machine:
+
+- every one of the 37 cases of the conformance subset drawn into an image through the copy holds
+  what the software backend draws for the same case, within the tolerance of `VGTiledFrameTestCase`;
+- the image a frame ends in holds the pixels the same frame read back holds;
+- a frame that ends in an image records the `copy` stage and no `readback` stage;
+- a frame drawn through `VGHostPixelRefusingBackendStub`, whose `pixelsOf:` and `write:into:` raise,
+  reaches neither and still lays pixels down — which is the fact the unit is about;
+- a frame with nothing recorded leaves the image as it was;
+- the backend draws its recorded frame straight into an image.
+
+The stub answers `false` to `isCandidate`. It has to: `VGBackend class >> candidateClasses` finds
+candidates by reflection over subclasses, so a backend fixture that does not refuse is ranked ahead
+of the real one and chosen for every surface in the image. `VGFailingDrainBackendStub` already
+refuses the same way; the new stub now reads like it.
+
+`VGTiledFillExamples class >> frameEndedInAnImageOnThisMachine` is the example: a frame of one shape
+left in a Vulkan image, whose `Image` tab shows the layout a copy writes into over a live handle.
+It answers an image that was never created where no device computes.
+
+#### Verified
+
+Green in the working image: 6 in `VGTiledImageCopyTest`, 49 in `VGTiledFillTest`, 13 in
+`VGVulkanBackendTest`, 12 in `VGVulkanRoundTripTest`, 16 in `VGVulkanDeviceSessionTest`, and 293 in
+`VkBindingsTest` on the PharoVulkan side. `VGVulkanExamplesTest` ran in a child image, the way §7.3a
+records. Renraku is clean on `VGTiledFillDispatch`, `VGTiledImageCopyTest`,
+`VGHostPixelRefusingBackendStub` and `VkBufferUsage`; the one critique on `VGVulkanBackend` is
+`ReExcessiveArgumentsRule` on `blitSurface:at:paint:clip:operator:`, which this unit did not touch.
+
+Commits: `718db16` on PharoVulkan (the transfer-source bit and the decoder entry it was missing),
+`93ee8b1` on VectorGraphics (the copy, the backend path and the gate).
+
+#### The image went down once more
+
+Running `VGVulkanExamplesTest` through MCP in the working image wedged it a fourth time, and the
+whole of 7.3b was replayed from the dead session's Epicea log afterwards. Two class additions did
+not replay — `applyCodeChange` raised nothing and created nothing — so both classes were recreated
+by hand from the `EpBehaviorCommentChange` entries, and their methods replayed after that. The rule
+stands and is now the only way these suites are run: a window-opening or example-walking class goes
+to a child image, never to the working one.
+
 ## 8. What this is not
 
 Not a phase of `VECTORCANVAS-PLAN.md`, not gated by anything in its §9, and not expected to change
