@@ -740,7 +740,8 @@ the five window-opening classes, and in the working image for the rest.
 
 One thing is known and not fixed here. `OSSDL2VulkanBackendWindow >> requiredInstanceExtensions`
 tests `result = 0` on a value the uFFI call answers as a Boolean, so both of its `Error signal:`
-paths are dead code; the bug workflow for it comes next, failing test first.
+paths are dead code; the bug workflow for it comes next, failing test first. (Fixed after 7.3b —
+see the defect below.)
 
 ### 7.3b as built, 22 November 2026
 
@@ -818,6 +819,29 @@ not replay — `applyCodeChange` raised nothing and created nothing — so both 
 by hand from the `EpBehaviorCommentChange` entries, and their methods replayed after that. The rule
 stands and is now the only way these suites are run: a window-opening or example-walking class goes
 to a child image, never to the working one.
+
+### The defect in `requiredInstanceExtensions`, fixed 22 November 2026
+
+`SDL_Vulkan_GetInstanceExtensions` is declared `bool` in the uFFI binding, so it answers `true` or
+`false`. The window compared that answer with zero, which a Boolean never equals: both
+`Error signal:` paths were unreachable, and a refused call went on to read a count SDL had not
+written into the allocated word and then that many pointers out of an array sized from it.
+
+The failing test came first, and writing it is what shaped the fix. SDL answers `true` for every
+window a test can build — a null window handle included, which it ignores — so a refusal cannot be
+provoked through the arguments. The call now goes through
+`OSSDL2VulkanBackendWindow >> instanceExtensionsInto:names:`, one method whose only job is to make
+it, and `PVRefusingVulkanWindowStub` overrides that seam to refuse whichever of the two calls a test
+names, writing the count the real call would have written for the one it does not refuse. Two tests
+in `PVGraphicsTest` hold each branch to the message it signals and to the number of calls made
+before it. The pointer width in the names array reads `VkContext pointerSize` rather than a third
+literal 8.
+
+Green afterwards: 63 in `PVGraphicsTest` and 23 in `PVArchitectureTest` in the working image, and in
+a child image 13 in `VGVulkanPresentHostTest`, 12 in `VGVulkanPresentChainTest`, 5 in
+`VGVulkanDriverSdl2HostTest`, 63 in `PVGraphicsTest` again and 6 in `VGVulkanExamplesTest`. Renraku
+clean on both classes. Commits: `d296845` on PharoVulkan, and `2fedd71` on VectorGraphics for the
+missing gate of the `Stages` tab, which that examples run is what caught.
 
 ## 8. What this is not
 
