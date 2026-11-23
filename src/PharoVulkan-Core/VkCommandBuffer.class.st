@@ -301,6 +301,13 @@ VkCommandBuffer class >> viewportsPerCommand [
 	^ 1
 ]
 
+{ #category : 'constants' }
+VkCommandBuffer class >> wholeBufferOffset [
+	"The offset a command that writes a whole buffer starts at."
+
+	^ 0
+]
+
 { #category : 'recording' }
 VkCommandBuffer >> barrierForHostRead [
 	"Records the transfer to host barrier. It is needed because submit:andWait: waits with
@@ -627,6 +634,20 @@ VkCommandBuffer >> recordDependency: aDependencyInfo [
 
 	[ Vk cmdPipelineBarrier2: handle pDependencyInfo: aDependencyInfo getHandle ] ensure: [
 		aDependencyInfo getHandle free ]
+]
+
+{ #category : 'recording' }
+VkCommandBuffer >> recordFillOfBuffer: aBuffer with: aWord [
+	"Every word of that buffer set to that word, recorded and not submitted. It is a transfer
+	 command and not a mapped write, so it reaches memory the host never sees and a caller that
+	 clears a device buffer pays no copy for it."
+
+	Vk
+		cmdFillBuffer: handle
+		dstBuffer: aBuffer handle
+		dstOffset: self class wholeBufferOffset
+		size: aBuffer size
+		data: aWord
 ]
 
 { #category : 'recording' }

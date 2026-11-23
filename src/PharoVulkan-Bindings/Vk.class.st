@@ -171,6 +171,19 @@ Vk class >> cmdEndRenderPass: cmdBuf [
     ^ self ffiCall: #( void vkCmdEndRenderPass ( VkCommandBuffer_H cmdBuf ) )
 ]
 
+{ #category : 'commands' }
+Vk class >> cmdFillBuffer: cmdBuf dstBuffer: buffer dstOffset: offset size: size data: data [
+	"The one transfer command that writes a constant: every word of the span is set to data,
+	 and the offset and the size are device sizes, so both are 64 bits wide."
+
+	^ self ffiCall: #( void vkCmdFillBuffer (
+		   VkCommandBuffer_H cmdBuf,
+		   VkBuffer_H buffer,
+		   uint64 offset,
+		   uint64 size,
+		   uint32 data ) )
+]
+
 { #category : 'ffi-calls' }
 Vk class >> cmdPipelineBarrier2: cmdBuf pDependencyInfo: pDependencyInfo [
     "The core 1.3 entry point, not the KHR alias: initializeCompute creates the instance with

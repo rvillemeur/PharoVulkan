@@ -3700,6 +3700,23 @@ VkBindingsTest >> testOnlyOneMethodCreatesAnImageView [
 		equals: #( 'VkImage class >> viewRequestFor:format:' )
 ]
 
+{ #category : 'tests' }
+VkBindingsTest >> testOnlyOneMethodFillsABuffer [
+	"The fill is held to the rule every other transfer command is held to: one method writes
+	 the call, so the offset and the size it writes are built in one place. The senders are
+	 asked of the system, and the tests are rejected: a test naming the call is itself a
+	 sender."
+
+	| writers |
+	writers := (SystemNavigation default allSendersOf:
+		            #cmdFillBuffer:dstBuffer:dstOffset:size:data:) reject: [ :each |
+		           each methodClass instanceSide includesBehavior: TestCase ].
+	self
+		assert: (writers collect: [ :each |
+				 each methodClass name , ' >> ' , each selector ]) asArray
+		equals: #( 'VkCommandBuffer >> recordFillOfBuffer:with:' )
+]
+
 { #category : 'tests - layout' }
 VkBindingsTest >> testOnlyOneMethodPresentsASwapchain [
 	"One builder of the request and one caller of the presentation, so there is one place where
