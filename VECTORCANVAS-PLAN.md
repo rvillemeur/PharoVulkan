@@ -5276,6 +5276,608 @@ and `VGVulkanExamplesTest >> testEveryViewHasAGate` is what asks for the gate.
 `testAnInvocationOwnsTwoAdjacentPixels` and
 `testTheWorkgroupTabReadsTheShapeOfTheWorkgroupFromTheKernel`.
 
+### 3.10 — where the host milliseconds go, measured phase by phase
+
+Every unit from 3.1 to 3.9 attacked the device half of a frame. The host half was one number the
+whole time: the stage `encode`, 14.7 ms on the reference frame against a Cairo frame of 6.040 ms.
+A single number says a lever exists and says nothing about where to put it, so this unit takes the
+host half apart and stops. No lever is taken in it.
+
+**Method.** `VGTiledFillEncoding` carries a stage table of its own, the idiom `VGTiledFillDispatch`
+already used: `recordStages` installs the dictionary, `timeStage:during:` reads
+`Time microsecondClockValue` either side of a block and accumulates under a name, `stageMicroseconds`
+answers what was recorded, and an encoding built without `recordStages` pays nothing at all.
+`VGTiledFillEncoding class >> stageNames` is the only place a phase of the host half is named, and
+it names eleven, in the order a frame pays them: `displayList`, `bin`, `entriesAsFills`, `bands`,
+`sources`, `offsets`, `allocate`, `writeEntries`, `writeSourcePixels`, `writeBandBlocks`,
+`writeTiles`. The first two are paid before an encoding holds anything — the display list is drawn
+by the caller and the binning is what an encoding is built from — so the benchmark times
+`displayList` and the encoding times the other ten. `VGTileBinning` is left whole: `bin` is one
+phase, because splitting it is the next unit's business and not this one's.
+
+`VGFrameDeviceBenchmark` takes an extent, so the census runs the three budget frames at the
+reference 800 by 600 and at a full screen 1920 by 1080, and every repeated row is kept twice, as the
+mean of its passes and as the fastest of them. The floors are what everything below is read on. The
+means carry the scheduler and the device's own drift — one outlier pass put the phase sum of a frame
+at ten times its encode — while the fastest of five passes is reproducible to a few per cent.
+
+Two things about the measurement had to be fixed before the phases and the encode they add up to
+agreed with each other. Measured in windows of their own they disagreed by a quarter, so the plain
+encode and the clocked encode are now interleaved in one loop and see the same machine. And a
+surface is allocated per pass, which biased the encode that followed it, so the display list is
+drawn and timed in a loop of its own after the encode loop.
+
+How the accounting is read had to be fixed too, during the design review that followed. The sum of
+the phase floors was compared against the floor of a separate plain encode, and that comparison read
+0.80 twice on frames whose phases had not changed: the fastest pass of each phase is not the fastest
+pass of the whole, and a pass that met the garbage collector carries work no phase is measuring. The
+share is taken inside one pass now — the phases of a clocked encode against the clock around that
+same encode — and the best of five passes is what the gate asserts on. Read that way, every frame of
+the census accounts for 0.998 of its encode or better.
+
+**Gate.** Three tests in `VGFrameStageBenchmarkTest`, all device-free:
+`testEveryEncodePhaseOfEveryFrameIsMeasuredAtBothExtentsAsAMeanAndAMinimum` holds the eleven phases
+present on every frame at both extents with every floor no greater than its mean;
+`testThePhasesOfEveryMeasuredFrameAccountForItsEncode` holds the phases of a clocked encode to nine
+tenths of that same encode, over the best of five passes; and
+`testEveryPhaseTheEncodingTimesIsOnePhaseItNames` reads the source rather than a frame and holds the
+names the encoding times to the names its table declares, since a phase a frame never reaches is
+absent from that frame's table and present in the code all the same.
+
+**The census.** Three frames, both extents, five passes, floors in ms, the phases of the encode
+under the encode they are the inside of:
+
+| phase | background 800 | background 1920 | cards 800 | cards 1920 | reference 800 | reference 1920 |
+|---|---|---|---|---|---|---|
+| entries binned | 1900 | 1900 | 3628 | 3628 | 3828 | 3828 |
+| `displayList` | 0.134 | 0.582 | 0.665 | 1.127 | 135.175 | 134.865 |
+| `encode`, whole | 3.260 | 3.330 | 6.120 | 6.670 | 12.650 | 13.110 |
+| `bin` | 2.300 | 2.341 | 4.652 | 4.593 | 6.036 | 6.000 |
+| `entriesAsFills` | 0.000 | 0.001 | 0.001 | 0.000 | 1.159 | 1.226 |
+| `bands` | 0.012 | 0.012 | 0.181 | 0.180 | 1.112 | 1.137 |
+| `sources` | 0.000 | 0.000 | 0.003 | 0.002 | 0.007 | 0.008 |
+| `offsets` | 0.002 | 0.002 | 0.011 | 0.011 | 0.034 | 0.037 |
+| `allocate` | 0.004 | 0.004 | 0.008 | 0.007 | 0.021 | 0.021 |
+| `writeEntries` | 0.009 | 0.010 | 0.276 | 0.261 | 1.852 | 1.893 |
+| `writeSourcePixels` | 0.000 | 0.000 | 0.001 | 0.001 | 0.005 | 0.005 |
+| `writeBandBlocks` | 0.033 | 0.032 | 0.298 | 0.283 | 1.402 | 1.478 |
+| `writeTiles` | 0.765 | 0.926 | 1.040 | 1.124 | 1.000 | 1.202 |
+
+**What it says about the encode.** Binning is the encode. It is 71 per cent of the background
+frame, 76 per cent of the cards frame and 48 per cent of the reference frame, and on every frame it
+is more than every buffer write put together. After it come `writeTiles`, which is one block per
+touched tile and so the same 1900 blocks on all three frames, and on the reference frame the three
+per-entry phases — `writeEntries`, `writeBandBlocks` and `entriesAsFills` — which together are
+4.4 ms. The four phases that compute offsets, allocate the buffers, collect the sources and write
+the source pixels are 0.067 ms at their worst: nothing is to be had there, whatever is done to them.
+
+**What it says about the extent.** Almost nothing, which is the finding. Four and a third times the
+pixels moves the encode of the background frame by 2 per cent, of the cards frame by 9 per cent and
+of the reference frame by 4 per cent. The host half is paid for entries and for touched tiles, not
+for area. The extent of a census row varies the surface and the grid and not the picture, since
+every frame of the budget is drawn at the reference extent, so what the two columns compare is one
+picture over two grids — and the one phase that does move with the extent, `displayList`, moves by
+the 0.45 ms it costs to allocate the larger surface.
+
+**The finding this unit did not expect.** The reference frame spends 135 ms producing its display
+list, which is ten times its whole encode and twenty-two times Cairo's entire frame. It is not
+drawing and it is not layout. The same scene built through Alexandrie's renderer class costs 0.6 ms,
+and the cost is flat in the number of cards — 120 ms at one card and 120 ms at twenty — so it is a
+fixed cost paid once per scene build. It is `VGFontManager class >> newWithDefaultFaces`, measured
+on its own at 119.955 ms: a scan of this machine's font directories.
+
+`BARenderer class >> measureTextDuring:` poses our font manager so that Bloc measures text through
+faces our renderers can draw, and `VGFontManager class >> poseFacesOfThisProject:during:` reuses a
+manager of the right kind when one is installed — `installedInstance` — and builds one otherwise.
+In this image `installedInstance` is nil and stays nil, because the posing assigns
+`AeFontManager globalInstance:` directly and the `ensure:` block puts the ambient manager back, so
+nothing is ever recorded as installed. Every scene build under our renderer class therefore rescans
+the machine's fonts. Cairo pays none of it: the upstream manager is already the ambient one, so the
+guard answers early and the block runs with no swap at all.
+
+**The recommendation, and it is the only one.** Cache the manager the posing builds. It is a
+one-time scan of the filesystem presented as a per-layout cost, it is 120 ms against an encode of
+12.7 ms and a Cairo frame of 6.040 ms, and it is larger than everything units 3.1 to 3.9 took out of
+the host half together. That is unit 3.11, and the next lever after it is `bin`, which is half the
+encode on the frame the verdict turns on and three quarters of it on the cheap ones.
+
+Two cautions for whoever takes them. The 135 ms is outside every figure phase 3 has quoted so far:
+`measureStagesOn:` and `measureOn:` are given a surface that is already drawn, so the stage `encode`
+and the stage `dispatch` have never included it, and the Cairo figure of the same frame does include
+its own 0.6 ms of the same work. And a tool that builds its scene once pays the 120 ms once, while a
+tool that relayouts text pays it per layout; which of the two the verdict should be read against is
+a question for unit 3.11, not an argument against caching.
+
+**Artefacts.** The example is `VGFrameStageBenchmarkExamples class >> phasesOfTheReferenceFrameEncoding`,
+the one example of that class that needs no device: a display list, a binning and a buffer are all
+host work. The view is `VGTiledFillEncoding >> inspectorPhases:`, a three-column tab of the phases
+the build reached with their microseconds and their shares, ordered by `stageNames` so the tab
+cannot drift from the table, and `inspectorPhasesContext:` answers inactive for an encoding built
+without the clock. `VGFrameStageBenchmarkTest` is 20 tests, `VGFrameDeviceBenchmarkTest` 11,
+`VGPresentPathBenchmarkTest` 5 and `VGTiledFillTest` 52, all green. Critics are clean on the test
+class; on `VGTiledFillEncoding` the one critique is the pre-existing `ReExcessiveMethodsRule`, and
+on `VGFrameDeviceBenchmark` the four fields this unit adds trip `ReExcessiveVariablesRule`, which is
+the first point of the design review that follows and is not touched before that review is agreed.
+
+**The design review, as taken.** Four points were put; two were taken, in the order asked for.
+
+The package tag point first: `VGStageTimings` and every other class of
+`VectorGraphics-Benchmarks` now sits in one of three tags — `Frames`, `Present`, `Manifest` — so
+`ReClassNotCategorizedRule` is clear on the package. The manifest's own class comment was found
+corrupt on the way, with a carriage return between every character of its tag list, and was
+rewritten.
+
+Then the fields. `VGFrameDeviceBenchmark` held thirteen; two Extract Classes take it to seven and
+`ReExcessiveVariablesRule` no longer fires. `VGStageTimings` holds what the passes read: a total, a
+count and a fastest pass per stage, with a stage able to carry timings of its own, which is how the
+encode carries the phases of the host half under it. It is the one place microseconds become
+milliseconds, and it ended the two argument pairs that three measuring methods carried. The count is
+per stage and not the benchmark's repeats, so a stage measured once — the software frame, the
+opening of a device, the staged frame — has a mean and reports no floor. `VGDeviceOutcome` holds
+what the device half answered: the device, the picture, the verdict on the pixels, the reason none
+drew, and the rows a report prints for that half; the comparison with the software picture is a
+message to it rather than a read of its fields from outside.
+
+The other two points were declined, and the accounting gate was rewritten as described above.
+`VGStageTimings` and `VGDeviceOutcome` each carry the example, the inspector view and the gate the
+cycle asks for; critics are clean on both and on the two benchmarks.
+
+### 3.11 — the font scan cached, and the drawing of a frame taken apart
+
+Unit 3.10 found the host half of a frame spending 135 ms on its display list, and named the cause:
+every scene built under this project's renderer class posed a font manager, and posing one built it,
+and building one scans every font directory this machine has. This unit takes that cost out and then
+asks the same question of what is left.
+
+**The cache.** `VGFontManager class` keeps the manager of this machine's fonts in a class-instance
+variable, read through `withDefaultFaces` and built the first time anybody asks.
+`poseFacesOfThisProject:during:` and `installGlobally` both read it, so an image that has drawn a
+frame pays nothing to install and an image that installed pays nothing to draw.
+`forgetDefaultFaces` drops it, which is the one door onto a machine whose fonts changed while the
+image ran, and `hasDefaultFaces` answers whether the scan has happened without starting one — the
+`Installation` view reads it for a third row. `newWithDefaultFaces` still builds cold managers,
+which is what the four tests of the scan itself and one example want.
+
+Sharing it across sessions is safe without a rescan on the hour: a manager built this way holds
+`rebuildsFromDefaultDirectories`, every reader of its catalogue sends `checkSession`, and
+`startUp:` re-poses it, so a new session costs one scan and never a stale face. The 116 ms is
+therefore paid once per session and not once per frame, and in a census it is paid by the throwaway
+drawing each measuring loop already did before its passes.
+
+**The drawing phases.** `VGFrameDeviceBenchmark class >> drawingStageNames` names four, in the
+order a frame pays them: `surface`, `canvas`, `scene`, `record`. The draw blocks time them into the
+timings the caller hands down, through `drawBlockNamed:using:recordingInto:` and
+`drawReferenceOn:using:recordingInto:`; the two-keyword selectors stay and delegate with nil, since
+five senders use them, and a drawing nobody is measuring pays no clock read at all. The readings go
+under `displayList`, which is itself under `encode`, so one `Stages` tab shows the three levels.
+`VGStageTimings >> time:during:` is where the clock idiom of `VGTiledFillDispatch` and
+`VGTiledFillEncoding` now lives for its third reader.
+
+The context the drawing records on is built inside the `surface` phase. Measured between the phases
+instead, it was a sixth of the background frame's whole drawing of 0.17 ms, and the accounting gate
+read 0.875 — the one thing this unit had to fix about its own measurement.
+
+**Gate.** Four identity tests on the cache, none of them timed, because a scan can only be reached
+by building a manager and two poses that answer one object have scanned once: three in
+`VGFontManagerInstallationTest` — two poses see the same manager, `installGlobally` poses that same
+object, and `forgetDefaultFaces` makes the next reader answer a different one — and one in
+`VGFrameProfileTest` on the path a benchmark walks, where two scene builds pose the same manager.
+`setUp` and `tearDown` of the installation test save and restore the new slot alongside the two they
+already restored, so a test that forgets the faces does not leave the next reader of fonts to
+rescan. Then three tests in `VGFrameDeviceBenchmarkTest`: the phases present on every frame are the
+ones the table names, with `canvas` and `scene` on the reference frame alone and absent rather than
+zero elsewhere; the names the drawing times are read out of the source and held to the table, as
+the encoding's phases are; and the phases of one pass account for nine tenths of that same pass over
+the best of five, which measures 0.973 on the background frame and 0.999 on the other two.
+
+**The census, re-read.** The whole of unit 3.10's census, same method — three frames, both extents,
+five passes, floors in ms. Only the `displayList` row moves:
+
+| phase | background 800 | background 1920 | cards 800 | cards 1920 | reference 800 | reference 1920 |
+|---|---|---|---|---|---|---|
+| entries binned | 1900 | 1900 | 3628 | 3628 | 3828 | 3828 |
+| `displayList` | 0.173 | 0.582 | 0.603 | 1.163 | 4.263 | 4.353 |
+| `displayList` at 3.10 | 0.134 | 0.582 | 0.665 | 1.127 | 135.175 | 134.865 |
+| `encode`, whole | 3.108 | 3.448 | 5.841 | 6.718 | 12.629 | 12.225 |
+| `bin` | 2.575 | 2.435 | 4.158 | 4.300 | 5.848 | 5.582 |
+| `entriesAsFills` | 0.000 | 0.000 | 0.001 | 0.001 | 1.125 | 1.110 |
+| `bands` | 0.012 | 0.012 | 0.165 | 0.160 | 1.124 | 1.060 |
+| `sources` | 0.001 | 0.001 | 0.002 | 0.002 | 0.007 | 0.006 |
+| `offsets` | 0.002 | 0.002 | 0.010 | 0.011 | 0.033 | 0.035 |
+| `allocate` | 0.004 | 0.004 | 0.006 | 0.007 | 0.019 | 0.018 |
+| `writeEntries` | 0.009 | 0.009 | 0.239 | 0.230 | 1.713 | 1.692 |
+| `writeSourcePixels` | 0.000 | 0.000 | 0.001 | 0.001 | 0.004 | 0.004 |
+| `writeBandBlocks` | 0.030 | 0.032 | 0.247 | 0.258 | 1.341 | 1.319 |
+| `writeTiles` | 0.803 | 0.932 | 1.006 | 1.012 | 0.979 | 1.093 |
+
+The reference frame's display list went from 135.175 ms to 4.263 ms, a factor of 32, and nothing
+else in the host half moved: the other eleven rows are the 3.10 figures to within the few per cent
+two runs of the same census differ by. The `displayList` row of this table was read after the
+context was folded into the `surface` phase, which is why the two cheap frames read 0.04 ms more
+than they did at 3.10 — that is the context, which 3.10 was not measuring either.
+
+**The drawing, phase by phase.** Same passes, the four phases under the whole:
+
+| phase | background 800 | background 1920 | cards 800 | cards 1920 | reference 800 | reference 1920 |
+|---|---|---|---|---|---|---|
+| `displayList`, whole | 0.173 | 0.582 | 0.603 | 1.163 | 4.263 | 4.353 |
+| `surface` | 0.148 | 0.566 | 0.126 | 0.599 | 0.135 | 0.571 |
+| `canvas` | — | — | — | — | 0.010 | 0.008 |
+| `scene` | — | — | — | — | 0.823 | 0.658 |
+| `record` | 0.011 | 0.011 | 0.453 | 0.532 | 3.200 | 3.001 |
+
+Three things it says. The surface is the whole cost of the cheap frames and is paid for area — 0.13
+ms at 800 by 600 and 0.57 ms at 1920 by 1080, four and a third times the pixels for four times the
+cost — which is the one row of the host half that the extent moves at all. The layout is not the
+problem: the scene of the reference frame, text measuring and all, is 0.82 ms, a fifth of its
+drawing, and it is what the 116 ms was hiding. What is left is `record`, the recording of the
+entries, 3.2 ms of the 4.26 — three quarters of the drawing and a quarter of the whole host half.
+
+**The question 3.10 left open.** Unit 3.10 asked which tool the verdict should be read against: one
+that builds its scene once and pays the scan once, or one that relayouts text and pays it per layout.
+Cached, the question dissolves. A relayout now costs the `scene` phase, 0.82 ms of a 4.26 ms drawing,
+and a tool that relayouts every frame reads the same host half as one that does not to within a
+fifth of its display list. No figure of phase 3 has to be qualified by which of the two it was
+measured on.
+
+**Where the recording goes.** One sampler run over a hundred recordings of the reference scene, each
+sample credited to the nearest method of this project on its stack:
+
+| method | share of the recording |
+|---|---|
+| `VGPathBuilder class >> fixedOf:` | 21.3% |
+| `VGStroker >> directionFrom:to:` | 15.4% |
+| `VGStroker >> appendPolygon:into:` | 11.5% |
+| `VGPaint >> matrix:` | 7.0% |
+| `VGPathBuilder >> lineTo:` | 4.5% |
+| `VGCairoContext >> appendArcCenter:radius:from:to:` | 4.4% |
+| `VGStroker >> joinAt:from:to:into:` | 4.1% |
+| `VGStroker >> quadFrom:to:into:` | 2.7% |
+| `VGCairoContext >> saveState` | 2.7% |
+| `VGCairoContext >> raise:above:` | 2.7% |
+| `VGStroker >> radius` | 2.6% |
+| `VGSpanScanner >> exactBoundingBox` | 2.1% |
+| `VGStroker >> miterTipAt:between:and:side:` | 1.7% |
+| `VGStroker >> perpendicularOf:` | 1.5% |
+
+Stroking is 39 per cent of it and the conversion of coordinates to fixed point another 26. Read as
+raw leaves instead of credited to our methods, the same run is `Point >> r` at 12.4 per cent,
+`SequenceableCollection >> collect:` at 12.3, `Number >> @` at 6.7, `withIndexDo:` at 4.8,
+`Number >> negative` at 4.6, `Float >> abs` at 3.8 and `Point >> +` at 3.8: the recording of a frame
+is arithmetic on freshly allocated `Point` objects, collected into new sequences, one per vertex of
+every stroke outline. Nothing in it is Bloc, nothing is Alexandrie, and nothing is text.
+
+**The recommendation.** Two levers are now named and `bin` is still the larger: 5.85 ms of the
+reference frame's 12.6 ms encode and three quarters of the cheap frames', against 3.2 ms for the
+recording. So `bin` first, as unit 3.10 said, and the recording after it — and when the recording is
+taken, what to take is the `Point` traffic of `VGStroker` and `VGPathBuilder class >> fixedOf:`,
+not the number of entries. Neither is scheduled by this unit, which measures and stops.
+
+**Artefacts.** `VGFontManagerExamples class >> sharedManagerOfTheMachineFonts` is the example of the
+cache, and the identity is what it shows: clicked twice it answers the same object.
+`VGStageTimingsExamples class >> timingsOfTheDrawingOfTheReferenceFrame` is the example of the
+phases, and the `Stages` view of `VGStageTimings` renders the three levels it carries —
+`encode`, then `encode: displayList`, then `encode: displayList: record` and its siblings — because
+`stageRows` recurses into whatever a stage was taken apart into. The third row of
+`VGFontManager class >> inspectorInstallation:` is the view of the cache, asked through
+`hasDefaultFaces` so that opening the tab builds nothing. `VGFontManagerInstallationTest` is 10
+tests, `VGFontManagerTest` 16, `VGFrameProfileTest` 18, `VGFrameDeviceBenchmarkTest` 18,
+`VGFrameStageBenchmarkTest` 20 and `VGPresentPathBenchmarkTest` 5, all green; the installation suite
+ran 8 tests in 1127 ms before the cache and runs 10 in 182 ms after it. Critics are clean on
+`VGFrameDeviceBenchmark`, `VGStageTimings`, `VGStageTimingsExamples`, `VGFontManagerExamples` and
+the test classes; on `VGFontManager` the three critiques are the pre-existing two
+`ReExcessiveArgumentsRule` and one `ReInconsistentMethodClassificationRule`, none of them on a
+method this unit wrote.
+
+**The design review, as taken.** Five points were diagnosed on the production code this unit touched, two
+taken and three declined.
+
+Taken. `timings insideOf: #encode` stood in four methods of `VGFrameDeviceBenchmark` and the
+two-level `(timings insideOf: #encode) insideOf: #displayList` in one of them; both are now read
+through `encodeTimings` and `drawingTimings`, so the nesting of the tables is stated once. And the
+clock was written three times — in `VGStageTimings`, and once more in each of `VGTiledFillEncoding`
+and `VGTiledFillDispatch`, which kept a `Dictionary` and summed into it by hand. `VGStageTimings`
+moved from `VectorGraphics-Benchmarks` to the `Budget` tag of `VectorGraphics-Vulkan`, beside the
+`VGVulkanRoundTrip` whose constants it already read, because a device class may not name a
+benchmark; `recordStages` of both classes now builds one, `timeStage:during:` delegates to
+`time:during:`, and `stageMicroseconds` reads the new `microseconds`, which answers the totals in
+the clock's own unit so a caller can add a reading of it to a table of its own. The public surface
+did not move and no test changed: eleven suites, 381 tests, green across the two packages.
+
+Declined. A null-object timings would delete the three `recordingInto:` delegators and the nil
+guard in `timeDrawing:into:during:`, at the price of the one property that guard buys — an
+unmeasured drawing reads no clock, which is the precedent `VGTiledFillEncoding` set. A class per
+budget frame would replace the `aSymbol = #background` cascade of `drawBlockNamed:using:recordingInto:`
+with polymorphism, at the price of three classes, three examples and three views for a set of frames
+that has not changed since unit 1.11. And the two source-reading meta tests, one per phase table,
+are a second occurrence and not a third, so they stay as they are.
+
+Two defects came out of the review rather than the diagnosis. `newSurfaceOnBackend:recordingInto:`
+assigned the surface across the phase block, which `ReTempsReadBeforeWrittenRule` reports; the block
+answers the context now and the surface is read back from it. And the class comments of
+`VGStageTimings`, `VGDeviceOutcome` and their two example classes held LF, which this project
+forbids: invisible in the browser, but Iceberg reported the working copy modified for ever, because
+the comment on disk was CR and the comment in the image was not. `VGArchitectureTest >>
+testEveryClassCommentOfThisProjectIsCrOnly`, the counterpart of `PVArchitectureTest`'s, is the gate
+that failed on those four and passes now, and it refuses to pass on an empty scan so a mistyped
+package query cannot hide behind it.
+
+### 3.12 — the interior questions, asked of sixteen tiles at once
+
+Unit 3.11 left the host half of a frame at 12.6 ms with `bin` the largest phase of it, 5.85 ms of
+the reference frame, and unit 3.10 had already said what a binning spends its time on: it asks of
+every (entry, tile) pair whether the entry covers every pixel of the tile, because a pair that does
+needs no coverage walked on the device. The reference frame asks that question 2752 times. This
+unit makes the question cheaper by asking it of bigger rectangles first, and it records one lever
+that was built, measured and taken out again.
+
+**What the profiler said, and why it was wrong.** `AndreasSystemProfiler` attributed 66.6% of a
+binning to `Rectangle >> center` through `Point >> //`, which would have made the centre of a tile
+the thing to cache. Counting the calls disproved it: the reference frame computes 2688 centres, not
+the 29000 the sample distribution implied, and timing the three parts of the predicate apart gave
+`anEdgeMeets:` 1.340 ms, `isInsideAt:` 1.832 ms and the centre 0.197 ms of 5.405. A sampler that
+fires inside a short leaf method called from one place reports where the program is, not what the
+program costs; counting the calls and timing the parts is what decided this unit, and the sampler
+was not used again.
+
+**The lever.** `VGTileGrid` groups its tiles into super tiles of four by four —
+`interiorProbeFactor`, with `superTileColumns`, `superTileRows`, `superTileCount`,
+`boundsOfSuperTileAt:`, `tileIndexesOfSuperTileAt:` and `superTileIndexesIntersecting:` beside the
+tile-level methods they mirror. `VGTileBinning >> bin:at:` then asks the same predicate of the
+super tile before it asks the tiles inside it. An entry that covers a whole super tile covers every
+tile of it, so one walk over the edges of a shape marks sixteen pairs interior and the sixteen
+tiles are never asked; where the super tile answers no, the tiles are asked exactly as before. The
+predicate is unchanged and so are the marks: 2208 interior pairs on the reference and the cards
+frames and 1728 on the background frame, before and after.
+
+The factor was measured, on the interior testing of the reference frame alone: 3.815 ms at four
+against 4.307 at two and 4.304 at eight, where asking every tile on its own costs 5.036. Four is
+what `interiorProbeFactor` answers and the method says why.
+
+**What the descent is worth.** Floors of twenty binnings of one display list, 800 by 600:
+
+| frame | flat | super-tile descent |
+|---|---|---|
+| background | 2.189 | 1.111 |
+| cards | 4.234 | 3.463 |
+| reference | 5.722 | 4.587 |
+
+A binning of a display list freshly recorded through the Bloc renderer, which is what a running
+tool does, reads 6.485 ms flat against 5.870 with the descent: the gain is smaller there because
+the scanners are cold and the walk a super tile saves is a walk that had to build an edge index
+first.
+
+**The lever that was refused.** The plan's second lever was a memo: a span scanner remembering
+whether it encloses a rectangle, under that rectangle's identity, since a binning asks one scanner
+about one tile once for the fill of every entry that shares the tile and once more for every shape
+of every clip — the reference frame has 88 entries, 12 distinct clip scanners and 37 scanners
+reached in all, so the sharing is real. It was built, with the grid handing out one `Rectangle` per
+tile and per super tile so identity could hit, and it was measured a loss on every frame: 5.907 ms
+of binning against 4.587 on the reference frame, 4.833 against 3.463 on the cards frame, 1.534
+against 1.111 on the background frame.
+
+Two reasons, both measured. A grid is built for every frame, so the rectangles one frame asks about
+are objects no later frame holds and the memory of a scanner can only pay inside one frame. And
+inside one frame the repeated questions are the cheap ones: of the 2752 questions the reference
+frame asks, 1964 reach a walk, and the 788 that repeat are answered by an exact bounding box that
+does not contain the tile — a comparison, not a walk. A dictionary lookup on every question is
+dearer than that comparison. The memo, its test and its counting stub are gone; the sentence saying
+so and the two figures stay in `VGSpanScanner >> enclosesWholly:`, so the lever is not proposed a
+third time.
+
+**The binning's own stage table.** `VGTileBinning class >> stageNames` names four phases —
+`boundingBox`, `indexes`, `interior`, `bins` — and `recordStages`, `timeStage:during:` and
+`stageMicroseconds` are the same idiom `VGTiledFillEncoding` and `VGTiledFillDispatch` already use,
+now over the `VGStageTimings` that unit 3.11 moved into `VectorGraphics-Vulkan`. A binning nobody
+asked reads no clock at all, which is the first assertion of its test, because the clock would
+otherwise be read four times an entry. On the reference frame drawn through the Bloc renderer:
+
+| phase | ms |
+|---|---|
+| `interior` | 4.313 |
+| `indexes` | 0.934 |
+| `bins` | 0.489 |
+| `boundingBox` | 0.465 |
+
+So the interior questions are seven tenths of the binning even with the descent in place, and that
+is where a further unit has to go. The measured whole is about twice the unasked binning — 13.122
+ms against 6.646 — which is what reading the clock 15312 times costs; the shares are what the
+table is for, not the total.
+
+**The frame, after.** One `VGFrameStageBenchmark` run of the reference frame at 800 by 600, three
+passes, against the same rows at 3.11: `bin` 5.321 ms mean and 4.613 floor against 5.848, `encode`
+11.622 mean and 11.193 floor against 12.629, `dispatch` 8.560, whole frame 20.182 ms, Cairo 2.463
+with a floor of 2.115, which reads as 8.2 times. The encode phase is now the smaller half of the
+frame for the first time in phase 3.
+
+**Gate.** Two tests added, both of them counting rather than timing. One holds the grid's super
+tiles to its tiles: every super tile of the default grid holds exactly the tiles whose bounds it
+contains, every tile belongs to one super tile, and the union is the whole grid. The other holds
+the descent itself: a stub entry that answers yes to every rectangle and counts how often it was
+asked is binned over a frame of one super tile, and it is asked once for the sixteen tiles it
+covers. A third test holds the stage table, as described above. Green on the suites this unit can
+move: `VGTileBinningTest` 23, `VGRasteriserTest` 16, `VGTiledFillTest` 52, `VGTiledClipTest` 11,
+`VGTiledBlitTest` 13, `VGKernelVisitCensusTest` 8 and `VGArchitectureTest` 71.
+
+The grid also reads a bounding box in one place now: `pixelBoxOf:` answers the whole pixels of a
+box inside the extent, or nothing where it touches no pixel, and the three readers that ask what a
+box reaches — tiles, rows and columns, and super tiles — all go through it, so they cannot
+disagree. The `Super tiles` tab of `VGTileGrid` and the `Phases` tab of `VGTileBinning` are the two
+views this unit added, with
+`VGTileBinningExamples class >> binningOfTheReferenceFrameWithItsPhasesTimed` as the object to open
+the second on.
+
+
+**The design review, as taken.** Four points were diagnosed on the production code this unit
+touched, and all four were taken.
+
+`VGTileBinning >> bin:at:` was three levels of one job in one method: the super tiles a bounding
+box reaches, the interior question and the tiles inside one super tile, and the writing of a
+reference into a bin. The middle level came out as `bin:at:inSuperTileAt:of:`, which left the outer
+method four lines long. The writing stayed inline, and the method now says why. Both shapes were
+timed against each other inside one session, twenty passes of each alternating, because a figure
+from one session read against a figure from another says more about the session than about the
+code — the first attempt at this point was retracted on exactly that mistake. Writing the reference
+through a method of its own costs 5.235 ms of the reference frame against 4.541, and 4.140 ms of
+the cards frame against 3.617: it is paid once a pair, 3828 times on that frame, and a send is
+dearer than the five lines are worth. The super-tile split is the opposite — paid 130 times a
+frame, and the pair of methods measures faster than the one method it came out of, 4.986 against
+5.569 and 3.874 against 4.309.
+
+The clock itself stood three times word for word. `recordStages`, `timeStage:during:` and
+`stageMicroseconds` were written in `VGTiledFillEncoding` and `VGTiledFillDispatch` at unit 3.11
+and a third time in `VGTileBinning` at this one, which is the rule rather than the coincidence.
+They are now `TVGStageRecording`, a trait with the `stages` slot, in the `Budget` tag beside
+`VGStageTimings`. A trait and not a superclass: the three classes have nothing else in common and
+each answers to `Object` directly. Each keeps its own class-side `stageNames`, which stays the one
+place that names its phases, and `isRecordingStages` joined the trait too, so the views that gate
+on whether a caller asked for the phases read a message instead of naming the slot. One cost is
+worth recording: using a trait installs Pharo's own `TraitedClass` methods into the user's
+metaclass, and `run_critics` reports six of them against each user class. They belong to the
+`Traits` package and not to this project, so the architecture test and its scan over
+`package methods` do not see them, but a critics run on those three classes is no longer empty.
+
+`interiorProbeFactor` was named for the probe it was measured with rather than for what it is, and
+is now `tilesPerSuperTileSide`, with its four senders recompiled; the image's method rename does not
+rewrite senders, so they were done by hand and read back. And `VGTileGrid >> inspectorTiles:` bound
+a temporary named `bounds`, shadowing the slot of the same name, which `ReShadowVariableRule`
+reports; it is `tileBounds` now and the class carries no critique.
+
+Nothing else was proposed. No test changed in the review, and the seven suites of the gate above
+are green after each of the four points.
+
+### 3.13 — where the recording goes, and whether Cairo pays it too
+
+Unit 3.11 took the reference frame's display list apart and left it at 4.26 ms: `surface` 0.135,
+`canvas` 0.010, `scene` 0.823 and `record` 3.200. This unit asks what the recording is made of and
+which parts of it Cairo pays as well, so that the host half can be read against the one tool this
+project is measured against rather than against itself. It measures and stops: no lever was built,
+and nothing in the recording path was changed.
+
+**The method.** A part of a frame is priced by recording the frame without it and subtracting.
+`VGFrameProfile` builds the reference scene and its cards through a `without:` keyword, so the
+labels, the stroked borders, the gradients or the cards themselves can be left out by name, and
+`VGFrameDeviceBenchmark class >> drawReferenceOn:using:recordingInto:without:` draws the frame that
+way; the three-keyword selector stays and delegates with nil. `VGFrameRecordComparison` then
+measures the whole frame and the four variants on both kits, at both extents, over twenty passes.
+The two kits alternate inside every pass and the kit that goes first alternates by pass, so neither
+is ever the one measured on a heap the other had just grown, and every figure quoted is a floor —
+the fastest of the twenty — because a mean measures the collector and the scheduler of whichever
+pass met them. Nothing here opens a device.
+
+**The census first, because counting is cheaper than timing.** `VGFrameRecordCensus` counts what
+each frame of the budget records: the fills, the blits, the edges and coordinates of the fills, the
+pixels of the mask surfaces, and the distinct masks, paints and clips, which are distinct by
+identity because `VGClip` and `VGColorPaint` define no `=`. The same picture is recorded at both
+extents, so every count below holds at 800 by 600 and at 1920 by 1080 alike.
+
+| frame | entries | fills | blits | edges | coordinates | mask pixels | masks | paints | clips |
+|---|---|---|---|---|---|---|---|---|---|
+| background | 1 | 1 | 0 | 4 | 16 | 0 | 0 | 1 | 1 |
+| cards | 25 | 25 | 0 | 436 | 1744 | 0 | 0 | 25 | 13 |
+| reference | 88 | 25 | 63 | 2740 | 10960 | 7234 | 14 | 88 | 13 |
+
+Three facts come straight out of it. The glyph atlas works: the reference frame's 63 blits take
+their masks from 14 distinct surfaces of 7234 pixels in all, so no run of this frame rasterises a
+letter twice and the text cannot be a rasterising cost. A paint is built for every entry — 88 of
+them for 88 entries — because every record call makes one. And the geometry is in the strokes: the
+same census over the variants reads 13 fills and 52 edges with the border left out, against 25 fills
+and 2740 edges whole, so the twelve stroked card borders are twelve of the entries and 2688 of the
+2740 edges. Leaving the labels out drops all 63 blits and also every per-card clip, because a card
+with no child pushes none, so that one subtraction prices the glyphs together with the clips they
+bring; the test says so rather than hiding it.
+
+**The floors, both extents, two runs of the twenty passes.** `ours` and `Cairo` are the `record`
+phase — the entries recorded into the display list on my side, the drawing itself on Cairo's — and
+`part` is the whole frame less that variant, which is what the part left out costs.
+
+| left out | ours 800 | Cairo 800 | part ours 800 | part Cairo 800 | ours 1920 | Cairo 1920 | part ours 1920 | part Cairo 1920 |
+|---|---|---|---|---|---|---|---|---|
+| nothing | 3.251 / 2.974 | 1.045 / 1.046 | — | — | 3.125 / 3.004 | 1.164 / 1.130 | — | — |
+| labels | 2.475 / 2.348 | 0.822 / 0.706 | 0.776 / 0.626 | 0.223 / 0.340 | 2.622 / 2.500 | 0.776 / 0.764 | 0.503 / 0.504 | 0.388 / 0.366 |
+| border | 1.058 / 1.039 | 0.755 / 0.699 | 2.193 / 1.935 | 0.290 / 0.347 | 1.163 / 1.093 | 0.748 / 0.763 | 1.962 / 1.911 | 0.416 / 0.367 |
+| gradient | 2.880 / 2.990 | 0.867 / 0.823 | 0.371 / -0.016 | 0.178 / 0.223 | 2.796 / 2.881 | 0.943 / 0.880 | 0.329 / 0.123 | 0.221 / 0.250 |
+| cards | 0.027 / 0.022 | 0.129 / 0.127 | 3.224 / 2.952 | 0.916 / 0.919 | 0.022 / 0.022 | 0.172 / 0.168 | 3.103 / 2.982 | 0.992 / 0.962 |
+
+**What it says.** The recording of the reference frame is 3.0 ms and the same drawing through Cairo
+is 1.05 ms, so the recording is 2.8 to 3.1 times Cairo's whole drawing of the same picture at 800 by
+600 and 2.7 times it at 1920 by 1080.
+
+The gap is the strokes and almost nothing else. The twelve stroked card borders cost my recording
+1.9 to 2.2 ms — two thirds of it — and cost Cairo 0.29 to 0.42 ms: six times, and 1.6 of the 2.0 ms
+by which the whole recording exceeds Cairo's whole drawing. That is the same answer unit 3.11's
+sampler gave from the other end, where stroking was 39 per cent of the recording and the conversion
+of coordinates to fixed point another 26, and it is an answer about twelve shapes: 0.16 ms to record
+one stroked rounded rectangle of 224 edges, against 0.025 ms for Cairo to draw it.
+
+Nothing else in the frame is expensive on my side. The glyphs and their clips are 0.50 to 0.78 ms
+against Cairo's 0.22 to 0.39, within a factor of two of parity and a fifth of the recording. The
+gradients are free to record and cost Cairo 0.18 to 0.25 ms: a gradient is a paint and not a shape,
+the census proves it changes no count, and the subtraction reads 0 to 0.37 ms, which is this
+measurement's noise — recording a gradient paint costs what recording a colour paint costs, and the
+per-pixel reading of it is the device's problem. And the one thing that is paid for area is paid by
+Cairo: the background fill alone is 0.022 ms recorded against 0.13 ms drawn at 800 by 600 and 0.17
+at 1920 by 1080, which is a factor of six to eight in our favour and the reason the ratio falls as
+the surface grows.
+
+The layout is not part of the gap, and it is not quite shared either. The `scene` phase reads 0.70
+to 0.74 ms on my side against 0.55 to 0.65 on Cairo's, both kits laying out the same scene through
+their own renderer class, and dropping the labels takes it to 0.11 ms on both — so text measuring is
+some 0.6 ms that both tools pay, and the tenth of a millisecond between them is the measuring of
+text through one scaled font rather than the other.
+
+**The parity floor.** Reading the two together: my host half cannot go below the `scene` phase plus
+the recording, which is 0.70 + 3.0 = 3.7 ms, while Cairo draws the same frame, layout and all, in
+about 1.65 ms. So at 800 by 600 the host half alone is more than twice Cairo's whole frame with the
+device counted as free, and the recording alone is three times Cairo's drawing. No scheduling of the
+device closes that; only a cheaper recording does, and the recording is the strokes.
+
+At a screen extent the floor reads differently: my recording is flat — 3.0 ms against 3.0, the same
+88 entries and the same 2740 edges, because a display list is built per entry and not per pixel —
+while Cairo's drawing grows with the pixels it covers, 1.05 to 1.13 ms for this frame and 0.13 to
+0.17 ms for the background fill alone. This frame covers a small part of a screen, so the growth is
+slight; a frame that covered it would move Cairo and leave me where I am.
+
+**What this says about the two-kernel question of section 12.7.** It says the question is not
+decided on the host side. The host recording is 3.0 ms, area-independent and stroke-bound; a
+two-kernel frame changes what the device sweep costs and changes nothing here. So the figure 3.13
+contributes is a floor and not a verdict: whichever device shape is chosen, a frame of this scene at
+800 by 600 cannot be brought under about 3.7 ms of host work until the stroke recording is made
+cheaper, and that is the next lever on this side — the `Point` traffic of `VGStroker` and
+`VGPathBuilder class >> fixedOf:` that unit 3.11 named, now priced at 1.9 to 2.2 ms of the frame and
+80 per cent of the gap to Cairo.
+
+**One measurement defect, found and fixed inside the unit.** The first run of this budget built a
+fresh Cairo surface for every pass. A fresh Cairo surface is paged in by the drawing that first
+touches it, so that run read Cairo's background fill at 0.582 ms at 800 by 600 and 1.137 ms at 1920
+by 1080, and its whole frame at 1.472 and 2.461 — figures that a second run of the same code did not
+reproduce, because the operating system had the pages. The rows now keep one Cairo surface and draw
+every pass on it, as a window has one surface for every frame it draws, and the two runs quoted above
+agree to within a few per cent. My own side keeps a fresh surface per pass for the opposite reason:
+our recording appends to the display list of the surface it draws on, so a surface kept would make
+every pass record against a longer list than the pass before it, and the test of that invariant says
+so. The first run's figures are quoted here only to say what they were measuring.
+
+**Artefacts.** `VGFrameRecordCensus` and `VGFrameRecordCensusRow` count a display list, in the
+`Frames` tag of `VectorGraphics-Benchmarks`; an entry is counted by double dispatch —
+`anEntry countedBy: aRow`, answered by `countFill:` or `countBlit:` — so the census never asks an
+entry what class it is. `VGFrameRecordComparison` and `VGFrameRecordComparisonRow` measure the
+variants; a row holds one `VGStageTimings` a kit, so the floor of any drawing phase can be read off
+it, and each variant row knows the whole row of its own extent and subtracts itself from it.
+`VGFrameRecordExamples` holds the two examples, `censusOfTheThreeFrames` and
+`recordComparisonOfTheReferenceVariants`, the second of them five passes at one extent because an
+example is rebuilt on every click. The views are the `Rows` and `Census` tabs of the census and the
+`Rows` and `Verdict` tabs of the comparison, each gated on whether the object has anything to show.
+
+**Gate.** `VGFrameRecordCensusTest` 11, `VGFrameRecordComparisonTest` 9, `VGFrameProfileTest` 22,
+`VGFrameDeviceBenchmarkTest` 18, `VGFrameStageBenchmarkTest` 20 and `VGArchitectureTest` 71, all
+green. Critics clean on every class this unit wrote and on `VGFillEntry`; `VGBlitEntry` carries the
+one `ReExcessiveArgumentsRule` it already had. The census tests count rather than time, as every
+census of this project does: that the variants record the fills of the whole frame and no blit, that
+the border variant loses all but a handful of the edges, that the gradient variant records exactly
+what the whole frame records, and that the frame without its cards is the background alone.
+
+
 ### 12.7 — the other shapes, and why neither is scheduled
 
 Written down so that the stop rule has somewhere to point.
