@@ -317,19 +317,20 @@ has to be narrowed in the same unit that adds the new host.
 
 Per frame of the reference frame, from §2 and from unit 3.0's stage figures:
 
-| Trip | Where | Cost |
-|---|---|---|
-| read the target's own pixels into a packed `ByteArray` | `VGVulkanBackend >> pixelsOf:` | one 1.83 MB CPU copy |
-| that `ByteArray` into the host-visible buffer | `VGTiledFillDispatch >> packBlocksOf:target:` | inside `writeBuffers` |
-| the buffer across the bus | `>> upload` | 0.156-0.222 ms |
-| the frame back across the bus | `>> readbackInto:` | 0.201-0.604 ms |
-| the `ByteArray` into the target's rows | `VGVulkanBackend >> write:into:` | one 1.83 MB CPU copy |
-| the target into an SDL streaming texture | `BlOSWindowSDL2HostSpace >> lockSurfaceFor:scaleFactor:during:` | one 1.83 MB write to write-combined memory, then `sdlRenderer copy:` |
+| Trip | Where | Cost | Measured in 7.6 |
+|---|---|---|---|
+| read the target's own pixels into a packed `ByteArray` | `VGVulkanBackend >> pixelsOf:` | one 1.83 MB CPU copy | 10.3 ms a draw at 800×600, 57.6 ms at 1920×1080 — the allocation and the collections it provokes, not the copy alone |
+| that `ByteArray` into the host-visible buffer | `VGTiledFillDispatch >> packBlocksOf:target:` | inside `writeBuffers` | 38 µs a draw: since unit 3.4 that step names the encoding's own arrays and copies nothing |
+| the buffer across the bus | `>> upload` | 0.156-0.222 ms | 0.257 ms a draw at 800×600, 0.568 ms at 1920×1080 |
+| the frame back across the bus | `>> readbackInto:` | 0.201-0.604 ms | 0.208 ms a draw at 800×600, 0.543 ms at 1920×1080 |
+| the `ByteArray` into the target's rows | `VGVulkanBackend >> write:into:` | one 1.83 MB CPU copy | 1.95 ms a draw at 800×600, 4.05 ms at 1920×1080 |
+| the target into an SDL streaming texture | `BlOSWindowSDL2HostSpace >> lockSurfaceFor:scaleFactor:during:` | one 1.83 MB write to write-combined memory, then `sdlRenderer copy:` | still unmeasured: both paths of unit 7.6's benchmark are offscreen, so neither copies into a texture |
 
 Six movements of one frame, of which this phase removes five and replaces the sixth with a
-device-local `vkCmdCopyBufferToImage`. The two bus figures are the only ones measured; the four
-copies are not, and measuring them on the three benchmark frames is unit 7.6's job rather than an
-assumption made here. Nothing in this table is arithmetic, which is why §2 says no shader removes
+device-local `vkCmdCopyBufferToImage`. The two bus figures were the only ones measured when this
+section was written; unit 7.6 measured three of the four copies, on the reference frame at both
+extents, and they are where the difference between the two paths lives — see 7.6 as built. The
+sixth movement is the one the offscreen benchmark cannot see. Nothing in this table is arithmetic, which is why §2 says no shader removes
 it, and nothing in it closes the gap to Cairo on its own, which is why §8 stands.
 
 ### 7c. The division of labour, following Bloc's own
@@ -418,6 +419,10 @@ path on the reference frame, the verdict is written and the code stays behind it
 being tuned. What this phase removes is host cost, not arithmetic, so a null result would mean the
 frame was never spending time there — which is worth knowing, and is the one thing §2 asserts
 without having measured it.
+
+The rule was not reached. Unit 7.6 measured the presented path faster on all three frames and at
+both extents, 1.31× to 1.64× at 800×600 and 1.96× to 2.98× at 1920×1080, so the frame was spending
+time there after all. What the code does behind its opt-in is unchanged either way, as §8 says.
 
 ### 7.1 as built, 1 November 2026
 
@@ -1059,6 +1064,306 @@ working image; `VGVulkanPresentHostTest` 13, `VGVulkanPresentChainTest` 13, `VGR
 there from the run of the gate above. The four example tests that fail in the child are the four
 that pass in the working image: a child's own world does not start, so an example that opens a
 window cannot run there.
+
+### 7.5 as built, 23 November 2026
+
+The frame that ends on the device brings no destination with it. `VGTiledFillDispatch >> draw:` is
+that frame: one argument, the encoding, no run of host bytes and no readback. `VGVulkanBackend >>
+dispatchOfRecordedFrameForExtent:` sends it and allocates nothing, so the eight megabytes a
+1920-by-1080 frame used to allocate, zero and push across the bus every frame are gone.
+
+**What the unit really removed, which is not what §7e says.** The spec above says
+`packBlocksOf:target:` stops packing the destination pixels. It packs nothing: since unit 3.4 the
+blocks are the encoding's own arrays and that step only names them, which is why the `writeBuffers`
+stage does not shrink here. The per-frame cost of the destination was in two other places — the
+`ByteArray new: anEncoding targetByteCount` each frame allocated on the host, and the `upload`,
+which pushed that array to the device with every other binding. Both are gone: `blocksOf:` names no
+`#target` for a device frame, `upload` skips a binding the blocks do not name, and
+`growBuffersFor:` sizes that buffer from `anEncoding targetByteCount`, the encoding's own rule,
+since no host block states it any more.
+
+**The ownership proof was built, measured and withdrawn.** The plan's rule — keep the pixels when
+the dispatch can prove it owns them, same extent and no release since — was implemented, with a
+`targetExtentHeld` instance variable, and it produced wrong pixels. The evidence: the device frame
+of `testTheImageAFrameEndsInHoldsThePixelsTheSameFrameReadBackHolds` differed from the host frame of
+the same encoding in 865 of 16384 bytes, every one of them on a translucent edge, because the two
+frames share one session dispatch and the second composed over the first. The corpus walk of unit
+7.3b says the same thing in its own comment: one image for the whole walk, "because every case is of
+one extent and a frame overwrites all of it". A dispatch is shared by callers that each want a fresh
+surface, so the dispatch cannot infer from the extent that the pixels under the next frame are meant
+to be kept — only the caller knows that, and no caller asks for it today. The renderer of unit 7.4
+redraws the whole space on every frame and ignores the damaged rectangle. So the instance variable
+was removed and a frame that brings no destination clears it, every time, and the day a caller wants
+to compose over the last presented frame it will say so in its own message rather than by accident.
+
+**The clear.** `Vk class >> cmdFillBuffer:dstBuffer:dstOffset:size:data:` is the ninety-third call
+the binding picks out of `vk.xml`, and `VkCommandBuffer >> recordFillOfBuffer:with:` is the one
+method that writes it, held there by `VkBindingsTest >> testOnlyOneMethodFillsABuffer` as the copy
+into an image is held by its own test. `VGTiledFillDispatch >> clearTarget` cuts a command buffer
+from the pool the copy already keeps, fills the target with
+`VGTiledFillDispatch class >> clearedTargetWord`, submits and waits. A frame that brings its own
+destination from the host clears nothing: its upload overwrites every pixel the kernel reads.
+
+That is one queue submission more per device frame, with a host wait on it, which is a real cost
+this unit added and unit 7.6 has to weigh against the upload it removed. Recording the fill in the
+same command buffer as the dispatch would remove it, and is the first item of the design review.
+
+**The steps of a frame moved one level down.** `draw:` and `draw:into:readBack:` now share
+`computeFrameOf:`: the resident kernel, the buffers, the descriptor set, the clear, the upload and
+the dispatch. Two tests read the frame's source and had to learn where it went.
+`VGFrameStageBenchmarkTest >> timedStagesOf:` walks the sends recursively, visiting each method of
+the dispatch once, instead of one level deep, and `VGTiledFillTest >>
+testAFramePaysOneQueueSubmissionWhateverItsTileCount` counts the single dispatch in
+`computeFrameOf:` and records in its comment that a device frame now pays one submission more.
+`#clear` joined `VGTiledFillDispatch class >> stageNames` between `prepare` and `upload`: three of
+the nine stages now belong to one kind of frame each.
+
+**The view and the example.** The buffer table has a seventh column, `Filled by`, and the row of a
+binding no block names says `cleared on the device`, counts its words off the buffer itself and
+shows none of them — they are on the device, and reading them back is what the frame was built to
+avoid. `VGTiledFillExamples class >> twoFramesEndedInAnImageOnThisMachine` draws the three-shape
+frame twice into a `VkImage`, destroys the image and answers the dispatch, so one click shows both
+the target row the device filled and the `clear` stage the frame paid instead of that upload.
+
+**Gate.** `VGTiledImageCopyTest` at 15: a device frame names no `#target` block; the backend's own
+recorded frame names none either; a device frame pays the `clear` stage and a frame read back does
+not; the same frame drawn twice through one dispatch ends in the same pixels, which is the gate the
+clear exists for; the first frame after a `releaseDevice` ends in those same pixels, which is the
+degenerate state; and the buffer table says which buffer the host filled and which the device did.
+The four tests of unit 7.3b — the corpus walk, the backend's two paths and the image-against-readback
+parity — are the cold-frame half of the gate and stayed green.
+
+**Numbers worth carrying into 7.6.** On the 64-by-64 test frame the clear costs about 850
+microseconds against a dispatch of about 2000, which is submission and fence overhead rather than
+the 16 kilobytes it writes. And a caution about every number measured in a long-lived image: six
+frames drawn in sequence through one dispatch grew monotonically, 2048 to 8738 microseconds of
+`dispatch`, and the host path with no clear in it grows the same way, 1240 to 4994. It is not
+something this unit introduced, and unit 7.6 must not read a measurement taken after a long run as
+if it were a cold one.
+
+Green: 15 in `VGTiledImageCopyTest`, 51 in `VGTiledFillTest`, 16 in `VGFrameStageBenchmarkTest`,
+13 in `VGTiledBlitTest`, 11 in `VGTiledClipTest`, 23 in `VGTiledFillKernelTest`, 11 in
+`VGTiledSurfacePaintTest`, 13 in `VGVulkanBackendTest`, 12 in `VGVulkanRoundTripTest`, 16 in
+`VGVulkanDeviceSessionTest`, 11 in `VGFrameDeviceBenchmarkTest`, 19 in `VGVulkanBlurTest`, 70 in
+`VGArchitectureTest`, 60 in `VectorGraphicsDocumentationTest`, 295 in `VkBindingsTest`, 72 in
+`VkCoreTest` and 63 in `PVComputeTest`. Renraku is clean on every class the unit changed; the new
+binding carries the `ReExcessiveArgumentsRule` critique every other `Vk` command carries, which is
+the C signature.
+
+#### Design review
+
+Five points, three taken now and one deferred to 7.6.
+
+Taken: five methods of `VGTiledFillDispatch` asked the `blocks` dictionary whether the host had
+filled a binding, each in its own idiom — `includesKey:`, `at:ifPresent:`, `at:ifAbsent:`.
+`blockOfBinding:` answers those words or nil and `hostFilled:` answers whether there are any, so
+`clearTarget`, `upload`, `byteCountOfBinding:in:` and `bufferRowOfBinding:at:` read the concept and
+not the lookup. Taken: `bufferSizeForBinding:in:` states the size rule — what the binding owes the
+device, rounded to a whole element, never below the empty buffer — and `growBuffersFor:` is left
+saying when a buffer is made and in which order it replaces the one it grew from.
+
+Deferred to 7.6: a device frame pays three queue submissions, each with its own fence wait — the
+clear, the dispatch and the copy into the image — where before this unit it paid two. Recording the
+fill into the dispatch's own command buffer, with a buffer memory barrier from the transfer write to
+the shader read, removes one of them, and the measurement 7.6 runs is what should say whether the
+clear is worth what the upload cost. A blind rewrite of the barrier ahead of that measurement would
+be a race traded for a copy, with nothing to show it either way.
+
+Declined: `clearTarget` and `copyTargetInto:` share the four lines that cut a command buffer from
+the session's pool, record into it and submit it with a wait. Two occurrences, and the deferred
+point deletes one of them. Declined: `bufferRowOfBinding:at:` answers a positional row of seven
+elements that `inspectorBuffers:` reads by index. A row class would be a new abstraction for a
+table that works, and the index reads are older than this unit.
+
+Suites after the review: `VGTiledImageCopyTest` 15, `VGTiledFillTest` 51, `VGFrameStageBenchmarkTest`
+16, `VGVulkanBackendTest` 13 and `VGArchitectureTest` 70, with Renraku clean on
+`VGTiledFillDispatch`. Commit: `PRESENT 7.5 review: the host's own blocks named once`.
+
+### 7.6 as built, 23 November 2026
+
+**The verdict: the presented path is faster on every frame and at both extents.** Minimum
+microseconds of one draw, three rounds of forty timed draws a path a frame, the two paths
+alternating through one shared dispatch so that neither is measured on a device the other warmed:
+
+| Frame | Extent | Presented | Read back | Faster by |
+|---|---|---|---|---|
+| background | 800×600 | 4.14 ms | 5.41 ms | 1.31× |
+| cards | 800×600 | 5.12 ms | 8.39 ms | 1.64× |
+| reference | 800×600 | 8.05 ms | 10.72 ms | 1.33× |
+| background | 1920×1080 | 4.10 ms | 12.22 ms | 2.98× |
+| cards | 1920×1080 | 5.49 ms | 15.92 ms | 2.90× |
+| reference | 1920×1080 | 9.10 ms | 17.81 ms | 1.96× |
+
+The gap widens with the extent, which is the shape the phase predicted: what the presented path
+removes is proportional to the pixels of the frame and not to its arithmetic. At 800×600 the frame
+keeps one 1.83 MB round trip through the host; at 1920×1080 it keeps an 8.3 MB one, and the device
+work in front of it has barely grown.
+
+**What the benchmark is.** `VGPresentPathBenchmark`, in `VectorGraphics-Benchmarks`, with
+`VGPresentPathComparison` holding one frame at one extent on one path. It is offscreen on purpose:
+the presented path in a window presents through a FIFO swapchain, so every frame there waits for the
+vertical blank and the wall clock reads the refresh period of the screen whatever the path costs.
+The windowed half is the example, below, and it says only that the path keeps up.
+
+A round discards its first draw, then empties both tables of stages, then times forty. The discard
+is what the alternation needs: a round follows the other path, and what that path left in the
+buffers, in the caches and in the host's own heap is paid by the draw after it. Both tables are
+emptied there because `VGTiledFillDispatch >> timeStage:during:` adds to a table that only
+`recordStages` resets, so a table not emptied at that point would hold the draws of the other path
+and the discarded draw of this one beside the timed ones. `VGPresentPathBenchmarkTest >>
+testAStageOfARoundIsAPartOfADrawOfIt` holds that: no stage of a round may be slower than the
+slowest draw of it. It was written after the bug it describes was already fixed, which is the one
+place this unit did not follow the project's own rule; the evidence that it would have been red is
+in the first run's figures, where the dispatch stage read 140 ms against a 5.3 ms draw.
+
+The verdict figure is the minimum, not the mean. The stage table of the read-back path says why:
+`pixelsOf` reads 9 to 10 ms a draw at 800×600 and 35 to 58 ms a draw at 1920×1080, which is more
+than the whole draw at its minimum. That stage allocates a fresh `ByteArray` of the frame's size
+every draw — 1.83 MB and 8.3 MB — and the mean is dominated by the garbage collections those
+allocations provoke, not by the copy. The minimum is the draw that did not collect, the median is
+in between, and both are kept in the comparison and shown in the inspector.
+
+**The stages, per draw, at 1920×1080 on the reference frame** (means of a round of twenty, which
+for the read-back path are inflated as above):
+
+| Stage | Presented | Read back |
+|---|---|---|
+| writeBuffers | 68 µs | 30 µs |
+| allocate | 39 µs | 13 µs |
+| upload | 117 µs | 568 µs |
+| dispatch | 8.04 ms | 9.72 ms |
+| copy into the image | 0.97 ms | — |
+| readback across the bus | — | 0.54 ms |
+| `pixelsOf:` | — | 57.6 ms |
+| `write:into:` | — | 4.05 ms |
+
+The two host copies §7b could only name are measured there, and they are the whole of the
+difference: the bus figures are small on both sides, and the device does the same dispatch for both.
+
+**The clear folded into the dispatch, which is 7.5's deferred review point.** Unit 7.5 filled the
+destination of a device frame in a submission of its own, so such a frame waited on the queue twice.
+`VGTiledFillDispatch >> clearAndDispatchOver:` now records the fill and the dispatch into one
+command buffer, with `VkCommandBuffer >> recordFillToComputeBarrier` between them — a
+`TRANSFER_WRITE` to `SHADER_READ` memory barrier, which is what makes the fold legal, since a fill
+and a dispatch in one command buffer are not ordered against each other without it. The barrier
+itself is `VkCommandBuffer class >> fillToComputeBarrier`, an extension method of this project on
+PharoVulkan's class, next to the barriers that were already there.
+
+Measured before and after, minimum microseconds of the presented path: background 4486 → 4142 and
+5237 → 4097, cards 5709 → 5122 and 7397 → 5492, reference 8469 → 8048 and 8629 → 9098. Five of the
+six moved down by 0.3 to 1.9 ms, which is the order of the 0.85 ms of submission and fence overhead
+unit 7.5 measured for the clear on a small frame; the sixth moved up by 0.47 ms, inside the
+run-to-run spread of this machine. The fold is worth keeping for the submission it removes rather
+than for a figure it guarantees.
+
+**The `clear` stage disappeared with that submission**, because the host can no longer time the fill
+apart from the dispatch it rides in. `VGTiledFillDispatch class >> stageNames` is eight names again
+and records why. The test that read the stage table for proof that the destination is filled is now
+behavioural: `VGTiledImageCopyTest >> testAFrameDoesNotShowThroughTheFrameDrawnAfterIt` draws a
+small corner frame alone, then draws a large frame and the small one again through the same
+dispatch, and asserts the same pixels both times. It cannot pass unless the fill happened and the
+dispatch waited for it, so it is the barrier's test as well as the fill's.
+
+**The example and the views.** `VGPresentPathBenchmarkExamples class >>
+onTheThreeFramesOnThisMachine` runs one round of three draws — the verdict run is minutes long and
+is a thing to start by hand, not to open from a browser. The benchmark has two inspector views, a
+verdict table of the two paths against each other and a draw table of minimum, median and first
+draw; the comparison has a third, one column a round, of the stages of that round.
+
+**The window, which reports what it achieved.** `VGVulkanPresentRendererExamples class >>
+openWindowAndPresentTheFrameNamed:` opens a real window, builds the surface, the swapchain and the
+renderer over it, presents one named frame a hundred and twenty times, closes the window and answers
+one `VGPresentPathComparison` holding the measured interval of every present. A hundred and twenty
+presents are two seconds at sixty hertz, which replaces the two-second delay the example had when it
+showed each frame once. The `<sampleInstance>` example,
+`openWindowAndPresentTheBenchmarkFrames`, sends it once a frame, so the one-click run is three
+windows in turn. It is run by hand, alone, after a commit — it opens a real window, which is what
+the losses recorded under 7.3a and 7.4 were.
+
+A window a frame is the shape because the first one was not. The example as first written held all
+three frames in one window, 363 presents inside one call, and driven from a tool evaluation on
+23 November 2026 that call never returned: the whole run sits in one process, so a present that
+stalls leaves no frame finished, no interval reported and the window open. The image recovered on
+its own after some minutes, with one orphan window left on screen whose handle no object of the
+image held any more — `VGVulkanPresentHostSpace allInstances` answered 0, and Pharo's SDL2 binding
+has no `SDL_GetWindowFromID` to reach it by. The `PVVulkanDriver installDuring:` of the interrupted
+call had not run its ensure block either, so the image was left with the Vulkan driver installed.
+`VGVulkanPresentRendererTest >> testTheWindowExamplePresentsOneFrameAWindow` counts the sends that
+hold the new shape: the method that opens a window names one frame and presents it once, and the
+method that names the three frames opens no window of its own. The in-window interval is still
+unmeasured; what this unit's verdict rests on is the offscreen comparison, which never opens a
+window.
+
+**Nothing shipped changes.** The presenting host stays opt-in and Bloc's default stays Cairo, as §8
+says. The verdict says what the device path costs when it keeps its frame on the device, not that a
+window should use it.
+
+**Gate.** `VGPresentPathBenchmarkTest` at 5: a run reports every frame on both paths at both
+extents; every comparison holds the draws it was asked for, with its minimum no greater than its
+median; each path is measured on the stages that path pays — the presented path copies into an image
+and makes no host copy, the read-back path pays `pixelsOf`, `readback` and `writeInto` and no copy —
+a machine with no device answers a reason instead of rows, and no stage of a round is slower than
+the slowest draw of it. The gate asserts shape and path only: it makes no claim about which path is
+faster, because that is a property of the machine and not of the code.
+
+Green: 52 in `VGTiledFillTest`, 15 in `VGTiledImageCopyTest`, 16 in `VGFrameStageBenchmarkTest`, 5
+in `VGPresentPathBenchmarkTest`, 13 in `VGTiledBlitTest`, 11 in `VGTiledClipTest`, 23 in
+`VGTiledFillKernelTest`, 11 in `VGTiledSurfacePaintTest`, 13 in `VGVulkanBackendTest`, 12 in
+`VGVulkanRoundTripTest`, 16 in `VGVulkanDeviceSessionTest`, 11 in `VGFrameDeviceBenchmarkTest`, 19
+in `VGVulkanBlurTest`, 15 in `VGConformanceTest`, 70 in `VGArchitectureTest` and 60 in
+`VectorGraphicsDocumentationTest`. Renraku is clean on `VGTiledFillDispatch` and on `VkCommandBuffer`;
+the two new benchmark classes carry the `ReClassNotCategorizedRule` critique every class of
+`VectorGraphics-Benchmarks` carries, which is that package's convention.
+
+Commits: `PRESENT 7.6: the two paths measured against each other`, `PRESENT 7.6: a stage table that
+reads as one draw`, `PRESENT 7.6: the fill of a frame rides in the dispatch's own submission` and
+`PRESENT 7.6: the window example reports the interval it achieved`.
+
+#### Design review
+
+Four points, all four taken, the third in a cheaper form than it was proposed in.
+
+Taken: the target binding was written as a bare symbol in five methods of `VGTiledFillDispatch` and
+two of `VGTiledFillKernel`, and the dictionary of device buffers was read open in six.
+`VGTiledFillKernel class >> targetBinding` names it, beside the `bindingNames` that state the whole
+contract, and `VGTiledFillDispatch >> bufferOfBinding:` answers the buffer kept for a binding as
+`blockOfBinding:` answers what the host filled it with. `bindingsNotOfAnEncoding` keeps its literal
+list: it declares names, like `bindingNames` itself, rather than treating one of them specially.
+
+Taken: the dispatch's instance variable was `copyPool`, from the unit where a copy into an image was
+the only thing cut from it. Since the fold it holds every command buffer the dispatch owns, and the
+accessor already said so, so the variable is `commandPool`.
+
+Taken: `VGPresentPathBenchmark` formatted the milliseconds of a comparison, which are the
+comparison's own figures. `VGPresentPathComparison` answers `fastestMillisecondString`,
+`medianMillisecondString` and `firstDrawMillisecondString`, and both tables read off their items. The
+benchmark keeps `readBackStringOf:` and `factorStringOf:`, which need both sides of a pair and are
+its own to pair.
+
+Taken in a cheaper form: `stagesOf:on:` asked whether the path it was building a table for was the
+readback one before it added the copies made in the host — a test on a symbol, which the review
+proposed to replace with a `VGPresentPath` and two subclasses, one a strategy a path. That was
+dropped on the project's own guard against over-engineering: three classes, each owing a class
+comment, a `<sampleInstance>` example and an inspector view, to remove one conditional from a
+benchmark harness, when the project already carries stage names and path names as symbols
+everywhere — `VGTiledFillDispatch class >> stageNames` is the same shape. What was taken instead
+removes the conditional outright and adds nothing: `hostCopiesOf:` answers one table a path,
+`timed:of:during:` writes into the table of the path that made the copy, and the merge adds whatever
+that path recorded. A path that copies nothing in the host has an empty table, which is what makes
+it the path it is.
+
+Declined: the four lines that cut a command buffer from the pool, record into it and submit it with a
+wait are shared by `clearAndDispatchOver:` and `copyTargetInto:`. Two occurrences, which is what unit
+7.5 declined for the same two methods. Declined: `bufferRowOfBinding:at:` answers a positional row of
+seven elements, unchanged since 7.5 and still a table that works.
+
+Suites after the review: `VGTiledFillTest` 52, `VGTiledImageCopyTest` 15, `VGTiledFillKernelTest` 23,
+`VGPresentPathBenchmarkTest` 5, `VGFrameStageBenchmarkTest` 16, `VGVulkanDeviceSessionTest` 16,
+`VGConformanceTest` 15, `VGArchitectureTest` 70 and `VectorGraphicsDocumentationTest` 60, with
+Renraku clean on every class touched apart from the package convention above. Commits: `PRESENT 7.6
+review: the binding a frame may bring is named once`, `PRESENT 7.6 review: the dispatch's pool is
+named for what it holds`, `PRESENT 7.6 review: a comparison prints its own figures` and `PRESENT 7.6
+review: the host copies of a path are the path's own table`.
 
 ## 8. What this is not
 
