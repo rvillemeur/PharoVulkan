@@ -820,6 +820,42 @@ by hand from the `EpBehaviorCommentChange` entries, and their methods replayed a
 stands and is now the only way these suites are run: a window-opening or example-walking class goes
 to a child image, never to the working one.
 
+#### Design review
+
+Five points were diagnosed. One was declined as written, one had already been fixed while the unit
+was built, and three were taken on 23 November 2026.
+
+`VGTiledFillDispatch >> draw:into:endingIn:` read as two destinations. The `into:` was a scratch
+`ByteArray` no caller ever looked at: every sender built one of the right size and threw it away,
+and `VGVulkanBackend >> drawFrameInto:` multiplied the extent by the bytes per pixel of
+`VGTiledFillEncoding targetFormat` to do it. The dispatch owns those bytes now and the selector is
+`draw:endingIn:`. The size rule went with them: `VGTiledFillEncoding >> targetByteCount` answers it,
+which is also the fourth point of the review — the Demeter chain through `targetFormat` is gone with
+the arithmetic (`1f51c0c`).
+
+Two methods of the dispatch compared `touchedTileCount` to zero to decide that there was nothing to
+dispatch and nothing to copy. `VGTiledFillEncoding >> touchesNoTile` is that decision, named once,
+and both ask it (`b5a912d`).
+
+A defect in `VGFrameStageBenchmarkTest >> testEveryStageTheDispatchTimesIsOneItNames` came out with
+it. The stage table has named a copy stage since this unit, but the test walked
+`draw:into:readBack:` alone and the copy is paid by the other kind of frame, so the test was red for
+a rule it could not see — and it had not been run in the unit's own verification. It walks both
+frame methods now and states what each pays: the frame whose pixels the host reads pays every stage
+but the copy, the frame that ends on the device is the only one that pays it, and between them they
+time every stage the table names.
+
+`copyTargetInto:` was the first point. It had already been cut to a timing frame around one
+allocation, one recording and one submission while the unit was built, with
+`recordCopyInto:in:` holding the region and the transition, so there was nothing left to extract.
+
+Declined: giving `#target` a buffer usage of its own. One constant for every buffer is a flag more
+than the other buffers need and no risk; splitting it would be a second rule to keep.
+
+Green after the review: 51 in `VGTiledFillTest`, 9 in `VGTiledImageCopyTest`, 13 in
+`VGVulkanBackendTest`, 12 in `VGVulkanRoundTripTest`, 16 in `VGFrameStageBenchmarkTest`, 11 in
+`VGFrameDeviceBenchmarkTest`, 16 in `VGVulkanDeviceSessionTest` and 70 in `VGArchitectureTest`.
+
 ### The defect in `requiredInstanceExtensions`, fixed 22 November 2026
 
 `SDL_Vulkan_GetInstanceExtensions` is declared `bool` in the uFFI binding, so it answers `true` or
@@ -842,6 +878,187 @@ a child image 13 in `VGVulkanPresentHostTest`, 12 in `VGVulkanPresentChainTest`,
 `VGVulkanDriverSdl2HostTest`, 63 in `PVGraphicsTest` again and 6 in `VGVulkanExamplesTest`. Renraku
 clean on both classes. Commits: `d296845` on PharoVulkan, and `2fedd71` on VectorGraphics for the
 missing gate of the `Stages` tab, which that examples run is what caught.
+
+### 7.4 as built, 22 November 2026
+
+The renderer draws. `VGVulkanPresentRenderer >> render:` records the space of the window on a Cairo
+surface it keeps, replays that recording on a `VGVulkanBackend`, and hands the dispatch the backend
+computes to `presentFrameFor:scaleFactor:during:`, which copies it into the acquired swapchain image
+through the device-local copy 7.3b built. No pixel of a presented frame crosses the host.
+
+**The frame is recorded, not rasterised.** The surface the space is drawn on is a recording surface
+of the drawable extent, kept between frames and released when the extent or the scale changes:
+`recordingSurfaceForExtent:` answers the one it holds when both still match. Its own pixels are
+never drawn and never read — only its display list is, replayed on the backend. The scale factor
+rides on the surface as a device scale, which is what turns a frame drawn in space coordinates into
+the device-space segments the tile encoding bins.
+
+**A refused device leaves selection and the frame is dropped.** The replay and the dispatch run
+inside one `on: VGBackendFailure do:` which rejects the failing backend class and answers nil. The
+chain clears the image through its own render pass for a nil dispatch, so a window whose device
+refuses a frame shows a cleared frame rather than a stale one, and the next frame is computed by
+whichever backend selection answers after the rejection.
+
+**`VGDrawnFrameElement`, the way into a Bloc space.** A frame written against this project's drawing
+context — a case of the conformance corpus, one of the three frames of the benchmark — is not a Bloc
+element, and the gate needs it to be one. This `BlElement` subclass draws its block in
+`aeDrawGeometryOn:`, on a context it asks the canvas's surface for rather than on the canvas's own
+context. That was the one real discovery of the unit: drawing through the canvas's context leaks the
+canvas's state into the frame, so a corpus case that fills without naming a colour drew white on
+white, and one that strokes inherited the canvas's stroke options. A context the surface makes
+starts with the defaults such a frame is written against, and records into the same display list.
+
+Laying the content out is the other trap. `BlSpace >> settle` needs the pulse loop of an opened
+window, so an unopened space never lays its root out, and an unsettled root is zero by zero and
+clips every child. The tests build the content detached, send `forceLayout`, and attach it to a root
+told not to clip — which is what `VGCanvas class >> formOfElement:` and `VGFrameProfile >> newScene`
+already do, and it carries the same `ReBlocDoNotSendForceLayoutRule` critique those two carry.
+
+**Gate, the offscreen half.** `VGVulkanPresentRendererTest`, four tests: the frame of a space
+reaches the image with the pixels the software backend draws; every supported case of the
+conformance corpus does the same, compared through `VGFormComparison` with the tolerances
+`VGTiledFrameTestCase` sets and each assertion described by the case name; a presented frame copies
+no pixel through the host, held by `VGHostPixelRefusingBackendStub`; and a frame the device refuses
+presents nothing, is not retried, and leaves selection, held by the new
+`VGFailingDispatchBackendStub`.
+
+**Gate, the window half.** `VGVulkanPresentRendererExamples class >>
+openWindowAndPresentTheBenchmarkFrames` opens a real, visible Vulkan window and presents the three
+frames of `VGFrameDeviceBenchmark` two seconds apart, answering its renderer once the window is
+closed. The renderer reports three frames taken, a recording surface of 800 by 600, and
+`VGVulkanBackend` still in selection afterwards, which is what says the three frames were computed
+on the device and not refused into a cleared frame. It is named `open…`, so no gate runs it.
+
+Getting there cost two mistakes worth recording. The example first showed the space — `space show`,
+then `settle` per frame — on the reasoning that the host, the window, the chain and the renderer
+should be the ones a space finds for itself. A space finds the wrong one. `BlSpace >> show` hands
+the space to `BlHostRegistry default preferredHost`, an instance variable set at image start and
+kept there: `refreshAvailableHosts` replaces it only when the host it holds has stopped being
+supported, so the host priorities (10 for `VGVulkanPresentHost`, 20 for `BlMorphicWindowHost`) are
+never read, and the space opens on the Morphic host. No Vulkan object is built, and `settle` never
+returns — the process sits in `BlPulseLoopHost >> waitUntil:timeOutIf:onCompletion:onTimeout:` and
+holds the image there. The example now builds its host space by hand, exactly as every device test
+of this unit does — `VGVulkanPresentHost default newHostSpaceFor:`, `initializeRenderer`, `show` on
+the host space — and renders each frame with `hostSpace render: space` after `invalidateAll`, with a
+bounded delay between frames and no `settle` anywhere.
+
+The Morphic detour also showed what `VGDrawnFrameElement` depends on. Drawn by an Alexandrie canvas,
+`aeCanvas privateAeCairoSurface newContext` answers an `AeCairoContext`, and a frame written against
+this project's drawing context then meets a foreign protocol: six debuggers on
+`VGCairoMatrix doesNotUnderstand: #tfPointerAddress`, raised from `AeCairoContext >> sourcePattern:`
+under `VGFrameDeviceBenchmark class >> drawCardsOn:using:`. The selectors that overlap — a colour
+source, a rectangle, a fill, a stroke — work by coincidence; a pattern does not. On this project's
+own surfaces `newContext` answers a `VGCairoContext` and the element is correct, which is why the
+offscreen gate is green. Whether the element should refuse a canvas it cannot draw on, rather than
+failing inside Cairo's marshalling, belongs to the design review.
+
+**The reports and the views.** `presentReport` answers the frames taken, the backend they were
+computed on, whether selection still holds that backend, and the recording surface with its device
+scale; `inspectorPresent:` shows it. `VGDrawnFrameElement >> frameReport` answers what its frame
+records, found by recording it on a throwaway surface of one pixel: a display list holds commands
+and not pixels, so nothing reported depends on that extent and an element no space has laid out yet
+still answers. `VGDrawnFrameElementExamples` draws its card with the drawing context directly,
+written in the examples class because `VectorGraphics-Bloc-Examples` stands below the benchmarks in
+the layering.
+
+**One defect found outside the unit.** Backend selection reads `VGBackend withAllSubclasses`, so
+every test fixture that subclasses a real backend is a candidate for selection in the working image.
+With the rejection set cleared, `VGBackend preferred` answered `VGFailingDispatchBackendStub` — a
+fixture that fails every frame. The stub now declares `isCandidate` false, and so does
+`VGHostPixelRefusingBackendStub`, which inherited a true answer when this was written. The design
+review that followed added the guard: `VGArchitectureTest >>
+testNoBackendOutsideAProductionPackageIsACandidateForSelection` holds every backend a test or an
+example package defines to refusing selection.
+
+Green: 4 in `VGVulkanPresentRendererTest`, 69 in `VGArchitectureTest`, 17 in `VGFrameProfileTest`,
+6 in `VGBlocExamplesTest`, 6 in `VGVulkanExamplesTest`, 13 in `VGVulkanPresentHostTest` and 13 in
+`VGVulkanPresentChainTest` — the last three one test per call, which is the only route that worked
+this time. Renraku is clean on every class this unit changed, apart from the shared `forceLayout`
+critique named above. Commits: `073773f` and `0b9b6d4` on VectorGraphics.
+
+#### The image went down three more times
+
+Three more wedges. Two came from running several window tests inside one MCP call: five example and
+meta suites in one call, then six selectors of `VGVulkanPresentHostTest` in a Pharo-side loop. Each
+of those selectors answers in a second or two on its own. The third came from the window half of the
+gate above — `BlSpace >> show` on the Morphic host, and then the same thing again as a bare probe of
+host selection, both of which hang in `settle` and hold the image there. A fourth followed the fix:
+`VGVulkanExamplesTest >> testEveryViewHasAGate`, run on its own, built every example subject of the
+package and killed the image outright rather than wedging it (connection refused, not a timeout).
+Five of its six tests had passed one per call before it. The child-image route of §7.3a was not
+available either: a child started from a snapshot taken mid-session loops on `Invalid window
+handle` from `OSWorldRenderer` and hangs inside `PVVulkanDriver installDuring:` before the block is
+entered. What worked was one test selector per call in the working image, with the work committed
+and the image saved first, for every test but that one.
+
+The gate test itself came back green in a child image once the child could start cleanly — one
+started from an image saved right after a fresh start of Pharo, rather than from a snapshot of a
+long-running session. `testEveryViewHasAGate` and
+`testEveryViewOfAnExampleBuildsAndFillsItsCells` both passed there, which closes
+`VGVulkanExamplesTest` at six of six. Two traps belong with that route. The image that is saved for
+the child must have no window and no space alive in it: a snapshot taken while they are stores
+handles that die with the session, and the image then loops on `Invalid window handle` at every
+start until a headless run closes them. And the child inherits the start-up action that starts the
+MCP server, so it tries to bind the same port as the parent, fails, spins in
+`ZnManagingMultiThreadedServer >> listenLoop`, never reaches `--quit`, and holds the port in a state
+where the parent's own answers stop arriving — an image that looks wedged for twenty minutes while
+it is in fact fine. A child script stops `ZnServer allSubInstances` as its first statement, and a
+silent image is worth a `ps` for a live child before it is worth anything else.
+
+#### Design review
+
+The review of the production code unit 7.4 touched found seven points. Six were taken and one was
+declined; a seventh turned out to be wrong and was reverted. Each was committed on its own, with the
+suite re-run first.
+
+`VGDrawnFrameElement >> aeDrawGeometryOn:` asked a surface for a context and handed whatever came
+back to the frame block. On Alexandrie's own surface that is an `AeCairoContext`, where a few
+selectors overlap this project's recording context by coincidence and the rest fail deep inside
+Cairo marshalling. The element now asks `newVectorGraphicsContextOrNil`, which `VGCairoImageSurface`
+answers with its own context and an extension on `AeCairoImageSurface` answers with nil, and refuses
+a nil with an error that names the cause. `VGCanvasTest` holds it, failing test first (`b3e03a6`).
+
+The recipe for a detached space — set the extent, force the layout, build a `BlSpace`, stop the root
+clipping, add the element — stood in three places. It has one home now,
+`VGVulkanPresentRendererExamples class >> spaceOfElement:extent:`, which the example method and both
+test helpers call (`0f3e850`).
+
+Nothing held the rule that a stub backend must refuse selection. `VGArchitectureTest >>
+testNoBackendOutsideAProductionPackageIsACandidateForSelection` holds it now, proven to bite by
+taking the refusal off a stub and putting it back (`d291e1f`).
+
+`VGVulkanPresentRenderer >> render:` branched on `isKindOf: VGVulkanPresentHostSpace`. It asks
+`presentsFramesOnDevice` instead — `false` on an extension of `BlHostSpace`, `true` on the present
+host space — and a test holds that the host spaces answering `true` are that class and its
+subclasses, which is what lets the offscreen stub answer `true` honestly (`9d7ff26`).
+
+`dispatchOfSpace:forExtent:` and `presentFrameDuring:` each mixed three levels of abstraction. Four
+Extract Methods later — `recordSpace:onSurfaceForExtent:`, `dispatchOfRecording:forExtent:`,
+`recordFrameOf:into:atIndex:`, `submitAndPresentImageAt:` — each reads as its own sequence
+(`ba95db1`). `render:` is classified as `rendering` again, the protocol its superclass uses.
+
+Declined: `ReExcessiveVariablesRule` on `VGVulkanPresentChain`, twelve instance variables. Grouping
+the sync triple would add a layer, and `partsInCreationOrder` with its reverse destruction reads the
+flat list on purpose.
+
+Reverted: the twenty `ReEquivalentSuperclassMethodsRule` critics on the two host classes are not a
+redundant re-application of `TBlSingletonHost`. `BlHostRegistry >> refreshAvailableHosts` registers
+the singleton of every class in `TBlSingletonHost users`, and that collection holds the classes that
+declare the trait, not their subclasses. With the trait dropped (`202878d`) everything compiled and
+each class kept its own `default`, but `BlHostRegistry new availableHostClasses` under the Vulkan
+driver came back as `#(#BlMorphicWindowHost #BlHeadlessHost)`, since Bloc's own SDL2 host answers
+unsupported while a subclass of `OSSDL2Driver` is installed — a space opened then falls back to
+Morphic in silence. `VGVulkanDriverSdl2HostTest >>
+testAnSdl2HostIsAvailableWhileTheVulkanDriverIsInstalled` caught it and `504ecb2` put the trait
+back. Both class comments already said why it is there. The critics are the price.
+
+Suites after the review: `VGVulkanPresentRendererTest` 5, `VGArchitectureTest` 70, `VGCanvasTest`
+16, `VGVulkanDriverSdl2HostTest` 5 and the four non-view tests of `VGVulkanExamplesTest` in the
+working image; `VGVulkanPresentHostTest` 13, `VGVulkanPresentChainTest` 13, `VGRendererTest` 14 and
+`VGFrameProfileTest` 17 in a child image, with the two view gates of `VGVulkanExamplesTest` green
+there from the run of the gate above. The four example tests that fail in the child are the four
+that pass in the working image: a child's own world does not start, so an example that opens a
+window cannot run there.
 
 ## 8. What this is not
 
