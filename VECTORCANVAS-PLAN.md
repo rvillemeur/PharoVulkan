@@ -5878,6 +5878,320 @@ the border variant loses all but a handful of the edges, that the gradient varia
 what the whole frame records, and that the frame without its cards is the background alone.
 
 
+### 3.14 — the interior question of a binning, counted, timed and shortened
+
+Unit 3.12 left the binning of the reference frame at 4.587 ms with the interior question 4.313 ms of
+it, seven tenths. This unit asks what that question is made of, question by question and stage by
+stage, and then builds the one lever the figures name. Two measuring objects were built first and a
+single production method changed afterwards.
+
+**The question.** `VGFillEntry >> coversEveryPixelOf: aRectangle` is asked of every pair a binning
+touches. It tests the clip's bounding rectangle, then the fill's exact bounding box, then whether an
+edge of the fill meets the rectangle, then the fill rule at the centre of it, and then the same
+enclosure again on every shape the clip was cut out by. A blit answers `false` flat, so it pays one
+send and reads no geometry. Seven stages in all, which the census names `noShape`, `clipBounds`,
+`shapeBox`, `shapeEdge`, `shapeWalk`, `clipShape` and `covered`.
+
+**Counting before timing, because unit 3.12 was misled by a profiler.** `VGInteriorQuestionCensus`
+holds one `VGInteriorQuestionCensusRow` a frame and extent, and a row walks the display list exactly
+as a binning does — the super tile first, the sixteen tiles inside it only when the super tile is
+refused — asking the stages of the predicate itself rather than asking the predicate. It holds no
+clock. What pins it to the code is an agreement test: the tiles the census counts interior are the
+tiles the binning marks, `interiorReferenceCount` against `interiorMarks`, for all three frames at
+both extents. An entry is counted by double dispatch, `anEntry countedBy: aRow`, so no census of
+this project asks an entry what class it is.
+
+| frame | super questions | super refusals | tile questions | interior marks |
+|---|---|---|---|---|
+| background | 130 | 42 | 492 | 1728 |
+| cards | 354 | 258 | 2092 | 2208 |
+| reference | 460 | 364 | 2292 | 2208 |
+
+Every count holds at 800 by 600 and at 1920 by 1080 alike. The background frame refuses exactly the
+42 perimeter super tiles of the grid and no other, which is what one fill of the whole surface owes.
+
+Where the questions stop, at 800 by 600:
+
+| frame | noShape | clipBounds | shapeBox | shapeEdge | shapeWalk | clipShape | covered |
+|---|---|---|---|---|---|---|---|
+| background | 0 | 0 | 0 | 214 | 0 | 0 | 408 |
+| cards | 0 | 842 | 0 | 348 | 488 | 0 | 768 |
+| reference | 306 | 842 | 0 | 348 | 488 | 0 | 768 |
+
+**The budget.** `VGInteriorQuestionBudget` times the stages apart. For each stage it runs one loop
+over exactly the pairs the census recorded as reaching it, with the clock around the loop and the
+test looked up before it starts; `whole` runs the real predicate over every pair asked and `loop`
+runs no test at all, which is the baseline every other figure stands over. Twenty passes, the figure
+is the floor, and the order of the loops turns over with the pass so no stage is always measured
+first. Floors in microseconds at 800 by 600, with the questions reaching each stage in brackets:
+
+| stage | background (622 asked) | cards (2446) | reference (2752) | µs a question, reference |
+|---|---|---|---|---|
+| noShape | — | — | 4 (306) | 0.01 |
+| clipBounds | 17 (622) | 204 (2446) | 275 (2446) | 0.11 |
+| shapeBox | 76 (622) | 197 (1604) | 207 (1604) | 0.13 |
+| shapeEdge | 215 (622) | 742 (1604) | 925 (1604) | 0.58 |
+| shapeWalk | 188 (408) | 855 (1256) | 770 (1256) | 0.61 |
+| clipShape | 16 (408) | 30 (768) | 618 (768) | 0.80 |
+| sum of the stages | 512 | 2028 | 2799 | |
+| the whole predicate | 561 | 2193 | 3065 | |
+| the bare loop | 7 | 27 | 30 | |
+
+The edge test and the fill-rule walk are 55 per cent of the reference frame's predicate. The 266 µs
+between the sum of the stages and the whole of it is the sends and the super-tile descent around
+them, and the rest of the gap to unit 3.12's 4.313 ms is the binning's own grid arithmetic, its bin
+writes and the stage timing itself.
+
+**A measurement defect, found inside the unit.** A budget run made without collecting the heap first
+read the reference frame's whole predicate at 4096 µs, where three runs made after a collection
+agree at 2975, 3122 and 3100. Building the rows draws three frames and keeps a pair for every
+question of every stage, tens of thousands of objects, so every pass paid a collection and the floor
+of twenty passes could not dodge it. The budget now collects once before its first pass, and says so
+in the method.
+
+**What the numbers named, and what they refused.** Two redundancies were looked for and only one
+exists. The clip shapes repeat: 768 clip-shape questions on the reference frame stand over 360
+distinct (shape, rectangle) pairs, because the 12 `VGClip` objects of the frame are shared by seven
+or eight entries each and every entry asks the shared shape the same rectangle again. That is worth
+about 250 µs net of the 3.065 ms, on the reference frame only, and it was left unbuilt. In every
+fill stage the distinct (scanner, rectangle) pairs equal the questions asked, which is the same fact
+that made unit 3.12 remove its per-rectangle memo, so there is nothing to remember there.
+
+What the counting did name is the shape of the fills. A fill whose edges are a device rectangle —
+four axis-aligned edges on the corners of their own bounding box — carries 1049 of the 1604 edge
+tests and 768 of the 1256 fill-rule walks on the cards and the reference frames, and all 622 and 408
+of them on the background.
+
+**The lever.** `VGSpanScanner >> enclosesWholly:` answers from the bounding box alone when the shape
+is such a rectangle: the box holds the asked rectangle and the asked rectangle's sides are strictly
+inside it. No band of the edge index is read and the fill rule is not asked. The verdict is the
+walked verdict and not an approximation of it, by construction: the only edges of such a shape are
+the four sides of its box, so an edge touches the asked rectangle exactly when that rectangle
+touches the boundary of the box, which is the conservative refusal the walk would have made, and
+every point the box holds and the sides miss is inside the shape under either fill rule. The test of
+the shape is `isDeviceRectangle`, remembered by the scanner beside its bounding box and its edge
+index, and `VGSegments >> asDeviceRectangle` now reads it there rather than repeating it.
+
+**What it bought.** Measured by compiling the old method and the new one into the same run, twelve
+or sixteen passes a side, floors of the binning's `interior` stage. Three runs were made; the second
+reversed the order of the two methods, and the machine was between two and three times slower during
+the first two than during the third, which is why the fractions and not the microseconds are the
+result.
+
+| frame | run 1 old → new | run 2 old → new | run 3 old → new | the fall |
+|---|---|---|---|---|
+| background | 1399 → 315 | 2665 → 710 | 670 → 216 | 68 to 77 per cent |
+| cards | 5076 → 3122 | 7991 → 4832 | 2227 → 1764 | 21 to 40 per cent |
+| reference | 6112 → 4780 | 11015 → 7966 | 3178 → 2383 | 22 to 28 per cent |
+
+The whole binning falls with it, by 9 to 25 per cent on the background frame, 4 to 15 on the cards
+and 9 to 15 on the reference. The tiles marked interior are unchanged at 1728, 2208 and 2208, which
+is the stop rule this unit was given: the interior figure had to fall on the reference frame and
+rise on neither cheap frame, with the marks identical, or the lever was to be removed and its
+figures left in a comment.
+
+The fall is smaller on the cards and the reference frames than the per-question costs predicted —
+the prediction was 45 and 35 per cent — and the reason is nameable. The prediction priced a skipped
+edge walk at the frame's average of 0.46 to 0.58 µs, while a rectangle has four edges and the dense
+card outlines have 224, so the walks the lever removes are the cheap ones. The background frame is
+nearly all rectangles, and loses three quarters of its interior stage.
+
+**Artefacts.** `VGInteriorQuestionCensus`, `VGInteriorQuestionCensusRow`, `VGInteriorQuestionBudget`
+and `VGInteriorQuestionBudgetRow` in the new `Tiles` tag of `VectorGraphics-Benchmarks`; the budget
+row holds one method a stage test rather than one dictionary of eight blocks, which is what the
+critics asked for. `VGSpanScanner >> isDeviceRectangle` and its private computation, with the
+`rectangular` slot that remembers the answer; `VGRefusingWalkScannerStub` in the `Fixtures` tag of
+`VectorGraphics-Canvas-Raster-Tests`, a scanner that signals when its edges are read. The examples
+are `VGInteriorQuestionCensusExamples class >> stagesOfTheThreeFrames`,
+`VGInteriorQuestionBudgetExamples class >> floorsOfTheStagesOfTheThreeFrames` and
+`VGSpanScannerExamples class >> scannerOnADeviceRectangle`, none of which opens a device. The views
+are the `Stages` and `Counts` tabs of the census, the `Floors` tabs of the budget, and one new
+column of the scanner's `Enclosure` tab saying when the answer was read from the box alone.
+
+**Gate.** `VGRasteriserTest` 19, `VGTileBinningTest` 23, `VGTiledFillTest` 52, `VGTiledClipTest` 11,
+`VGTiledBlitTest` 13, `VGKernelVisitCensusTest` 8, `VGInteriorQuestionCensusTest` 7,
+`VGInteriorQuestionBudgetTest` 3, `VGArchitectureTest` 71, `VGConformanceTest` 15,
+`VGAlexandrieCorpusTest` 15, `VGCairoClipTest` 17 and `VGCairoStrokeTest` 29, all green — the Cairo
+suites and the corpus because a change to the enclosure predicate reaches every tile of every frame,
+and the byte-identity case `testEveryCaseThatDrawsMatchesCairo` is what says the verdict did not
+move. Critics clean on every class this unit wrote and on `VGSpanScanner`; `VGSegments` carries the
+one `ReExcessiveArgumentsRule` it already had. The three new rasteriser tests are the shape test
+over a square, a triangle, two nested squares and a zigzag; the stub scanner answering an enclosure
+without reading its edges; and the short answer compared against the walked answer over a grid that
+oversteps the shape on every side.
+
+**Design review.** Two points were taken. `computeIsDeviceRectangle` asked `segments size = (4 * 4)`
+and now asks `self edgeCount = 4`, with `edgeCount` on the scanner where `VGEdgeIndex` already had
+the name; `asDeviceRectangle` asked `self scanner` twice and now holds it in a temporary. A third
+was raised and refused: extracting the strict containment of the short branch into a method of its
+own would add an abstraction with one sender and simplify nothing today.
+
+**What this says about the two-kernel question of section 12.7.** Nothing that moves it, and one
+figure that narrows it. The binning is host work and the interior question was seven tenths of it;
+this unit removed a fifth to a quarter of that question on the reference frame without changing a
+tile, so the host floor of unit 3.13 — the scene layout plus the recording, about 3.7 ms at 800 by
+600 — is untouched and still stroke-bound. The question stays open on the device side, where unit
+3.13 left it.
+
+
+### 3.15 — the stroke recording, lever by lever
+
+Unit 3.13 priced the twelve stroked card borders at 1.9 to 2.2 ms of the reference frame's 3.0 ms
+recording, two thirds of it and 80 per cent of the gap to Cairo, and named this the next lever on
+the host side. This unit takes the recording apart part by part, then takes one lever at a time
+against a stop rule, and stops when a lever stops paying.
+
+**The stop rule, set before the first measurement.** A lever is kept when it buys at least five
+per cent of the card border row and the output it writes is unchanged; a lever that buys less is
+removed and its figures are written into the comment of the method it would have changed, so the
+next reader does not price it again. Every lever carries its own failing test first, its own
+same-run A/B, and its own commit.
+
+**The harness.** `VGStrokeRecordBudget` holds one `VGStrokeRecordBudgetRow` a subject, in a new
+`Strokes` tag of `VectorGraphics-Benchmarks`. The three subjects are `border`, one stroked rounded
+card border of 224 edges; `frame`, the twelve borders of the reference grid, 2688 edges; and
+`line`, a straight line of four edges, which is the degenerate case a lever must not make worse. A
+row times five parts, cut at seams the recording already had, so nothing was instrumented to
+measure it: `path` builds the path through `VGPathBuilder` and stops there, `outline` asks a built
+stroker for its edge coordinates, `segments` records the fill of an outline already computed,
+`whole` is the real `stroke` call end to end, and `loop` runs the pass structure with no work in
+it, which is the baseline the other four stand over. Forty passes, the figure is the floor, the
+order of the parts turns over with the pass, and the heap is collected once before the first pass
+— the defect unit 3.14 found in its own budget. A reader of the row — its edge count, its outlines
+— runs on a context of its own, so no one can disturb the kept context the timed parts draw on.
+
+Floors in microseconds at 800 by 600, as the unit opened:
+
+| subject | path | outline | segments | whole |
+|---|---|---|---|---|
+| border | — | — | — | 126 |
+| frame | 405 | 1180 | 15 | 1622 |
+| line | — | — | — | 6 |
+
+The recording of a stroke is the path and the outline and nothing else: the fill record of twelve
+outlines is 15 µs of 1622, under one per cent, so no lever was looked for there.
+
+**Four levers taken.** Each was byte identical to the code it replaced, on every subject, which is
+what let them be taken on a figure of a few microseconds.
+
+*The identity matrix.* `VGStroker >> edgeCoordinates` built the inverse of the stroke matrix and
+mapped every point of the path through it, and `appendPolygon:into:` mapped every vertex of every
+polygon back. Under the identity both maps answer the point they are given, and the budget frames
+stroke under the identity. The premise is a test of its own, `VGCairoMatrixTest >>
+testIdentityAndItsInverseAnswerEveryCoordinateOfTheSweepUnchangedAndInItsOwnClass`, over a sweep
+of halves of both signs, 1/512, a coordinate far from the origin and zero — and it had to be
+restated once: `VGCairoMatrix newIdentity` holds Float fields, so an Integer coordinate comes back
+a Float. Path coordinates are always Floats, because `fixedOf:` divides by `256.0`, so the short
+circuit is exact for every coordinate the stroker can see. Border 126 → 99, frame 1622 → 1203.
+
+*The direction of a segment.* `directionFrom:to:` built the difference as a `Point`, asked it for
+its length through `Point >> r` and divided the point by it, three points allocated a segment.
+`(dx * dx + (dy * dy)) sqrt` is the same arithmetic `r` performs and `-(a/b)` is exactly `(-a)/b`
+in IEEE, so the point-free form is bit identical; the agreement test says so over the sweep rather
+than asserting the formula. Border 99 → 90, frame 1203 → 1166. Five microseconds of 99 is 5.1 per
+cent, which is the stop rule met by a tenth of a per cent.
+
+*The fixed point grid.* `VGPathBuilder class >> fixedOf:` rounded half to even by comparing a
+scaled coordinate against the Fraction `1/2`. A `Float = Fraction` comparison goes through
+Number's coercing path, and reading the half as `0.5` instead cut 672 coordinates from 189 to 52
+µs. Scaling by `256.0` rather than `256` added nothing, so the whole scaling stays and a Fraction
+coordinate is still scaled exactly. Path 405 → 209, border 90 → 81, frame 1166 → 960.
+
+*The polygon sink.* `appendPolygon:into:` took an array of `Point`s, mapped it, reversed a copy of
+it when the device winding came out the wrong way, and wrote four floats an edge. Every producer
+of a stroke polygon built that array out of numbers it already had: four points for a segment
+quadrilateral, three or four for a join wedge, one a vertex for the disc of a round cap or join,
+four for a square cap. The sink now takes the coordinates themselves, two floats a vertex, maps
+them in one place, and normalises the winding by walking the array forwards or backwards instead
+of copying it reversed. No point object is allocated between the stroke walk and the edge stream.
+Priced in one run that alternated the two sinks over forty passes: the outline of one card border
+58 → 41 µs, of the grid 736 → 527. Border 81 → 71, frame 960 → 873.
+
+That lever is the one the grill left open, because it changes the one sink every stroke polygon
+goes through. It was priced first and decided afterwards, and what the pricing had to show was
+that the sink stays single: all four producers were converted, so there is still exactly one place
+where a polygon becomes edges and exactly one place where user space becomes device space.
+
+| subject | path | outline | segments | whole | whole as the unit opened |
+|---|---|---|---|---|---|
+| border | 18 | 52 | 1 | 71 | 126 |
+| frame | 214 | 614 | 15 | 873 | 1622 |
+| line | 1 | 1 | 1 | 4 | 6 |
+
+**Two levers refused, both byte identical, both too small.** The arithmetic of the segment
+quadrilateral — the offset multiplied out rather than built as a point and scaled — took the
+outline of one border from 63 to 60 µs and of the grid from 785 to 765, 3.7 per cent of the row.
+Computing the direction of each segment once and sharing it between its quadrilateral and the
+joins at its two ends, where the walk computes it three times, took the border outline from 55 to
+53 µs and the grid from 709 to 681, 2.8 per cent. A square root and two divisions are cheap beside
+the polygon each of them is for. Both sets of figures are in the comments of `quadFrom:to:into:`
+and `strokeWholeRun:closed:into:`, which are the methods those levers would have changed, and the
+second of them is what stopped the unit.
+
+**What it is worth at the frame.** `VGFrameRecordComparison`, the object unit 3.13 measured with,
+run again at 800 by 600 over twenty passes, twice:
+
+| | unit 3.13 | now, run 1 | now, run 2 |
+|---|---|---|---|
+| reference frame recorded, ours | 3.251 / 2.974 ms | 2.194 ms | 2.279 ms |
+| the same drawing, Cairo | 1.045 / 1.046 ms | 0.985 ms | 0.998 ms |
+| the twelve borders, ours | 2.193 / 1.935 ms | 1.457 ms | 1.474 ms |
+| the twelve borders, Cairo | 0.290 / 0.347 ms | 0.280 ms | 0.289 ms |
+
+The recording is now 2.2 times Cairo's whole drawing of the same picture rather than 2.8 to 3.1
+times it, and the host floor unit 3.13 named — the scene layout plus the recording — falls from
+about 3.7 ms to about 2.9 ms. The strokes are still the gap: 1.18 of the 1.21 ms by which the
+recording exceeds Cairo's drawing is the twelve borders, and one border is now recorded in 0.12 ms
+against Cairo's 0.024.
+
+**What is left in there, and why no lever follows.** The outline is 614 µs of the frame row and
+the path 214, and what remains inside them is the polygons themselves: 2688 edges for twelve
+borders, four floats an edge, because each of the 224 chords of a border gets a quadrilateral and
+each of its corners a wedge. Fewer edges means a coarser flattening or an arc that is not
+flattened at all, which changes what a stroke looks like rather than what it costs to record, so
+it belongs to a unit about the stroke shape and not to this one. The unit's own stop rule is what
+closes it: the last lever measured bought 2.8 per cent.
+
+**Artefacts.** `VGStrokeRecordBudget` and `VGStrokeRecordBudgetRow` in the `Strokes` tag of
+`VectorGraphics-Benchmarks`; `VGStrokeRecordBudgetTest` with five tests in
+`VectorGraphics-Vulkan-Tests`, which hold what the rows stroke, that a pass records one reading a
+part however many passes have run, that every part is timed once a pass on every row, and that the
+whole recording costs at least its dearest part. The example is `VGStrokeRecordBudgetExamples
+class >> floorsOfThePartsOfTheThreeStrokes`, registered in `VGVulkanExamplesTest >>
+exampleHolders`; it opens no device. The views are the budget's `Floors` tab, a line a subject
+with the share of the row each part holds, and the row's `Passes` tab. In production: `VGStroker
+>> appendPolygonCoordinates:into:` with `deviceCoordinatesOf:`, `signedAreaOfCoordinates:` and
+`appendEdgeOf:from:to:into:` behind it, the wedge of a join split out of `joinAt:from:to:into:`
+into `wedgeCoordinatesAt:between:and:side:`, and the four producers rewritten to build
+coordinates. Three agreement tests were added for the premises of the levers, one each in
+`VGCairoMatrixTest`, `VGCairoStrokeTest` and `VGCairoPathTest`, and two for the new sink — that a
+polygon of fewer than three vertices writes no edge at all, and that the sink writes device
+coordinates and normalises the winding of a square handed to it the wrong way round.
+
+**Gate, after every lever.** `VGCairoStrokeTest` 32, `VGConformanceTest` 15, `VGCairoClipTest` 17,
+`VGCairoPathTest` 14, `VGCairoMatrixTest` 17, `VGArchitectureTest` 71 and
+`VGStrokeRecordBudgetTest` 5, all green, together with the Alexandrie corpus case
+`testEveryCaseThatDrawsMatchesCairo`, which compares the drawn pixels against live Cairo and says
+an outline did not move. That case has to be forked inside the image and polled through a file in
+`Smalltalk imageDirectory`, because a direct run of it times the MCP call out. The coordinate sink
+was checked byte identical against the point sink over the nine combinations of line cap and line
+join, open runs and closed, and over a scaling, a mirroring and a shearing matrix with a dash
+pattern. Critics clean on `VGStroker` and on every class the unit wrote.
+
+**Design review.** One point was taken before the levers were committed: `joinAt:from:to:into:`
+grew past the long method rule when its polygon became coordinates, and
+`wedgeCoordinatesAt:between:and:side:` was extracted from it, which left the guards in the join
+and the geometry in the wedge. Two points were raised and refused, and both are recorded where
+they are. The perpendicular offset is now written out in three methods — the segment
+quadrilateral, the square cap and the wedge — which is the third occurrence the rule of three asks
+an abstraction for, and the abstraction is two helper sends per polygon in the loop the five
+levers of this unit were spent emptying. The sink walks its polygon forwards or backwards in two
+loops that differ only in index arithmetic, and one loop asking which way to go would ask it once
+a vertex. A third was noted and needs nothing: a polygon is now a flat array of floats rather than
+an object, which is primitive obsession on purpose, and a `VGPolygon` class would reintroduce
+exactly the allocation the lever removed.
+
+
 ### 12.7 — the other shapes, and why neither is scheduled
 
 Written down so that the stop rule has somewhere to point.
